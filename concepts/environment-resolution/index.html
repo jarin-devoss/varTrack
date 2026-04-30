@@ -1,0 +1,2379 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="GitOps-native configuration sync. Push a file to Git — varTrack writes it to your datastores automatically.">
+      
+      
+      
+        <link rel="canonical" href="https://jarin-devoss.github.io/varTrack/concepts/environment-resolution/">
+      
+      
+        <link rel="prev" href="../destination-template/">
+      
+      
+        <link rel="next" href="../sync-strategies/">
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.5.44">
+    
+    
+      
+        <title>Environment Resolution - varTrack</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.0253249f.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.06af60db.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Inter:300,300i,400,400i,700,700i%7CJetBrains+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Inter";--md-code-font:"JetBrains Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="deep-purple" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#environment-resolution" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow md-header--lifted" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="varTrack" class="md-header__button md-logo" aria-label="varTrack" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            varTrack
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Environment Resolution
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="deep-purple" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="deep-purple" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      <label class="md-header__button md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+      </label>
+      <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/jarin-devoss/varTrack" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 496 512"><!--! Font Awesome Free 6.6.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2024 Fonticons, Inc.--><path d="M165.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M244.8 8C106.1 8 0 113.3 0 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C428.2 457.8 496 362.9 496 252 496 113.3 383.5 8 244.8 8M97.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    jarin-devoss/varTrack
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+    
+      
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../.." class="md-tabs__link">
+        
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../getting-started/" class="md-tabs__link">
+        
+  
+    
+  
+  Getting Started
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../why-vartrack/" class="md-tabs__link">
+        
+  
+    
+  
+  Why varTrack?
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+    
+  
+  
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="../" class="md-tabs__link">
+          
+  
+    
+  
+  How It Works
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../configuration/bundle/" class="md-tabs__link">
+          
+  
+    
+  
+  Configuration
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../sinks/" class="md-tabs__link">
+          
+  
+    
+  
+  Sinks
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../cli/" class="md-tabs__link">
+          
+  
+    
+  
+  CLI
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../services/gateway/" class="md-tabs__link">
+          
+  
+    
+  
+  Services
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../deployment/docker-compose/" class="md-tabs__link">
+          
+  
+    
+  
+  Deployment
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../examples/" class="md-tabs__link">
+          
+  
+    
+  
+  Examples
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ul>
+  </div>
+</nav>
+    
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="varTrack" class="md-nav__button md-logo" aria-label="varTrack" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    varTrack
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/jarin-devoss/varTrack" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 496 512"><!--! Font Awesome Free 6.6.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2024 Fonticons, Inc.--><path d="M165.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M244.8 8C106.1 8 0 113.3 0 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C428.2 457.8 496 362.9 496 252 496 113.3 383.5 8 244.8 8M97.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    jarin-devoss/varTrack
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Home
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../getting-started/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Getting Started
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../why-vartrack/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Why varTrack?
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+      
+        
+        
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" checked>
+        
+          
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../" class="md-nav__link ">
+              
+  
+  <span class="md-ellipsis">
+    How It Works
+  </span>
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_4" id="__nav_4_label" tabindex="">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            How It Works
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../destination-template/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Destination Template
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  <span class="md-ellipsis">
+    Environment Resolution
+  </span>
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  <span class="md-ellipsis">
+    Environment Resolution
+  </span>
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#resolution-order" class="md-nav__link">
+    <span class="md-ellipsis">
+      Resolution order
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#branch_map-explicit-mapping" class="md-nav__link">
+    <span class="md-ellipsis">
+      branch_map — explicit mapping
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#file_path_map-path-glob-mapping" class="md-nav__link">
+    <span class="md-ellipsis">
+      file_path_map — path glob mapping
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#env_as_pr-pr-environments" class="md-nav__link">
+    <span class="md-ellipsis">
+      env_as_pr — PR environments
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#env_as_branch-branch-name-as-environment" class="md-nav__link">
+    <span class="md-ellipsis">
+      env_as_branch — branch name as environment
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#env_as_tags-tag-name-as-environment" class="md-nav__link">
+    <span class="md-ellipsis">
+      env_as_tags — tag name as environment
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#root_key-extracting-a-subtree-before-slicing" class="md-nav__link">
+    <span class="md-ellipsis">
+      root_key — extracting a subtree before slicing
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#auto-detection-from-config-file-structure" class="md-nav__link">
+    <span class="md-ellipsis">
+      Auto-detection from config file structure
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Auto-detection from config file structure">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#pattern-1-all-top-level-keys-are-env-names" class="md-nav__link">
+    <span class="md-ellipsis">
+      Pattern 1 — all top-level keys are env names
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#pattern-2-per-field-env-sub-keys-mixed-with-scalars" class="md-nav__link">
+    <span class="md-ellipsis">
+      Pattern 2 — per-field env sub-keys mixed with scalars
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#pattern-3-env-dicts-and-scalar-defaults-at-the-same-level" class="md-nav__link">
+    <span class="md-ellipsis">
+      Pattern 3 — env dicts and scalar defaults at the same level
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#pattern-3-env-named-top-level-dicts-mixed-with-scalar-defaults" class="md-nav__link">
+    <span class="md-ellipsis">
+      Pattern 3 — env-named top-level dicts mixed with scalar defaults
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#default-fallback" class="md-nav__link">
+    <span class="md-ellipsis">
+      default fallback
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#root_key-extracting-a-subtree-before-slicing_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      root_key — extracting a subtree before slicing
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="root_key — extracting a subtree before slicing">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#example-packagejson" class="md-nav__link">
+    <span class="md-ellipsis">
+      Example — package.json
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#example-pomxml-maven" class="md-nav__link">
+    <span class="md-ellipsis">
+      Example — pom.xml (Maven)
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#combining-strategies" class="md-nav__link">
+    <span class="md-ellipsis">
+      Combining strategies
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../sync-strategies/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Sync Strategies
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../drift-detection/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Drift Detection & Self-Heal
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="0">
+            
+  
+  <span class="md-ellipsis">
+    Configuration
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            Configuration
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../configuration/bundle/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Bundle Reference
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../configuration/schema-registry/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Schema Registry
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../configuration/per-repo-overrides/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Per-Repo Overrides
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../configuration/formats/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    File Formats
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../configuration/annotations/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Schema Annotations
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../configuration/auth/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Authentication & Authorization
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" >
+        
+          
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../sinks/" class="md-nav__link ">
+              
+  
+  <span class="md-ellipsis">
+    Sinks
+  </span>
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_6" id="__nav_6_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            Sinks
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../sinks/mongodb/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    MongoDB
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../sinks/redis/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Redis
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../sinks/zookeeper/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    ZooKeeper
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../sinks/s3/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    S3
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../sinks/configmap/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Kubernetes ConfigMap
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../sinks/helm/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Helm
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../sinks/vercel/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Vercel
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../sinks/linux-server/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Linux Server
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_7" >
+        
+          
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../cli/" class="md-nav__link ">
+              
+  
+  <span class="md-ellipsis">
+    CLI
+  </span>
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_7" id="__nav_7_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_7">
+            <span class="md-nav__icon md-icon"></span>
+            CLI
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../cli/cicd/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    CI/CD Integration
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_8" >
+        
+          
+          <label class="md-nav__link" for="__nav_8" id="__nav_8_label" tabindex="0">
+            
+  
+  <span class="md-ellipsis">
+    Services
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_8_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_8">
+            <span class="md-nav__icon md-icon"></span>
+            Services
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../services/gateway/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    gateway-service
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../services/orchestrator/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    orchestrator-service
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../services/watcher/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    watcher-service
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_9" >
+        
+          
+          <label class="md-nav__link" for="__nav_9" id="__nav_9_label" tabindex="0">
+            
+  
+  <span class="md-ellipsis">
+    Deployment
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_9_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_9">
+            <span class="md-nav__icon md-icon"></span>
+            Deployment
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../deployment/docker-compose/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Docker Compose
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_10" >
+        
+          
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../examples/" class="md-nav__link ">
+              
+  
+  <span class="md-ellipsis">
+    Examples
+  </span>
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_10" id="__nav_10_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_10_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_10">
+            <span class="md-nav__icon md-icon"></span>
+            Examples
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../examples/gitea/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Gitea platform
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#resolution-order" class="md-nav__link">
+    <span class="md-ellipsis">
+      Resolution order
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#branch_map-explicit-mapping" class="md-nav__link">
+    <span class="md-ellipsis">
+      branch_map — explicit mapping
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#file_path_map-path-glob-mapping" class="md-nav__link">
+    <span class="md-ellipsis">
+      file_path_map — path glob mapping
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#env_as_pr-pr-environments" class="md-nav__link">
+    <span class="md-ellipsis">
+      env_as_pr — PR environments
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#env_as_branch-branch-name-as-environment" class="md-nav__link">
+    <span class="md-ellipsis">
+      env_as_branch — branch name as environment
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#env_as_tags-tag-name-as-environment" class="md-nav__link">
+    <span class="md-ellipsis">
+      env_as_tags — tag name as environment
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#root_key-extracting-a-subtree-before-slicing" class="md-nav__link">
+    <span class="md-ellipsis">
+      root_key — extracting a subtree before slicing
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#auto-detection-from-config-file-structure" class="md-nav__link">
+    <span class="md-ellipsis">
+      Auto-detection from config file structure
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Auto-detection from config file structure">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#pattern-1-all-top-level-keys-are-env-names" class="md-nav__link">
+    <span class="md-ellipsis">
+      Pattern 1 — all top-level keys are env names
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#pattern-2-per-field-env-sub-keys-mixed-with-scalars" class="md-nav__link">
+    <span class="md-ellipsis">
+      Pattern 2 — per-field env sub-keys mixed with scalars
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#pattern-3-env-dicts-and-scalar-defaults-at-the-same-level" class="md-nav__link">
+    <span class="md-ellipsis">
+      Pattern 3 — env dicts and scalar defaults at the same level
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#pattern-3-env-named-top-level-dicts-mixed-with-scalar-defaults" class="md-nav__link">
+    <span class="md-ellipsis">
+      Pattern 3 — env-named top-level dicts mixed with scalar defaults
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#default-fallback" class="md-nav__link">
+    <span class="md-ellipsis">
+      default fallback
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#root_key-extracting-a-subtree-before-slicing_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      root_key — extracting a subtree before slicing
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="root_key — extracting a subtree before slicing">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#example-packagejson" class="md-nav__link">
+    <span class="md-ellipsis">
+      Example — package.json
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#example-pomxml-maven" class="md-nav__link">
+    <span class="md-ellipsis">
+      Example — pom.xml (Maven)
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#combining-strategies" class="md-nav__link">
+    <span class="md-ellipsis">
+      Combining strategies
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+  
+  
+
+
+<h1 id="environment-resolution">Environment Resolution<a class="headerlink" href="#environment-resolution" title="Permanent link">&para;</a></h1>
+<p>When a webhook fires, varTrack resolves a single environment string from the event. This string is used to:</p>
+<ul>
+<li>Resolve <code>{env}</code> in <code>destination_template</code></li>
+<li>Select the correct subtree from env-keyed config files</li>
+<li>Determine which sink collection, prefix, or path to write to</li>
+</ul>
+<hr />
+<h2 id="resolution-order">Resolution order<a class="headerlink" href="#resolution-order" title="Permanent link">&para;</a></h2>
+<p>varTrack tries each strategy in order and uses the first one that produces a match:</p>
+<table>
+<thead>
+<tr>
+<th>Priority</th>
+<th>Strategy</th>
+<th>Example</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td><code>branch_map[branch]</code></td>
+<td><code>main</code> → <code>production</code></td>
+</tr>
+<tr>
+<td>2</td>
+<td><code>file_path_map[file_path]</code></td>
+<td><code>configs/prod/**</code> → <code>production</code></td>
+</tr>
+<tr>
+<td>3</td>
+<td><code>env_as_pr: true</code></td>
+<td>PR #42 → <code>pr-42</code></td>
+</tr>
+<tr>
+<td>4</td>
+<td><code>env_as_branch: true</code></td>
+<td>branch <code>develop</code> → <code>develop</code></td>
+</tr>
+<tr>
+<td>5</td>
+<td><code>env_as_tags: true</code></td>
+<td>tag <code>v1.2.3</code> → <code>v1.2.3</code></td>
+</tr>
+<tr>
+<td>6</td>
+<td>fallback</td>
+<td>always → <code>default</code></td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="branch_map-explicit-mapping"><code>branch_map</code> — explicit mapping<a class="headerlink" href="#branch_map-explicit-mapping" title="Permanent link">&para;</a></h2>
+<p>Map specific branch names to environment names:</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>rules: [{
+</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>  platform:   &quot;github&quot;
+</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>  datasource: &quot;mongo&quot;
+</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>  branch_map: {
+</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>    main:    &quot;production&quot;
+</span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>    develop: &quot;staging&quot;
+</span><span id="__span-0-7"><a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>    qa:      &quot;qa&quot;
+</span><span id="__span-0-8"><a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>  }
+</span><span id="__span-0-9"><a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>}]
+</span></code></pre></div>
+<p>Pushes to <code>main</code> write to <code>production-config</code>. Pushes to <code>develop</code> write to <code>staging-config</code>. Any branch not in the map falls through to the next strategy.</p>
+<hr />
+<h2 id="file_path_map-path-glob-mapping"><code>file_path_map</code> — path glob mapping<a class="headerlink" href="#file_path_map-path-glob-mapping" title="Permanent link">&para;</a></h2>
+<p>Map file paths (glob patterns) to environment names:</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>rules: [{
+</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>  platform:   &quot;github&quot;
+</span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>  datasource: &quot;mongo&quot;
+</span><span id="__span-1-4"><a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>  file_path_map: {
+</span><span id="__span-1-5"><a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>    &quot;configs/production/**&quot;: &quot;production&quot;
+</span><span id="__span-1-6"><a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a>    &quot;configs/staging/**&quot;:    &quot;staging&quot;
+</span><span id="__span-1-7"><a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a>  }
+</span><span id="__span-1-8"><a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a>}]
+</span></code></pre></div>
+<p>A push that changes <code>configs/production/app.yaml</code> resolves to <code>production</code>.</p>
+<hr />
+<h2 id="env_as_pr-pr-environments"><code>env_as_pr</code> — PR environments<a class="headerlink" href="#env_as_pr-pr-environments" title="Permanent link">&para;</a></h2>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>env_as_pr: true
+</span></code></pre></div>
+<p>Pull request events resolve to <code>pr-{number}</code>. Useful for ephemeral preview environments.</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>PR #42  → env = &quot;pr-42&quot;
+</span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>PR #103 → env = &quot;pr-103&quot;
+</span></code></pre></div>
+<hr />
+<h2 id="env_as_branch-branch-name-as-environment"><code>env_as_branch</code> — branch name as environment<a class="headerlink" href="#env_as_branch-branch-name-as-environment" title="Permanent link">&para;</a></h2>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>env_as_branch: true
+</span></code></pre></div>
+<p>The branch name becomes the environment name directly:</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>branch &quot;develop&quot;     → env = &quot;develop&quot;
+</span><span id="__span-5-2"><a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>branch &quot;feature/foo&quot; → env = &quot;feature/foo&quot;
+</span></code></pre></div>
+<hr />
+<h2 id="env_as_tags-tag-name-as-environment"><code>env_as_tags</code> — tag name as environment<a class="headerlink" href="#env_as_tags-tag-name-as-environment" title="Permanent link">&para;</a></h2>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>env_as_tags: true
+</span></code></pre></div>
+<p>Tag push events use the tag name as the environment:</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-7-1"><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>tag &quot;v1.2.3&quot;    → env = &quot;v1.2.3&quot;
+</span><span id="__span-7-2"><a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>tag &quot;release-5&quot; → env = &quot;release-5&quot;
+</span></code></pre></div>
+<hr />
+<h2 id="root_key-extracting-a-subtree-before-slicing"><code>root_key</code> — extracting a subtree before slicing<a class="headerlink" href="#root_key-extracting-a-subtree-before-slicing" title="Permanent link">&para;</a></h2>
+<p>If your config file has a wrapper key, set <code>root_key</code> in the rule to unwrap it first. varTrack extracts the subtree under that key, then runs env auto-detection on it.</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-8-1"><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>rules: [{
+</span><span id="__span-8-2"><a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>  root_key: &quot;vartrack&quot;   // default — extract the &quot;vartrack&quot; subtree if it exists
+</span><span id="__span-8-3"><a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a>}]
+</span></code></pre></div>
+<div class="language-yaml highlight"><pre><span></span><code><span id="__span-9-1"><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="c1"># configs/app.yaml</span>
+</span><span id="__span-9-2"><a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a><span class="nt">vartrack</span><span class="p">:</span>
+</span><span id="__span-9-3"><a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a><span class="w">  </span><span class="nt">production</span><span class="p">:</span>
+</span><span id="__span-9-4"><a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a><span class="w">    </span><span class="nt">database_host</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">mongo.prod.internal</span>
+</span><span id="__span-9-5"><a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a><span class="w">  </span><span class="nt">staging</span><span class="p">:</span>
+</span><span id="__span-9-6"><a id="__codelineno-9-6" name="__codelineno-9-6" href="#__codelineno-9-6"></a><span class="w">    </span><span class="nt">database_host</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">mongo.staging.internal</span>
+</span><span id="__span-9-7"><a id="__codelineno-9-7" name="__codelineno-9-7" href="#__codelineno-9-7"></a><span class="nt">other_tool</span><span class="p">:</span>
+</span><span id="__span-9-8"><a id="__codelineno-9-8" name="__codelineno-9-8" href="#__codelineno-9-8"></a><span class="w">  </span><span class="nt">setting</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">ignored</span><span class="w">      </span><span class="c1"># not under root_key — never touched</span>
+</span></code></pre></div>
+<p><code>root_key: "vartrack"</code> → extracts the inner dict → Pattern 1 runs on it → <code>database_host=mongo.prod.internal</code> for <code>production</code>.</p>
+<p>Set <code>root_key: ""</code> to always process the whole file regardless of structure.</p>
+<p>If the key doesn't exist in the file, varTrack soft-falls back to the whole file.</p>
+<hr />
+<h2 id="auto-detection-from-config-file-structure">Auto-detection from config file structure<a class="headerlink" href="#auto-detection-from-config-file-structure" title="Permanent link">&para;</a></h2>
+<p>When your config file itself is keyed by environment, varTrack auto-detects the structure and extracts only the relevant slice — no extra rule config needed. Three patterns are supported.</p>
+<hr />
+<h3 id="pattern-1-all-top-level-keys-are-env-names">Pattern 1 — all top-level keys are env names<a class="headerlink" href="#pattern-1-all-top-level-keys-are-env-names" title="Permanent link">&para;</a></h3>
+<p>Every top-level value is a dict. varTrack merges <code>default</code> first, then the matching env overrides it.</p>
+<div class="language-yaml highlight"><pre><span></span><code><span id="__span-10-1"><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="c1"># configs/app.yaml</span>
+</span><span id="__span-10-2"><a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a><span class="nt">production</span><span class="p">:</span>
+</span><span id="__span-10-3"><a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a><span class="w">  </span><span class="nt">database_host</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">mongo.prod.internal</span>
+</span><span id="__span-10-4"><a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a><span class="w">  </span><span class="nt">max_connections</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">100</span>
+</span><span id="__span-10-5"><a id="__codelineno-10-5" name="__codelineno-10-5" href="#__codelineno-10-5"></a><span class="nt">staging</span><span class="p">:</span>
+</span><span id="__span-10-6"><a id="__codelineno-10-6" name="__codelineno-10-6" href="#__codelineno-10-6"></a><span class="w">  </span><span class="nt">database_host</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">mongo.staging.internal</span>
+</span><span id="__span-10-7"><a id="__codelineno-10-7" name="__codelineno-10-7" href="#__codelineno-10-7"></a><span class="w">  </span><span class="nt">max_connections</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">10</span>
+</span><span id="__span-10-8"><a id="__codelineno-10-8" name="__codelineno-10-8" href="#__codelineno-10-8"></a><span class="nt">default</span><span class="p">:</span>
+</span><span id="__span-10-9"><a id="__codelineno-10-9" name="__codelineno-10-9" href="#__codelineno-10-9"></a><span class="w">  </span><span class="nt">max_connections</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">5</span><span class="w">    </span><span class="c1"># fallback for unknown envs</span>
+</span><span id="__span-10-10"><a id="__codelineno-10-10" name="__codelineno-10-10" href="#__codelineno-10-10"></a><span class="w">  </span><span class="nt">log_level</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">info</span>
+</span></code></pre></div>
+<table>
+<thead>
+<tr>
+<th>env</th>
+<th>result</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>production</code></td>
+<td><code>database_host=mongo.prod.internal</code>, <code>max_connections=100</code>, <code>log_level=info</code></td>
+</tr>
+<tr>
+<td><code>staging</code></td>
+<td><code>database_host=mongo.staging.internal</code>, <code>max_connections=10</code>, <code>log_level=info</code></td>
+</tr>
+<tr>
+<td><code>pr-42</code></td>
+<td><code>max_connections=5</code>, <code>log_level=info</code> (from <code>default</code>)</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h3 id="pattern-2-per-field-env-sub-keys-mixed-with-scalars">Pattern 2 — per-field env sub-keys mixed with scalars<a class="headerlink" href="#pattern-2-per-field-env-sub-keys-mixed-with-scalars" title="Permanent link">&para;</a></h3>
+<p>Each field that varies per env has a dict of env→value. Fields that are the same across all envs are plain scalars.</p>
+<div class="language-yaml highlight"><pre><span></span><code><span id="__span-11-1"><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="c1"># configs/app.yaml</span>
+</span><span id="__span-11-2"><a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a><span class="nt">database_host</span><span class="p">:</span>
+</span><span id="__span-11-3"><a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a><span class="w">  </span><span class="nt">production</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">mongo.prod.internal</span>
+</span><span id="__span-11-4"><a id="__codelineno-11-4" name="__codelineno-11-4" href="#__codelineno-11-4"></a><span class="w">  </span><span class="nt">staging</span><span class="p">:</span><span class="w">    </span><span class="l l-Scalar l-Scalar-Plain">mongo.staging.internal</span>
+</span><span id="__span-11-5"><a id="__codelineno-11-5" name="__codelineno-11-5" href="#__codelineno-11-5"></a><span class="w">  </span><span class="nt">default</span><span class="p">:</span><span class="w">    </span><span class="l l-Scalar l-Scalar-Plain">mongo.local</span>
+</span><span id="__span-11-6"><a id="__codelineno-11-6" name="__codelineno-11-6" href="#__codelineno-11-6"></a><span class="nt">max_connections</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">50</span><span class="w">     </span><span class="c1"># same for every env — written as-is</span>
+</span><span id="__span-11-7"><a id="__codelineno-11-7" name="__codelineno-11-7" href="#__codelineno-11-7"></a><span class="nt">log_level</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">info</span>
+</span></code></pre></div>
+<table>
+<thead>
+<tr>
+<th>env</th>
+<th>result</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>production</code></td>
+<td><code>database_host=mongo.prod.internal</code>, <code>max_connections=50</code>, <code>log_level=info</code></td>
+</tr>
+<tr>
+<td><code>staging</code></td>
+<td><code>database_host=mongo.staging.internal</code>, <code>max_connections=50</code>, <code>log_level=info</code></td>
+</tr>
+<tr>
+<td><code>pr-42</code></td>
+<td><code>database_host=mongo.local</code>, <code>max_connections=50</code>, <code>log_level=info</code></td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h3 id="pattern-3-env-dicts-and-scalar-defaults-at-the-same-level">Pattern 3 — env dicts and scalar defaults at the same level<a class="headerlink" href="#pattern-3-env-dicts-and-scalar-defaults-at-the-same-level" title="Permanent link">&para;</a></h3>
+<p>Some keys at the same nesting level are env names (dicts with overrides), others are plain scalars that apply to every env. Order in the file doesn't matter — varTrack categorizes by value type, not position. The env dict is merged on top of the scalars.</p>
+<div class="language-json highlight"><pre><span></span><code><span id="__span-12-1"><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a><span class="p">{</span>
+</span><span id="__span-12-2"><a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a><span class="w">    </span><span class="nt">&quot;production&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;worn&quot;</span><span class="p">,</span><span class="w">  </span><span class="nt">&quot;db&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;mongo.prod.internal&quot;</span><span class="w"> </span><span class="p">},</span>
+</span><span id="__span-12-3"><a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a><span class="w">    </span><span class="nt">&quot;predev&quot;</span><span class="p">:</span><span class="w">     </span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;dan&quot;</span><span class="p">,</span><span class="w">   </span><span class="nt">&quot;db&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;mongo.dev.internal&quot;</span><span class="w">  </span><span class="p">},</span>
+</span><span id="__span-12-4"><a id="__codelineno-12-4" name="__codelineno-12-4" href="#__codelineno-12-4"></a><span class="w">    </span><span class="nt">&quot;name&quot;</span><span class="p">:</span><span class="w">       </span><span class="s2">&quot;bob&quot;</span><span class="p">,</span>
+</span><span id="__span-12-5"><a id="__codelineno-12-5" name="__codelineno-12-5" href="#__codelineno-12-5"></a><span class="w">    </span><span class="nt">&quot;age&quot;</span><span class="p">:</span><span class="w">        </span><span class="mi">33</span><span class="p">,</span>
+</span><span id="__span-12-6"><a id="__codelineno-12-6" name="__codelineno-12-6" href="#__codelineno-12-6"></a><span class="w">    </span><span class="nt">&quot;timeout&quot;</span><span class="p">:</span><span class="w">    </span><span class="mi">30</span>
+</span><span id="__span-12-7"><a id="__codelineno-12-7" name="__codelineno-12-7" href="#__codelineno-12-7"></a><span class="p">}</span>
+</span></code></pre></div>
+<table>
+<thead>
+<tr>
+<th>env</th>
+<th>result</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>production</code></td>
+<td><code>name=worn</code>, <code>db=mongo.prod.internal</code>, <code>age=33</code>, <code>timeout=30</code></td>
+</tr>
+<tr>
+<td><code>predev</code></td>
+<td><code>name=dan</code>, <code>db=mongo.dev.internal</code>, <code>age=33</code>, <code>timeout=30</code></td>
+</tr>
+<tr>
+<td><code>unknown</code> (no match, no <code>default</code> dict)</td>
+<td>data returned unchanged</td>
+</tr>
+</tbody>
+</table>
+<p>Add a <code>default</code> dict to handle unknown envs:</p>
+<div class="language-json highlight"><pre><span></span><code><span id="__span-13-1"><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a><span class="p">{</span>
+</span><span id="__span-13-2"><a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a><span class="w">    </span><span class="nt">&quot;production&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;worn&quot;</span><span class="w"> </span><span class="p">},</span>
+</span><span id="__span-13-3"><a id="__codelineno-13-3" name="__codelineno-13-3" href="#__codelineno-13-3"></a><span class="w">    </span><span class="nt">&quot;default&quot;</span><span class="p">:</span><span class="w">    </span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;bob&quot;</span><span class="w"> </span><span class="p">},</span>
+</span><span id="__span-13-4"><a id="__codelineno-13-4" name="__codelineno-13-4" href="#__codelineno-13-4"></a><span class="w">    </span><span class="nt">&quot;age&quot;</span><span class="p">:</span><span class="w">        </span><span class="mi">33</span>
+</span><span id="__span-13-5"><a id="__codelineno-13-5" name="__codelineno-13-5" href="#__codelineno-13-5"></a><span class="p">}</span>
+</span></code></pre></div>
+<p><code>unknown</code> env → <code>name=bob</code>, <code>age=33</code>.</p>
+<hr />
+<h3 id="pattern-3-env-named-top-level-dicts-mixed-with-scalar-defaults">Pattern 3 — env-named top-level dicts mixed with scalar defaults<a class="headerlink" href="#pattern-3-env-named-top-level-dicts-mixed-with-scalar-defaults" title="Permanent link">&para;</a></h3>
+<div class="language-json highlight"><pre><span></span><code><span id="__span-14-1"><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a><span class="p">{</span>
+</span><span id="__span-14-2"><a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a><span class="w">    </span><span class="nt">&quot;prod&quot;</span><span class="p">:</span><span class="w">   </span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;worn&quot;</span><span class="w"> </span><span class="p">},</span>
+</span><span id="__span-14-3"><a id="__codelineno-14-3" name="__codelineno-14-3" href="#__codelineno-14-3"></a><span class="w">    </span><span class="nt">&quot;predev&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;dan&quot;</span><span class="w"> </span><span class="p">},</span>
+</span><span id="__span-14-4"><a id="__codelineno-14-4" name="__codelineno-14-4" href="#__codelineno-14-4"></a><span class="w">    </span><span class="nt">&quot;name&quot;</span><span class="p">:</span><span class="w">   </span><span class="s2">&quot;bob&quot;</span><span class="p">,</span>
+</span><span id="__span-14-5"><a id="__codelineno-14-5" name="__codelineno-14-5" href="#__codelineno-14-5"></a><span class="w">    </span><span class="nt">&quot;age&quot;</span><span class="p">:</span><span class="w">    </span><span class="mi">33</span>
+</span><span id="__span-14-6"><a id="__codelineno-14-6" name="__codelineno-14-6" href="#__codelineno-14-6"></a><span class="p">}</span>
+</span></code></pre></div>
+<p>Top-level dicts whose key matches the resolved env are applied as overrides. Top-level scalars are universal defaults merged underneath:</p>
+<table>
+<thead>
+<tr>
+<th>env</th>
+<th>result</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>prod</code></td>
+<td><code>name=worn</code>, <code>age=33</code></td>
+</tr>
+<tr>
+<td><code>predev</code></td>
+<td><code>name=dan</code>, <code>age=33</code></td>
+</tr>
+<tr>
+<td><code>unknown</code> (no matching dict, no <code>default</code> dict)</td>
+<td>data returned unchanged</td>
+</tr>
+</tbody>
+</table>
+<p>You can also include a <code>default</code> dict for unknown env fallback:</p>
+<div class="language-json highlight"><pre><span></span><code><span id="__span-15-1"><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a><span class="p">{</span>
+</span><span id="__span-15-2"><a id="__codelineno-15-2" name="__codelineno-15-2" href="#__codelineno-15-2"></a><span class="w">    </span><span class="nt">&quot;prod&quot;</span><span class="p">:</span><span class="w">    </span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;worn&quot;</span><span class="w"> </span><span class="p">},</span>
+</span><span id="__span-15-3"><a id="__codelineno-15-3" name="__codelineno-15-3" href="#__codelineno-15-3"></a><span class="w">    </span><span class="nt">&quot;default&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;bob&quot;</span><span class="w"> </span><span class="p">},</span>
+</span><span id="__span-15-4"><a id="__codelineno-15-4" name="__codelineno-15-4" href="#__codelineno-15-4"></a><span class="w">    </span><span class="nt">&quot;age&quot;</span><span class="p">:</span><span class="w">     </span><span class="mi">33</span>
+</span><span id="__span-15-5"><a id="__codelineno-15-5" name="__codelineno-15-5" href="#__codelineno-15-5"></a><span class="p">}</span>
+</span></code></pre></div>
+<p><code>unknown</code> env → <code>name=bob</code>, <code>age=33</code>.</p>
+<hr />
+<h3 id="default-fallback"><code>default</code> fallback<a class="headerlink" href="#default-fallback" title="Permanent link">&para;</a></h3>
+<p>In all three patterns, if the resolved env has no matching key, varTrack silently falls back to <code>default</code>. If there is no <code>default</code> either, the data is returned unchanged.</p>
+<hr />
+<h2 id="root_key-extracting-a-subtree-before-slicing_1"><code>root_key</code> — extracting a subtree before slicing<a class="headerlink" href="#root_key-extracting-a-subtree-before-slicing_1" title="Permanent link">&para;</a></h2>
+<p>Real config files often live alongside other tooling config (Spring, Maven, npm, etc.). Use <code>root_key</code> to extract only the varTrack-relevant subtree before env-detection runs.</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-16-1"><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a>rules: [{
+</span><span id="__span-16-2"><a id="__codelineno-16-2" name="__codelineno-16-2" href="#__codelineno-16-2"></a>  root_key: &quot;vartrack&quot;   // default — extract &quot;vartrack&quot; subtree if present
+</span><span id="__span-16-3"><a id="__codelineno-16-3" name="__codelineno-16-3" href="#__codelineno-16-3"></a>}]
+</span></code></pre></div>
+<p>Set <code>root_key: ""</code> to always process the whole file. If the key doesn't exist, varTrack soft-falls back to the whole file.</p>
+<h3 id="example-packagejson">Example — <code>package.json</code><a class="headerlink" href="#example-packagejson" title="Permanent link">&para;</a></h3>
+<p>A Node.js project that also carries deploy config inside <code>package.json</code>:</p>
+<div class="language-json highlight"><pre><span></span><code><span id="__span-17-1"><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a><span class="p">{</span>
+</span><span id="__span-17-2"><a id="__codelineno-17-2" name="__codelineno-17-2" href="#__codelineno-17-2"></a><span class="w">  </span><span class="nt">&quot;name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;my-app&quot;</span><span class="p">,</span>
+</span><span id="__span-17-3"><a id="__codelineno-17-3" name="__codelineno-17-3" href="#__codelineno-17-3"></a><span class="w">  </span><span class="nt">&quot;version&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;1.0.0&quot;</span><span class="p">,</span>
+</span><span id="__span-17-4"><a id="__codelineno-17-4" name="__codelineno-17-4" href="#__codelineno-17-4"></a><span class="w">  </span><span class="nt">&quot;scripts&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;start&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;node index.js&quot;</span><span class="w"> </span><span class="p">},</span>
+</span><span id="__span-17-5"><a id="__codelineno-17-5" name="__codelineno-17-5" href="#__codelineno-17-5"></a><span class="w">  </span><span class="nt">&quot;vartrack&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+</span><span id="__span-17-6"><a id="__codelineno-17-6" name="__codelineno-17-6" href="#__codelineno-17-6"></a><span class="w">    </span><span class="nt">&quot;production&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;API_URL&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;https://api.prod.com&quot;</span><span class="p">,</span><span class="w">  </span><span class="nt">&quot;LOG_LEVEL&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;warn&quot;</span><span class="w">  </span><span class="p">},</span>
+</span><span id="__span-17-7"><a id="__codelineno-17-7" name="__codelineno-17-7" href="#__codelineno-17-7"></a><span class="w">    </span><span class="nt">&quot;staging&quot;</span><span class="p">:</span><span class="w">    </span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;API_URL&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;https://api.stg.com&quot;</span><span class="p">,</span><span class="w">   </span><span class="nt">&quot;LOG_LEVEL&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;info&quot;</span><span class="w">  </span><span class="p">},</span>
+</span><span id="__span-17-8"><a id="__codelineno-17-8" name="__codelineno-17-8" href="#__codelineno-17-8"></a><span class="w">    </span><span class="nt">&quot;default&quot;</span><span class="p">:</span><span class="w">    </span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;API_URL&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;https://api.local.com&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;LOG_LEVEL&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;debug&quot;</span><span class="w"> </span><span class="p">}</span>
+</span><span id="__span-17-9"><a id="__codelineno-17-9" name="__codelineno-17-9" href="#__codelineno-17-9"></a><span class="w">  </span><span class="p">}</span>
+</span><span id="__span-17-10"><a id="__codelineno-17-10" name="__codelineno-17-10" href="#__codelineno-17-10"></a><span class="p">}</span>
+</span></code></pre></div>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-18-1"><a id="__codelineno-18-1" name="__codelineno-18-1" href="#__codelineno-18-1"></a>rules: [{
+</span><span id="__span-18-2"><a id="__codelineno-18-2" name="__codelineno-18-2" href="#__codelineno-18-2"></a>  file_name: &quot;package.json&quot;
+</span><span id="__span-18-3"><a id="__codelineno-18-3" name="__codelineno-18-3" href="#__codelineno-18-3"></a>  root_key:  &quot;vartrack&quot;       // ignore name/version/scripts — only sync vartrack block
+</span><span id="__span-18-4"><a id="__codelineno-18-4" name="__codelineno-18-4" href="#__codelineno-18-4"></a>  branch_map: { main: &quot;production&quot;, develop: &quot;staging&quot; }
+</span><span id="__span-18-5"><a id="__codelineno-18-5" name="__codelineno-18-5" href="#__codelineno-18-5"></a>}]
+</span></code></pre></div>
+<p>Push to <code>main</code> → <code>API_URL=https://api.prod.com</code>, <code>LOG_LEVEL=warn</code> written to the sink.</p>
+<h3 id="example-pomxml-maven">Example — <code>pom.xml</code> (Maven)<a class="headerlink" href="#example-pomxml-maven" title="Permanent link">&para;</a></h3>
+<p>A Java project with deploy properties in <code>pom.xml</code>. varTrack parses XML and extracts the subtree:</p>
+<div class="language-xml highlight"><pre><span></span><code><span id="__span-19-1"><a id="__codelineno-19-1" name="__codelineno-19-1" href="#__codelineno-19-1"></a><span class="nt">&lt;project&gt;</span>
+</span><span id="__span-19-2"><a id="__codelineno-19-2" name="__codelineno-19-2" href="#__codelineno-19-2"></a><span class="w">  </span><span class="nt">&lt;groupId&gt;</span>com.example<span class="nt">&lt;/groupId&gt;</span>
+</span><span id="__span-19-3"><a id="__codelineno-19-3" name="__codelineno-19-3" href="#__codelineno-19-3"></a><span class="w">  </span><span class="nt">&lt;artifactId&gt;</span>my-service<span class="nt">&lt;/artifactId&gt;</span>
+</span><span id="__span-19-4"><a id="__codelineno-19-4" name="__codelineno-19-4" href="#__codelineno-19-4"></a>
+</span><span id="__span-19-5"><a id="__codelineno-19-5" name="__codelineno-19-5" href="#__codelineno-19-5"></a><span class="w">  </span><span class="nt">&lt;vartrack&gt;</span>
+</span><span id="__span-19-6"><a id="__codelineno-19-6" name="__codelineno-19-6" href="#__codelineno-19-6"></a><span class="w">    </span><span class="nt">&lt;production&gt;</span>
+</span><span id="__span-19-7"><a id="__codelineno-19-7" name="__codelineno-19-7" href="#__codelineno-19-7"></a><span class="w">      </span><span class="nt">&lt;database_host&gt;</span>mongo.prod.internal<span class="nt">&lt;/database_host&gt;</span>
+</span><span id="__span-19-8"><a id="__codelineno-19-8" name="__codelineno-19-8" href="#__codelineno-19-8"></a><span class="w">      </span><span class="nt">&lt;max_connections&gt;</span>100<span class="nt">&lt;/max_connections&gt;</span>
+</span><span id="__span-19-9"><a id="__codelineno-19-9" name="__codelineno-19-9" href="#__codelineno-19-9"></a><span class="w">    </span><span class="nt">&lt;/production&gt;</span>
+</span><span id="__span-19-10"><a id="__codelineno-19-10" name="__codelineno-19-10" href="#__codelineno-19-10"></a><span class="w">    </span><span class="nt">&lt;staging&gt;</span>
+</span><span id="__span-19-11"><a id="__codelineno-19-11" name="__codelineno-19-11" href="#__codelineno-19-11"></a><span class="w">      </span><span class="nt">&lt;database_host&gt;</span>mongo.staging.internal<span class="nt">&lt;/database_host&gt;</span>
+</span><span id="__span-19-12"><a id="__codelineno-19-12" name="__codelineno-19-12" href="#__codelineno-19-12"></a><span class="w">      </span><span class="nt">&lt;max_connections&gt;</span>10<span class="nt">&lt;/max_connections&gt;</span>
+</span><span id="__span-19-13"><a id="__codelineno-19-13" name="__codelineno-19-13" href="#__codelineno-19-13"></a><span class="w">    </span><span class="nt">&lt;/staging&gt;</span>
+</span><span id="__span-19-14"><a id="__codelineno-19-14" name="__codelineno-19-14" href="#__codelineno-19-14"></a><span class="w">    </span><span class="nt">&lt;default&gt;</span>
+</span><span id="__span-19-15"><a id="__codelineno-19-15" name="__codelineno-19-15" href="#__codelineno-19-15"></a><span class="w">      </span><span class="nt">&lt;max_connections&gt;</span>5<span class="nt">&lt;/max_connections&gt;</span>
+</span><span id="__span-19-16"><a id="__codelineno-19-16" name="__codelineno-19-16" href="#__codelineno-19-16"></a><span class="w">    </span><span class="nt">&lt;/default&gt;</span>
+</span><span id="__span-19-17"><a id="__codelineno-19-17" name="__codelineno-19-17" href="#__codelineno-19-17"></a><span class="w">  </span><span class="nt">&lt;/vartrack&gt;</span>
+</span><span id="__span-19-18"><a id="__codelineno-19-18" name="__codelineno-19-18" href="#__codelineno-19-18"></a><span class="nt">&lt;/project&gt;</span>
+</span></code></pre></div>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-20-1"><a id="__codelineno-20-1" name="__codelineno-20-1" href="#__codelineno-20-1"></a>rules: [{
+</span><span id="__span-20-2"><a id="__codelineno-20-2" name="__codelineno-20-2" href="#__codelineno-20-2"></a>  file_name: &quot;pom.xml&quot;
+</span><span id="__span-20-3"><a id="__codelineno-20-3" name="__codelineno-20-3" href="#__codelineno-20-3"></a>  root_key:  &quot;vartrack&quot;
+</span><span id="__span-20-4"><a id="__codelineno-20-4" name="__codelineno-20-4" href="#__codelineno-20-4"></a>  branch_map: { main: &quot;production&quot;, develop: &quot;staging&quot; }
+</span><span id="__span-20-5"><a id="__codelineno-20-5" name="__codelineno-20-5" href="#__codelineno-20-5"></a>}]
+</span></code></pre></div>
+<p>Push to <code>main</code> → <code>database_host=mongo.prod.internal</code>, <code>max_connections=100</code>.</p>
+<hr />
+<h2 id="combining-strategies">Combining strategies<a class="headerlink" href="#combining-strategies" title="Permanent link">&para;</a></h2>
+<p>Strategies can be combined. varTrack uses the first one that matches:</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-21-1"><a id="__codelineno-21-1" name="__codelineno-21-1" href="#__codelineno-21-1"></a>rules: [{
+</span><span id="__span-21-2"><a id="__codelineno-21-2" name="__codelineno-21-2" href="#__codelineno-21-2"></a>  platform:   &quot;github&quot;
+</span><span id="__span-21-3"><a id="__codelineno-21-3" name="__codelineno-21-3" href="#__codelineno-21-3"></a>  datasource: &quot;mongo&quot;
+</span><span id="__span-21-4"><a id="__codelineno-21-4" name="__codelineno-21-4" href="#__codelineno-21-4"></a>  branch_map: {
+</span><span id="__span-21-5"><a id="__codelineno-21-5" name="__codelineno-21-5" href="#__codelineno-21-5"></a>    main:    &quot;production&quot;   // explicit — highest priority
+</span><span id="__span-21-6"><a id="__codelineno-21-6" name="__codelineno-21-6" href="#__codelineno-21-6"></a>    develop: &quot;staging&quot;
+</span><span id="__span-21-7"><a id="__codelineno-21-7" name="__codelineno-21-7" href="#__codelineno-21-7"></a>  }
+</span><span id="__span-21-8"><a id="__codelineno-21-8" name="__codelineno-21-8" href="#__codelineno-21-8"></a>  env_as_pr:     true       // fallback for PRs not in branch_map
+</span><span id="__span-21-9"><a id="__codelineno-21-9" name="__codelineno-21-9" href="#__codelineno-21-9"></a>  env_as_branch: true       // fallback for all other branches
+</span><span id="__span-21-10"><a id="__codelineno-21-10" name="__codelineno-21-10" href="#__codelineno-21-10"></a>}]
+</span></code></pre></div>
+<table>
+<thead>
+<tr>
+<th>Event</th>
+<th>Resolved env</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Push to <code>main</code></td>
+<td><code>production</code> (from <code>branch_map</code>)</td>
+</tr>
+<tr>
+<td>Push to <code>develop</code></td>
+<td><code>staging</code> (from <code>branch_map</code>)</td>
+</tr>
+<tr>
+<td>PR #42 opened</td>
+<td><code>pr-42</code> (from <code>env_as_pr</code>)</td>
+</tr>
+<tr>
+<td>Push to <code>feature/x</code></td>
+<td><code>feature/x</code> (from <code>env_as_branch</code>)</td>
+</tr>
+</tbody>
+</table>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+    
+      
+      <nav class="md-footer__inner md-grid" aria-label="Footer" >
+        
+          
+          <a href="../destination-template/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Destination Template">
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+            </div>
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Previous
+              </span>
+              <div class="md-ellipsis">
+                Destination Template
+              </div>
+            </div>
+          </a>
+        
+        
+          
+          <a href="../sync-strategies/" class="md-footer__link md-footer__link--next" aria-label="Next: Sync Strategies">
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Next
+              </span>
+              <div class="md-ellipsis">
+                Sync Strategies
+              </div>
+            </div>
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M4 11v2h12l-5.5 5.5 1.42 1.42L19.84 12l-7.92-7.92L10.5 5.5 16 11z"/></svg>
+            </div>
+          </a>
+        
+      </nav>
+    
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+        <div class="md-social">
+  
+    
+    
+    
+    
+      
+      
+    
+    <a href="https://github.com/jarin-devoss/varTrack" target="_blank" rel="noopener" title="github.com" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 496 512"><!--! Font Awesome Free 6.6.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2024 Fonticons, Inc.--><path d="M165.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M244.8 8C106.1 8 0 113.3 0 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C428.2 457.8 496 362.9 496 252 496 113.3 383.5 8 244.8 8M97.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+    </a>
+  
+    
+    
+    
+    
+      
+      
+    
+    <a href="https://hub.docker.com/u/jarin-devoss" target="_blank" rel="noopener" title="hub.docker.com" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 512"><!--! Font Awesome Free 6.6.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2024 Fonticons, Inc.--><path d="M349.9 236.3h-66.1v-59.4h66.1zm0-204.3h-66.1v60.7h66.1zm78.2 144.8H362v59.4h66.1zm-156.3-72.1h-66.1v60.1h66.1zm78.1 0h-66.1v60.1h66.1zm276.8 100c-14.4-9.7-47.6-13.2-73.1-8.4-3.3-24-16.7-44.9-41.1-63.7l-14-9.3-9.3 14c-18.4 27.8-23.4 73.6-3.7 103.8-8.7 4.7-25.8 11.1-48.4 10.7H2.4c-8.7 50.8 5.8 116.8 44 162.1 37.1 43.9 92.7 66.2 165.4 66.2 157.4 0 273.9-72.5 328.4-204.2 21.4.4 67.6.1 91.3-45.2 1.5-2.5 6.6-13.2 8.5-17.1zm-511.1-27.9h-66v59.4h66.1v-59.4zm78.1 0h-66.1v59.4h66.1zm78.1 0h-66.1v59.4h66.1zm-78.1-72.1h-66.1v60.1h66.1z"/></svg>
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    <script id="__config" type="application/json">{"base": "../..", "features": ["navigation.tabs", "navigation.tabs.sticky", "navigation.sections", "navigation.instant", "navigation.tracking", "navigation.indexes", "navigation.footer", "content.code.copy", "content.code.annotate", "search.highlight", "search.suggest", "toc.follow"], "search": "../../assets/javascripts/workers/search.6ce7567c.min.js", "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.83f73b43.min.js"></script>
+      
+    
+  </body>
+</html>
