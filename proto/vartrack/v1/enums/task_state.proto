@@ -1,0 +1,13 @@
+syntax = "proto3";
+
+package vartrack.v1;
+
+// TaskState represents the lifecycle state of an asynchronous webhook task.
+enum TaskState {
+  TASK_STATE_UNSPECIFIED = 0;
+  TASK_STATE_PENDING     = 1;
+  TASK_STATE_RUNNING     = 2;
+  TASK_STATE_SUCCEEDED   = 3;
+  TASK_STATE_FAILED      = 4;
+  TASK_STATE_RETRYING    = 5;
+}

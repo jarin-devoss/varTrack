@@ -1,0 +1,4 @@
+// Moved to vartrack/v1/enums/conflict_strategy.proto
+syntax = "proto3";
+
+package vartrack.v1;

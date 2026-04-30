@@ -1,0 +1,10 @@
+paths-ignore:
+  - e2e/
+  - orchestrator-service/tests/
+  - gateway-service/e2e/
+
+query-filters:
+  - exclude:
+      tags contain: test
+  - exclude:
+      id: py/clear-text-logging-sensitive-data

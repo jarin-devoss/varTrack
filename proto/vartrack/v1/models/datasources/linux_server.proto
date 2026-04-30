@@ -1,0 +1,83 @@
+syntax = "proto3";
+
+package vartrack.v1;
+
+import "vartrack/v1/enums/strategy.proto";
+import "vartrack/v1/utils/secret_ref.proto";
+import "buf/validate/validate.proto";
+import "google/api/field_behavior.proto";
+import "google/protobuf/duration.proto";
+
+message LinuxServerConfig {
+  optional string tag = 1 [(google.api.field_behavior) = OPTIONAL];
+  string host = 2 [
+    (buf.validate.field).string.min_len = 1,
+    (google.api.field_behavior) = REQUIRED
+  ];
+  int32 port = 3 [
+    (buf.validate.field).int32 = {gte: 1, lte: 65535},
+    (google.api.field_behavior) = OPTIONAL
+  ];
+  string username = 4 [
+    (buf.validate.field).string.min_len = 1,
+    (google.api.field_behavior) = REQUIRED
+  ];
+  oneof auth {
+    option (buf.validate.oneof).required = true;
+    SecretRef password = 5;
+    SSHKeyAuth ssh_key = 6;
+  }
+  repeated string file_paths = 7 [
+    (buf.validate.field).repeated.min_items = 1,
+    (google.api.field_behavior) = REQUIRED
+  ];
+  bool env_as_path = 8 [(google.api.field_behavior) = OPTIONAL];
+  optional string base_directory = 9 [(google.api.field_behavior) = OPTIONAL];
+  Strategy update_strategy = 10 [(buf.validate.field).enum.defined_only = true];
+  string file_mode = 11 [
+    (buf.validate.field).string.pattern = "^0[0-7]{3}$",
+    (google.api.field_behavior) = OPTIONAL
+  ];
+  optional string file_owner = 12 [(google.api.field_behavior) = OPTIONAL];
+  bool create_directories = 13 [(google.api.field_behavior) = OPTIONAL];
+  bool backup_before_write = 14 [(google.api.field_behavior) = OPTIONAL];
+  string backup_suffix = 15 [(google.api.field_behavior) = OPTIONAL];
+  optional string validation_command = 16 [(google.api.field_behavior) = OPTIONAL];
+  bool rollback_on_validation_fail = 17 [(google.api.field_behavior) = OPTIONAL];
+  repeated string post_write_commands = 18 [(google.api.field_behavior) = OPTIONAL];
+  bool continue_on_command_error = 19 [(google.api.field_behavior) = OPTIONAL];
+  google.protobuf.Duration connection_timeout = 20 [
+    (buf.validate.field).duration.gte = {seconds: 1},
+    (google.api.field_behavior) = OPTIONAL
+  ];
+  google.protobuf.Duration command_timeout = 21 [
+    (buf.validate.field).duration.gte = {seconds: 1},
+    (google.api.field_behavior) = OPTIONAL
+  ];
+  string host_key_verification = 22 [
+    (buf.validate.field).string = {in: ["strict", "accept-new", "off", ""]},
+    (google.api.field_behavior) = OPTIONAL
+  ];
+  optional string known_hosts_file = 23 [(google.api.field_behavior) = OPTIONAL];
+  int32 max_retries = 24 [
+    (buf.validate.field).int32.gte = 0,
+    (google.api.field_behavior) = OPTIONAL
+  ];
+  google.protobuf.Duration retry_backoff = 25 [(google.api.field_behavior) = OPTIONAL];
+  bool use_sudo = 26 [(google.api.field_behavior) = OPTIONAL];
+  optional SecretRef sudo_password = 27 [(google.api.field_behavior) = OPTIONAL];
+  bool use_sftp = 28 [(google.api.field_behavior) = OPTIONAL];
+  bool enable_compression = 29 [(google.api.field_behavior) = OPTIONAL];
+}
+
+message SSHKeyAuth {
+  SecretRef private_key = 1 [
+    (buf.validate.field).required = true,
+    (google.api.field_behavior) = REQUIRED
+  ];
+  optional SecretRef passphrase = 2 [(google.api.field_behavior) = OPTIONAL];
+  optional string key_type = 3 [
+    (buf.validate.field).string = {in: ["rsa", "ed25519", "ecdsa", ""]},
+    (google.api.field_behavior) = OPTIONAL
+  ];
+}

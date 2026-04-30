@@ -1,0 +1,28 @@
+# Version control
+.git
+.gitignore
+
+# Tests
+*_test.go
+e2e/
+
+# Build artifacts
+/gateway-service
+*.exe
+
+# IDE / editor
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Documentation
+README.md
+
+# CI
+.github/
+
+# Local config / secrets
+*.env
+.env*
+config.cue

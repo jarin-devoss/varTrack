@@ -1,0 +1,19 @@
+[
+  {
+    "platform": "github",
+    "datasource": "redis",
+    "repo_url": "http://gitea:3000/vartrack-demo/demo-configs.git",
+    "file_name": "app-settings.yaml",
+    "repositories": ["vartrack-demo/demo-configs"],
+    "env_as_branch": true,
+    "branch": "main",
+    "sync_mode": "SYNC_MODE_FULL",
+    "prune": true,
+    "self_heal": false,
+    "redis_hosts": ["redis:6379"],
+    "redis_db": 2,
+    "redis_data_structure": "HASH",
+    "data_structure": "hash",
+    "destination_template": "{env}:config"
+  }
+]

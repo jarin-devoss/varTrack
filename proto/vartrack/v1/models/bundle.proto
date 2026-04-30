@@ -1,0 +1,102 @@
+syntax = "proto3";
+
+package vartrack.v1;
+
+import "vartrack/v1/models/platform.proto";
+import "vartrack/v1/models/datasource.proto";
+import "vartrack/v1/models/rule.proto";
+import "vartrack/v1/models/schema_registry.proto";
+import "vartrack/v1/models/secret_manager.proto";
+import "vartrack/v1/models/monitoring.proto";
+import "vartrack/v1/models/auth/oidc.proto";
+import "buf/validate/validate.proto";
+import "google/api/field_behavior.proto";
+import "google/protobuf/timestamp.proto";
+
+message Bundle {
+  repeated Platform platforms = 1 [
+    (buf.validate.field).repeated.min_items = 1,
+    (google.api.field_behavior) = REQUIRED
+  ];
+
+  repeated DataSource datasources = 2 [
+    (buf.validate.field).repeated.min_items = 1,
+    (google.api.field_behavior) = REQUIRED
+  ];
+
+  repeated Rule rules = 3 [
+    (buf.validate.field).repeated.min_items = 1,
+    (google.api.field_behavior) = REQUIRED
+  ];
+
+  SchemaRegistry schema_registry = 4 [
+    (buf.validate.field).required = true,
+    (google.api.field_behavior) = REQUIRED
+  ];
+
+  repeated SecretManager secret_managers = 5 [
+    (google.api.field_behavior) = OPTIONAL
+  ];
+
+  optional Monitoring monitoring = 6 [
+    (google.api.field_behavior) = OPTIONAL
+  ];
+
+  map<string, string> global_tags = 7 [
+    (google.api.field_behavior) = OPTIONAL
+  ];
+
+  // When this bundle configuration was last loaded/validated.
+  // OUTPUT_ONLY: set by the gateway at startup, not accepted from clients.
+  google.protobuf.Timestamp loaded_at = 8 [
+    (google.api.field_behavior) = OUTPUT_ONLY
+  ];
+
+  // auth enables the CLI API (/v1/cli/*) with OIDC authentication and RBAC.
+  // When absent the CLI routes are disabled and vtctl cannot connect.
+  optional AuthConfig auth = 9 [
+    (google.api.field_behavior) = OPTIONAL
+  ];
+
+  // ── Infrastructure wiring ────────────────────────────────────────────────
+  // Each value is the full datasource name ({type}-{tag}) of the datasource
+  // that plays that infrastructure role.  Using dedicated fields gives
+  // type-safe generated-code access instead of stringly-typed global_tags.
+  //
+  // Example: celery_broker_datasource = "redis-broker"
+  //   resolves to the Redis datasource whose tag == "broker".
+
+  // Name of the Redis datasource used as the Celery task-queue broker.
+  string celery_broker_datasource = 10 [
+    (google.api.field_behavior) = OPTIONAL
+  ];
+
+  // Name of the datasource used as the Celery result backend.
+  string celery_backend_datasource = 11 [
+    (google.api.field_behavior) = OPTIONAL
+  ];
+
+  // Name of the Redis datasource used by the gateway for nonce/replay-protection.
+  string gateway_nonce_datasource = 12 [
+    (google.api.field_behavior) = OPTIONAL
+  ];
+
+  // Name of the Redis datasource used by the watcher for shared-state baseline.
+  string watcher_state_datasource = 13 [
+    (google.api.field_behavior) = OPTIONAL
+  ];
+
+  // Name of the datasource used for watcher leader election.
+  // Only Redis and ZooKeeper are supported.
+  // When absent all watcher replicas run independently (idempotent, safe).
+  string watcher_leader_election_datasource = 14 [
+    (google.api.field_behavior) = OPTIONAL
+  ];
+
+  // Maximum size of an incoming webhook request body in bytes.
+  // Requests exceeding this limit are rejected with HTTP 413.
+  // Defaults to 10 MiB (10 * 1024 * 1024) when unset or zero.
+  optional uint64 max_webhook_body_bytes = 15 [
+    (google.api.field_behavior) = OPTIONAL
+  ];
+}

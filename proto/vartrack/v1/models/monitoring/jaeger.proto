@@ -1,0 +1,83 @@
+syntax = "proto3";
+
+package vartrack.v1;
+
+option go_package = "gateway-service/internal/gen/proto/go/vartrack/v1/models/monitoring;monitoringpb";
+
+import "buf/validate/validate.proto";
+import "google/api/field_behavior.proto";
+import "google/protobuf/duration.proto";
+
+// JaegerConfig configures the Jaeger distributed tracing backend.
+// Ships spans via OTLP/gRPC (Jaeger >= 1.35) or legacy Thrift HTTP.
+message JaegerConfig {
+  // Optional tag to distinguish multiple Jaeger instances.
+  optional string tag = 1 [(google.api.field_behavior) = OPTIONAL];
+
+  bool enabled = 2 [(google.api.field_behavior) = OPTIONAL];
+
+  // Collector endpoint.
+  // OTLP/gRPC:   "http://jaeger-collector:4317"
+  // Thrift HTTP: "http://jaeger-collector:14268/api/traces"
+  string endpoint = 3 [
+    (buf.validate.field).string.uri = true,
+    (google.api.field_behavior) = REQUIRED
+  ];
+
+  // Transport protocol: "grpc" (default) | "thrift_http"
+  string protocol = 4 [
+    (buf.validate.field).string = {in: ["grpc", "thrift_http", ""]},
+    (google.api.field_behavior) = OPTIONAL
+  ];
+
+  // ── Service identification ─────────────────────────────────────────────────
+
+  string service_name    = 5 [
+    (buf.validate.field).string.min_len = 1,
+    (google.api.field_behavior) = REQUIRED
+  ];
+  string service_version = 6 [(google.api.field_behavior) = OPTIONAL];
+  string environment     = 7 [(google.api.field_behavior) = OPTIONAL];
+
+  // ── Sampling ───────────────────────────────────────────────────────────────
+
+  string sampler_type = 8 [
+    (buf.validate.field).string = {in: ["const", "probabilistic", "rateLimiting", "remote", ""]},
+    (google.api.field_behavior) = OPTIONAL
+  ];
+  double sampler_param = 9 [
+    (buf.validate.field).double.gte = 0.0,
+    (google.api.field_behavior) = OPTIONAL
+  ];
+
+  // ── Batching ───────────────────────────────────────────────────────────────
+
+  // Maximum number of spans queued before an export is forced. Default: 2048.
+  int32 max_queue_size = 10 [
+    (buf.validate.field).int32.gte = 0,
+    (google.api.field_behavior) = OPTIONAL
+  ];
+
+  // How often to flush the batch even if not full.
+  // Replaces the old flush_interval_ms int32 field — Duration is self-documenting.
+  // Default (zero): use SDK default (~5s).
+  google.protobuf.Duration flush_interval = 11 [
+    (google.api.field_behavior) = OPTIONAL
+  ];
+
+  // ── TLS ────────────────────────────────────────────────────────────────────
+
+  bool            use_tls              = 12 [(google.api.field_behavior) = OPTIONAL];
+  optional string tls_ca_cert          = 13 [(google.api.field_behavior) = OPTIONAL];
+  optional string tls_client_cert      = 14 [(google.api.field_behavior) = OPTIONAL];
+  optional string tls_client_key       = 15 [(google.api.field_behavior) = OPTIONAL];
+  bool            insecure_skip_verify = 16 [(google.api.field_behavior) = OPTIONAL];
+
+  // ── Auth ───────────────────────────────────────────────────────────────────
+
+  optional string auth_token = 17 [(google.api.field_behavior) = OPTIONAL];
+
+  // ── Extra OTel resource attributes added to every span ────────────────────
+
+  map<string, string> resource_attributes = 18 [(google.api.field_behavior) = OPTIONAL];
+}

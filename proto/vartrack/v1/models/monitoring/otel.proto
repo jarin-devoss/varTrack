@@ -1,0 +1,97 @@
+syntax = "proto3";
+
+package vartrack.v1;
+
+option go_package = "gateway-service/internal/gen/proto/go/vartrack/v1/models/monitoring;monitoringpb";
+
+import "buf/validate/validate.proto";
+import "google/api/field_behavior.proto";
+import "google/protobuf/duration.proto";
+
+// OTelConfig configures the OpenTelemetry SDK exporter (OTLP).
+// Compatible with any OTLP-capable backend: Grafana Tempo, Honeycomb,
+// Lightstep, a local OTel Collector, etc.
+message OTelConfig {
+  optional string tag = 1 [(google.api.field_behavior) = OPTIONAL];
+
+  bool enabled = 2 [(google.api.field_behavior) = OPTIONAL];
+
+  string endpoint = 3 [
+    (buf.validate.field).string.uri = true,
+    (google.api.field_behavior) = REQUIRED
+  ];
+
+  string protocol = 4 [
+    (buf.validate.field).string = {in: ["grpc", "http/protobuf", "http/json", ""]},
+    (google.api.field_behavior) = OPTIONAL
+  ];
+
+  // ── Service identification ─────────────────────────────────────────────────
+
+  string service_name    = 5 [
+    (buf.validate.field).string.min_len = 1,
+    (google.api.field_behavior) = REQUIRED
+  ];
+  string service_version = 6 [(google.api.field_behavior) = OPTIONAL];
+  string environment     = 7 [(google.api.field_behavior) = OPTIONAL];
+
+  // ── Signal toggles ─────────────────────────────────────────────────────────
+
+  bool enable_traces  = 8  [(google.api.field_behavior) = OPTIONAL];
+  bool enable_metrics = 9  [(google.api.field_behavior) = OPTIONAL];
+  bool enable_logs    = 10 [(google.api.field_behavior) = OPTIONAL];
+
+  // ── Sampling ───────────────────────────────────────────────────────────────
+
+  string sampler_type  = 11 [
+    (buf.validate.field).string = {in: [
+      "always_on", "always_off", "traceidratio",
+      "parentbased_always_on", "parentbased_always_off",
+      "parentbased_traceidratio", ""
+    ]},
+    (google.api.field_behavior) = OPTIONAL
+  ];
+  double sampler_ratio = 12 [
+    (buf.validate.field).double = {gte: 0.0, lte: 1.0},
+    (google.api.field_behavior) = OPTIONAL
+  ];
+
+  // ── Trace batching ─────────────────────────────────────────────────────────
+
+  // Max time between export attempts. Replaces batch_timeout_ms int32.
+  // Default (zero): SDK default (~5s).
+  google.protobuf.Duration batch_timeout = 13 [(google.api.field_behavior) = OPTIONAL];
+
+  int32 max_queue_size   = 14 [
+    (buf.validate.field).int32.gte = 0,
+    (google.api.field_behavior) = OPTIONAL
+  ];
+  int32 max_export_batch = 15 [
+    (buf.validate.field).int32.gte = 0,
+    (google.api.field_behavior) = OPTIONAL
+  ];
+
+  // ── Metrics ────────────────────────────────────────────────────────────────
+
+  // How often to push metrics. Replaces metrics_interval_s int32.
+  // Default (zero): 60s.
+  google.protobuf.Duration metrics_interval = 16 [(google.api.field_behavior) = OPTIONAL];
+
+  // ── TLS ────────────────────────────────────────────────────────────────────
+
+  bool            use_tls              = 17 [(google.api.field_behavior) = OPTIONAL];
+  optional string tls_ca_cert          = 18 [(google.api.field_behavior) = OPTIONAL];
+  optional string tls_client_cert      = 19 [(google.api.field_behavior) = OPTIONAL];
+  optional string tls_client_key       = 20 [(google.api.field_behavior) = OPTIONAL];
+  bool            insecure_skip_verify = 21 [(google.api.field_behavior) = OPTIONAL];
+
+  // ── Auth & extra headers ───────────────────────────────────────────────────
+
+  map<string, string> headers    = 22 [(google.api.field_behavior) = OPTIONAL];
+  string compression             = 23 [
+    (buf.validate.field).string = {in: ["gzip", "zstd", "none", ""]},
+    (google.api.field_behavior) = OPTIONAL
+  ];
+  map<string, string> resource_attributes = 24 [(google.api.field_behavior) = OPTIONAL];
+  repeated string propagators             = 25 [(google.api.field_behavior) = OPTIONAL];
+}

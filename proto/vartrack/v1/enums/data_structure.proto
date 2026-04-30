@@ -1,0 +1,11 @@
+syntax = "proto3";
+
+package vartrack.v1;
+
+// DataStructure controls which Redis data type is used to store variables.
+enum DataStructure {
+  DATA_STRUCTURE_UNSPECIFIED = 0;
+  STRING                     = 1;
+  HASH                       = 2;
+  JSON                       = 3;
+}

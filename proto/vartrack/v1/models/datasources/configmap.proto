@@ -1,0 +1,54 @@
+syntax = "proto3";
+
+package vartrack.v1;
+
+import "vartrack/v1/enums/strategy.proto";
+import "vartrack/v1/enums/conflict_strategy.proto";
+import "vartrack/v1/utils/secret_ref.proto";
+import "buf/validate/validate.proto";
+import "google/api/field_behavior.proto";
+import "google/protobuf/duration.proto";
+
+message ConfigMapConfig {
+  optional string tag = 1 [(google.api.field_behavior) = OPTIONAL];
+  optional string kubeconfig_path = 2 [(google.api.field_behavior) = OPTIONAL];
+  optional string api_server = 3 [(google.api.field_behavior) = OPTIONAL];
+  optional SecretRef token = 4 [(google.api.field_behavior) = OPTIONAL];
+  optional string client_cert = 5 [(google.api.field_behavior) = OPTIONAL];
+  optional string client_key = 6 [(google.api.field_behavior) = OPTIONAL];
+  optional string ca_cert = 7 [(google.api.field_behavior) = OPTIONAL];
+  bool insecure_skip_verify = 8 [(google.api.field_behavior) = OPTIONAL];
+  string namespace = 9 [
+    (buf.validate.field).string.min_len = 1,
+    (google.api.field_behavior) = REQUIRED
+  ];
+  string configmap_name = 10 [
+    (buf.validate.field).string.min_len = 1,
+    (google.api.field_behavior) = REQUIRED
+  ];
+  bool env_as_namespace = 11 [(google.api.field_behavior) = OPTIONAL];
+  bool env_as_name_suffix = 12 [(google.api.field_behavior) = OPTIONAL];
+  Strategy update_strategy = 13 [(buf.validate.field).enum.defined_only = true];
+  bool flatten_to_keys = 14 [(google.api.field_behavior) = OPTIONAL];
+  optional string data_key = 15 [(google.api.field_behavior) = OPTIONAL];
+  string data_format = 16 [
+    (buf.validate.field).string = {in: ["json", "yaml", "properties", ""]},
+    (google.api.field_behavior) = OPTIONAL
+  ];
+  map<string, string> labels = 17 [(google.api.field_behavior) = OPTIONAL];
+  map<string, string> annotations = 18 [(google.api.field_behavior) = OPTIONAL];
+  bool immutable = 19 [(google.api.field_behavior) = OPTIONAL];
+  google.protobuf.Duration timeout = 20 [
+    (buf.validate.field).duration.gte = {seconds: 1},
+    (google.api.field_behavior) = OPTIONAL
+  ];
+  int32 max_retries = 21 [
+    (buf.validate.field).int32.gte = 0,
+    (google.api.field_behavior) = OPTIONAL
+  ];
+  ConflictStrategy on_conflict = 22 [
+    (buf.validate.field).enum.defined_only = true,
+    (google.api.field_behavior) = OPTIONAL
+  ];
+  optional string context = 23 [(google.api.field_behavior) = OPTIONAL];
+}

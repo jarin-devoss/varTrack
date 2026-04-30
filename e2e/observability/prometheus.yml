@@ -1,0 +1,48 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    cluster: vartrack-e2e
+    env: demo
+
+scrape_configs:
+  # Orchestrator API + Worker share the same metrics registry,
+  # served by the admin server on port 9090.
+  - job_name: orchestrator
+    static_configs:
+      - targets: ['orchestrator-api:9090']
+        labels:
+          service: orchestrator-api
+    metrics_path: /metrics
+
+  # Redis exporter (via embedded INFO parsing — no separate exporter needed)
+  # Uncomment if you add redis_exporter to the stack.
+  # - job_name: redis
+  #   static_configs:
+  #     - targets: ['redis-exporter:9121']
+
+  # OTel Collector Prometheus endpoint (OTLP metrics from orchestrator)
+  - job_name: otel-collector
+    static_configs:
+      - targets: ['otel-collector:8889']
+        labels:
+          service: otel-collector
+
+  # Gateway service admin metrics (HTTP, gRPC, circuit breaker, rate limiter)
+  - job_name: gateway
+    static_configs:
+      - targets: ['gateway:9092']
+        labels:
+          service: gateway
+
+  # Watcher service admin metrics (drift, heal, poll duration)
+  - job_name: watcher
+    static_configs:
+      - targets: ['watcher:9091']
+        labels:
+          service: watcher
+
+  # Prometheus self-monitoring
+  - job_name: prometheus
+    static_configs:
+      - targets: ['localhost:9090']

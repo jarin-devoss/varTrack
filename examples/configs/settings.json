@@ -1,0 +1,40 @@
+{
+  "_comment": "Example config file — JSON format. VarTrack parses and writes each key to the sink.",
+  "app": {
+    "name": "my-service",
+    "version": "1.0.0",
+    "environment": "production",
+    "debug": false
+  },
+  "server": {
+    "host": "0.0.0.0",
+    "port": 8080,
+    "workers": 4,
+    "timeout_seconds": 30
+  },
+  "database": {
+    "host": "prod-db.internal",
+    "port": 5432,
+    "name": "myapp",
+    "user": "app-user",
+    "password": "@secret(secret/myapp/db#password)",
+    "pool_size": 20,
+    "ssl": true
+  },
+  "cache": {
+    "backend": "redis",
+    "host": "redis.internal",
+    "port": 6379,
+    "ttl_seconds": 3600
+  },
+  "feature_flags": {
+    "new_ui": true,
+    "beta_api": false,
+    "analytics": true
+  },
+  "limits": {
+    "rate_limit_rps": 1000,
+    "max_body_size_mb": 10,
+    "max_connections": 500
+  }
+}

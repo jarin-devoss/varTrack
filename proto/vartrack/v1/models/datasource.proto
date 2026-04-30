@@ -1,0 +1,28 @@
+syntax = "proto3";
+
+package vartrack.v1;
+
+import "vartrack/v1/models/datasources/mongo.proto";
+import "vartrack/v1/models/datasources/redis.proto";
+import "vartrack/v1/models/datasources/zookeeper.proto";
+import "vartrack/v1/models/datasources/s3.proto";
+import "vartrack/v1/models/datasources/configmap.proto";
+import "vartrack/v1/models/datasources/helm.proto";
+import "vartrack/v1/models/datasources/linux_server.proto";
+import "vartrack/v1/models/datasources/vercel.proto";
+import "buf/validate/validate.proto";
+
+message DataSource {
+  oneof config {
+    option (buf.validate.oneof).required = true;
+
+    MongoConfig       mongo        = 1;
+    RedisConfig       redis        = 2;
+    ZooKeeperConfig   zookeeper    = 3;
+    S3Config          s3           = 4;
+    ConfigMapConfig   configmap    = 5;
+    HelmValuesConfig  helm         = 6;
+    LinuxServerConfig linux_server = 7;
+    VercelConfig      vercel       = 8;
+  }
+}

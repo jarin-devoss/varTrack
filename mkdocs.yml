@@ -1,0 +1,120 @@
+site_name: varTrack
+site_url: https://jarin-devoss.github.io/varTrack/
+site_description: GitOps-native configuration sync. Push a file to Git — varTrack writes it to your datastores automatically.
+repo_url: https://github.com/jarin-devoss/varTrack
+repo_name: jarin-devoss/varTrack
+edit_uri: edit/main/docs/
+
+docs_dir: docs
+
+nav:
+  - Home: index.md
+  - Getting Started: getting-started.md
+  - Why varTrack?: why-vartrack.md
+  - How It Works:
+    - Overview: concepts/index.md
+    - Destination Template: concepts/destination-template.md
+    - Environment Resolution: concepts/environment-resolution.md
+    - Sync Strategies: concepts/sync-strategies.md
+    - Drift Detection & Self-Heal: concepts/drift-detection.md
+  - Configuration:
+    - Bundle Reference: configuration/bundle.md
+    - Schema Registry: configuration/schema-registry.md
+    - Per-Repo Overrides: configuration/per-repo-overrides.md
+    - File Formats: configuration/formats.md
+    - Schema Annotations: configuration/annotations.md
+    - Authentication & Authorization: configuration/auth.md
+  - Sinks:
+    - Overview: sinks/index.md
+    - MongoDB: sinks/mongodb.md
+    - Redis: sinks/redis.md
+    - ZooKeeper: sinks/zookeeper.md
+    - S3: sinks/s3.md
+    - Kubernetes ConfigMap: sinks/configmap.md
+    - Helm: sinks/helm.md
+    - Vercel: sinks/vercel.md
+    - Linux Server: sinks/linux-server.md
+  - CLI:
+    - vt Commands: cli/index.md
+    - CI/CD Integration: cli/cicd.md
+  - Services:
+    - gateway-service: services/gateway.md
+    - orchestrator-service: services/orchestrator.md
+    - watcher-service: services/watcher.md
+  - Deployment:
+    - Docker Compose: deployment/docker-compose.md
+  - Examples:
+    - Overview: examples/index.md
+    - Gitea platform: examples/gitea.md
+
+theme:
+  name: material
+  font:
+    text: Inter
+    code: JetBrains Mono
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: deep purple
+      accent: indigo
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: deep purple
+      accent: indigo
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - navigation.tabs
+    - navigation.tabs.sticky
+    - navigation.sections
+    - navigation.instant
+    - navigation.tracking
+    - navigation.indexes
+    - navigation.footer
+    - content.code.copy
+    - content.code.annotate
+    - search.highlight
+    - search.suggest
+    - toc.follow
+  icon:
+    repo: fontawesome/brands/github
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - md_in_html
+  - footnotes
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+
+plugins:
+  - search:
+      lang: en
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/jarin-devoss/varTrack
+    - icon: fontawesome/brands/docker
+      link: https://hub.docker.com/u/jarin-devoss

@@ -1,0 +1,67 @@
+syntax = "proto3";
+
+package vartrack.v1;
+
+import "buf/validate/validate.proto";
+import "google/api/annotations.proto";
+import "google/api/field_behavior.proto";
+import "google/protobuf/empty.proto";
+
+// Watcher defines the RPC surface the watcher-service calls on the orchestrator.
+// The orchestrator implements this service; the watcher is the client.
+//
+// Separation rationale: webhook.proto owns the gateway → orchestrator surface
+// (event ingestion). This file owns the watcher → orchestrator surface
+// (self-heal / drift correction).  Keeping them separate lets each service
+// evolve its API independently.
+service Watcher {
+  // SyncDatasource triggers a full re-sync for a datasource after drift is
+  // detected.  The orchestrator enqueues a Celery task and returns immediately;
+  // the watcher does not wait for the task to complete.
+  rpc SyncDatasource(SyncDatasourceRequest) returns (SyncDatasourceResponse) {
+    option (google.api.http) = {
+      post: "/v1/sync/{datasource}"
+      body: "*"
+    };
+  }
+
+  // Ping is a liveness check.  The watcher calls this on startup and before
+  // each heal attempt to confirm the orchestrator is reachable.
+  rpc Ping(google.protobuf.Empty) returns (google.protobuf.Empty) {
+    option (google.api.http) = {
+      get: "/v1/watcher/ping"
+    };
+  }
+}
+
+// ────────────────────────────────────────────
+// SyncDatasource
+// ────────────────────────────────────────────
+
+message SyncDatasourceRequest {
+  // Datasource name in the CUE bundle (e.g. "mongo").
+  string datasource = 1 [
+    (buf.validate.field).string.min_len = 1,
+    (google.api.field_behavior) = REQUIRED
+  ];
+
+  // Platform name (e.g. "github"). Empty means all platforms for this datasource.
+  string platform = 2 [(google.api.field_behavior) = OPTIONAL];
+
+  // Tenant ID; empty means all tenants managed by this rule.
+  string tenant = 3 [(google.api.field_behavior) = OPTIONAL];
+
+  // Environment label; empty means all environments.
+  string env = 4 [(google.api.field_behavior) = OPTIONAL];
+
+  // Human-readable reason logged by the orchestrator (e.g. "drift detected").
+  string reason = 5 [(google.api.field_behavior) = OPTIONAL];
+}
+
+message SyncDatasourceResponse {
+  // Celery task ID for the enqueued sync job.
+  string task_id = 1 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // Brief status (e.g. "accepted").
+  string status = 2 [(google.api.field_behavior) = OUTPUT_ONLY];
+}

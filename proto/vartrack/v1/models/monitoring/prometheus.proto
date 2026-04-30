@@ -1,0 +1,54 @@
+syntax = "proto3";
+
+package vartrack.v1;
+
+option go_package = "gateway-service/internal/gen/proto/go/vartrack/v1/models/monitoring;monitoringpb";
+
+import "buf/validate/validate.proto";
+import "google/api/field_behavior.proto";
+import "google/protobuf/duration.proto";
+
+// PrometheusConfig configures the Prometheus metrics backend.
+message PrometheusConfig {
+  optional string tag = 1 [(google.api.field_behavior) = OPTIONAL];
+
+  bool enabled = 2 [(google.api.field_behavior) = OPTIONAL];
+
+  // ── Scrape endpoint ────────────────────────────────────────────────────────
+
+  int32  port         = 3 [
+    (buf.validate.field).int32 = {gte: 0, lte: 65535},
+    (google.api.field_behavior) = OPTIONAL
+  ];
+  string metrics_path = 4 [(google.api.field_behavior) = OPTIONAL];
+
+  // ── Job / instance identification ─────────────────────────────────────────
+
+  string job_name = 5 [
+    (buf.validate.field).string.min_len = 1,
+    (google.api.field_behavior) = REQUIRED
+  ];
+  map<string, string> external_labels = 6 [(google.api.field_behavior) = OPTIONAL];
+
+  // ── Pushgateway ────────────────────────────────────────────────────────────
+
+  bool   push_enabled = 7  [(google.api.field_behavior) = OPTIONAL];
+  string push_url     = 8  [(google.api.field_behavior) = OPTIONAL];
+
+  // How often to push to the Pushgateway. Replaces push_interval_s int32.
+  // Default (zero): 15s.
+  google.protobuf.Duration push_interval = 9 [(google.api.field_behavior) = OPTIONAL];
+
+  // ── TLS (scrape endpoint) ──────────────────────────────────────────────────
+
+  bool            enable_tls           = 10 [(google.api.field_behavior) = OPTIONAL];
+  optional string tls_ca               = 11 [(google.api.field_behavior) = OPTIONAL];
+  optional string tls_cert             = 12 [(google.api.field_behavior) = OPTIONAL];
+  optional string tls_key              = 13 [(google.api.field_behavior) = OPTIONAL];
+  bool            insecure_skip_verify = 14 [(google.api.field_behavior) = OPTIONAL];
+
+  // ── Basic auth (scrape endpoint) ──────────────────────────────────────────
+
+  optional string basic_auth_user = 15 [(google.api.field_behavior) = OPTIONAL];
+  optional string basic_auth_pass = 16 [(google.api.field_behavior) = OPTIONAL];
+}

@@ -1,0 +1,77 @@
+// proto/vartrack/v1/models/rule.proto
+//
+// ADD the following to your existing rule.proto file.
+// These are the only additions — no existing fields are changed.
+//
+// ─────────────────────────────────────────────────────────────────────────────
+// SinkKeyFormat
+// ─────────────────────────────────────────────────────────────────────────────
+// Declares the key format each sink should use when writing config data.
+// Not every format is valid for every sink — the allowed values per sink are:
+//
+//   mongo        → "dot" only                    (document store, natural JSON)
+//   s3           → "dot" only
+//   vercel       → "dot" only
+//   helm         → "dot" only
+//   redis        → "dot" (HASH) | "flat" (STRING)
+//   zookeeper    → "slash" | "slash_dot"
+//   configmap    → "flat" | "dot"
+//   linux_server → "dot" | "flat"
+//
+// If a field is omitted the sink uses its default (shown above in the table).
+// Validation happens at sink construction time, not at proto parse time.
+//
+// Placement: add `optional SinkKeyFormat key_format = 25;` to the Rule message.
+// ─────────────────────────────────────────────────────────────────────────────
+
+syntax = "proto3";
+
+package vartrack.v1;
+
+// Key format options per sink kind.
+// Only populate the fields relevant to the sinks used in your rule.
+message SinkKeyFormat {
+
+  // mongo, s3, vercel, helm — only "dot" is valid; omit or leave "dot".
+  // Writing this field with any value other than "dot" will raise a
+  // ValueError at MongoSink / S3Sink construction time.
+  string mongo = 1;         // "dot"  (only valid value)
+
+  // redis — "dot" for HASH mode (default), "flat" for STRING mode.
+  string redis = 2;         // "dot" | "flat"
+
+  // zookeeper — "slash" (default) for /path/style keys,
+  //             "slash_dot" for .dot.style keys (legacy setups).
+  string zookeeper = 3;     // "slash" | "slash_dot"
+
+  // configmap — "flat" (default, K8s-safe underscore keys),
+  //             "dot"  (dot-notation keys, also valid in ConfigMap data).
+  // "slash" is NOT supported — ConfigMap keys cannot start with "/".
+  string configmap = 4;     // "flat" | "dot"
+
+  // linux_server — "dot" (default, used for .env / .json / .yaml output),
+  //                "flat" (underscore keys, used for .properties / .ini).
+  string linux_server = 5;  // "dot" | "flat"
+}
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Additions to the existing Rule message
+// ─────────────────────────────────────────────────────────────────────────────
+// Paste these fields into your existing Rule message definition:
+//
+//   // Key format hint per sink kind.  Omit to use each sink's default.
+//   optional SinkKeyFormat key_format = 25;
+//
+//   // When true, each resolved env gets its own isolated resource:
+//   //   mongo       → new collection  (configs_pr-42, configs_production …)
+//   //   configmap   → new ConfigMap   (payments-config-pr-42 …)
+//   //   linux_server→ new file        (config_pr-42.env …)
+//   // When false (default), all envs share one resource and are distinguished
+//   // only by the _vt_env label / annotation / key prefix.
+//   optional bool env_as_collection  = 26;  // mongo
+//   optional bool env_as_name_suffix = 27;  // configmap (default: true)
+//   optional bool env_as_namespace   = 28;  // configmap
+//   optional bool env_as_filename    = 29;  // linux_server (default: true)
+//   optional bool env_as_dir         = 30;  // linux_server
+// ─────────────────────────────────────────────────────────────────────────────

@@ -1,0 +1,4 @@
+// Moved to vartrack/v1/enums/task_state.proto
+syntax = "proto3";
+
+package vartrack.v1;

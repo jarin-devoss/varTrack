@@ -1,0 +1,28 @@
+[
+  {
+    "platform": "github",
+    "datasource": "mongo",
+    "repo_url": "http://gitea:3000/vartrack-demo/demo-configs.git",
+    "file_name": "app-settings.yaml",
+    "repositories": ["vartrack-demo/demo-configs"],
+    "env_as_branch": false,
+    "branch": "main",
+    "sync_mode": "SYNC_MODE_FULL",
+    "self_heal": false,
+    "mongo_uri": "mongodb://mongo:27017",
+    "database": "vartrack",
+    "collection": "vault_test",
+    "update_strategy": "STRATEGY_KEY_VALUE",
+    "destination_template": "vault-test",
+    "secrets": {
+      "default": {
+        "type": "vault",
+        "vault_addr": "http://vault:8200",
+        "auth": {"type": "token", "token": "root"},
+        "mount_point": "secret",
+        "path_prefix": "vartrack/configs",
+        "kv_version": 2
+      }
+    }
+  }
+]

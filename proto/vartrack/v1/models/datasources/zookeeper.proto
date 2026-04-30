@@ -1,0 +1,48 @@
+syntax = "proto3";
+
+package vartrack.v1;
+
+import "vartrack/v1/enums/strategy.proto";
+import "vartrack/v1/utils/secret_ref.proto";
+import "buf/validate/validate.proto";
+import "google/api/field_behavior.proto";
+import "google/protobuf/duration.proto";
+
+message ZooKeeperConfig {
+  optional string tag = 1 [(google.api.field_behavior) = OPTIONAL];
+  repeated string hosts = 2 [
+    (buf.validate.field).repeated.min_items = 1,
+    (google.api.field_behavior) = REQUIRED
+  ];
+  string base_path = 3 [
+    (buf.validate.field).string.min_len = 1,
+    (google.api.field_behavior) = REQUIRED
+  ];
+  bool env_as_path = 4 [(google.api.field_behavior) = OPTIONAL];
+  optional string username = 5 [(google.api.field_behavior) = OPTIONAL];
+  optional SecretRef password = 6 [(google.api.field_behavior) = OPTIONAL];
+  optional string auth_scheme = 7 [(google.api.field_behavior) = OPTIONAL];
+  google.protobuf.Duration session_timeout = 8 [
+    (buf.validate.field).duration.gte = {seconds: 1},
+    (google.api.field_behavior) = OPTIONAL
+  ];
+  google.protobuf.Duration connection_timeout = 9 [
+    (buf.validate.field).duration.gte = {seconds: 1},
+    (google.api.field_behavior) = OPTIONAL
+  ];
+  Strategy update_strategy = 10 [(buf.validate.field).enum.defined_only = true];
+  int32 max_retries = 11 [
+    (buf.validate.field).int32.gte = 0,
+    (google.api.field_behavior) = OPTIONAL
+  ];
+  google.protobuf.Duration retry_backoff = 12 [(google.api.field_behavior) = OPTIONAL];
+  bool world_readable = 13 [(google.api.field_behavior) = OPTIONAL];
+  optional string acl_scheme = 14 [(google.api.field_behavior) = OPTIONAL];
+  optional string acl_id = 15 [(google.api.field_behavior) = OPTIONAL];
+  bool ephemeral = 16 [(google.api.field_behavior) = OPTIONAL];
+  bool sequential = 17 [(google.api.field_behavior) = OPTIONAL];
+  string encoding = 18 [
+    (buf.validate.field).string = {in: ["json", "plain", "base64", ""]},
+    (google.api.field_behavior) = OPTIONAL
+  ];
+}

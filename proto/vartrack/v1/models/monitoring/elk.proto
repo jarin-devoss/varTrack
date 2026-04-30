@@ -1,0 +1,86 @@
+syntax = "proto3";
+
+package vartrack.v1;
+
+option go_package = "gateway-service/internal/gen/proto/go/vartrack/v1/models/monitoring;monitoringpb";
+
+import "buf/validate/validate.proto";
+import "google/api/field_behavior.proto";
+import "google/protobuf/duration.proto";
+
+// ELKConfig configures the ELK log shipping backend.
+message ELKConfig {
+  optional string tag = 1 [(google.api.field_behavior) = OPTIONAL];
+
+  bool enabled = 2 [(google.api.field_behavior) = OPTIONAL];
+
+  string service_name    = 3 [
+    (buf.validate.field).string.min_len = 1,
+    (google.api.field_behavior) = REQUIRED
+  ];
+  string service_version = 4 [(google.api.field_behavior) = OPTIONAL];
+  string environment     = 5 [(google.api.field_behavior) = OPTIONAL];
+
+  ElasticsearchConfig elasticsearch = 6 [
+    (buf.validate.field).required = true,
+    (google.api.field_behavior) = REQUIRED
+  ];
+
+  optional LogstashConfig logstash = 7 [(google.api.field_behavior) = OPTIONAL];
+}
+
+message ElasticsearchConfig {
+  repeated string endpoints = 1 [
+    (buf.validate.field).repeated.min_items = 1,
+    (google.api.field_behavior) = REQUIRED
+  ];
+
+  string index = 2 [
+    (buf.validate.field).string.min_len = 1,
+    (google.api.field_behavior) = REQUIRED
+  ];
+
+  int32 version = 3 [
+    (buf.validate.field).int32 = {gte: 7, lte: 9},
+    (google.api.field_behavior) = OPTIONAL
+  ];
+
+  optional string pipeline     = 4  [(google.api.field_behavior) = OPTIONAL];
+  optional string username     = 5  [(google.api.field_behavior) = OPTIONAL];
+  optional string password     = 6  [(google.api.field_behavior) = OPTIONAL];
+  optional string api_key      = 7  [(google.api.field_behavior) = OPTIONAL];
+  optional string bearer_token = 8  [(google.api.field_behavior) = OPTIONAL];
+
+  optional string tls_ca_cert          = 9  [(google.api.field_behavior) = OPTIONAL];
+  optional string tls_client_cert      = 10 [(google.api.field_behavior) = OPTIONAL];
+  optional string tls_client_key       = 11 [(google.api.field_behavior) = OPTIONAL];
+  bool            insecure_skip_verify = 12 [(google.api.field_behavior) = OPTIONAL];
+
+  // Flush when this many documents are buffered. Default: 500.
+  int32 bulk_max_docs = 13 [
+    (buf.validate.field).int32.gte = 0,
+    (google.api.field_behavior) = OPTIONAL
+  ];
+
+  // Flush interval regardless of document count. Replaces flush_interval_s int32.
+  // Default (zero): 5s.
+  google.protobuf.Duration flush_interval = 14 [(google.api.field_behavior) = OPTIONAL];
+
+  map<string, string> extra_fields = 15 [(google.api.field_behavior) = OPTIONAL];
+}
+
+message LogstashConfig {
+  string endpoint = 1 [
+    (buf.validate.field).string.min_len = 1,
+    (google.api.field_behavior) = REQUIRED
+  ];
+
+  bool            use_tls              = 2  [(google.api.field_behavior) = OPTIONAL];
+  optional string tls_ca_cert          = 3  [(google.api.field_behavior) = OPTIONAL];
+  optional string tls_client_cert      = 4  [(google.api.field_behavior) = OPTIONAL];
+  optional string tls_client_key       = 5  [(google.api.field_behavior) = OPTIONAL];
+  bool            insecure_skip_verify = 6  [(google.api.field_behavior) = OPTIONAL];
+
+  // HTTP request timeout. Replaces timeout_s int32. Default (zero): 10s.
+  google.protobuf.Duration timeout = 7 [(google.api.field_behavior) = OPTIONAL];
+}

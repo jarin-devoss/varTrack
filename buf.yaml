@@ -1,0 +1,8 @@
+# C:\git\varTrack\buf.yaml
+version: v2
+modules:
+  - path: proto  # This makes imports relative to the proto directory
+deps:
+  - buf.build/bufbuild/protovalidate
+  - buf.build/googleapis/googleapis
+  - buf.build/grpc/grpc

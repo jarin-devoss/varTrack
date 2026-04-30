@@ -1,0 +1,138 @@
+syntax = "proto3";
+
+package vartrack.v1;
+
+import "vartrack/v1/enums/secret_id_type.proto";
+import "buf/validate/validate.proto";
+import "google/api/field_behavior.proto";
+import "google/protobuf/duration.proto";
+import "google/protobuf/timestamp.proto";
+
+message VaultConfig {
+  // --- Identity ---
+  // Optional tag to distinguish multiple instances of the same type.
+  // Resolved name: "vault-{tag}" if set, otherwise "vault".
+  optional string tag = 1 [(google.api.field_behavior) = OPTIONAL];
+
+  // --- Connection ---
+  string endpoint = 2 [
+    (buf.validate.field).string.uri = true,
+    (google.api.field_behavior) = REQUIRED
+  ];
+
+  // Vault Enterprise namespace.
+  string namespace = 3 [(google.api.field_behavior) = OPTIONAL];
+
+  // KV engine mount point (e.g. "secret", "kv").
+  string mount_point = 4 [
+    (buf.validate.field).string.min_len = 1,
+    (google.api.field_behavior) = REQUIRED
+  ];
+
+  // KV engine version: 1 or 2.
+  int32 kv_version = 5 [
+    (buf.validate.field).int32 = {in: [1, 2]},
+    (google.api.field_behavior) = REQUIRED
+  ];
+
+  // --- Authentication ---
+  oneof auth {
+    option (buf.validate.oneof).required = true;
+
+    TokenAuth      token_auth      = 6;
+    AppRoleAuth    app_role_auth   = 7;
+    KubernetesAuth kubernetes_auth = 8;
+    UserPassAuth   userpass_auth   = 9;
+  }
+
+  // --- TLS ---
+  bool            verify_ssl = 10 [(google.api.field_behavior) = OPTIONAL];
+  // CA certificate content (PEM) for server verification.
+  optional string ssl_ca     = 11 [(google.api.field_behavior) = OPTIONAL];
+  // Client certificate content (PEM) for mutual TLS.
+  optional string ssl_cert   = 12 [(google.api.field_behavior) = OPTIONAL];
+  // Client private key content (PEM) for mutual TLS.
+  optional string ssl_key    = 13 [(google.api.field_behavior) = OPTIONAL];
+
+  // --- Reliability ---
+  // Per-request timeout. Uses google.protobuf.Duration instead of raw int32
+  // so callers can express sub-second precision and the intent is unambiguous.
+  // Minimum: 1s. Default (zero): no timeout (caller supplies context deadline).
+  google.protobuf.Duration timeout     = 14 [
+    (buf.validate.field).duration.gte = {seconds: 1},
+    (google.api.field_behavior) = OPTIONAL
+  ];
+  int32 max_retries = 15 [
+    (buf.validate.field).int32.gte = 0,
+    (google.api.field_behavior) = OPTIONAL
+  ];
+
+  // How long to wait before retrying after a failed auth attempt.
+  google.protobuf.Duration retry_backoff = 16 [
+    (google.api.field_behavior) = OPTIONAL
+  ];
+}
+
+// --- Auth method messages ---
+
+message TokenAuth {
+  string token = 1 [
+    (buf.validate.field).string.min_len = 1,
+    (google.api.field_behavior) = REQUIRED
+  ];
+
+  // When this token was last successfully used (OUTPUT_ONLY).
+  google.protobuf.Timestamp last_used_at = 2 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // When this token expires, if known (OUTPUT_ONLY).
+  google.protobuf.Timestamp expires_at = 3 [(google.api.field_behavior) = OUTPUT_ONLY];
+}
+
+message AppRoleAuth {
+  string role_id   = 1 [
+    (buf.validate.field).string.min_len = 1,
+    (google.api.field_behavior) = REQUIRED
+  ];
+  string secret_id = 2 [
+    (buf.validate.field).string.min_len = 1,
+    (google.api.field_behavior) = REQUIRED
+  ];
+
+  SecretIDType secret_id_type = 3 [
+    (buf.validate.field).enum.defined_only = true,
+    (google.api.field_behavior) = OPTIONAL
+  ];
+
+  // Mount path for the approle auth method (defaults to "approle").
+  string mount_path = 4 [(google.api.field_behavior) = OPTIONAL];
+
+  // When the last successful login occurred (OUTPUT_ONLY).
+  google.protobuf.Timestamp last_login_at = 5 [(google.api.field_behavior) = OUTPUT_ONLY];
+}
+
+message KubernetesAuth {
+  string role = 1 [
+    (buf.validate.field).string.min_len = 1,
+    (google.api.field_behavior) = REQUIRED
+  ];
+
+  // Defaults to /var/run/secrets/kubernetes.io/serviceaccount/token.
+  string jwt_path   = 2 [(google.api.field_behavior) = OPTIONAL];
+
+  // Mount path for the kubernetes auth method (defaults to "kubernetes").
+  string mount_path = 3 [(google.api.field_behavior) = OPTIONAL];
+}
+
+message UserPassAuth {
+  string username = 1 [
+    (buf.validate.field).string.min_len = 1,
+    (google.api.field_behavior) = REQUIRED
+  ];
+  string password = 2 [
+    (buf.validate.field).string.min_len = 1,
+    (google.api.field_behavior) = REQUIRED
+  ];
+
+  // Mount path for the userpass auth method (defaults to "userpass").
+  string mount_path = 3 [(google.api.field_behavior) = OPTIONAL];
+}

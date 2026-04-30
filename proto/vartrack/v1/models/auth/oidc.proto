@@ -1,0 +1,99 @@
+syntax = "proto3";
+
+package vartrack.v1;
+
+import "google/api/field_behavior.proto";
+import "buf/validate/validate.proto";
+import "vartrack/v1/models/auth/opa.proto";
+
+// OIDCConfig defines the OpenID Connect provider used to authenticate CLI users.
+// Supported providers: Google, Azure AD / Entra ID, Okta, Auth0, Keycloak,
+// GitLab, any standards-compliant OIDC provider.
+message OIDCConfig {
+  // Issuer URL — the base URL of the OIDC provider.
+  // The gateway fetches /.well-known/openid-configuration from this URL.
+  //
+  // Examples:
+  //   Google:    https://accounts.google.com
+  //   Azure AD:  https://login.microsoftonline.com/<tenant-id>/v2.0
+  //   Okta:      https://your-org.okta.com
+  //   Keycloak:  https://keycloak.example.com/realms/myrealm
+  string issuer_url = 1 [
+    (buf.validate.field).string.min_len = 1,
+    (google.api.field_behavior) = REQUIRED
+  ];
+
+  // Client ID registered with the OIDC provider.
+  string client_id = 2 [
+    (buf.validate.field).string.min_len = 1,
+    (google.api.field_behavior) = REQUIRED
+  ];
+
+  // Expected "aud" (audience) claim value.
+  // Tokens whose "aud" does not include this value are rejected.
+  // Usually the same as client_id.  Leave empty to skip audience validation.
+  string audience = 3 [(google.api.field_behavior) = OPTIONAL];
+
+  // Additional OAuth2 scopes to request during login.
+  // "openid", "email", "profile", and "offline_access" are always included.
+  repeated string extra_scopes = 4 [(google.api.field_behavior) = OPTIONAL];
+
+  // groups_claim is the JWT claim key that holds the user's group memberships.
+  // Defaults to "groups" when empty.
+  // Azure AD / Entra ID uses "groups" or custom role mappings.
+  string groups_claim = 5 [(google.api.field_behavior) = OPTIONAL];
+}
+
+// RBACConfig defines the role-based access control policy for CLI operations.
+//
+// Casbin policy CSV format:
+//
+//	# Permission rules
+//	p, role:admin,    *,          *,        allow
+//	p, role:operator, datasource, sync,     allow
+//	p, role:operator, task,       get,      allow
+//	p, role:viewer,   datasource, validate, allow
+//
+//	# Role assignments (users or group names → roles)
+//	g, alice@example.com,  role:admin
+//	g, ops-team,           role:operator
+//	g, everyone,           role:viewer
+//
+// Resources:  datasource, task, bundle, watcher
+// Actions:    sync, validate, get, list, heal
+message RBACConfig {
+  // Inline Casbin policy CSV.
+  // When omitted a built-in default policy is used (see auth.Enforcer defaults).
+  string policy = 1 [(google.api.field_behavior) = OPTIONAL];
+
+  // default_role is assigned to authenticated users who are not matched by
+  // any grouping rule.  Defaults to "role:viewer".
+  string default_role = 2 [(google.api.field_behavior) = OPTIONAL];
+}
+
+// AuthConfig is the top-level auth block in the CUE bundle.
+// When present the gateway enables the /v1/cli/* API routes.
+// When absent the CLI routes are disabled entirely.
+//
+// Evaluation order for every CLI request:
+//   1. JWT (OIDC)   — validates the Bearer token and extracts user identity
+//   2. Casbin RBAC  — checks role permissions on the resource/action type
+//   3. OPA          — evaluates contextual policy (env, path, time, etc.)
+//
+// All three layers must approve a request for it to proceed.
+message AuthConfig {
+  // OIDC provider — required to enable the CLI API.
+  OIDCConfig oidc = 1 [
+    (buf.validate.field).required = true,
+    (google.api.field_behavior) = REQUIRED
+  ];
+
+  // Casbin RBAC — role-to-permission mapping.
+  // When omitted built-in defaults apply (operator can sync, viewer can validate).
+  RBACConfig rbac = 2 [(google.api.field_behavior) = OPTIONAL];
+
+  // OPA — contextual policy for env-scoped or path-scoped rules.
+  // Example: block syncs to env=production for non-admin users.
+  // When omitted only RBAC is enforced.
+  OPAConfig opa = 3 [(google.api.field_behavior) = OPTIONAL];
+}

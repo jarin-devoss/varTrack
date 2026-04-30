@@ -1,0 +1,6 @@
+// Removed: ApplyStrategy was always APPLY_STRATEGY_CLIENT_SIDE and therefore
+// added no value as a configurable field. The field has been removed from Rule.
+// This file is intentionally empty and will be removed in a future cleanup.
+syntax = "proto3";
+
+package vartrack.v1;

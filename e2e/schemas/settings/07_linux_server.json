@@ -1,0 +1,18 @@
+[
+  {
+    "platform": "github",
+    "datasource": "linux_server",
+    "repo_url": "http://gitea:3000/vartrack-demo/demo-configs.git",
+    "file_name": "app-settings.yaml",
+    "repositories": ["vartrack-demo/demo-configs"],
+    "env_as_branch": true,
+    "branch": "main",
+    "sync_mode": "SYNC_MODE_FULL",
+    "self_heal": false,
+    "ssh_host": "linux-target",
+    "ssh_port": 22,
+    "ssh_user": "vartrack",
+    "ssh_password": "VarTrack123",
+    "destination_template": "/tmp/vartrack/{env}.env"
+  }
+]

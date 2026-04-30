@@ -1,0 +1,19 @@
+[
+  {
+    "platform": "github",
+    "datasource": "s3",
+    "repo_url": "http://gitea:3000/vartrack-demo/demo-configs.git",
+    "file_name": "app-settings.yaml",
+    "repositories": ["vartrack-demo/demo-configs"],
+    "env_as_branch": true,
+    "branch": "main",
+    "sync_mode": "SYNC_MODE_FULL",
+    "self_heal": false,
+    "s3_bucket": "vartrack",
+    "s3_region": "us-east-1",
+    "s3_endpoint_url": "http://minio:9002",
+    "s3_access_key_id": "minioadmin",
+    "s3_secret_access_key": "minioadmin",
+    "destination_template": "configs/{env}"
+  }
+]

@@ -1,0 +1,5 @@
+# Only requirements.txt, demo.sh, and test_runner.py are needed
+*
+!requirements.txt
+!demo.sh
+!test_runner.py

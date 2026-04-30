@@ -1,0 +1,14 @@
+syntax = "proto3";
+
+package vartrack.v1;
+
+// Strategy controls how values are written to a sink datasource.
+enum Strategy {
+  STRATEGY_UNSPECIFIED = 0;
+  // Write each variable as a flat key/value pair.
+  STRATEGY_KEY_VALUE   = 1;
+  // Write the entire variable set as a single document (JSON/YAML blob).
+  STRATEGY_DOCUMENT    = 2;
+  // Write each variable set as a file named after the key.
+  STRATEGY_FILE        = 3;
+}

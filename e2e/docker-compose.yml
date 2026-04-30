@@ -1,0 +1,356 @@
+# VarTrack E2E stack — core services only (CI-compatible)
+# Flow: Gitea push → orchestrator-api → Celery worker → MongoDB + ZooKeeper + Redis + S3 + Linux
+#       watcher polls all sinks for drift → calls orchestrator TriggerSync on drift
+#
+# Observability (Jaeger, Grafana, Elasticsearch, Kibana, OTel collector, Prometheus)
+# is intentionally excluded here so CI completes fast without heavy infra.
+# For local dev with full observability, overlay the dev profile:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up
+
+networks:
+  vartrack:
+    driver: bridge
+
+volumes:
+  gitea-data:
+  mongo-data:
+  zookeeper-data:
+  zookeeper-log:
+  minio-data:
+  vault-data:
+  schema-cache:
+
+# ── Infrastructure ────────────────────────────────────────────────────────────
+
+services:
+  redis:
+    image: redis:7-alpine
+    networks: [vartrack]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  mongo:
+    image: mongo:7
+    networks: [vartrack]
+    volumes:
+      - mongo-data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')", "--quiet"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  zookeeper:
+    image: zookeeper:3.9
+    networks: [vartrack]
+    environment:
+      ZOO_MY_ID: 1
+      ZOO_STANDALONE_ENABLED: "true"
+    volumes:
+      - zookeeper-data:/data
+      - zookeeper-log:/datalog
+    healthcheck:
+      test: ["CMD-SHELL", "zkServer.sh status 2>/dev/null | grep -q Mode || (echo ruok | bash -c 'cat > /dev/tcp/localhost/2181' 2>/dev/null && echo ok)"]
+      interval: 10s
+      timeout: 10s
+      retries: 15
+
+  gitea:
+    build:
+      context: ./gitea
+      dockerfile: Dockerfile
+    networks: [vartrack]
+    environment:
+      GITEA__database__DB_TYPE: sqlite3
+      GITEA__server__ROOT_URL: http://gitea:3000
+      GITEA__server__HTTP_PORT: "3000"
+      GITEA__security__INSTALL_LOCK: "true"
+      GITEA__service__DISABLE_REGISTRATION: "false"
+      GITEA__log__LEVEL: Warn
+      GITEA_ADMIN_USER: demo-admin
+      GITEA_ADMIN_PASSWORD: VarTrack123
+      GITEA_ADMIN_EMAIL: demo-admin@demo.local
+    volumes:
+      - gitea-data:/data
+    ports:
+      - "3000:3000"
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "-u", "demo-admin:VarTrack123", "http://localhost:3000/api/v1/user"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+
+# ── Gateway ───────────────────────────────────────────────────────────────────
+
+  gateway:
+    build:
+      context: ../gateway-service
+      dockerfile: Dockerfile
+    networks: [vartrack]
+    environment:
+      APP_ENV: demo
+      LOG_LEVEL: INFO
+      CONFIG_PATH: /app/config.cue
+      ORCHESTRATOR_ADDR: "orchestrator-api:50051"
+      GATEWAY_ADDR: ":5657"
+      ADMIN_ADDR: ":9092"
+      MTLS_ENABLED: "false"
+      OTEL_ENABLED: "false"
+      JAEGER_ENABLED: "false"
+      ELK_ENABLED: "false"
+    volumes:
+      - ./config.cue:/app/config.cue:ro
+    ports:
+      - "5657:5657"
+      - "9092:9092"
+    depends_on:
+      orchestrator-api: {condition: service_healthy}
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:9092/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+# ── Orchestrator ──────────────────────────────────────────────────────────────
+
+  orchestrator-api:
+    build:
+      context: ../orchestrator-service
+      dockerfile: docker/Dockerfile
+    networks: [vartrack]
+    command: ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--log-level", "info"]
+    environment:
+      APP_ENV: demo
+      LOG_LEVEL: INFO
+      CONFIG_PATH: /app/config.cue
+      ORCHESTRATOR_ADDR: "0.0.0.0:8000"
+      ADMIN_HOST: "0.0.0.0"
+      ADMIN_PORT: "9093"
+      CELERY_BROKER_URL: "redis://redis:6379/0"
+      CELERY_RESULT_BACKEND: "redis://redis:6379/0"
+      SCHEMA_CACHE_DIR: /app/schema_registry
+      GIT_CACHE_DIR: /app/git_cache
+      MTLS_ENABLED: "false"
+      CORS_ORIGINS: "*"
+      GIT_ALLOWED_HOSTS: "gitea"
+      PROM_ENABLED: "true"
+      PROM_PORT: "9090"
+      OTEL_ENABLED: "false"
+      JAEGER_ENABLED: "false"
+      ELK_ENABLED: "false"
+    volumes:
+      - ./config.cue:/app/config.cue:ro
+      - schema-cache:/app/schema_registry
+    ports:
+      - "8000:8000"
+      - "9090:9090"
+      - "9093:9093"
+    depends_on:
+      redis:     {condition: service_healthy}
+      mongo:     {condition: service_healthy}
+      zookeeper: {condition: service_healthy}
+    healthcheck:
+      test: ["CMD", "python3", "-c",
+             "import urllib.request; r = urllib.request.urlopen('http://localhost:9093/health/readiness'); exit(0 if r.status == 200 else 1)"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
+  orchestrator-worker:
+    build:
+      context: ../orchestrator-service
+      dockerfile: docker/Dockerfile
+    networks: [vartrack]
+    command: ["celery", "-A", "app.worker.celery", "worker",
+              "--loglevel=info", "-Q", "webhooks,sync,schema,dlq",
+              "--concurrency=4"]
+    environment:
+      APP_ENV: demo
+      LOG_LEVEL: INFO
+      CONFIG_PATH: /app/config.cue
+      CELERY_BROKER_URL: "redis://redis:6379/0"
+      CELERY_RESULT_BACKEND: "redis://redis:6379/0"
+      SCHEMA_CACHE_DIR: /app/schema_registry
+      GIT_CACHE_DIR: /app/git_cache
+      GIT_ALLOWED_HOSTS: "gitea"
+      OTEL_ENABLED: "false"
+      JAEGER_ENABLED: "false"
+      ELK_ENABLED: "false"
+    volumes:
+      - ./config.cue:/app/config.cue:ro
+      - schema-cache:/app/schema_registry
+    depends_on:
+      redis:            {condition: service_healthy}
+      mongo:            {condition: service_healthy}
+      zookeeper:        {condition: service_healthy}
+      orchestrator-api: {condition: service_healthy}
+
+# ── Watcher ───────────────────────────────────────────────────────────────────
+
+  watcher:
+    build:
+      context: ../watcher-service
+      dockerfile: Dockerfile
+    networks: [vartrack]
+    environment:
+      APP_ENV: demo
+      LOG_LEVEL: INFO
+      CONFIG_PATH: /app/config.cue
+      ORCHESTRATOR_ADDR: "orchestrator-api:50051"
+      HEAL_TIMEOUT: 30s
+      POLL_INTERVAL: ${WATCHER_POLL_INTERVAL:-60s}
+      STATE_DIR: /tmp/watcher-state
+      ADMIN_ADDR: ":9091"
+      OTEL_ENABLED: "false"
+      JAEGER_ENABLED: "false"
+      ELK_ENABLED: "false"
+    volumes:
+      - ./config.cue:/app/config.cue:ro
+    ports:
+      - "9091:9091"
+    depends_on:
+      orchestrator-api: {condition: service_healthy}
+      mongo:            {condition: service_healthy}
+      zookeeper:        {condition: service_healthy}
+      redis:            {condition: service_healthy}
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:9091/health/readiness"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+# ── MinIO (S3-compatible object store) ────────────────────────────────────────
+
+  minio:
+    image: minio/minio:latest
+    networks: [vartrack]
+    command: server /data --console-address ":9001" --address ":9002"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    volumes:
+      - minio-data:/data
+    ports:
+      - "9001:9001"
+      - "9002:9002"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:9002/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 60s
+
+  minio-init:
+    image: minio/mc:latest
+    networks: [vartrack]
+    depends_on:
+      minio: {condition: service_healthy}
+    entrypoint: >
+      /bin/sh -c "
+        mc alias set local http://minio:9002 minioadmin minioadmin &&
+        mc mb --ignore-existing local/vartrack &&
+        mc anonymous set none local/vartrack &&
+        echo 'MinIO bucket ready'
+      "
+    restart: "no"
+
+# ── HashiCorp Vault (secret resolver) ─────────────────────────────────────────
+
+  vault:
+    image: hashicorp/vault:1.17
+    networks: [vartrack]
+    environment:
+      VAULT_DEV_ROOT_TOKEN_ID: "root"
+      VAULT_DEV_LISTEN_ADDRESS: "0.0.0.0:8200"
+      VAULT_ADDR: "http://0.0.0.0:8200"
+    cap_add: [IPC_LOCK]
+    volumes:
+      - vault-data:/vault/file
+    ports:
+      - "8200:8200"
+    healthcheck:
+      test: ["CMD", "vault", "status"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+
+  vault-init:
+    image: hashicorp/vault:1.17
+    networks: [vartrack]
+    environment:
+      VAULT_ADDR: "http://vault:8200"
+      VAULT_TOKEN: "root"
+    depends_on:
+      vault: {condition: service_healthy}
+    entrypoint:
+      - /bin/sh
+      - -c
+      - "vault kv put secret/vartrack/configs database.password=supersecret123 api.secret_key=api-secret-xyz789 && echo 'Vault secrets seeded'"
+    restart: "no"
+
+# ── Linux target (SSH file sink) ───────────────────────────────────────────────
+
+  linux-target:
+    image: alpine:3.19
+    networks: [vartrack]
+    command: >
+      /bin/sh -c "
+        apk add --no-cache openssh-server &&
+        mkdir -p /run/sshd &&
+        ssh-keygen -A &&
+        adduser -D -s /bin/sh vartrack &&
+        echo 'vartrack:VarTrack123' | chpasswd &&
+        mkdir -p /home/vartrack/.ssh &&
+        echo 'PermitRootLogin no' >> /etc/ssh/sshd_config &&
+        echo 'PasswordAuthentication yes' >> /etc/ssh/sshd_config &&
+        /usr/sbin/sshd -D
+      "
+    ports:
+      - "2222:22"
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z localhost 22 2>/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+
+# ── E2E init + demo script ────────────────────────────────────────────────────
+
+  e2e-demo:
+    build:
+      context: ../e2e/init
+      dockerfile: Dockerfile
+    networks: [vartrack]
+    environment:
+      ORCHESTRATOR_URL: http://orchestrator-api:8000
+      GITEA_URL: http://gitea:3000
+      GITEA_ADMIN_USER: demo-admin
+      GITEA_ADMIN_PASSWORD: VarTrack123
+      WATCHER_POLL_INTERVAL: "10"
+      MINIO_ENDPOINT: http://minio:9002
+      MINIO_ACCESS_KEY: minioadmin
+      MINIO_SECRET_KEY: minioadmin
+      LINUX_TARGET_HOST: linux-target
+      LINUX_TARGET_PORT: "22"
+      LINUX_TARGET_USER: vartrack
+      LINUX_TARGET_PASS: VarTrack123
+    volumes:
+      - ../e2e/configs:/demo/configs:ro
+      - ../e2e/schemas:/demo/schemas:ro
+      - ../e2e/results:/results
+    depends_on:
+      gitea:            {condition: service_healthy}
+      orchestrator-api: {condition: service_healthy}
+      minio:            {condition: service_healthy}
+      minio-init:       {condition: service_completed_successfully}
+      vault-init:       {condition: service_completed_successfully}
+      linux-target:     {condition: service_healthy}
+      orchestrator-worker:
+        condition: service_started
+      watcher:
+        condition: service_healthy
+    restart: "no"

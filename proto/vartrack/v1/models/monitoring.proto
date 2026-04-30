@@ -1,0 +1,26 @@
+syntax = "proto3";
+
+package vartrack.v1;
+
+option go_package = "gateway-service/internal/gen/proto/go/vartrack/v1/models;modelspb";
+
+import "vartrack/v1/models/monitoring/jaeger.proto";
+import "vartrack/v1/models/monitoring/otel.proto";
+import "vartrack/v1/models/monitoring/prometheus.proto";
+import "vartrack/v1/models/monitoring/elk.proto";
+
+
+message Monitoring {
+  repeated MonitoringBackend backends = 1;
+}
+
+// MonitoringBackend is a oneof wrapper so the bundle can contain a
+// heterogeneous list of backend configs in a single repeated field.
+message MonitoringBackend {
+  oneof config {
+    JaegerConfig     jaeger     = 1;
+    OTelConfig       otel       = 2;
+    PrometheusConfig prometheus = 3;
+    ELKConfig        elk        = 4;
+  }
+}

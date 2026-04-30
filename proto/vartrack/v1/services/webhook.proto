@@ -1,0 +1,204 @@
+syntax = "proto3";
+
+package vartrack.v1;
+
+import "vartrack/v1/enums/task_state.proto";
+import "buf/validate/validate.proto";
+import "google/api/annotations.proto";
+import "google/api/field_behavior.proto";
+import "google/protobuf/duration.proto";
+import "google/protobuf/empty.proto";
+import "google/protobuf/timestamp.proto";
+import "google/rpc/status.proto";
+
+// Orchestrator defines the core synchronization logic for varTrack.
+// It receives data from entry points (like the Go gateway) and manages the sync lifecycle.
+service Orchestrator {
+  // ProcessWebhook sends a raw webhook payload to the backend for processing.
+  rpc ProcessWebhook(ProcessWebhookRequest) returns (ProcessWebhookResponse) {
+    option (google.api.http) = {
+      post: "/v1/webhooks/{datasource}"
+      body: "*"
+    };
+  }
+
+  // ProcessSchemaWebhook handles webhook events from the schema registry repo.
+  // The orchestrator should re-pull the schema repo when this is called.
+  rpc ProcessSchemaWebhook(ProcessSchemaWebhookRequest) returns (ProcessSchemaWebhookResponse) {
+    option (google.api.http) = {
+      post: "/v1/webhooks/schema-registry"
+      body: "*"
+    };
+  }
+
+  // GetWebhookTask retrieves the status of a previously submitted webhook task.
+  rpc GetWebhookTask(GetWebhookTaskRequest) returns (WebhookTask) {
+    option (google.api.http) = {
+      get: "/v1/tasks/{task_id}"
+    };
+  }
+
+  // Ping checks liveness of the orchestrator. Returns Empty on success.
+  rpc Ping(google.protobuf.Empty) returns (google.protobuf.Empty) {
+    option (google.api.http) = {
+      get: "/v1/ping"
+    };
+  }
+
+}
+
+// ────────────────────────────────────────────
+// Datasource webhooks
+// ────────────────────────────────────────────
+
+message ProcessWebhookRequest {
+  // The git platform name (e.g., "github")
+  string platform = 1 [
+    (buf.validate.field).string.min_len = 1,
+    (google.api.field_behavior) = REQUIRED
+  ];
+
+  // The target datasource name (e.g., "mongo")
+  string datasource = 2 [
+    (buf.validate.field).string.min_len = 1,
+    (google.api.field_behavior) = REQUIRED
+  ];
+
+  // The unparsed body of the webhook used for signature verification
+  string raw_payload = 3 [
+    (buf.validate.field).string.min_len = 1,
+    (google.api.field_behavior) = REQUIRED
+  ];
+
+  // HTTP headers containing metadata such as event types and signatures
+  map<string, string> headers = 4 [
+    (google.api.field_behavior) = OPTIONAL
+  ];
+
+  // When the gateway received this webhook (set by the gateway, not the caller).
+  google.protobuf.Timestamp received_at = 5 [
+    (google.api.field_behavior) = OUTPUT_ONLY
+  ];
+}
+
+message ProcessWebhookResponse {
+  // The ID of the task created in the backend (e.g., Celery task ID)
+  string task_id = 1 [
+    (google.api.field_behavior) = OUTPUT_ONLY
+  ];
+
+  // A descriptive message about the operation status
+  string message = 2 [
+    (google.api.field_behavior) = OUTPUT_ONLY
+  ];
+
+  // gRPC-level error detail (populated on partial failures or warnings).
+  google.rpc.Status status = 3 [
+    (google.api.field_behavior) = OUTPUT_ONLY
+  ];
+}
+
+// ────────────────────────────────────────────
+// Schema registry webhooks
+// ────────────────────────────────────────────
+
+message ProcessSchemaWebhookRequest {
+  // The git platform name (e.g., "github")
+  string platform = 1 [
+    (buf.validate.field).string.min_len = 1,
+    (google.api.field_behavior) = REQUIRED
+  ];
+
+  // Full repository path (e.g., "my-org/schemas")
+  string repo = 2 [
+    (buf.validate.field).string.min_len = 1,
+    (google.api.field_behavior) = REQUIRED
+  ];
+
+  // Branch that was pushed to (e.g., "main")
+  string branch = 3 [
+    (buf.validate.field).string.min_len = 1,
+    (google.api.field_behavior) = REQUIRED
+  ];
+
+  // The unparsed body of the webhook
+  string raw_payload = 4 [
+    (buf.validate.field).string.min_len = 1,
+    (google.api.field_behavior) = REQUIRED
+  ];
+
+  // HTTP headers from the webhook request
+  map<string, string> headers = 5 [
+    (google.api.field_behavior) = OPTIONAL
+  ];
+
+  // When the gateway received this webhook.
+  google.protobuf.Timestamp received_at = 6 [
+    (google.api.field_behavior) = OUTPUT_ONLY
+  ];
+}
+
+message ProcessSchemaWebhookResponse {
+  // The ID of the task created in the backend
+  string task_id = 1 [
+    (google.api.field_behavior) = OUTPUT_ONLY
+  ];
+
+  // A descriptive message about the operation status
+  string message = 2 [
+    (google.api.field_behavior) = OUTPUT_ONLY
+  ];
+
+  // gRPC-level error detail.
+  google.rpc.Status status = 3 [
+    (google.api.field_behavior) = OUTPUT_ONLY
+  ];
+}
+
+// ────────────────────────────────────────────
+// Task status (async result retrieval)
+// ────────────────────────────────────────────
+
+message GetWebhookTaskRequest {
+  string task_id = 1 [
+    (buf.validate.field).string.min_len = 1,
+    (google.api.field_behavior) = REQUIRED
+  ];
+}
+
+// WebhookTask represents the async processing status of a submitted webhook.
+message WebhookTask {
+  string task_id = 1 [
+    (google.api.field_behavior) = OUTPUT_ONLY
+  ];
+
+  TaskState state = 2 [
+    (google.api.field_behavior) = OUTPUT_ONLY
+  ];
+
+  // Human-readable description of the current state.
+  string message = 3 [
+    (google.api.field_behavior) = OUTPUT_ONLY
+  ];
+
+  // When the task was created.
+  google.protobuf.Timestamp created_at = 4 [
+    (google.api.field_behavior) = OUTPUT_ONLY
+  ];
+
+  // When the task finished (zero if still running).
+  google.protobuf.Timestamp finished_at = 5 [
+    (google.api.field_behavior) = OUTPUT_ONLY
+  ];
+
+  // How long the task took to complete.
+  google.protobuf.Duration duration = 6 [
+    (google.api.field_behavior) = OUTPUT_ONLY
+  ];
+
+  // Populated when state == FAILED.
+  google.rpc.Status error = 7 [
+    (google.api.field_behavior) = OUTPUT_ONLY
+  ];
+}
+

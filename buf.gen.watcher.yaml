@@ -1,0 +1,36 @@
+version: v2
+# Code generation template for watcher-service (Go gRPC client stubs).
+# Run: buf generate --template buf.gen.watcher.yaml
+#
+# gateway-service uses buf.gen.yaml (Go).
+# orchestrator-service uses buf.gen.yaml (Python).
+# watcher-service uses this file (Go).
+managed:
+  enabled: true
+  override:
+    - file_option: go_package_prefix
+      value: watcher-service/internal/gen/proto/go
+    # Route google/rpc protos to the canonical Go module package.
+    - file_option: go_package
+      path: google/rpc/status.proto
+      value: google.golang.org/genproto/googleapis/rpc/status;status
+    - file_option: go_package
+      path: google/rpc/code.proto
+      value: google.golang.org/genproto/googleapis/rpc/code;code
+    - file_option: go_package
+      path: google/api/field_behavior.proto
+      value: google.golang.org/genproto/googleapis/api/annotations;annotations
+    - file_option: go_package
+      path: google/api/annotations.proto
+      value: google.golang.org/genproto/googleapis/api/annotations;annotations
+
+plugins:
+  - remote: buf.build/protocolbuffers/go:v1.34.2
+    out: watcher-service/internal/gen/proto/go
+    opt: paths=source_relative
+
+  - remote: buf.build/grpc/go:v1.5.1
+    out: watcher-service/internal/gen/proto/go
+    opt:
+      - paths=source_relative
+      - require_unimplemented_servers=false

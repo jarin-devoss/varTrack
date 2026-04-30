@@ -1,0 +1,4 @@
+// Moved to vartrack/v1/enums/secret_id_type.proto
+syntax = "proto3";
+
+package vartrack.v1;

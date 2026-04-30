@@ -1,0 +1,53 @@
+# ── Python bytecode ───────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# ── Distribution / packaging ──────────────────────────────────────────────────
+dist/
+build/
+*.egg-info/
+*.egg
+
+# ── Virtual environments ──────────────────────────────────────────────────────
+.venv/
+venv/
+env/
+.pdm-python
+.pdm-build/
+.pixi/
+
+# ── Secrets / local config ────────────────────────────────────────────────────
+.env
+.envrc
+*.local.env
+
+# ── Test / coverage ───────────────────────────────────────────────────────────
+.pytest_cache/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+
+# ── Type checkers / linters ───────────────────────────────────────────────────
+.mypy_cache/
+.ruff_cache/
+.pytype/
+.pyre/
+
+# ── Celery ────────────────────────────────────────────────────────────────────
+celerybeat-schedule
+celerybeat.pid
+
+# ── Generated code ────────────────────────────────────────────────────────────
+app/generated/
+
+# ── Rust (rust_core) ──────────────────────────────────────────────────────────
+rust_core/target/
+
+# ── Logs ──────────────────────────────────────────────────────────────────────
+*.log
+pip_install.log
+mypy_errors.log
+ruff_errors.log

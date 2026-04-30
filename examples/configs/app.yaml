@@ -1,0 +1,42 @@
+# Example config file — YAML format.
+# Place this file in your Git repo. VarTrack parses it and writes
+# each top-level key-value pair to the configured sink.
+#
+# @secret() annotations are resolved by Vault at ETL time.
+# The resolved value (not the annotation) is written to the sink.
+
+app:
+  name: my-service
+  version: "1.0.0"
+  log_level: info
+  debug: false
+
+server:
+  host: "0.0.0.0"
+  port: 8080
+  timeout: 30s
+  max_connections: 1000
+
+database:
+  host: prod-db.internal
+  port: 5432
+  name: myapp
+  pool_size: 20
+  # @secret() pulls the value from Vault at ETL time.
+  password: "@secret(secret/myapp/db#password)"
+
+cache:
+  host: redis.internal
+  port: 6379
+  ttl: 3600
+
+auth:
+  jwt_algorithm: HS256
+  jwt_expiry: 86400
+  # Secret resolved from Vault — never stored in Git.
+  jwt_secret: "@secret(secret/myapp/auth#jwt_secret)"
+
+feature_flags:
+  new_dashboard: true
+  beta_api:      false
+  dark_mode:     true

@@ -1,0 +1,156 @@
+syntax = "proto3";
+
+package vartrack.v1;
+
+import "google/api/annotations.proto";
+import "google/api/field_behavior.proto";
+import "google/protobuf/timestamp.proto";
+import "vartrack/v1/enums/task_state.proto";
+
+// CLIService exposes direct-push operations for the vtctl CLI.
+// All RPCs require a valid Bearer JWT in the Authorization header
+// and are subject to RBAC enforcement at the gateway layer.
+service CLIService {
+  // SyncFile writes a local config file to a datasource sink,
+  // running the full ETL pipeline (parse → validate → write).
+  rpc SyncFile(SyncFileRequest) returns (SyncFileResponse) {
+    option (google.api.http) = {
+      post: "/v1/cli/sync"
+      body: "*"
+    };
+  }
+
+  // ValidateFile runs schema validation on a local config file
+  // without writing to any sink.
+  rpc ValidateFile(ValidateFileRequest) returns (ValidateFileResponse) {
+    option (google.api.http) = {
+      post: "/v1/cli/validate"
+      body: "*"
+    };
+  }
+
+  // GetTask retrieves the status of a CLI-submitted sync task.
+  rpc GetTask(GetCliTaskRequest) returns (CliTask) {
+    option (google.api.http) = {
+      get: "/v1/cli/tasks/{task_id}"
+    };
+  }
+
+  // ListTasks returns recent CLI tasks for a tenant.
+  rpc ListTasks(ListCliTasksRequest) returns (ListCliTasksResponse) {
+    option (google.api.http) = {
+      get: "/v1/cli/tasks"
+    };
+  }
+}
+
+// ────────────────────────────────────────────
+// SyncFile
+// ────────────────────────────────────────────
+
+message SyncFileRequest {
+  // Name of the datasource defined in the CUE bundle (e.g. "mongo-primary").
+  string datasource = 1 [(google.api.field_behavior) = REQUIRED];
+
+  // Target environment (e.g. "production", "staging", "pr-42").
+  string env = 2 [(google.api.field_behavior) = REQUIRED];
+
+  // Logical file path as it would appear in the git repo (e.g. "configs/app.yaml").
+  string file_path = 3 [(google.api.field_behavior) = REQUIRED];
+
+  // Raw file content (UTF-8).
+  string content = 4 [(google.api.field_behavior) = REQUIRED];
+
+  // File format hint. Detected from file_path extension when omitted.
+  // Accepted: yaml, json, toml, env, ini, hcl, properties
+  string format = 5 [(google.api.field_behavior) = OPTIONAL];
+
+  // Tenant identifier. Resolved from the authenticated user when omitted.
+  string tenant_id = 6 [(google.api.field_behavior) = OPTIONAL];
+
+  // When true the pipeline runs but no data is written to the sink.
+  bool dry_run = 7 [(google.api.field_behavior) = OPTIONAL];
+
+  // Optional human-readable label for this push (e.g. git commit SHA, PR number).
+  string label = 8 [(google.api.field_behavior) = OPTIONAL];
+}
+
+message SyncFileResponse {
+  // Celery task ID — use GetTask to poll for completion.
+  string task_id = 1 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // Human-readable status message.
+  string message = 2 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // Whether dry_run was active.
+  bool dry_run = 3 [(google.api.field_behavior) = OUTPUT_ONLY];
+}
+
+// ────────────────────────────────────────────
+// ValidateFile
+// ────────────────────────────────────────────
+
+message ValidateFileRequest {
+  // Logical file path (used to find the matching CUE schema).
+  string file_path = 1 [(google.api.field_behavior) = REQUIRED];
+
+  // Raw file content (UTF-8).
+  string content = 2 [(google.api.field_behavior) = REQUIRED];
+
+  // File format hint.
+  string format = 3 [(google.api.field_behavior) = OPTIONAL];
+
+  // Datasource name — used to select the right schema from the registry.
+  string datasource = 4 [(google.api.field_behavior) = OPTIONAL];
+
+  // Tenant identifier.
+  string tenant_id = 5 [(google.api.field_behavior) = OPTIONAL];
+}
+
+message ValidateFileResponse {
+  // ok | warn | failed
+  string status = 1 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // Validation messages (errors or warnings).
+  repeated string messages = 2 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // Number of keys parsed from the file.
+  int32 key_count = 3 [(google.api.field_behavior) = OUTPUT_ONLY];
+}
+
+// ────────────────────────────────────────────
+// Task retrieval
+// ────────────────────────────────────────────
+
+message GetCliTaskRequest {
+  string task_id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+message ListCliTasksRequest {
+  string tenant_id = 1 [(google.api.field_behavior) = OPTIONAL];
+  int32  limit     = 2 [(google.api.field_behavior) = OPTIONAL];
+  string cursor    = 3 [(google.api.field_behavior) = OPTIONAL];
+}
+
+message ListCliTasksResponse {
+  repeated CliTask tasks       = 1 [(google.api.field_behavior) = OUTPUT_ONLY];
+  string           next_cursor = 2 [(google.api.field_behavior) = OUTPUT_ONLY];
+}
+
+message CliTask {
+  string    task_id    = 1  [(google.api.field_behavior) = OUTPUT_ONLY];
+  TaskState state      = 2  [(google.api.field_behavior) = OUTPUT_ONLY];
+  string    message    = 3  [(google.api.field_behavior) = OUTPUT_ONLY];
+  string    datasource = 4  [(google.api.field_behavior) = OUTPUT_ONLY];
+  string    env        = 5  [(google.api.field_behavior) = OUTPUT_ONLY];
+  string    file_path  = 6  [(google.api.field_behavior) = OUTPUT_ONLY];
+  string    tenant_id  = 7  [(google.api.field_behavior) = OUTPUT_ONLY];
+  bool      dry_run    = 8  [(google.api.field_behavior) = OUTPUT_ONLY];
+  string    label      = 9  [(google.api.field_behavior) = OUTPUT_ONLY];
+  int32     written    = 10 [(google.api.field_behavior) = OUTPUT_ONLY];
+  int32     pruned     = 11 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  google.protobuf.Timestamp created_at  = 20 [(google.api.field_behavior) = OUTPUT_ONLY];
+  google.protobuf.Timestamp finished_at = 21 [(google.api.field_behavior) = OUTPUT_ONLY];
+  string                    error       = 22 [(google.api.field_behavior) = OUTPUT_ONLY];
+}

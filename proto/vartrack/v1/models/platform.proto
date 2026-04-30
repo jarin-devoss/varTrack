@@ -1,0 +1,17 @@
+syntax = "proto3";
+
+package vartrack.v1;
+
+import "vartrack/v1/models/platforms/github.proto";
+import "vartrack/v1/models/platforms/gitea.proto";
+import "buf/validate/validate.proto";
+
+message Platform {
+  oneof config {
+    // FIXED: Changed (buf.validate.field) to (buf.validate.oneof)
+    option (buf.validate.oneof).required = true;
+
+    GitHub github = 1;
+    Gitea  gitea  = 2;
+  }
+}

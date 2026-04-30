@@ -1,0 +1,5 @@
+// Deprecated: enums have moved to vartrack/v1/enums/.
+// This file is intentionally empty and will be removed in a future cleanup.
+syntax = "proto3";
+
+package vartrack.v1;

@@ -1,0 +1,35 @@
+# Example config file — TOML format.
+# VarTrack supports .toml files in your Git repo.
+
+[app]
+name    = "my-service"
+version = "1.0.0"
+env     = "production"
+
+[server]
+host             = "0.0.0.0"
+port             = 8080
+read_timeout_ms  = 5000
+write_timeout_ms = 10000
+
+[database]
+host     = "prod-db.internal"
+port     = 5432
+name     = "myapp"
+user     = "app-user"
+# Vault @secret annotation — resolved at ETL time.
+password = "@secret(secret/myapp/db#password)"
+pool_min = 5
+pool_max = 20
+ssl_mode = "require"
+
+[redis]
+host     = "redis.internal"
+port     = 6379
+db       = 0
+password = "@secret(secret/myapp/redis#password)"
+
+[logging]
+level  = "info"
+format = "json"
+output = "stdout"

@@ -1,0 +1,11 @@
+syntax = "proto3";
+
+package vartrack.v1;
+
+// DeploymentMode describes the Redis cluster topology.
+enum DeploymentMode {
+  DEPLOYMENT_MODE_UNSPECIFIED = 0;
+  STANDALONE                  = 1;
+  CLUSTER                     = 2;
+  SENTINEL                    = 3;
+}

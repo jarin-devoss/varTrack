@@ -1,0 +1,83 @@
+syntax = "proto3";
+
+package vartrack.v1;
+
+import "vartrack/v1/enums/strategy.proto";
+import "vartrack/v1/enums/deployment_mode.proto";
+import "vartrack/v1/enums/data_structure.proto";
+import "vartrack/v1/utils/secret_ref.proto";
+import "buf/validate/validate.proto";
+import "google/api/field_behavior.proto";
+import "google/protobuf/duration.proto";
+
+message RedisConfig {
+  optional string tag = 1 [(google.api.field_behavior) = OPTIONAL];
+  repeated string hosts = 2 [
+    (buf.validate.field).repeated.min_items = 1,
+    (google.api.field_behavior) = REQUIRED
+  ];
+  int32 database = 3 [
+    (buf.validate.field).int32 = {gte: 0, lte: 15},
+    (google.api.field_behavior) = OPTIONAL
+  ];
+  optional SecretRef password = 4 [(google.api.field_behavior) = OPTIONAL];
+  optional string username = 5 [(google.api.field_behavior) = OPTIONAL];
+
+  DeploymentMode mode = 6 [
+    (buf.validate.field).enum.defined_only = true,
+    (google.api.field_behavior) = REQUIRED
+  ];
+  optional string sentinel_master = 7 [(google.api.field_behavior) = OPTIONAL];
+  optional string key_prefix = 8 [(google.api.field_behavior) = OPTIONAL];
+  bool env_as_key_prefix = 9 [(google.api.field_behavior) = OPTIONAL];
+  string key_separator = 10 [
+    (buf.validate.field).string.min_len = 1,
+    (google.api.field_behavior) = OPTIONAL
+  ];
+  Strategy update_strategy = 11 [(buf.validate.field).enum.defined_only = true];
+
+  DataStructure data_structure = 12 [
+    (buf.validate.field).enum.defined_only = true,
+    (google.api.field_behavior) = OPTIONAL
+  ];
+  optional string hash_key = 13 [(google.api.field_behavior) = OPTIONAL];
+  google.protobuf.Duration ttl = 14 [
+    (buf.validate.field).duration.gte = {seconds: 0},
+    (google.api.field_behavior) = OPTIONAL
+  ];
+  int32 max_connections = 15 [
+    (buf.validate.field).int32 = {gte: 1, lte: 1000},
+    (google.api.field_behavior) = OPTIONAL
+  ];
+  int32 min_idle_connections = 16 [
+    (buf.validate.field).int32.gte = 0,
+    (google.api.field_behavior) = OPTIONAL
+  ];
+  google.protobuf.Duration connection_timeout = 17 [
+    (buf.validate.field).duration.gte = {seconds: 1},
+    (google.api.field_behavior) = OPTIONAL
+  ];
+  google.protobuf.Duration read_timeout = 18 [
+    (buf.validate.field).duration.gte = {seconds: 1},
+    (google.api.field_behavior) = OPTIONAL
+  ];
+  google.protobuf.Duration write_timeout = 19 [
+    (buf.validate.field).duration.gte = {seconds: 1},
+    (google.api.field_behavior) = OPTIONAL
+  ];
+  bool enable_tls = 20 [(google.api.field_behavior) = OPTIONAL];
+  optional string tls_ca_cert = 21 [(google.api.field_behavior) = OPTIONAL];
+  optional string tls_client_cert = 22 [(google.api.field_behavior) = OPTIONAL];
+  optional string tls_client_key = 23 [(google.api.field_behavior) = OPTIONAL];
+  bool insecure_skip_verify = 24 [(google.api.field_behavior) = OPTIONAL];
+  int32 max_retries = 25 [
+    (buf.validate.field).int32.gte = 0,
+    (google.api.field_behavior) = OPTIONAL
+  ];
+  google.protobuf.Duration retry_backoff = 26 [(google.api.field_behavior) = OPTIONAL];
+  bool enable_pipeline = 27 [(google.api.field_behavior) = OPTIONAL];
+  int32 pipeline_batch_size = 28 [
+    (buf.validate.field).int32 = {gte: 1, lte: 10000},
+    (google.api.field_behavior) = OPTIONAL
+  ];
+}

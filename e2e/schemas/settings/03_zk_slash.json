@@ -1,0 +1,17 @@
+[
+  {
+    "platform": "github",
+    "datasource": "zookeeper",
+    "repo_url": "http://gitea:3000/vartrack-demo/demo-configs.git",
+    "file_name": "app-settings.yaml",
+    "repositories": ["vartrack-demo/demo-configs"],
+    "env_as_branch": false,
+    "branch": "main",
+    "sync_mode": "SYNC_MODE_FULL",
+    "prune": true,
+    "self_heal": true,
+    "zk_hosts": ["zookeeper:2181"],
+    "key_format": "slash",
+    "destination_template": "/vartrack/{tenant}/default"
+  }
+]

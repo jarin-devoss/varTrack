@@ -1,0 +1,4 @@
+// Moved to vartrack/v1/enums/deployment_mode.proto and enums/data_structure.proto
+syntax = "proto3";
+
+package vartrack.v1;

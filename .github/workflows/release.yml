@@ -1,0 +1,201 @@
+name: Release
+
+# Triggers on any tag of the form v1.2.3, v1.2.3-beta.1, etc.
+on:
+  push:
+    tags:
+      - "v*"
+
+# Restrict all jobs to read-only by default; jobs that need write access
+# declare their own permissions block.
+permissions: read-all
+
+env:
+  GO_VERSION: "1.24"
+
+jobs:
+  # ── CLI binaries (vt) ─────────────────────────────────────────────────────
+  cli:
+    name: Build vt CLI
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - goos: linux
+            goarch: amd64
+            asset: vt_linux_amd64
+          - goos: linux
+            goarch: arm64
+            asset: vt_linux_arm64
+          - goos: darwin
+            goarch: amd64
+            asset: vt_darwin_amd64
+          - goos: darwin
+            goarch: arm64
+            asset: vt_darwin_arm64
+          - goos: windows
+            goarch: amd64
+            asset: vt_windows_amd64.exe
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: cli/go.sum
+
+      - name: Build
+        working-directory: cli
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: "0"
+        run: |
+          go build \
+            -ldflags "-X github.com/vartrack/vtctl/internal/commands.Version=${{ github.ref_name }} \
+                      -X github.com/vartrack/vtctl/internal/commands.GitCommit=${{ github.sha }}" \
+            -o ../dist/${{ matrix.asset }} \
+            ./cmd
+
+      - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: cli-${{ matrix.asset }}
+          path: dist/${{ matrix.asset }}
+
+  # ── gateway-service Linux binaries ───────────────────────────────────────
+  gateway-bin:
+    name: Build gateway-service binary
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - goarch: amd64
+            asset: gateway-service_linux_amd64
+          - goarch: arm64
+            asset: gateway-service_linux_arm64
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Install buf
+        uses: bufbuild/buf-setup-action@a47c93e0b1648d5651a065437926377d060baa99 # v1.50.0
+        with:
+          github_token: ${{ github.token }}
+
+      - name: Generate proto
+        run: buf generate
+
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: gateway-service/go.sum
+
+      - name: Build
+        working-directory: gateway-service
+        env:
+          GOOS: linux
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: "0"
+        run: |
+          go build \
+            -ldflags "-s -w" \
+            -o ../dist/${{ matrix.asset }} \
+            ./cmd
+
+      - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: gw-${{ matrix.asset }}
+          path: dist/${{ matrix.asset }}
+
+  # ── watcher-service Linux binaries ───────────────────────────────────────
+  watcher-bin:
+    name: Build watcher-service binary
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - goarch: amd64
+            asset: watcher-service_linux_amd64
+          - goarch: arm64
+            asset: watcher-service_linux_arm64
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Install buf
+        uses: bufbuild/buf-setup-action@a47c93e0b1648d5651a065437926377d060baa99 # v1.50.0
+        with:
+          github_token: ${{ github.token }}
+
+      - name: Generate proto
+        run: buf generate
+
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: watcher-service/go.sum
+
+      - name: Build
+        working-directory: watcher-service
+        env:
+          GOOS: linux
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: "0"
+        run: |
+          go build \
+            -ldflags "-s -w" \
+            -o ../dist/${{ matrix.asset }} \
+            ./cmd
+
+      - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: watcher-${{ matrix.asset }}
+          path: dist/${{ matrix.asset }}
+
+  # ── GitHub Release with all binary assets ────────────────────────────────
+  release:
+    name: Create GitHub Release
+    runs-on: ubuntu-latest
+    needs: [cli, gateway-bin, watcher-bin]
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Make Linux/macOS binaries executable
+        run: chmod +x dist/vt_linux_* dist/vt_darwin_* dist/gateway-service_* dist/watcher-service_*
+
+      - name: Create checksums
+        working-directory: dist
+        run: sha256sum ./* > SHA256SUMS.txt
+
+      - name: Compute semver
+        id: ver
+        run: echo "semver=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Publish release
+        uses: softprops/action-gh-release@b25b93d384199fc0fc8c2e126b2d937a0cbeb2ae # v2
+        with:
+          generate_release_notes: true
+          body: |
+            ## Docker Images
+
+            | Service | Image |
+            |---|---|
+            | gateway-service | `docker pull ${{ env.DOCKERHUB_USERNAME }}/gateway-service:${{ steps.ver.outputs.semver }}` |
+            | orchestrator-service | `docker pull ${{ env.DOCKERHUB_USERNAME }}/orchestrator-service:${{ steps.ver.outputs.semver }}` |
+            | watcher-service | `docker pull ${{ env.DOCKERHUB_USERNAME }}/watcher-service:${{ steps.ver.outputs.semver }}` |
+
+            https://hub.docker.com/u/${{ env.DOCKERHUB_USERNAME }}
+          files: |
+            dist/vt_linux_amd64
+            dist/vt_linux_arm64
+            dist/vt_darwin_amd64
+            dist/vt_darwin_arm64
+            dist/vt_windows_amd64.exe
+            dist/gateway-service_linux_amd64
+            dist/gateway-service_linux_arm64
+            dist/watcher-service_linux_amd64
+            dist/watcher-service_linux_arm64
+            dist/SHA256SUMS.txt

@@ -1,0 +1,14 @@
+syntax = "proto3";
+
+package vartrack.v1;
+
+// UpgradeStrategy controls the Helm release upgrade behaviour.
+enum UpgradeStrategy {
+  UPGRADE_STRATEGY_UNSPECIFIED = 0;
+  // Only push the new values; do not upgrade the chart version.
+  VALUES_ONLY                  = 1;
+  // Perform a full Helm upgrade (chart + values).
+  FULL_UPGRADE                 = 2;
+  // Install the release if it does not exist; upgrade otherwise.
+  INSTALL_OR_UPGRADE           = 3;
+}

@@ -1,0 +1,22 @@
+syntax = "proto3";
+
+package vartrack.v1;
+
+import "buf/validate/validate.proto";
+
+message SchemaRegistry {
+  // Platform name that hosts the schema repo (e.g. "github").
+  // Must match a platform defined in the bundle's platforms list.
+  string platform = 1 [(buf.validate.field).string.min_len = 1];
+
+  // Full repository path (e.g. "my-org/schemas").
+  string repo = 2 [(buf.validate.field).string.min_len = 1];
+
+  // Branch to track (e.g. "main").
+  string branch = 3 [(buf.validate.field).string.min_len = 1];
+
+  // Optional secret manager name for resolving platform credentials.
+  // Must match a name in bundle.secret_managers. If empty, the platform's
+  // SecretRef fields must be inline strings.
+  optional string secret_manager = 4;
+}

@@ -1,0 +1,76 @@
+syntax = "proto3";
+
+package vartrack.v1;
+
+import "vartrack/v1/utils/secret_ref.proto";
+import "buf/validate/validate.proto";
+import "google/api/field_behavior.proto";
+import "google/protobuf/duration.proto";
+
+message GitHub {
+  // --- Identity ---
+  // Optional tag to distinguish multiple instances of the same type.
+  // Resolved name: "github-{tag}" if set, otherwise "github".
+  optional string tag = 1 [(google.api.field_behavior) = OPTIONAL];
+
+  // --- Connection Settings ---
+  string endpoint  = 2 [
+    (buf.validate.field).string.uri = true,
+    (google.api.field_behavior) = REQUIRED
+  ];
+  string protocol  = 3 [
+    (buf.validate.field).string = {in: ["ssh", "http", "https"]},
+    (google.api.field_behavior) = REQUIRED
+  ];
+
+  // --- Credentials (inline string or external ref) ---
+  optional SecretRef token    = 4 [(google.api.field_behavior) = OPTIONAL];
+  optional string    username = 5 [(google.api.field_behavior) = OPTIONAL];
+  optional SecretRef password = 6 [(google.api.field_behavior) = OPTIONAL];
+  optional SecretRef secret   = 7 [(google.api.field_behavior) = OPTIONAL];
+
+  // --- Scope ---
+  optional string org_name = 8 [(google.api.field_behavior) = OPTIONAL];
+
+  // --- Reliability & Performance ---
+  bool  verify_ssl  = 9  [(google.api.field_behavior) = OPTIONAL];
+
+  // Per-request HTTP timeout. Uses Duration instead of raw int32 seconds
+  // for unambiguous semantics and sub-second precision.
+  // Minimum: 1s.
+  google.protobuf.Duration timeout = 10 [
+    (buf.validate.field).duration.gte = {seconds: 1},
+    (google.api.field_behavior) = OPTIONAL
+  ];
+
+  int32 max_retries = 11 [
+    (buf.validate.field).int32.gte = 0,
+    (google.api.field_behavior) = OPTIONAL
+  ];
+  int32 page_size   = 12 [
+    (buf.validate.field).int32 = {gte: 1, lte: 100},
+    (google.api.field_behavior) = OPTIONAL
+  ];
+
+  // --- Webhook Header Configuration ---
+  // Fixed by the GitHub API; clients cannot change these values.
+  string event_type_header = 13 [
+    (buf.validate.field).string.const = "X-GitHub-Event",
+    (google.api.field_behavior) = OUTPUT_ONLY
+  ];
+  string git_scm_signature = 14 [
+    (buf.validate.field).string.const = "X-Hub-Signature-256",
+    (google.api.field_behavior) = OUTPUT_ONLY
+  ];
+
+  // --- Event Name Constants ---
+  // Fixed by the GitHub API; clients cannot change these values.
+  string push_event_name = 15 [
+    (buf.validate.field).string.const = "push",
+    (google.api.field_behavior) = OUTPUT_ONLY
+  ];
+  string pr_event_name   = 16 [
+    (buf.validate.field).string.const = "pull_request",
+    (google.api.field_behavior) = OUTPUT_ONLY
+  ];
+}

@@ -1,0 +1,63 @@
+syntax = "proto3";
+
+package vartrack.v1;
+
+import "google/api/field_behavior.proto";
+
+// OPAConfig enables Open Policy Agent for fine-grained policy evaluation.
+//
+// OPA is evaluated AFTER Casbin RBAC.  Casbin answers "can this role
+// perform this action on this resource type?" and OPA answers the
+// contextual question "given this specific request context, is it allowed?"
+//
+// This lets you write policies like:
+//   - "operators cannot sync to env=production"
+//   - "only admin can sync files matching configs/secrets/*"
+//   - "no syncs allowed to datasource=mongo-prod on Fridays"
+//
+// OPA policy receives the following input document:
+//
+//   input = {
+//     "user":       { "sub": "...", "email": "...", "groups": [...] },
+//     "action":     "sync",
+//     "resource":   "datasource",
+//     "datasource": "mongo-primary",
+//     "env":        "production",
+//     "file_path":  "configs/app.yaml",
+//     "tenant_id":  "myapp",
+//     "dry_run":    false
+//   }
+//
+// The policy must define:
+//   allow = true   (default deny — requests are blocked when allow is not true)
+// OPA is embedded in the gateway process using the OPA Go SDK.
+// The Rego policy is compiled once at startup (PrepareForEval) and
+// reused for every request — evaluation latency is ~50µs in-process.
+//
+// Exactly one of inline_policy, policy_file, or server_url must be set.
+message OPAConfig {
+  oneof source {
+    // inline_policy embeds the Rego policy text directly in the bundle.
+    // The policy is compiled in-process at gateway startup.
+    // Recommended for most deployments — no extra process or file needed.
+    //
+    // Example:
+    //   package vartrack.authz
+    //   default allow = false
+    //   allow { input.action != "sync" }
+    //   allow { input.action == "sync"; input.env != "production" }
+    //   allow { input.action == "sync"; input.env == "production"
+    //           "role:admin" == input.user.groups[_] }
+    string inline_policy = 1;
+
+    // policy_file is the path to a .rego file on the gateway's filesystem.
+    // The file is compiled in-process at startup; call the gateway's
+    // /admin/opa/reload endpoint to recompile without restart.
+    string policy_file = 2;
+
+    // server_url delegates evaluation to a remote OPA REST server.
+    // e.g. http://opa:8181/v1/data/vartrack/authz/allow
+    // Use when policies are managed by a dedicated OPA deployment.
+    string server_url = 3;
+  }
+}

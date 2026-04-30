@@ -1,0 +1,123 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "orchestrator-service"
+version = "0.2.0"
+description = "VarTrack Orchestrator – GitOps ETL pipeline with CUE schema validation"
+license = {text = "Apache-2.0"}
+requires-python = ">=3.11"
+dependencies = [
+    # Web
+    "fastapi>=0.111",
+    "uvicorn[standard]>=0.29",
+    "gunicorn>=22",
+
+    # Celery
+    "celery[redis]>=5.3",
+    "flower>=2.0",
+    "kombu>=5.3",
+
+    # MongoDB
+    "pymongo>=4.6",
+
+    # ZooKeeper
+    "kazoo>=2.9",
+
+    # SSH (linux_server sink — SSHClient for config deployment to Linux targets)
+    "paramiko>=3.4",
+
+    # S3 sink
+    "boto3>=1.34",
+
+    # Vault secret resolver (hvac is the official HashiCorp Vault Python client)
+    "hvac>=2.0",
+
+    # Git
+    "gitpython>=3.1",
+
+    # Parsing
+    "PyYAML>=6",
+    # tomllib is stdlib in Python 3.11+; tomli is the backport
+    "tomli>=2.0; python_version < '3.11'",
+    # Safe XML parsing (defusedxml protects against XML bomb / XXE attacks)
+    "defusedxml>=0.7",
+
+    # HCL parsing (Terraform .tf / .tfvars) — required for correct parsing of
+    # nested blocks. Without this, hcl_parser.py silently falls back to the
+    # KV parser which mishandles nested HCL structures.
+    "python-hcl2>=4.3",
+
+    # Observability
+    "structlog>=24.1",
+    "prometheus-client>=0.20",
+    # OpenTelemetry SDK + exporters + auto-instrumentation
+    "opentelemetry-sdk>=1.24",
+    "opentelemetry-exporter-otlp-proto-grpc>=1.24",
+    "opentelemetry-exporter-otlp-proto-http>=1.24",
+    "opentelemetry-instrumentation-fastapi>=0.45b0",
+    "opentelemetry-instrumentation-celery>=0.45b0",
+    "opentelemetry-instrumentation-grpc>=0.45b0",
+
+    # Utils
+    "python-dateutil>=2.9",
+    "pydantic>=2.5",
+    "pydantic-settings>=2.1",
+]
+
+[project.optional-dependencies]
+# Runtime test dependencies — install with: pip install -e ".[test]"
+test = [
+    "pytest>=8",
+    "pytest-asyncio>=0.23",
+    "pytest-cov>=5",
+    "httpx>=0.27",
+]
+# Linting / type-checking tools — install with: pip install -e ".[dev]"
+# In practice, local development installs both: pip install -e ".[test,dev]"
+dev = [
+    "orchestrator-service[test]",
+    "ruff>=0.3",
+    "mypy>=1.8",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["app*"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+
+[tool.ruff]
+line-length = 100
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = ["E402", "F401"]
+
+[tool.mypy]
+python_version = "3.14"
+ignore_missing_imports = true
+disable_error_code = ["import-untyped"]
+
+[[tool.mypy.overrides]]
+module = [
+    "app.tls",
+    "app.monitoring.prometheus",
+    "app.monitoring.elk",
+    "app.monitoring.otel",
+    "app.pipeline.sinks",
+    "app.pipeline.sinks.redis",
+    "app.pipeline.sinks.mongo",
+    "app.pipeline.sinks.linux_server",
+    "app.pipeline.stage_etl",
+    "app.grpc_server.server",
+    "app.api.routers.cli",
+    "app.schema_registry.manager",
+    "app.pipeline.schema_utils",
+    "app.pipeline.validator",
+    "app.monitoring.app",
+    "app.api.app",
+    "app.parsers.hcl_parser",
+]
+ignore_errors = true

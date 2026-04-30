@@ -1,0 +1,28 @@
+# ── Build output ──────────────────────────────────────────────────────────────
+gateway-service
+/bin/
+/dist/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# ── Test artifacts ────────────────────────────────────────────────────────────
+*.test
+coverage.out
+coverage.html
+*.coverprofile
+
+# ── Go tooling ────────────────────────────────────────────────────────────────
+vendor/
+
+
+# ── Secrets / local config ────────────────────────────────────────────────────
+.env
+.envrc
+*.local.env
+config.local.cue
+
+# ── Live reload (Air) ─────────────────────────────────────────────────────────
+tmp/

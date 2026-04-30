@@ -1,0 +1,55 @@
+version: 2
+updates:
+  # GitHub Actions
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+
+  # Go — gateway-service
+  - package-ecosystem: "gomod"
+    directory: "/gateway-service"
+    schedule:
+      interval: "weekly"
+
+  # Go — watcher-service
+  - package-ecosystem: "gomod"
+    directory: "/watcher-service"
+    schedule:
+      interval: "weekly"
+
+  # Go — cli
+  - package-ecosystem: "gomod"
+    directory: "/cli"
+    schedule:
+      interval: "weekly"
+
+  # Python — orchestrator-service
+  - package-ecosystem: "pip"
+    directory: "/orchestrator-service"
+    schedule:
+      interval: "weekly"
+
+  # Docker — gateway-service
+  - package-ecosystem: "docker"
+    directory: "/gateway-service"
+    schedule:
+      interval: "weekly"
+
+  # Docker — watcher-service
+  - package-ecosystem: "docker"
+    directory: "/watcher-service"
+    schedule:
+      interval: "weekly"
+
+  # Docker — orchestrator-service
+  - package-ecosystem: "docker"
+    directory: "/orchestrator-service/docker"
+    schedule:
+      interval: "weekly"
+
+  # Docker — e2e
+  - package-ecosystem: "docker"
+    directory: "/e2e/init"
+    schedule:
+      interval: "weekly"

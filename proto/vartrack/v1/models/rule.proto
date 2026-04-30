@@ -1,0 +1,178 @@
+syntax = "proto3";
+
+package vartrack.v1;
+
+import "vartrack/v1/enums/sync_mode.proto";
+import "buf/validate/validate.proto";
+import "google/api/field_behavior.proto";
+import "google/protobuf/duration.proto";
+import "google/protobuf/timestamp.proto";
+
+// RepositoryOverride lets a single rule enable/disable itself for a subset
+// of repositories matched by name glob.
+message RepositoryOverride {
+  repeated string match_repositories   = 1 [(google.api.field_behavior) = OPTIONAL];
+  repeated string exclude_repositories = 2 [(google.api.field_behavior) = OPTIONAL];
+  bool            enable               = 3 [(google.api.field_behavior) = OPTIONAL];
+}
+
+// PruneConfig controls how stale keys are removed from the sink.
+//
+// last       – defer deletion until ALL sources for a given env have been
+//              processed (safe for multi-file rules that share one env).
+// dry_run    – simulate the prune step: reads live DB state to compute
+//              candidates but never actually deletes. Always forced to true
+//              when the outer task runs in dry-run mode.
+// protection – glob patterns for keys that must never be deleted
+//              (e.g. "bootstrap.*", "_schema").
+message PruneConfig {
+  // enabled = true  → prune is active (equivalent to legacy prune: true)
+  // enabled = false → prune is disabled (equivalent to legacy prune: false)
+  // When using the structured form (prune: { last: … }) enabled is always true.
+  bool            enabled    = 4 [(google.api.field_behavior) = OPTIONAL];
+  bool            last       = 1 [(google.api.field_behavior) = OPTIONAL];
+  bool            dry_run    = 2 [(google.api.field_behavior) = OPTIONAL];
+  repeated string protection = 3 [(google.api.field_behavior) = OPTIONAL];
+}
+
+message Rule {
+  // ── Required ────────────────────────────────────────────────────────────────
+
+  string platform = 1 [
+    (buf.validate.field).string.min_len = 1,
+    (google.api.field_behavior) = REQUIRED
+  ];
+
+  string datasource = 2 [
+    (buf.validate.field).string.min_len = 1,
+    (google.api.field_behavior) = REQUIRED
+  ];
+
+  repeated string repositories = 5 [
+    (buf.validate.field).repeated.min_items = 1,
+    (google.api.field_behavior) = REQUIRED
+  ];
+
+  // ── Source selection ─────────────────────────────────────────────────────────
+
+  // Explicit single file to track in every repository.
+  // Mutually exclusive with file_path_map (validated below).
+  optional string file_name = 4 [(google.api.field_behavior) = OPTIONAL];
+
+  // Maps environment label → file path for per-env config files.
+  // e.g. { "production": "config/prod.json", "staging": "config/staging.json" }
+  map<string, string> file_path_map = 11 [(google.api.field_behavior) = OPTIONAL];
+
+  // ── root_key ─────────────────────────────────────────────────────────────────
+  //
+  // Top-level key to extract from the parsed file BEFORE flattening.
+  // Only that subtree is written to the sink.
+  //
+  // Default behaviour (field absent or unset):
+  //   → "vartrack" is used as the key.
+  //   → If the file contains a "vartrack" key, only that section is synced.
+  //   → If "vartrack" is absent, the WHOLE FILE is used (soft fallback).
+  //
+  // Set to "" to always process the entire file regardless of its contents.
+  //
+  // Examples:
+  //   root_key: "properties"  → sync only the "properties" object
+  //   root_key: "vartrack"    → (default) sync "vartrack" section or whole file
+  //   root_key: ""            → always sync whole file
+  //
+  // Works the same way for every supported format: JSON, YAML, TOML, XML,
+  // .env, .properties, HCL, INI, JS-module — because lookup happens after
+  // parsing, against a plain Python/Rust dict.
+  optional string root_key = 24 [(google.api.field_behavior) = OPTIONAL];
+
+  // ── Environment resolution ───────────────────────────────────────────────────
+
+  bool env_as_branch = 7  [(google.api.field_behavior) = OPTIONAL];
+  bool env_as_pr     = 8  [(google.api.field_behavior) = OPTIONAL];
+  bool env_as_tags   = 9  [(google.api.field_behavior) = OPTIONAL];
+
+  map<string, string> branch_map = 10 [(google.api.field_behavior) = OPTIONAL];
+
+  // ── Sink / merge options ─────────────────────────────────────────────────────
+
+  optional string secret_manager  = 3  [(google.api.field_behavior) = OPTIONAL];
+  // Universal storage path / key / name template for the sink.
+  // Supported placeholders: {tenant}, {env}
+  //
+  // Sink        Interpretation               Example
+  // ──────────  ───────────────────────────  ──────────────────────────────────
+  // zookeeper   znode root path              "/{tenant}/{env}"  → /acme/pr-42
+  // s3          S3 key prefix                "{tenant}/{env}"   → acme/pr-42/config.json
+  // redis       key prefix                   "{tenant}:{env}"   → acme:pr-42:vartrack
+  // mongo       collection name              "{env}-config"     → pr-42-config
+  // linux       full file path               "/etc/app/{env}/config.env"
+  // helm        release name                 "app-{env}"        → app-pr-42
+  // configmap   ConfigMap name               "myapp-{env}"      → myapp-pr-42
+  //
+  // When not set each sink falls back to its own sink-specific config key.
+  string destination_template     = 12 [(google.api.field_behavior) = OPTIONAL];
+  map<string, string> variables_map = 13 [(google.api.field_behavior) = OPTIONAL];
+  SyncMode sync_mode              = 14 [(google.api.field_behavior) = OPTIONAL];
+
+  // Field 21 was: apply_strategy (ApplyStrategy). Always CLIENT_SIDE — removed.
+  reserved 21;
+  reserved "apply_strategy";
+
+  // ── Repository filtering ─────────────────────────────────────────────────────
+
+  repeated string exclude_repositories  = 6  [(google.api.field_behavior) = OPTIONAL];
+  repeated RepositoryOverride overrides = 15 [(google.api.field_behavior) = OPTIONAL];
+
+  // ── Pruning ──────────────────────────────────────────────────────────────────
+  // Structured prune config — replaces the old flat bool fields.
+  // prune.last       → defer deletion until all sources are processed
+  // prune.dry_run    → simulate only; always forced true when task dry_run=true
+  // prune.protection → glob patterns that are never pruned
+
+  PruneConfig prune = 16 [(google.api.field_behavior) = OPTIONAL];
+
+  // Field numbers 17–19 were: prune_last, prune_protection, dry_run_prune.
+  // They are now encoded inside PruneConfig (field 16). Reserved for wire safety.
+  reserved 17, 18, 19;
+  reserved "prune_last", "prune_protection", "dry_run_prune";
+
+  // ── Dry-run mode ──────────────────────────────────────────────────────────────
+  //
+  // When true, the pipeline runs in simulation mode for every webhook that
+  // matches this rule: Stage 1 (payload) and Stage 2 (ETL) execute fully —
+  // @secret fields are fetched and then masked as "***" in the report —
+  // but Stage 3 (sink write) is skipped.  No data is ever written to the sink.
+  //
+  // Use case: "shadow" rules that validate config changes in CI/CD without
+  // touching the live datasource; canary rules during schema migrations.
+  //
+  // This flag is always forced to true by the /dry-run API endpoint even if
+  // the rule itself has dry_run = false.
+  bool dry_run = 25 [(google.api.field_behavior) = OPTIONAL];
+
+  // ── Self-heal / scheduling ───────────────────────────────────────────────────
+
+  bool self_heal = 20 [(google.api.field_behavior) = OPTIONAL];
+  google.protobuf.Duration retry_backoff = 22 [(google.api.field_behavior) = OPTIONAL];
+
+  // ── Metadata (output only) ───────────────────────────────────────────────────
+
+  google.protobuf.Timestamp last_applied_at = 23 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // ── Validation constraints ───────────────────────────────────────────────────
+
+  option (buf.validate.message).cel = {
+    id: "rule.scan_target",
+    message: "Provide either 'file_name' or 'file_path_map'",
+    expression: "has(this.file_name) || this.file_path_map.size() > 0"
+  };
+
+  option (buf.validate.message).cel = {
+    id: "rule.destination_template_env_requirement",
+    message: "destination_template uses {env} but no environment strategy is enabled",
+    expression:
+      "!this.destination_template.contains('{env}') || "
+      "(this.env_as_branch || this.env_as_pr || this.env_as_tags || "
+      "this.branch_map.size() > 0 || this.file_path_map.size() > 0)"
+  };
+}

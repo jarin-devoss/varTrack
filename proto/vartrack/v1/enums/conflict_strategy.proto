@@ -1,0 +1,12 @@
+syntax = "proto3";
+
+package vartrack.v1;
+
+// ConflictStrategy controls how the orchestrator resolves write conflicts
+// when a ConfigMap already exists with different content.
+enum ConflictStrategy {
+  CONFLICT_STRATEGY_UNSPECIFIED = 0;
+  REPLACE                       = 1;
+  PATCH                         = 2;
+  FAIL                          = 3;
+}

@@ -1,0 +1,327 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# Restrict all jobs to read-only by default; jobs that need write access
+# declare their own permissions block.
+permissions:
+  contents: read
+
+jobs:
+  # ── Gateway Service (Go) ────────────────────────────────────────────────────
+  gateway:
+    name: gateway-service
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: gateway-service
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version-file: gateway-service/go.mod
+          cache-dependency-path: gateway-service/go.sum
+
+      - name: Install buf
+        uses: bufbuild/buf-setup-action@a47c93e0b1648d5651a065437926377d060baa99 # v1.50.0
+        with:
+          github_token: ${{ github.token }}
+
+      - name: Generate proto
+        working-directory: .
+        run: buf generate
+
+      - name: Tidy
+        run: go mod tidy && git diff --exit-code go.sum
+
+      - name: Lint (go vet)
+        run: go vet ./...
+
+      - name: Build
+        run: go build ./...
+
+      - name: Test
+        run: go test ./... -timeout 120s -coverprofile=coverage.out
+
+      - name: Upload coverage
+        uses: codecov/codecov-action@b9fd7d16f6d7d1b5d2bec1a2887e65ceed900238 # v4
+        with:
+          files: gateway-service/coverage.out
+          flags: gateway-service
+          token: ${{ secrets.CODECOV_TOKEN }}
+
+  # ── Watcher Service (Go) ────────────────────────────────────────────────────
+  watcher:
+    name: watcher-service
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: watcher-service
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version-file: watcher-service/go.mod
+          cache-dependency-path: watcher-service/go.sum
+
+      - name: Tidy
+        run: go mod tidy && git diff --exit-code go.sum
+
+      - name: Lint (go vet)
+        run: go vet ./...
+
+      - name: Build
+        run: go build ./...
+
+      - name: Test
+        run: go test ./... -timeout 120s -coverprofile=coverage.out
+
+      - name: Upload coverage
+        uses: codecov/codecov-action@b9fd7d16f6d7d1b5d2bec1a2887e65ceed900238 # v4
+        with:
+          files: watcher-service/coverage.out
+          flags: watcher-service
+          token: ${{ secrets.CODECOV_TOKEN }}
+
+  # ── Orchestrator Service (Python) ───────────────────────────────────────────
+  orchestrator:
+    name: orchestrator-service
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: orchestrator-service
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: "3.14"
+
+      - uses: astral-sh/setup-uv@e06108dd0aef18192324c70427afc47652e63a82 # v7
+        with:
+          version: "0.10.10"
+
+      - name: Install dependencies
+        run: uv pip install --system --require-hashes -r requirements-dev.txt
+
+      - name: Lint (ruff)
+        run: ruff check .
+
+      - name: Type-check (mypy)
+        run: mypy app --ignore-missing-imports
+
+      - name: Test
+        run: pytest -x -q --cov=app --cov-report=xml
+
+      - name: Upload coverage
+        uses: codecov/codecov-action@b9fd7d16f6d7d1b5d2bec1a2887e65ceed900238 # v4
+        with:
+          files: orchestrator-service/coverage.xml
+          flags: orchestrator-service
+          token: ${{ secrets.CODECOV_TOKEN }}
+
+  # ── CodeQL analysis ─────────────────────────────────────────────────────────
+  codeql:
+    name: CodeQL (${{ matrix.language }})
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write
+      actions: read
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - language: go
+            build-mode: autobuild
+          - language: python
+            build-mode: none
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - uses: github/codeql-action/init@820e3160e279568db735cee8ed8f8e77a6da7818 # v3
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: ${{ matrix.build-mode }}
+          config-file: .github/codeql-config.yml
+
+      - uses: github/codeql-action/autobuild@820e3160e279568db735cee8ed8f8e77a6da7818 # v3
+        if: matrix.build-mode == 'autobuild'
+
+      - uses: github/codeql-action/analyze@820e3160e279568db735cee8ed8f8e77a6da7818 # v3
+        with:
+          category: /language:${{ matrix.language }}
+
+  # ── Docker image builds (no push) ───────────────────────────────────────────
+  docker-build:
+    name: docker-build (${{ matrix.service }})
+    runs-on: ubuntu-latest
+    needs: [gateway, watcher, orchestrator]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - service: gateway-service
+            context: gateway-service
+            dockerfile: gateway-service/Dockerfile
+          - service: watcher-service
+            context: watcher-service
+            dockerfile: watcher-service/Dockerfile
+          - service: orchestrator-service
+            context: orchestrator-service
+            dockerfile: orchestrator-service/docker/Dockerfile
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd # v4.0.0
+
+      - name: Build ${{ matrix.service }}
+        uses: docker/build-push-action@d08e5c354a6adb9ed34480a06d141179aa583294 # v7.0.0
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.dockerfile }}
+          push: false
+          cache-from: type=gha,scope=${{ matrix.service }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.service }}
+
+  # ── E2E tests (PR only) ─────────────────────────────────────────────────────
+  e2e:
+    name: e2e
+    runs-on: ubuntu-latest
+    needs: [docker-build]
+    if: github.event_name == 'pull_request'
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd # v4.0.0
+
+      - name: Start e2e stack
+        working-directory: e2e
+        run: |
+          docker compose up --build --detach
+          docker compose wait e2e-demo
+
+      - name: Dump e2e-demo logs
+        if: always()
+        working-directory: e2e
+        run: docker compose logs e2e-demo
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: e2e-results
+          path: e2e/results/
+          retention-days: 7
+
+      - name: Tear down
+        if: always()
+        working-directory: e2e
+        run: docker compose down -v --remove-orphans
+
+  # ── actionlint — lint the CI YAML itself ─────────────────────────────────────
+  # Catches injection vulnerabilities and mistakes in workflow files before they
+  # reach the runner.  No account or token needed.
+  actionlint:
+    name: actionlint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Lint GitHub Actions workflows
+        run: |
+          curl -sSfL https://github.com/rhysd/actionlint/releases/download/v1.7.11/actionlint_1.7.11_linux_amd64.tar.gz \
+            | tar xz actionlint
+          ./actionlint -color
+
+  # ── Trivy — scan Docker images for CVEs ─────────────────────────────────────
+  # Runs after docker-build succeeds.  Uploads findings as SARIF so they appear
+  # in the GitHub Security tab alongside CodeQL results.  Free, no signup.
+  trivy:
+    name: trivy (${{ matrix.service }})
+    runs-on: ubuntu-latest
+    needs: [docker-build]
+    permissions:
+      security-events: write
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - service: gateway-service
+            context: gateway-service
+            dockerfile: gateway-service/Dockerfile
+          - service: watcher-service
+            context: watcher-service
+            dockerfile: watcher-service/Dockerfile
+          - service: orchestrator-service
+            context: orchestrator-service
+            dockerfile: orchestrator-service/docker/Dockerfile
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd # v4.0.0
+
+      - name: Build image for scanning
+        uses: docker/build-push-action@d08e5c354a6adb9ed34480a06d141179aa583294 # v7.0.0
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.dockerfile }}
+          push: false
+          load: true
+          tags: ${{ matrix.service }}:scan
+          cache-from: type=gha,scope=${{ matrix.service }}
+
+      - name: Run Trivy vulnerability scan
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # master
+        with:
+          image-ref: ${{ matrix.service }}:scan
+          format: sarif
+          output: trivy-${{ matrix.service }}.sarif
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+
+      - name: Upload Trivy results to Security tab
+        uses: github/codeql-action/upload-sarif@820e3160e279568db735cee8ed8f8e77a6da7818 # v3
+        if: always()
+        with:
+          sarif_file: trivy-${{ matrix.service }}.sarif
+          category: trivy-${{ matrix.service }}
+
+  # ── OpenSSF Scorecard (main branch only) ────────────────────────────────────
+  scorecard:
+    name: OpenSSF Scorecard
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    permissions:
+      security-events: write
+      id-token: write
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - uses: ossf/scorecard-action@62b2cac7ed8198b15735ed49ab1e5cf35480ba46 # v2.4.0
+        with:
+          results_file: results.sarif
+          results_format: sarif
+          publish_results: true
+
+      - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: scorecard-results
+          path: results.sarif
+          retention-days: 5
+
+      - uses: github/codeql-action/upload-sarif@820e3160e279568db735cee8ed8f8e77a6da7818 # v3
+        with:
+          sarif_file: results.sarif
+

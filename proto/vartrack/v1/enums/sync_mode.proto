@@ -1,0 +1,16 @@
+syntax = "proto3";
+
+package vartrack.v1;
+
+// SyncMode determines how the orchestrator reconciles git state with the sink.
+enum SyncMode {
+  SYNC_MODE_UNSPECIFIED     = 0;
+  // Upsert every variable from git; never delete.
+  SYNC_MODE_GIT_UPSERT_ALL  = 1;
+  // Upsert variables that differ; delete keys absent in git (smart repair).
+  SYNC_MODE_GIT_SMART_REPAIR = 2;
+  // Continuously reconcile live sink state with git (streaming mode).
+  SYNC_MODE_LIVE_STATE      = 3;
+  // Let the orchestrator choose the best mode based on the datasource type.
+  SYNC_MODE_AUTO            = 4;
+}

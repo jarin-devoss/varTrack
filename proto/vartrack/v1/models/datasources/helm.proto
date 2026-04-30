@@ -1,0 +1,74 @@
+syntax = "proto3";
+
+package vartrack.v1;
+
+import "vartrack/v1/enums/strategy.proto";
+import "vartrack/v1/enums/upgrade_strategy.proto";
+import "vartrack/v1/utils/secret_ref.proto";
+import "buf/validate/validate.proto";
+import "google/api/field_behavior.proto";
+import "google/protobuf/duration.proto";
+
+message HelmValuesConfig {
+  optional string tag = 1 [(google.api.field_behavior) = OPTIONAL];
+  optional string kubeconfig_path = 2 [(google.api.field_behavior) = OPTIONAL];
+  optional string api_server = 3 [(google.api.field_behavior) = OPTIONAL];
+  optional SecretRef token = 4 [(google.api.field_behavior) = OPTIONAL];
+  optional string client_cert = 5 [(google.api.field_behavior) = OPTIONAL];
+  optional string client_key = 6 [(google.api.field_behavior) = OPTIONAL];
+  optional string ca_cert = 7 [(google.api.field_behavior) = OPTIONAL];
+  bool insecure_skip_verify = 8 [(google.api.field_behavior) = OPTIONAL];
+  optional string context = 9 [(google.api.field_behavior) = OPTIONAL];
+  string namespace = 10 [
+    (buf.validate.field).string.min_len = 1,
+    (google.api.field_behavior) = REQUIRED
+  ];
+  string release_name = 11 [
+    (buf.validate.field).string.min_len = 1,
+    (google.api.field_behavior) = REQUIRED
+  ];
+  optional string chart_name = 12 [(google.api.field_behavior) = OPTIONAL];
+  optional string chart_version = 13 [(google.api.field_behavior) = OPTIONAL];
+  optional string chart_repo = 14 [(google.api.field_behavior) = OPTIONAL];
+  bool env_as_namespace = 15 [(google.api.field_behavior) = OPTIONAL];
+  bool env_as_release_suffix = 16 [(google.api.field_behavior) = OPTIONAL];
+  Strategy update_strategy = 17 [(buf.validate.field).enum.defined_only = true];
+  UpgradeStrategy upgrade_strategy = 18 [
+    (buf.validate.field).enum.defined_only = true,
+    (google.api.field_behavior) = OPTIONAL
+  ];
+  bool wait = 19 [(google.api.field_behavior) = OPTIONAL];
+  google.protobuf.Duration wait_timeout = 20 [
+    (buf.validate.field).duration.gte = {seconds: 1},
+    (google.api.field_behavior) = OPTIONAL
+  ];
+  bool force = 21 [(google.api.field_behavior) = OPTIONAL];
+  bool cleanup_on_fail = 22 [(google.api.field_behavior) = OPTIONAL];
+  bool atomic = 23 [(google.api.field_behavior) = OPTIONAL];
+  bool skip_crds = 24 [(google.api.field_behavior) = OPTIONAL];
+  string values_merge_strategy = 25 [
+    (buf.validate.field).string = {in: ["merge", "replace", ""]},
+    (google.api.field_behavior) = OPTIONAL
+  ];
+  optional string values_prefix = 26 [(google.api.field_behavior) = OPTIONAL];
+  repeated string additional_values_files = 27 [(google.api.field_behavior) = OPTIONAL];
+  bool no_hooks = 28 [(google.api.field_behavior) = OPTIONAL];
+  bool dry_run = 29 [(google.api.field_behavior) = OPTIONAL];
+  bool enable_rollback = 30 [(google.api.field_behavior) = OPTIONAL];
+  int32 max_history = 31 [
+    (buf.validate.field).int32 = {gte: 0, lte: 100},
+    (google.api.field_behavior) = OPTIONAL
+  ];
+  google.protobuf.Duration timeout = 32 [
+    (buf.validate.field).duration.gte = {seconds: 1},
+    (google.api.field_behavior) = OPTIONAL
+  ];
+  int32 max_retries = 33 [
+    (buf.validate.field).int32.gte = 0,
+    (google.api.field_behavior) = OPTIONAL
+  ];
+  string output_format = 34 [
+    (buf.validate.field).string = {in: ["yaml", "json", ""]},
+    (google.api.field_behavior) = OPTIONAL
+  ];
+}

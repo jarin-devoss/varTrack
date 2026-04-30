@@ -1,0 +1,772 @@
+{
+  "run_started_at": "2026-03-15T08:28:46.636057+00:00",
+  "run_finished_at": "2026-03-15T08:36:59.277739+00:00",
+  "total_duration_ms": 492660.7,
+  "summary": {
+    "total": 16,
+    "passed": 16,
+    "failed": 0,
+    "skipped": 0,
+    "pass_rate": 100.0
+  },
+  "environment": {
+    "orchestrator": "http://orchestrator-api:8000",
+    "gitea": "http://gitea:3000"
+  },
+  "suites": [
+    {
+      "suite_id": 1,
+      "name": "MongoDB document write (STRATEGY_KEY_VALUE)",
+      "setting_file": "01_mongo_document.json",
+      "datasource": "mongo",
+      "started_at": "2026-03-15T08:28:46.997299+00:00",
+      "finished_at": "2026-03-15T08:29:19.446739+00:00",
+      "duration_ms": 32450.61,
+      "status": "pass",
+      "task_id": "dc82482f-6d52-45e0-be84-2dec88e5b145",
+      "error": null,
+      "checks": [
+        {
+          "name": "Gitea commit SHA resolved",
+          "passed": true,
+          "detail": "093ba4721569"
+        },
+        {
+          "name": "Schema registry warmed",
+          "passed": true,
+          "detail": "rules=1"
+        },
+        {
+          "name": "Webhook accepted (task_id returned)",
+          "passed": true,
+          "detail": "dc82482f-6d52-45e0-be84-2dec88e5b145"
+        },
+        {
+          "name": "MongoDB collection 'main-vars' exists",
+          "passed": true,
+          "detail": ""
+        },
+        {
+          "name": "MongoDB documents written (count=19)",
+          "passed": true,
+          "detail": "count=19"
+        },
+        {
+          "name": "MongoDB document has payload fields",
+          "passed": true,
+          "detail": "['_vt_datasource', 'key', '_vt_tenant', '_vt_env']"
+        }
+      ]
+    },
+    {
+      "suite_id": 2,
+      "name": "MongoDB prune idempotency",
+      "setting_file": "01_mongo_document.json",
+      "datasource": "mongo",
+      "started_at": "2026-03-15T08:29:19.446779+00:00",
+      "finished_at": "2026-03-15T08:30:21.931813+00:00",
+      "duration_ms": 62487.37,
+      "status": "pass",
+      "task_id": "83daaf0f-aca8-4973-bc0f-4cace6d833be",
+      "error": null,
+      "checks": [
+        {
+          "name": "Gitea commit SHA resolved",
+          "passed": true,
+          "detail": "093ba4721569"
+        },
+        {
+          "name": "Schema registry warmed",
+          "passed": true,
+          "detail": "rules=1"
+        },
+        {
+          "name": "Webhook accepted (task_id returned)",
+          "passed": true,
+          "detail": "83daaf0f-aca8-4973-bc0f-4cace6d833be"
+        },
+        {
+          "name": "MongoDB collection 'main-vars' exists",
+          "passed": true,
+          "detail": ""
+        },
+        {
+          "name": "MongoDB documents written (count=19)",
+          "passed": true,
+          "detail": "count=19"
+        },
+        {
+          "name": "MongoDB document has payload fields",
+          "passed": true,
+          "detail": "['_vt_datasource', 'key', '_vt_tenant', '_vt_env']"
+        },
+        {
+          "name": "Second webhook accepted",
+          "passed": true,
+          "detail": "df5eb619-49bd-4085-b6da-cd562f6ed958"
+        },
+        {
+          "name": "MongoDB collection 'main-vars' exists",
+          "passed": true,
+          "detail": ""
+        },
+        {
+          "name": "MongoDB documents written (count=19)",
+          "passed": true,
+          "detail": "count=19"
+        },
+        {
+          "name": "MongoDB document has payload fields",
+          "passed": true,
+          "detail": "['_vt_datasource', 'key', '_vt_tenant', '_vt_env']"
+        }
+      ]
+    },
+    {
+      "suite_id": 3,
+      "name": "MongoDB STRATEGY_FILE snapshot",
+      "setting_file": "02_mongo_file.json",
+      "datasource": "mongo",
+      "started_at": "2026-03-15T08:30:21.931862+00:00",
+      "finished_at": "2026-03-15T08:30:54.451121+00:00",
+      "duration_ms": 32520.84,
+      "status": "pass",
+      "task_id": "7fb52460-45e5-448f-8435-26f962f6bdb2",
+      "error": null,
+      "checks": [
+        {
+          "name": "Gitea commit SHA resolved",
+          "passed": true,
+          "detail": "093ba4721569"
+        },
+        {
+          "name": "Schema registry warmed",
+          "passed": true,
+          "detail": "rules=1"
+        },
+        {
+          "name": "Webhook accepted (task_id returned)",
+          "passed": true,
+          "detail": "7fb52460-45e5-448f-8435-26f962f6bdb2"
+        },
+        {
+          "name": "MongoDB collection 'main-snapshots' exists",
+          "passed": true,
+          "detail": ""
+        },
+        {
+          "name": "MongoDB documents written (count=19)",
+          "passed": true,
+          "detail": "count=19"
+        },
+        {
+          "name": "MongoDB document has payload fields",
+          "passed": true,
+          "detail": "['_vt_datasource', 'key', '_vt_tenant', '_vt_env']"
+        }
+      ]
+    },
+    {
+      "suite_id": 4,
+      "name": "MongoDB dry-run (no write)",
+      "setting_file": "01_mongo_document.json",
+      "datasource": "mongo",
+      "started_at": "2026-03-15T08:30:54.451177+00:00",
+      "finished_at": "2026-03-15T08:30:56.988819+00:00",
+      "duration_ms": 2537.65,
+      "status": "pass",
+      "task_id": null,
+      "error": null,
+      "checks": [
+        {
+          "name": "Gitea commit SHA resolved",
+          "passed": true,
+          "detail": "093ba4721569"
+        },
+        {
+          "name": "Schema registry warmed",
+          "passed": true,
+          "detail": "rules=1"
+        },
+        {
+          "name": "Dry-run response received",
+          "passed": true,
+          "detail": ""
+        },
+        {
+          "name": "Dry-run flag set",
+          "passed": true,
+          "detail": ""
+        }
+      ]
+    },
+    {
+      "suite_id": 5,
+      "name": "ZooKeeper slash key_format write",
+      "setting_file": "03_zk_slash.json",
+      "datasource": "zookeeper",
+      "started_at": "2026-03-15T08:30:56.988843+00:00",
+      "finished_at": "2026-03-15T08:31:29.473336+00:00",
+      "duration_ms": 32485.48,
+      "status": "pass",
+      "task_id": "87c9659a-90a9-4c64-bc36-81d2acb38756",
+      "error": null,
+      "checks": [
+        {
+          "name": "Gitea commit SHA resolved",
+          "passed": true,
+          "detail": "093ba4721569"
+        },
+        {
+          "name": "Schema registry warmed",
+          "passed": true,
+          "detail": "rules=1"
+        },
+        {
+          "name": "Webhook accepted (task_id returned)",
+          "passed": true,
+          "detail": "87c9659a-90a9-4c64-bc36-81d2acb38756"
+        },
+        {
+          "name": "ZK path '/vartrack/vartrack-demo/default' exists",
+          "passed": true,
+          "detail": ""
+        },
+        {
+          "name": "ZK path has children",
+          "passed": true,
+          "detail": "children=['app', 'features', 'cache', 'database', 'api']"
+        }
+      ]
+    },
+    {
+      "suite_id": 6,
+      "name": "ZooKeeper custom destination_template path",
+      "setting_file": "03_zk_slash.json",
+      "datasource": "zookeeper",
+      "started_at": "2026-03-15T08:31:29.473492+00:00",
+      "finished_at": "2026-03-15T08:32:01.984096+00:00",
+      "duration_ms": 32511.79,
+      "status": "pass",
+      "task_id": "9e5d27b0-8269-4d82-be55-b891be38b73e",
+      "error": null,
+      "checks": [
+        {
+          "name": "Gitea commit SHA resolved",
+          "passed": true,
+          "detail": "093ba4721569"
+        },
+        {
+          "name": "Schema registry warmed",
+          "passed": true,
+          "detail": "rules=1"
+        },
+        {
+          "name": "Webhook accepted (task_id returned)",
+          "passed": true,
+          "detail": "9e5d27b0-8269-4d82-be55-b891be38b73e"
+        },
+        {
+          "name": "ZK path '/custom/vartrack-demo/cfg' exists",
+          "passed": true,
+          "detail": ""
+        },
+        {
+          "name": "ZK path has children",
+          "passed": true,
+          "detail": "children=['app', 'features', 'cache', 'database', 'api']"
+        }
+      ]
+    },
+    {
+      "suite_id": 7,
+      "name": "Redis HASH write",
+      "setting_file": "05_redis_hash.json",
+      "datasource": "redis",
+      "started_at": "2026-03-15T08:32:01.984155+00:00",
+      "finished_at": "2026-03-15T08:32:34.454336+00:00",
+      "duration_ms": 32471.48,
+      "status": "pass",
+      "task_id": "1c4cf560-4ba1-434e-a8f2-f9af0a52bacd",
+      "error": null,
+      "checks": [
+        {
+          "name": "Gitea commit SHA resolved",
+          "passed": true,
+          "detail": "093ba4721569"
+        },
+        {
+          "name": "Schema registry warmed",
+          "passed": true,
+          "detail": "rules=1"
+        },
+        {
+          "name": "Webhook accepted (task_id returned)",
+          "passed": true,
+          "detail": "1c4cf560-4ba1-434e-a8f2-f9af0a52bacd"
+        },
+        {
+          "name": "Redis ping",
+          "passed": true,
+          "detail": ""
+        },
+        {
+          "name": "Redis HASH keys under 'main:config'",
+          "passed": true,
+          "detail": "found 2 key(s)"
+        },
+        {
+          "name": "Redis HASH has fields",
+          "passed": true,
+          "detail": "hlen=8"
+        }
+      ]
+    },
+    {
+      "suite_id": 8,
+      "name": "Redis STRING write",
+      "setting_file": "06_redis_string.json",
+      "datasource": "redis",
+      "started_at": "2026-03-15T08:32:34.454361+00:00",
+      "finished_at": "2026-03-15T08:33:06.915606+00:00",
+      "duration_ms": 32462.19,
+      "status": "pass",
+      "task_id": "85537b03-f605-4124-8239-3e55ae2d2c2c",
+      "error": null,
+      "checks": [
+        {
+          "name": "Gitea commit SHA resolved",
+          "passed": true,
+          "detail": "093ba4721569"
+        },
+        {
+          "name": "Schema registry warmed",
+          "passed": true,
+          "detail": "rules=1"
+        },
+        {
+          "name": "Webhook accepted (task_id returned)",
+          "passed": true,
+          "detail": "85537b03-f605-4124-8239-3e55ae2d2c2c"
+        },
+        {
+          "name": "Redis ping",
+          "passed": true,
+          "detail": ""
+        },
+        {
+          "name": "Redis STRING keys under 'vartrack:kv'",
+          "passed": true,
+          "detail": "found 20 key(s)"
+        }
+      ]
+    },
+    {
+      "suite_id": 9,
+      "name": "Linux server SSH file write",
+      "setting_file": "07_linux_server.json",
+      "datasource": "linux_server",
+      "started_at": "2026-03-15T08:33:06.915631+00:00",
+      "finished_at": "2026-03-15T08:33:39.536088+00:00",
+      "duration_ms": 32622.97,
+      "status": "pass",
+      "task_id": "a0684942-7335-48a8-9bfd-a7b3f5d524cc",
+      "error": null,
+      "checks": [
+        {
+          "name": "Gitea commit SHA resolved",
+          "passed": true,
+          "detail": "093ba4721569"
+        },
+        {
+          "name": "Schema registry warmed",
+          "passed": true,
+          "detail": "rules=1"
+        },
+        {
+          "name": "Webhook accepted (task_id returned)",
+          "passed": true,
+          "detail": "a0684942-7335-48a8-9bfd-a7b3f5d524cc"
+        },
+        {
+          "name": "SSH connection established",
+          "passed": true,
+          "detail": ""
+        },
+        {
+          "name": "Remote file '/tmp/vartrack/main.env' exists",
+          "passed": true,
+          "detail": "-rw-r--r--    1 vartrack vartrack       551 Mar 15 08:33 /tmp/vartrack/main.env"
+        },
+        {
+          "name": "Remote file has content",
+          "passed": true,
+          "detail": "lines=21"
+        }
+      ]
+    },
+    {
+      "suite_id": 10,
+      "name": "S3/MinIO write",
+      "setting_file": "08_s3_minio.json",
+      "datasource": "s3",
+      "started_at": "2026-03-15T08:33:39.536143+00:00",
+      "finished_at": "2026-03-15T08:34:12.086371+00:00",
+      "duration_ms": 32551.54,
+      "status": "pass",
+      "task_id": "a0b71a5c-a9d5-4f22-a3a6-7dca44541277",
+      "error": null,
+      "checks": [
+        {
+          "name": "Gitea commit SHA resolved",
+          "passed": true,
+          "detail": "093ba4721569"
+        },
+        {
+          "name": "Schema registry warmed",
+          "passed": true,
+          "detail": "rules=1"
+        },
+        {
+          "name": "Webhook accepted (task_id returned)",
+          "passed": true,
+          "detail": "a0b71a5c-a9d5-4f22-a3a6-7dca44541277"
+        },
+        {
+          "name": "S3 bucket 'vartrack' prefix 'configs/main' has objects",
+          "passed": true,
+          "detail": "count=1"
+        },
+        {
+          "name": "S3 object key looks valid",
+          "passed": true,
+          "detail": "configs/main/config.json"
+        }
+      ]
+    },
+    {
+      "suite_id": 11,
+      "name": "Multi-sink parallel webhooks (mongo + zk + redis)",
+      "setting_file": "mixed",
+      "datasource": "multi",
+      "started_at": "2026-03-15T08:34:12.086398+00:00",
+      "finished_at": "2026-03-15T08:34:44.496396+00:00",
+      "duration_ms": 32411.34,
+      "status": "pass",
+      "task_id": null,
+      "error": null,
+      "checks": [
+        {
+          "name": "Webhook sent to mongo",
+          "passed": true,
+          "detail": "6d0a8da1-f032-48d8-9831-f13a32cbc92e"
+        },
+        {
+          "name": "Webhook sent to zookeeper",
+          "passed": true,
+          "detail": "173ab1c9-4079-41fd-a9fe-7bd710dd0851"
+        },
+        {
+          "name": "Webhook sent to redis",
+          "passed": true,
+          "detail": "b5dbe7bb-0ead-4354-96c1-61dffa3fedd2"
+        },
+        {
+          "name": "MongoDB collection 'main-vars' exists",
+          "passed": true,
+          "detail": ""
+        },
+        {
+          "name": "MongoDB documents written (count=19)",
+          "passed": true,
+          "detail": "count=19"
+        },
+        {
+          "name": "MongoDB document has payload fields",
+          "passed": true,
+          "detail": "['_vt_datasource', 'key', '_vt_tenant', '_vt_env']"
+        },
+        {
+          "name": "ZK path '/vartrack/vartrack-demo/default' exists",
+          "passed": true,
+          "detail": ""
+        },
+        {
+          "name": "ZK path has children",
+          "passed": true,
+          "detail": "children=['app', 'features', 'cache', 'database', 'api']"
+        },
+        {
+          "name": "Redis ping",
+          "passed": true,
+          "detail": ""
+        },
+        {
+          "name": "Redis HASH keys under 'main:config'",
+          "passed": true,
+          "detail": "found 2 key(s)"
+        },
+        {
+          "name": "Redis HASH has fields",
+          "passed": true,
+          "detail": "hlen=8"
+        }
+      ]
+    },
+    {
+      "suite_id": 12,
+      "name": "Orchestrator health & metrics endpoints",
+      "setting_file": "n/a",
+      "datasource": "http",
+      "started_at": "2026-03-15T08:34:44.496428+00:00",
+      "finished_at": "2026-03-15T08:34:44.507814+00:00",
+      "duration_ms": 11.39,
+      "status": "pass",
+      "task_id": null,
+      "error": null,
+      "checks": [
+        {
+          "name": "/v1/health returns 200",
+          "passed": true,
+          "detail": "200"
+        },
+        {
+          "name": "/metrics returns 200",
+          "passed": true,
+          "detail": "200"
+        },
+        {
+          "name": "/metrics contains task metrics",
+          "passed": true,
+          "detail": ""
+        },
+        {
+          "name": "/docs (OpenAPI) reachable",
+          "passed": true,
+          "detail": ""
+        }
+      ]
+    },
+    {
+      "suite_id": 13,
+      "name": "CUE schema validation (valid config passes)",
+      "setting_file": "01_mongo_document.json",
+      "datasource": "mongo",
+      "started_at": "2026-03-15T08:34:44.507970+00:00",
+      "finished_at": "2026-03-15T08:35:16.965147+00:00",
+      "duration_ms": 32458.22,
+      "status": "pass",
+      "task_id": "03ff4801-1051-4149-ac6d-9c5bd83e6bb4",
+      "error": null,
+      "checks": [
+        {
+          "name": "Gitea commit SHA resolved",
+          "passed": true,
+          "detail": "093ba4721569"
+        },
+        {
+          "name": "Schema registry warmed",
+          "passed": true,
+          "detail": "rules=1"
+        },
+        {
+          "name": "Webhook accepted (task_id returned)",
+          "passed": true,
+          "detail": "03ff4801-1051-4149-ac6d-9c5bd83e6bb4"
+        },
+        {
+          "name": "MongoDB collection 'main-vars' exists",
+          "passed": true,
+          "detail": ""
+        },
+        {
+          "name": "MongoDB documents written (count=19)",
+          "passed": true,
+          "detail": "count=19"
+        },
+        {
+          "name": "MongoDB document has payload fields",
+          "passed": true,
+          "detail": "['_vt_datasource', 'key', '_vt_tenant', '_vt_env']"
+        },
+        {
+          "name": "CUE validated log_level='INFO' (allowed by schema)",
+          "passed": true,
+          "detail": "INFO"
+        }
+      ]
+    },
+    {
+      "suite_id": 14,
+      "name": "Vault secret injection \u2192 MongoDB",
+      "setting_file": "09_vault_mongo.json",
+      "datasource": "mongo",
+      "started_at": "2026-03-15T08:35:16.965173+00:00",
+      "finished_at": "2026-03-15T08:35:49.420108+00:00",
+      "duration_ms": 32456.39,
+      "status": "pass",
+      "task_id": "cd69c290-8e71-4009-8b3b-f578bb4a4c7f",
+      "error": null,
+      "checks": [
+        {
+          "name": "Gitea commit SHA resolved",
+          "passed": true,
+          "detail": "093ba4721569"
+        },
+        {
+          "name": "Schema registry warmed",
+          "passed": true,
+          "detail": "rules=1"
+        },
+        {
+          "name": "Webhook accepted (task_id returned)",
+          "passed": true,
+          "detail": "cd69c290-8e71-4009-8b3b-f578bb4a4c7f"
+        },
+        {
+          "name": "MongoDB vault collection 'vault-test' exists",
+          "passed": true,
+          "detail": ""
+        },
+        {
+          "name": "Documents written (count=19)",
+          "passed": true,
+          "detail": "count=19"
+        },
+        {
+          "name": "database.password resolved (not placeholder)",
+          "passed": true,
+          "detail": "supersecret123"
+        },
+        {
+          "name": "database.password matches Vault secret",
+          "passed": true,
+          "detail": "supersecret123"
+        },
+        {
+          "name": "api.secret_key matches Vault secret",
+          "passed": true,
+          "detail": "api-secret-xyz789"
+        }
+      ]
+    },
+    {
+      "suite_id": 15,
+      "name": "CUE strict_validation rejects invalid config",
+      "setting_file": "10_cue_strict_mongo.json",
+      "datasource": "mongo",
+      "started_at": "2026-03-15T08:35:49.420151+00:00",
+      "finished_at": "2026-03-15T08:36:26.742101+00:00",
+      "duration_ms": 37322.78,
+      "status": "pass",
+      "task_id": "4ebc3153-4d17-41eb-883a-39f71b9d08e1",
+      "error": null,
+      "checks": [
+        {
+          "name": "Gitea commit SHA resolved",
+          "passed": true,
+          "detail": "093ba4721569"
+        },
+        {
+          "name": "Schema registry warmed",
+          "passed": true,
+          "detail": "rules=1"
+        },
+        {
+          "name": "Webhook accepted (task_id returned)",
+          "passed": true,
+          "detail": "4ebc3153-4d17-41eb-883a-39f71b9d08e1"
+        },
+        {
+          "name": "CUE strict reject: 'cue-strict-test' has 0 documents (write blocked)",
+          "passed": true,
+          "detail": "count=0"
+        }
+      ]
+    },
+    {
+      "suite_id": 16,
+      "name": "Dual MongoDB (primary + DR) with @secret injection",
+      "setting_file": "11_dual_mongo_secret.json",
+      "datasource": "mongo-primary+mongo-dr",
+      "started_at": "2026-03-15T08:36:26.742148+00:00",
+      "finished_at": "2026-03-15T08:36:59.277543+00:00",
+      "duration_ms": 32536.74,
+      "status": "pass",
+      "task_id": null,
+      "error": null,
+      "checks": [
+        {
+          "name": "Gitea commit SHA resolved",
+          "passed": true,
+          "detail": "fe9b4ad1fab9"
+        },
+        {
+          "name": "Schema registry warmed",
+          "passed": true,
+          "detail": "rules=2"
+        },
+        {
+          "name": "Webhook accepted for mongo-primary",
+          "passed": true,
+          "detail": "a9d90990-c29c-4a61-94d0-6cb3a6b5507c"
+        },
+        {
+          "name": "Webhook accepted for mongo-dr",
+          "passed": true,
+          "detail": "fec70af9-7463-4a24-b558-e40bccbed920"
+        },
+        {
+          "name": "MongoDB vault collection 'primary-main' exists",
+          "passed": true,
+          "detail": ""
+        },
+        {
+          "name": "Documents written (count=19)",
+          "passed": true,
+          "detail": "count=19"
+        },
+        {
+          "name": "database.password resolved (not placeholder)",
+          "passed": true,
+          "detail": "supersecret123"
+        },
+        {
+          "name": "database.password matches Vault secret",
+          "passed": true,
+          "detail": "supersecret123"
+        },
+        {
+          "name": "api.secret_key matches Vault secret",
+          "passed": true,
+          "detail": "api-secret-xyz789"
+        },
+        {
+          "name": "MongoDB vault collection 'dr-main' exists",
+          "passed": true,
+          "detail": ""
+        },
+        {
+          "name": "Documents written (count=19)",
+          "passed": true,
+          "detail": "count=19"
+        },
+        {
+          "name": "database.password resolved (not placeholder)",
+          "passed": true,
+          "detail": "supersecret123"
+        },
+        {
+          "name": "database.password matches Vault secret",
+          "passed": true,
+          "detail": "supersecret123"
+        },
+        {
+          "name": "api.secret_key matches Vault secret",
+          "passed": true,
+          "detail": "api-secret-xyz789"
+        }
+      ]
+    }
+  ]
+}

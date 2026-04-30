@@ -1,0 +1,185 @@
+# Local dev overlay — adds full observability stack on top of docker-compose.yml
+#
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up
+#
+# Services added: jaeger, otel-collector, elasticsearch, kibana,
+#                 prometheus, grafana, zoonavigator, mongo-express, flower
+# Services overridden: gateway, orchestrator-api, orchestrator-worker, watcher
+#   → OTEL_ENABLED/JAEGER_ENABLED/ELK_ENABLED set to "true"
+
+volumes:
+  grafana-data:
+  es-data:
+
+services:
+
+# ── Observability backend ──────────────────────────────────────────────────────
+
+  jaeger:
+    image: jaegertracing/all-in-one:latest
+    networks: [vartrack]
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"
+    ports:
+      - "16686:16686"   # Jaeger UI
+      - "4317:4317"     # OTLP gRPC
+      - "4318:4318"     # OTLP HTTP
+    healthcheck:
+      test: ["CMD-SHELL", "wget --spider -q http://localhost:16686/ || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:latest
+    networks: [vartrack]
+    command: ["--config=/etc/otel-collector-config.yaml"]
+    volumes:
+      - ./otel-collector-config.yaml:/etc/otel-collector-config.yaml:ro
+    depends_on:
+      jaeger: {condition: service_healthy}
+    ports:
+      - "8888:8888"     # Prometheus metrics exposed by the collector
+
+  elasticsearch:
+    image: elasticsearch:8.13.4
+    networks: [vartrack]
+    environment:
+      discovery.type: single-node
+      xpack.security.enabled: "false"
+      ES_JAVA_OPTS: "-Xms512m -Xmx512m"
+    volumes:
+      - es-data:/usr/share/elasticsearch/data
+    ports:
+      - "9200:9200"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:9200/_cluster/health | grep -qv '\"status\":\"red\"'"]
+      interval: 15s
+      timeout: 10s
+      retries: 20
+      start_period: 60s
+
+  kibana:
+    image: kibana:8.13.4
+    networks: [vartrack]
+    environment:
+      ELASTICSEARCH_HOSTS: http://elasticsearch:9200
+    ports:
+      - "5601:5601"
+    depends_on:
+      elasticsearch: {condition: service_healthy}
+
+  prometheus:
+    image: prom/prometheus:latest
+    networks: [vartrack]
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      - "9095:9090"
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+
+  grafana:
+    image: grafana/grafana:latest
+    networks: [vartrack]
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - grafana-data:/var/lib/grafana
+    ports:
+      - "3001:3000"
+    depends_on:
+      - prometheus
+
+# ── Dev UIs ───────────────────────────────────────────────────────────────────
+
+  zoonavigator:
+    image: elkozmon/zoonavigator:latest
+    networks: [vartrack]
+    environment:
+      HTTP_PORT: "9004"
+    ports:
+      - "9004:9004"
+    depends_on:
+      - zookeeper
+
+  mongo-express:
+    image: mongo-express:latest
+    networks: [vartrack]
+    environment:
+      ME_CONFIG_MONGODB_SERVER: mongo
+      ME_CONFIG_BASICAUTH_USERNAME: admin
+      ME_CONFIG_BASICAUTH_PASSWORD: admin
+    ports:
+      - "8081:8081"
+    depends_on:
+      mongo: {condition: service_healthy}
+
+  flower:
+    image: mher/flower:latest
+    networks: [vartrack]
+    command: ["celery", "flower", "--broker=redis://redis:6379/0", "--port=5555"]
+    ports:
+      - "5555:5555"
+    depends_on:
+      redis: {condition: service_healthy}
+
+# ── Override app services to enable observability ─────────────────────────────
+
+  gateway:
+    environment:
+      OTEL_ENABLED: "true"
+      JAEGER_ENABLED: "true"
+      ELK_ENABLED: "true"
+      OTEL_EXPORTER_OTLP_ENDPOINT: "http://otel-collector:4317"
+      ELK_HOST: elasticsearch
+      ELK_PORT: "9200"
+    depends_on:
+      jaeger:        {condition: service_healthy}
+      elasticsearch: {condition: service_healthy}
+      otel-collector:
+        condition: service_started
+
+  orchestrator-api:
+    environment:
+      OTEL_ENABLED: "true"
+      JAEGER_ENABLED: "true"
+      ELK_ENABLED: "true"
+      OTEL_EXPORTER_OTLP_ENDPOINT: "http://otel-collector:4317"
+      ELK_HOST: elasticsearch
+      ELK_PORT: "9200"
+    depends_on:
+      jaeger:        {condition: service_healthy}
+      elasticsearch: {condition: service_healthy}
+      otel-collector:
+        condition: service_started
+
+  orchestrator-worker:
+    environment:
+      OTEL_ENABLED: "true"
+      JAEGER_ENABLED: "true"
+      ELK_ENABLED: "true"
+      OTEL_EXPORTER_OTLP_ENDPOINT: "http://otel-collector:4317"
+      ELK_HOST: elasticsearch
+      ELK_PORT: "9200"
+    depends_on:
+      jaeger:        {condition: service_healthy}
+      elasticsearch: {condition: service_healthy}
+      otel-collector:
+        condition: service_started
+
+  watcher:
+    environment:
+      OTEL_ENABLED: "true"
+      JAEGER_ENABLED: "true"
+      ELK_ENABLED: "true"
+      OTEL_EXPORTER_OTLP_ENDPOINT: "http://otel-collector:4317"
+      ELK_HOST: elasticsearch
+      ELK_PORT: "9200"
+    depends_on:
+      jaeger:        {condition: service_healthy}
+      elasticsearch: {condition: service_healthy}
+      otel-collector:
+        condition: service_started

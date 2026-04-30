@@ -1,0 +1,45 @@
+syntax = "proto3";
+
+package vartrack.v1;
+
+import "vartrack/v1/enums/strategy.proto";
+import "vartrack/v1/utils/secret_ref.proto";
+import "buf/validate/validate.proto";
+import "google/api/field_behavior.proto";
+
+message VercelConfig {
+  optional string tag = 1 [(google.api.field_behavior) = OPTIONAL];
+
+  // Vercel API token (plain value or SecretRef).
+  SecretRef token = 2 [
+    (buf.validate.field).required = true,
+    (google.api.field_behavior) = REQUIRED
+  ];
+
+  // Vercel project ID or slug.
+  string project_id = 3 [
+    (buf.validate.field).string.min_len = 1,
+    (google.api.field_behavior) = REQUIRED
+  ];
+
+  // Optional team ID (for team-scoped projects).
+  optional string team_id = 4 [(google.api.field_behavior) = OPTIONAL];
+
+  // Deployment targets to write env vars to.
+  // Valid values: "production", "preview", "development".
+  // Defaults to ["production", "preview", "development"] when empty.
+  repeated string targets = 5 [(google.api.field_behavior) = OPTIONAL];
+
+  // Env var type written to Vercel.
+  // Valid values: "plain", "secret", "sensitive".
+  // Defaults to "plain".
+  string var_type = 6 [
+    (buf.validate.field).string = {in: ["plain", "secret", "sensitive", ""]},
+    (google.api.field_behavior) = OPTIONAL
+  ];
+
+  // Override the Vercel API base URL (useful for testing / proxies).
+  optional string api_url = 7 [(google.api.field_behavior) = OPTIONAL];
+
+  Strategy update_strategy = 8 [(buf.validate.field).enum.defined_only = true];
+}

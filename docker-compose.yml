@@ -1,0 +1,162 @@
+# varTrack — quickstart Docker Compose
+#
+# Starts the full varTrack stack using pre-built images from Docker Hub.
+# Includes a bundled MongoDB and Redis so you can be up in minutes.
+#
+# Usage:
+#   cp .env.example .env        # fill in your values
+#   # write your config.cue (see docs/configuration/bundle.md)
+#   docker compose up -d
+#
+# Webhook URL to register in GitHub / GitLab:
+#   http://<your-host>:5657/webhooks/<datasource>
+#   e.g. http://my-server:5657/webhooks/mongo
+#
+# Remove the `mongo` service and its volume if you connect to an external MongoDB.
+# Remove the `watcher` service if you don't need drift detection / self-heal.
+
+networks:
+  vartrack:
+    driver: bridge
+
+volumes:
+  mongo-data:
+  redis-data:
+  schema-cache:
+  git-cache:
+
+services:
+
+  # ── Infrastructure ───────────────────────────────────────────────────────────
+
+  redis:
+    image: redis:7-alpine
+    networks: [vartrack]
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  mongo:
+    image: mongo:7
+    networks: [vartrack]
+    volumes:
+      - mongo-data:/data/db
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USER:-vartrack}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD:?Set MONGO_ROOT_PASSWORD in .env}
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')", "--quiet"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  # ── varTrack ─────────────────────────────────────────────────────────────────
+
+  gateway:
+    image: jarin-devoss/gateway-service:latest
+    networks: [vartrack]
+    ports:
+      - "${GATEWAY_PORT:-5657}:5657"
+    environment:
+      APP_ENV: ${APP_ENV:-production}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      CONFIG_PATH: /app/config.cue
+      ORCHESTRATOR_ADDR: "orchestrator-api:50051"
+      GATEWAY_ADDR: ":5657"
+      ADMIN_ADDR: ":9092"
+    volumes:
+      - ${CONFIG_PATH:-./config.cue}:/app/config.cue:ro
+    depends_on:
+      orchestrator-api: {condition: service_healthy}
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:9092/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  orchestrator-api:
+    image: jarin-devoss/orchestrator-service:latest
+    networks: [vartrack]
+    command: ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000",
+              "--log-level", "info"]
+    ports:
+      - "${ORCHESTRATOR_PORT:-8000}:8000"
+    environment:
+      APP_ENV: ${APP_ENV:-production}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      CONFIG_PATH: /app/config.cue
+      CELERY_BROKER_URL: "redis://redis:6379/0"
+      CELERY_RESULT_BACKEND: "redis://redis:6379/0"
+      SCHEMA_CACHE_DIR: /app/schema_registry
+      GIT_CACHE_DIR: /app/git_cache
+      ADMIN_HOST: "0.0.0.0"
+      ADMIN_PORT: "9093"
+      CORS_ORIGINS: ${CORS_ORIGINS:-}
+    volumes:
+      - ${CONFIG_PATH:-./config.cue}:/app/config.cue:ro
+      - schema-cache:/app/schema_registry
+      - git-cache:/app/git_cache
+    depends_on:
+      redis: {condition: service_healthy}
+      mongo: {condition: service_healthy}
+    healthcheck:
+      test: ["CMD", "python3", "-c",
+             "import urllib.request; r = urllib.request.urlopen('http://localhost:9093/health/readiness'); exit(0 if r.status == 200 else 1)"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+  orchestrator-worker:
+    image: jarin-devoss/orchestrator-service:latest
+    networks: [vartrack]
+    command: ["celery", "-A", "app.worker.celery", "worker",
+              "--loglevel=info", "-Q", "webhooks,sync,schema,dlq",
+              "--concurrency=${WORKER_CONCURRENCY:-4}"]
+    environment:
+      APP_ENV: ${APP_ENV:-production}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      CONFIG_PATH: /app/config.cue
+      CELERY_BROKER_URL: "redis://redis:6379/0"
+      CELERY_RESULT_BACKEND: "redis://redis:6379/0"
+      SCHEMA_CACHE_DIR: /app/schema_registry
+      GIT_CACHE_DIR: /app/git_cache
+    volumes:
+      - ${CONFIG_PATH:-./config.cue}:/app/config.cue:ro
+      - schema-cache:/app/schema_registry
+      - git-cache:/app/git_cache
+    depends_on:
+      redis:            {condition: service_healthy}
+      orchestrator-api: {condition: service_healthy}
+    restart: unless-stopped
+
+  watcher:
+    image: jarin-devoss/watcher-service:latest
+    networks: [vartrack]
+    environment:
+      APP_ENV: ${APP_ENV:-production}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      CONFIG_PATH: /app/config.cue
+      ORCHESTRATOR_ADDR: "orchestrator-api:50051"
+      POLL_INTERVAL: ${WATCHER_POLL_INTERVAL:-60s}
+      HEAL_TIMEOUT: "30s"
+      ADMIN_ADDR: ":9091"
+    volumes:
+      - ${CONFIG_PATH:-./config.cue}:/app/config.cue:ro
+    depends_on:
+      orchestrator-api: {condition: service_healthy}
+      mongo:            {condition: service_healthy}
+      redis:            {condition: service_healthy}
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:9091/health/readiness"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped

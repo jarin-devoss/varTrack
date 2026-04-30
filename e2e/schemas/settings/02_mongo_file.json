@@ -1,0 +1,19 @@
+[
+  {
+    "platform": "github",
+    "datasource": "mongo",
+    "repo_url": "http://gitea:3000/vartrack-demo/demo-configs.git",
+    "file_name": "app-settings.yaml",
+    "repositories": ["vartrack-demo/demo-configs"],
+    "env_as_branch": true,
+    "branch": "main",
+    "sync_mode": "SYNC_MODE_GIT_SMART_REPAIR",
+    "prune": { "last": true },
+    "self_heal": false,
+    "mongo_uri": "mongodb://mongo:27017",
+    "database": "vartrack",
+    "collection": "files",
+    "update_strategy": "STRATEGY_FILE",
+    "destination_template": "{env}-snapshots"
+  }
+]

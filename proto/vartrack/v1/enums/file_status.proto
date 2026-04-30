@@ -1,0 +1,12 @@
+syntax = "proto3";
+
+package vartrack.v1;
+
+// FileStatus indicates the change type of a file within a git commit.
+enum FileStatus {
+  FILE_STATUS_UNSPECIFIED = 0;
+  FILE_STATUS_ADDED       = 1;
+  FILE_STATUS_MODIFIED    = 2;
+  FILE_STATUS_REMOVED     = 3;
+  FILE_STATUS_RENAMED     = 4;
+}
