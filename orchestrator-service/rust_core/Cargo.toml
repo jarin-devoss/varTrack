@@ -11,7 +11,7 @@ crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 # Python bindings
-pyo3 = { version = "0.21", features = ["extension-module", "abi3-py311"] }
+pyo3 = { version = "0.22", features = ["extension-module", "abi3-py311"] }
 
 # Serialisation
 serde = { version = "1", features = ["derive"] }
