@@ -47,7 +47,7 @@ dependencies = [
     # HCL parsing (Terraform .tf / .tfvars) — required for correct parsing of
     # nested blocks. Without this, hcl_parser.py silently falls back to the
     # KV parser which mishandles nested HCL structures.
-    "python-hcl2>=4.3",
+    "python-hcl2>=8.1.2",
 
     # Observability
     "structlog>=24.1",
