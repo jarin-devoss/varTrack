@@ -10,7 +10,7 @@ require (
 	github.com/hashicorp/vault/api v1.23.0
 	github.com/hashicorp/vault/api/auth/approle v0.11.0
 	github.com/hashicorp/vault/api/auth/kubernetes v0.10.0
-	github.com/hashicorp/vault/api/auth/userpass v0.11.0
+	github.com/hashicorp/vault/api/auth/userpass v0.12.0
 	github.com/open-policy-agent/opa v1.4.2
 	github.com/prometheus/client_golang v1.23.2
 	github.com/redis/go-redis/v9 v9.18.0
