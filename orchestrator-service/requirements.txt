@@ -963,9 +963,9 @@ python-dotenv==1.2.2 \
     # via
     #   pydantic-settings
     #   uvicorn
-python-hcl2==7.3.1 \
-    --hash=sha256:6bf6036d3dffac04e05e6aa58ff6e9a3710bba2171325584dfd7b3f8c99c6d4d \
-    --hash=sha256:f8f55583703daf7bbcb595a33c68de891064d565974ea39998b81d15a4c4657b
+python-hcl2==8.1.2 \
+    --hash=sha256:ac3d16dc6501d4f24db348b3a634afdfb5c10a6715b27cd105a5b77071b84ee3 \
+    --hash=sha256:ae809c7e6e39e8c3c3555e7b7f389082207929591fcba062c9f76afb1abe972d
     # via orchestrator-service (pyproject.toml)
 pytz==2026.1.post1 \
     --hash=sha256:3378dde6a0c3d26719182142c56e60c7f9af7e968076f31aae569d72a0358ee1 \
