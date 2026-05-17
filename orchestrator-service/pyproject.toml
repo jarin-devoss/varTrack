@@ -79,7 +79,7 @@ test = [
 dev = [
     "orchestrator-service[test]",
     "ruff>=0.3",
-    "mypy>=1.8",
+    "mypy>=2.1.0",
 ]
 
 [tool.setuptools.packages.find]
