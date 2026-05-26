@@ -219,12 +219,66 @@ class MongoSink(BaseSink):
 
         return {"written": written, "pruned": pruned}
 
+    def snapshot_file_data(self, datasource: str, env: str, file_path: str) -> list[dict]:
+        """
+        Return a copy of every document currently stored for (datasource, env, file_path).
+
+        The returned list can be passed to restore_file_data to undo a write.
+        Returns an empty list when no documents exist yet (first write to this file).
+        """
+        collection = self._collection_for_env(env)
+        doc_filter = {
+            "_vt_tenant":     self._tenant_id,
+            "_vt_datasource": datasource,
+            "_vt_env":        env,
+            "_vt_file":       file_path,
+        }
+        try:
+            docs = list(collection.find(doc_filter, {"_id": 0}))
+        except Exception as exc:
+            logger.warning(
+                "MongoSink.snapshot_file_data failed datasource=%s env=%s file=%s: %s",
+                datasource, env, file_path, exc,
+            )
+            docs = []
+        logger.debug(
+            "MongoSink.snapshot_file_data datasource=%s env=%s file=%s docs=%d",
+            datasource, env, file_path, len(docs),
+        )
+        return docs
+
+    def restore_file_data(self, datasource: str, env: str, file_path: str, snapshot: list[dict]) -> None:
+        """
+        Replace the current documents for (datasource, env, file_path) with snapshot.
+
+        Deletes everything currently stored for the file, then re-inserts the
+        snapshot documents.  When snapshot is empty the file is left absent,
+        which is correct for a first-write rollback.
+        """
+        collection = self._collection_for_env(env)
+        doc_filter = {
+            "_vt_tenant":     self._tenant_id,
+            "_vt_datasource": datasource,
+            "_vt_env":        env,
+            "_vt_file":       file_path,
+        }
+        try:
+            collection.delete_many(doc_filter)
+            if snapshot:
+                collection.insert_many(snapshot)
+            logger.debug(
+                "MongoSink.restore_file_data datasource=%s env=%s file=%s restored=%d",
+                datasource, env, file_path, len(snapshot),
+            )
+        except Exception:
+            logger.exception(
+                "MongoSink.restore_file_data failed datasource=%s env=%s file=%s",
+                datasource, env, file_path,
+            )
+
     def delete_file_data(self, datasource: str, env: str, file_path: str) -> int:
         """
         Delete all documents written for a specific (datasource, env, file_path).
-
-        Used by stage_sync to roll back files that were successfully written
-        before a later file in the same batch failed.
 
         Returns the number of documents deleted.
         """
