@@ -158,9 +158,9 @@ class UpgradeStrategy(HelmWriteStrategy):
         # Inject VarTrack labels as commonAnnotations
         for k, v in vt_keys.items():
             label_key = k[len("_vartrack."):]
-            # Escape dots in key for --set
-            escaped = label_key.replace(".", "\\.")
-            cmd += ["--set-string", f"commonAnnotations.{escaped}={v}"]
+            escaped = label_key.replace("\\", "\\\\").replace(",", "\\,").replace(".", "\\.")
+            v_esc = v.replace("\\", "\\\\").replace(",", "\\,")
+            cmd += ["--set-string", f"commonAnnotations.{escaped}={v_esc}"]
 
         cmd += extra_flags
         return cmd, tmp_paths
@@ -179,8 +179,9 @@ def _helm_timeout_s(timeout_str: str) -> int:
 def _set_flags(flat_data: dict[str, str]) -> list[str]:
     flags = []
     for k, v in flat_data.items():
+        k_esc = k.replace("\\", "\\\\").replace(",", "\\,")
         v_esc = v.replace("\\", "\\\\").replace(",", "\\,")
-        flags += ["--set", f"{k}={v_esc}"]
+        flags += ["--set", f"{k_esc}={v_esc}"]
     return flags
 
 
