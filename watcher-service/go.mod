@@ -3,7 +3,7 @@ module watcher-service
 go 1.25.0
 
 require (
-	cuelang.org/go v0.16.0
+	cuelang.org/go v0.16.1
 	github.com/aws/aws-sdk-go-v2 v1.41.7
 	github.com/aws/aws-sdk-go-v2/config v1.28.10
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.101.0
