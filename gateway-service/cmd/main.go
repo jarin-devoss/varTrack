@@ -155,6 +155,19 @@ func run() error {
 	}
 	r := internal.NewRouter(bundleService, grpcClient, conn, routerOpts...)
 
+	// 4b. Start OPA policy reloader when an embedded evaluator is configured.
+	// Interval is controlled by OPA_RELOAD_INTERVAL (e.g. "5m", "30m").
+	// Defaults to 30 minutes when unset or unparseable.
+	opaReloadInterval := 30 * time.Minute
+	if raw := config.EnvOr("OPA_RELOAD_INTERVAL", ""); raw != "" {
+		if d, parseErr := time.ParseDuration(raw); parseErr == nil && d > 0 {
+			opaReloadInterval = d
+		} else if parseErr != nil {
+			slog.Warn("invalid OPA_RELOAD_INTERVAL — using default 30m", "value", raw, "error", parseErr)
+		}
+	}
+	r.StartOPAReloader(ctx, opaReloadInterval)
+
 	// 5. Start admin server on a separate port.
 	adminAddr := config.EnvOr("ADMIN_ADDR", ":9090")
 	adminSrv := internal.NewAdminServer(internal.AdminConfig{

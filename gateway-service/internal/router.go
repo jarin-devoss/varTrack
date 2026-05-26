@@ -2,8 +2,10 @@ package internal
 
 import (
 	"context"
+	"log/slog"
 	"net/http"
 	"sync"
+	"time"
 
 	"gateway-service/internal/auth"
 	"gateway-service/internal/handlers"
@@ -178,6 +180,32 @@ func (r *Router) buildMiddlewareChain() {
 
 func (r *Router) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	r.handler.ServeHTTP(w, req)
+}
+
+// StartOPAReloader launches a background goroutine that calls Reload on the
+// embedded OPA evaluator at the given interval. It returns immediately when
+// no embedded evaluator is configured (server mode or OPA disabled).
+// The goroutine stops when ctx is cancelled.
+func (r *Router) StartOPAReloader(ctx context.Context, interval time.Duration) {
+	if r.opaEvaluator == nil {
+		return
+	}
+	go func() {
+		t := time.NewTicker(interval)
+		defer t.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-t.C:
+				if err := r.opaEvaluator.Reload(ctx); err != nil {
+					slog.Warn("OPA policy reload failed", "error", err)
+				} else {
+					slog.Debug("OPA policy reloaded")
+				}
+			}
+		}
+	}()
 }
 
 // lazySecretManagerPinger implements handlers.SecretManagerPinger by
