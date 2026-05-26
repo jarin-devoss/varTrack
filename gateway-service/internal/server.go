@@ -44,7 +44,8 @@ func Run(ctx context.Context, addr string, handler http.Handler, tlsCfg *TLSConf
 		ReadHeaderTimeout: 10 * time.Second,
 		ReadTimeout:       30 * time.Second,
 		WriteTimeout:      30 * time.Second,
-		IdleTimeout: 60 * time.Second,
+		IdleTimeout:       60 * time.Second,
+		MaxHeaderBytes:    32 * 1024, // 32 KiB — cap header DoS surface
 	}
 
 	useTLS := tlsCfg != nil && tlsCfg.Enabled()
