@@ -8,7 +8,7 @@ RUN go install cuelang.org/go/cmd/cue@${CUE_VERSION}
 # ─── Stage 1: Python dependency builder ──────────────────────────────────────
 # Install Python deps into a separate layer so the runtime image only copies
 # the site-packages directory (not pip / build toolchain).
-FROM python:3.14-slim@sha256:5b3879b6f3cb77e712644d50262d05a7c146b7312d784a18eff7ff5462e77033 AS builder
+FROM python:3.14-slim@sha256:c845af9399020c7e562969a13689e929074a10fd057acd1b1fad06a2fb068e97 AS builder
 
 ARG VERSION=dev
 ARG COMMIT=unknown
@@ -32,7 +32,7 @@ RUN /uv pip install --system --no-cache --require-hashes -r requirements.txt
 COPY . .
 
 # ─── Stage 2: Runtime ────────────────────────────────────────────────────────
-FROM python:3.14-slim@sha256:5b3879b6f3cb77e712644d50262d05a7c146b7312d784a18eff7ff5462e77033 AS runtime
+FROM python:3.14-slim@sha256:c845af9399020c7e562969a13689e929074a10fd057acd1b1fad06a2fb068e97 AS runtime
 
 ARG VERSION=dev
 ARG COMMIT=unknown
@@ -52,7 +52,7 @@ RUN apt-get update \
  && apt-get dist-upgrade -y \
  && apt-get install -y --no-install-recommends git \
  && rm -rf /var/lib/apt/lists/* \
- && pip install --upgrade "pip>=25.3" \
+ && pip install "pip==25.4.1" \
  && pip uninstall -y pip \
  && rm -rf /usr/local/lib/python3.14/site-packages/pip*.dist-info
 
