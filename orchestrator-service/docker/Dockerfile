@@ -52,7 +52,7 @@ RUN apt-get update \
  && apt-get dist-upgrade -y \
  && apt-get install -y --no-install-recommends git \
  && rm -rf /var/lib/apt/lists/* \
- && pip install "pip==25.4.1" \
+ && pip install "pip==26.1.1" \
  && pip uninstall -y pip \
  && rm -rf /usr/local/lib/python3.14/site-packages/pip*.dist-info
 
