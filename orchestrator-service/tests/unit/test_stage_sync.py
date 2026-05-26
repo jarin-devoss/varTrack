@@ -6,7 +6,7 @@ Unit tests for run_stage_sync (Stage 3: Write + Rollback).
 Key invariants:
   - Single sink created per batch.
   - Successful writes produce status="ok" SyncResults.
-  - On write failure, previously committed files are rolled back (delete_file_data).
+  - On write failure, previously committed files are rolled back (restore_file_data/snapshot).
   - Remaining un-attempted files are marked "aborted".
   - sync_mode decision (<=500 keys -> GIT_UPSERT_ALL, >500 -> GIT_SMART_REPAIR).
 
@@ -118,21 +118,22 @@ class TestRunStageSync(unittest.TestCase):
     def test_write_failure_triggers_rollback_of_committed_files(self):
         """
         When file 2 of 3 fails, file 1 (already written)
-        must be rolled back via delete_file_data.
+        must be rolled back via restore_file_data (snapshot/restore path).
         """
         sink = MagicMock()
         sink.write.side_effect = [
             {"written": 3, "pruned": 0},           # file 1: ok
             RuntimeError("mongo connection lost"),  # file 2: fails
         ]
-        sink.delete_file_data.return_value = None
+        sink.snapshot_file_data.return_value = [{"key": "val"}]
+        sink.restore_file_data.return_value = None
 
         files = [_file("a.yaml"), _file("b.yaml"), _file("c.yaml")]
         etl = _etl(*files)
         results, _ = self._run(etl, sink_mock=sink)
 
-        self.assertGreaterEqual(sink.delete_file_data.call_count, 1,
-                                "Committed file must be rolled back on subsequent failure")
+        self.assertGreaterEqual(sink.restore_file_data.call_count, 1,
+                                "Committed file must be restored on subsequent failure")
 
         aborted = [r for r in results if r.status == "aborted"]
         self.assertTrue(aborted, "Un-attempted files must be marked 'aborted' after rollback")

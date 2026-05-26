@@ -70,15 +70,11 @@ def run_stage_sync(
     # close once after all files are done (single connection pool).
     sink = create_sink(datasource=datasource, rule_config=rule_config, tenant_id=tenant_id)
 
-    # Application-level rollback: track every (datasource, env, file_path) tuple
-    # written successfully.  On any write failure, delete_file_data() is called
-    # for each previously committed file to restore the pre-deployment state.
-    # Remaining un-attempted files are marked "aborted".
-    #
-    # Limitation: this removes newly-written documents but does NOT restore the
-    # *previous* versions of pre-existing keys — that requires full MongoDB
-    # client-session transactions (replica set required).
-    written_files: list[tuple[str, str, str]] = []  # (datasource, env, file_path)
+    # Rollback tracking: before each write we snapshot the current state of that
+    # file so that a failure can restore prior values, not just delete new ones.
+    # Each entry is (datasource, env, file_path, snapshot_docs).
+    # snapshot_docs is empty when the file did not previously exist.
+    written_files: list[tuple[str, str, str, list]] = []
 
     try:
         files_iter = list(etl.files)
@@ -99,6 +95,11 @@ def run_stage_sync(
             try:
                 # ── Strategy decision ─────────────────────────────────────────
                 sync_mode = _decide_sync_mode(len(etl_file.flat_data), configured_mode)
+
+                # ── Snapshot current state before writing ─────────────────────
+                snapshot: list = []
+                if hasattr(sink, "snapshot_file_data"):
+                    snapshot = sink.snapshot_file_data(datasource, etl_file.env, etl_file.file_path)
 
                 # ── Write to sink ─────────────────────────────────────────────
                 _old_values: dict[str, str] = {}
@@ -139,7 +140,7 @@ def run_stage_sync(
                 sync_result.sync_mode = sync_mode.name
                 sync_result.written   = write_result.get("written", 0)
                 sync_result.pruned    = write_result.get("pruned", 0)
-                written_files.append((datasource, etl_file.env, etl_file.file_path))
+                written_files.append((datasource, etl_file.env, etl_file.file_path, snapshot))
 
                 # ── fire-and-forget write metrics ────────────────────────────
                 metrics = _m()
@@ -167,11 +168,18 @@ def run_stage_sync(
                     except Exception:
                         pass
 
-                # ── Application-level rollback ────────────────────────────────
-                for rb_datasource, rb_env, rb_file in written_files:
+                # ── Rollback: restore each file to its pre-write state ────────
+                for rb_datasource, rb_env, rb_file, rb_snapshot in written_files:
                     try:
-                        sink.delete_file_data(rb_datasource, rb_env, rb_file)
-                        logger.info("rollback: deleted file=%s env=%s", rb_file, rb_env)
+                        if hasattr(sink, "restore_file_data"):
+                            sink.restore_file_data(rb_datasource, rb_env, rb_file, rb_snapshot)
+                            logger.info(
+                                "rollback: restored file=%s env=%s docs=%d",
+                                rb_file, rb_env, len(rb_snapshot),
+                            )
+                        else:
+                            sink.delete_file_data(rb_datasource, rb_env, rb_file)
+                            logger.info("rollback: deleted file=%s env=%s", rb_file, rb_env)
                     except Exception:
                         logger.exception("rollback failed for file=%s env=%s", rb_file, rb_env)
                         if _m():
