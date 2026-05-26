@@ -3,7 +3,6 @@ package auth
 
 import (
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -11,6 +10,9 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/go-jose/go-jose/v4"
+	josejwt "github.com/go-jose/go-jose/v4/jwt"
 )
 
 // Claims holds the validated JWT payload fields used for RBAC.
@@ -22,6 +24,16 @@ type Claims struct {
 	Issuer  string
 }
 
+// allowedAlgorithms lists the asymmetric signing algorithms accepted for
+// token verification. Symmetric algorithms (HS*) are excluded because they
+// require sharing the signing secret with this service, which is not the
+// OIDC model.
+var allowedAlgorithms = []jose.SignatureAlgorithm{
+	jose.RS256, jose.RS384, jose.RS512,
+	jose.ES256, jose.ES384, jose.ES512,
+	jose.PS256, jose.PS384, jose.PS512,
+}
+
 // JWTValidator validates Bearer tokens against an OIDC provider's JWKS.
 // The JWKS is cached and re-fetched every 12 hours.
 type JWTValidator struct {
@@ -30,7 +42,7 @@ type JWTValidator struct {
 	fetchEvery time.Duration
 
 	mu        sync.RWMutex
-	rawJWKS   []byte
+	keySet    jose.JSONWebKeySet
 	lastFetch time.Time
 }
 
@@ -63,40 +75,24 @@ func (v *JWTValidator) Validate(ctx context.Context, rawToken string) (*Claims, 
 	return v.parseClaims(rawToken)
 }
 
-// parseClaims decodes the JWT payload and validates standard claims.
-// Signature cryptographic verification is intentionally delegated to the
-// OIDC token introspection pattern: the token was issued by a trusted
-// provider and validated at issue time. For environments requiring full
-// RS256/ES256 signature verification, replace this with a full JWKS
-// key-matching implementation or use a library such as MicahParks/keyfunc.
+// parseClaims verifies the JWT signature against the cached JWKS, then
+// validates the standard time and issuer/audience claims.
 func (v *JWTValidator) parseClaims(rawToken string) (*Claims, error) {
-	parts := strings.Split(rawToken, ".")
-	if len(parts) != 3 {
-		return nil, fmt.Errorf("malformed JWT: expected 3 parts")
-	}
-
-	payload, err := base64.RawURLEncoding.DecodeString(parts[1])
+	tok, err := josejwt.ParseSigned(rawToken, allowedAlgorithms)
 	if err != nil {
-		return nil, fmt.Errorf("decode JWT payload: %w", err)
+		return nil, fmt.Errorf("parse JWT: %w", err)
 	}
 
-	var p struct {
-		Sub   string      `json:"sub"`
-		Email string      `json:"email"`
-		Name  string      `json:"name"`
-		Iss   string      `json:"iss"`
-		Aud   interface{} `json:"aud"`
-		Exp   int64       `json:"exp"`
-		Nbf   int64       `json:"nbf"`
+	// Identify the verification key. When the token carries a "kid" header we
+	// look it up in the JWKS; otherwise we try each key in turn and accept the
+	// first that produces a valid signature.
+	v.mu.RLock()
+	keySet := v.keySet
+	v.mu.RUnlock()
 
-		// Standard group claim names.
-		Groups []string `json:"groups"`
-		Roles  []string `json:"roles"`
-		// Azure AD / Entra ID group membership claim.
-		MsGroups []string `json:"group_membership"`
-	}
-	if err := json.Unmarshal(payload, &p); err != nil {
-		return nil, fmt.Errorf("unmarshal JWT claims: %w", err)
+	var p rawClaims
+	if err := v.verifyWithKeySet(tok, keySet, &p); err != nil {
+		return nil, err
 	}
 
 	now := time.Now().Unix()
@@ -132,6 +128,59 @@ func (v *JWTValidator) parseClaims(rawToken string) (*Claims, error) {
 		Groups:  groups,
 		Issuer:  p.Iss,
 	}, nil
+}
+
+// rawClaims is the internal payload structure used during verification.
+type rawClaims struct {
+	Sub   string      `json:"sub"`
+	Email string      `json:"email"`
+	Name  string      `json:"name"`
+	Iss   string      `json:"iss"`
+	Aud   interface{} `json:"aud"`
+	Exp   int64       `json:"exp"`
+	Nbf   int64       `json:"nbf"`
+
+	// Standard group claim names.
+	Groups []string `json:"groups"`
+	Roles  []string `json:"roles"`
+	// Azure AD / Entra ID group membership claim.
+	MsGroups []string `json:"group_membership"`
+}
+
+// verifyWithKeySet attempts to verify tok's signature using the keys in ks.
+// When the token's JOSE header contains a "kid", only the matching key is tried.
+// Otherwise every key in the set is tried until one succeeds.
+func (v *JWTValidator) verifyWithKeySet(tok *josejwt.JSONWebToken, ks jose.JSONWebKeySet, dest interface{}) error {
+	headers := tok.Headers
+	if len(headers) == 0 {
+		return fmt.Errorf("JWT has no JOSE headers")
+	}
+
+	kid := headers[0].KeyID
+
+	if kid != "" {
+		candidates := ks.Key(kid)
+		if len(candidates) == 0 {
+			return fmt.Errorf("no JWKS key with kid %q — JWKS may be stale", kid)
+		}
+		for _, k := range candidates {
+			if err := tok.Claims(k.Public().Key, dest); err == nil {
+				return nil
+			}
+		}
+		return fmt.Errorf("JWT signature verification failed for kid %q", kid)
+	}
+
+	// No kid: try all keys.
+	for _, k := range ks.Keys {
+		if err := tok.Claims(k.Public().Key, dest); err == nil {
+			return nil
+		}
+	}
+	if len(ks.Keys) == 0 {
+		return fmt.Errorf("JWKS contains no keys")
+	}
+	return fmt.Errorf("JWT signature verification failed against all JWKS keys")
 }
 
 // refreshJWKS fetches the current JWKS from the OIDC discovery document.
@@ -170,8 +219,13 @@ func (v *JWTValidator) refreshJWKS(ctx context.Context) error {
 		return err
 	}
 
+	var ks jose.JSONWebKeySet
+	if err := json.Unmarshal(body, &ks); err != nil {
+		return fmt.Errorf("parse JWKS: %w", err)
+	}
+
 	v.mu.Lock()
-	v.rawJWKS = body
+	v.keySet = ks
 	v.lastFetch = time.Now()
 	v.mu.Unlock()
 	return nil
