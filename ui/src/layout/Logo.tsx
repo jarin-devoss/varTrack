@@ -1,0 +1,13 @@
+export function Logo({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 28 28" aria-hidden="true">
+      <rect width="28" height="28" rx="7" fill="#256abf" />
+      <g fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <circle cx="9" cy="8.5" r="2.6" />
+        <circle cx="19.5" cy="19" r="2.6" />
+        <path d="M9 11.1v2.4a5 5 0 0 0 5 5h2.9" />
+        <path d="M14.5 8.5h3.5a2 2 0 0 1 2 2v2.5" />
+      </g>
+    </svg>
+  );
+}

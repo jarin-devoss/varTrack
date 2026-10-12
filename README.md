@@ -327,6 +327,18 @@ global_tags: {
 
 ---
 
+## Web UI
+
+A browser console for rules, environments, drift, sync history and dry runs, reading from your running varTrack services:
+
+```bash
+cd ui && npm install && npm run dev   # http://localhost:5173
+```
+
+With Docker Compose it runs on port 8080. See the [UI README](ui/README.md) for the API it reads and a local stack with every sink.
+
+---
+
 ## CLI — `vt`
 
 Sync any local file directly without a Git push — runs the same ETL pipeline as a webhook:

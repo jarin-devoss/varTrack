@@ -1,0 +1,199 @@
+/* Design tokens: a neutral gray scale, one blue accent and four status hues.
+   Light is the base; dark redefines the same names. An explicit data-theme
+   on <html> wins over the OS setting both ways. */
+:root {
+  color-scheme: light;
+
+  --font-sans: 'Inter Variable', 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: ui-monospace, 'Cascadia Code', 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace;
+
+  --bg-page: #f9fafb;
+  --bg-card: #ffffff;
+  --bg-subtle: #f9fafb;
+  --bg-muted: #f3f4f6;
+  --bg-hover: #f9fafb;
+  --bg-overlay: rgba(17, 24, 39, 0.45);
+
+  --text-1: #111827;
+  --text-2: #374151;
+  --text-3: #4b5563;
+  --text-4: #6b7280;
+  --text-5: #9ca3af;
+
+  --border: #e5e7eb;
+  --border-row: #f3f4f6;
+  --border-field: #d1d5db;
+
+  --accent: #0066cc;
+  --accent-hover: #0057ad;
+  --accent-text: #0066cc;
+  --accent-soft: rgba(0, 102, 204, 0.1);
+  --ring: #0066cc;
+
+  /* Status: solid marks (dots, bars, borders) and pill backgrounds/text. */
+  --green: #10b981;
+  --yellow: #f59e0b;
+  --red: #ef4444;
+  --blue: #3b82f6;
+  --orange: #f97316;
+  --purple: #8b5cf6;
+  --gray: #9ca3af;
+
+  --green-bg: #dcfce7;
+  --green-text: #166534;
+  --yellow-bg: #fef9c3;
+  --yellow-text: #854d0e;
+  --red-bg: #fee2e2;
+  --red-text: #991b1b;
+  --blue-bg: #dbeafe;
+  --blue-text: #1e40af;
+  --orange-bg: #ffedd5;
+  --orange-text: #9a3412;
+  --purple-bg: #ede9fe;
+  --purple-text: #5b21b6;
+  --gray-bg: #f3f4f6;
+  --gray-text: #1f2937;
+
+  /* Hero card tints and borders. */
+  --green-tint: #f0fdf4;
+  --yellow-tint: #fefce8;
+  --red-tint: #fef2f2;
+  --blue-tint: #eff6ff;
+  --orange-tint: #fff7ed;
+  --gray-tint: #f9fafb;
+  --green-border: #22c55e;
+  --yellow-border: #eab308;
+  --red-border: #ef4444;
+  --blue-border: #3b82f6;
+  --orange-border: #f97316;
+  --gray-border: #9ca3af;
+  --green-disc: #dcfce7;
+  --yellow-disc: #fef9c3;
+  --red-disc: #fee2e2;
+  --blue-disc: #dbeafe;
+  --orange-disc: #ffedd5;
+  --gray-disc: #f3f4f6;
+
+  --radius: 6px;
+  --radius-lg: 8px;
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.1);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -4px rgba(0, 0, 0, 0.1);
+
+  --container: 1280px;
+  --chrome-h: 108px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    color-scheme: dark;
+    --bg-page: #111827;
+    --bg-card: #1f2937;
+    --bg-subtle: #1a2230;
+    --bg-muted: #374151;
+    --bg-hover: rgba(55, 65, 81, 0.3);
+    --bg-overlay: rgba(0, 0, 0, 0.6);
+    --text-1: #f9fafb;
+    --text-2: #e5e7eb;
+    --text-3: #d1d5db;
+    --text-4: #9ca3af;
+    --text-5: #6b7280;
+    --border: #374151;
+    --border-row: rgba(55, 65, 81, 0.6);
+    --border-field: #4b5563;
+    --accent: #2b7fd6;
+    --accent-hover: #3b8de0;
+    --accent-text: #60a5fa;
+    --accent-soft: rgba(96, 165, 250, 0.15);
+    --ring: #60a5fa;
+    --green-bg: rgba(20, 83, 45, 0.3);
+    --green-text: #4ade80;
+    --yellow-bg: rgba(113, 63, 18, 0.3);
+    --yellow-text: #facc15;
+    --red-bg: rgba(127, 29, 29, 0.3);
+    --red-text: #f87171;
+    --blue-bg: rgba(30, 58, 138, 0.3);
+    --blue-text: #60a5fa;
+    --orange-bg: rgba(124, 45, 18, 0.3);
+    --orange-text: #fb923c;
+    --purple-bg: rgba(76, 29, 149, 0.3);
+    --purple-text: #a78bfa;
+    --gray-bg: rgba(17, 24, 39, 0.3);
+    --gray-text: #9ca3af;
+    --green-tint: rgba(22, 163, 74, 0.1);
+    --yellow-tint: rgba(234, 179, 8, 0.1);
+    --red-tint: rgba(239, 68, 68, 0.1);
+    --blue-tint: rgba(59, 130, 246, 0.1);
+    --orange-tint: rgba(249, 115, 22, 0.1);
+    --gray-tint: rgba(156, 163, 175, 0.08);
+    --green-border: #4ade80;
+    --yellow-border: #facc15;
+    --red-border: #f87171;
+    --blue-border: #60a5fa;
+    --orange-border: #fb923c;
+    --gray-border: #6b7280;
+    --green-disc: rgba(22, 163, 74, 0.25);
+    --yellow-disc: rgba(234, 179, 8, 0.25);
+    --red-disc: rgba(239, 68, 68, 0.25);
+    --blue-disc: rgba(59, 130, 246, 0.25);
+    --orange-disc: rgba(249, 115, 22, 0.25);
+    --gray-disc: rgba(156, 163, 175, 0.2);
+    --shadow-sm: none;
+  }
+}
+
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --bg-page: #111827;
+  --bg-card: #1f2937;
+  --bg-subtle: #1a2230;
+  --bg-muted: #374151;
+  --bg-hover: rgba(55, 65, 81, 0.3);
+  --bg-overlay: rgba(0, 0, 0, 0.6);
+  --text-1: #f9fafb;
+  --text-2: #e5e7eb;
+  --text-3: #d1d5db;
+  --text-4: #9ca3af;
+  --text-5: #6b7280;
+  --border: #374151;
+  --border-row: rgba(55, 65, 81, 0.6);
+  --border-field: #4b5563;
+  --accent: #2b7fd6;
+  --accent-hover: #3b8de0;
+  --accent-text: #60a5fa;
+  --accent-soft: rgba(96, 165, 250, 0.15);
+  --ring: #60a5fa;
+  --green-bg: rgba(20, 83, 45, 0.3);
+  --green-text: #4ade80;
+  --yellow-bg: rgba(113, 63, 18, 0.3);
+  --yellow-text: #facc15;
+  --red-bg: rgba(127, 29, 29, 0.3);
+  --red-text: #f87171;
+  --blue-bg: rgba(30, 58, 138, 0.3);
+  --blue-text: #60a5fa;
+  --orange-bg: rgba(124, 45, 18, 0.3);
+  --orange-text: #fb923c;
+  --purple-bg: rgba(76, 29, 149, 0.3);
+  --purple-text: #a78bfa;
+  --gray-bg: rgba(17, 24, 39, 0.3);
+  --gray-text: #9ca3af;
+  --green-tint: rgba(22, 163, 74, 0.1);
+  --yellow-tint: rgba(234, 179, 8, 0.1);
+  --red-tint: rgba(239, 68, 68, 0.1);
+  --blue-tint: rgba(59, 130, 246, 0.1);
+  --orange-tint: rgba(249, 115, 22, 0.1);
+  --gray-tint: rgba(156, 163, 175, 0.08);
+  --green-border: #4ade80;
+  --yellow-border: #facc15;
+  --red-border: #f87171;
+  --blue-border: #60a5fa;
+  --orange-border: #fb923c;
+  --gray-border: #6b7280;
+  --green-disc: rgba(22, 163, 74, 0.25);
+  --yellow-disc: rgba(234, 179, 8, 0.25);
+  --red-disc: rgba(239, 68, 68, 0.25);
+  --blue-disc: rgba(59, 130, 246, 0.25);
+  --orange-disc: rgba(249, 115, 22, 0.25);
+  --gray-disc: rgba(156, 163, 175, 0.2);
+  --shadow-sm: none;
+}
