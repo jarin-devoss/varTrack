@@ -32,6 +32,16 @@ service Watcher {
       get: "/v1/watcher/ping"
     };
   }
+
+  // CheckDatasource compares the live state of a datasource with the desired
+  // state from Git, key by key.  The watcher calls it when a poll sees the
+  // datasource change, before healing: a change written by a varTrack sync
+  // matches Git and needs no heal; anything else is drift.
+  rpc CheckDatasource(CheckDatasourceRequest) returns (CheckDatasourceResponse) {
+    option (google.api.http) = {
+      get: "/v1/check/{datasource}"
+    };
+  }
 }
 
 // ────────────────────────────────────────────
@@ -64,4 +74,44 @@ message SyncDatasourceResponse {
 
   // Brief status (e.g. "accepted").
   string status = 2 [(google.api.field_behavior) = OUTPUT_ONLY];
+}
+
+// ────────────────────────────────────────────
+// CheckDatasource
+// ────────────────────────────────────────────
+
+message CheckDatasourceRequest {
+  // Datasource name in the CUE bundle (e.g. "mongo").
+  string datasource = 1 [
+    (buf.validate.field).string.min_len = 1,
+    (google.api.field_behavior) = REQUIRED
+  ];
+
+  // Platform name. Empty means all platforms for this datasource.
+  string platform = 2 [(google.api.field_behavior) = OPTIONAL];
+
+  // Tenant ID; empty means every registered tenant.
+  string tenant = 3 [(google.api.field_behavior) = OPTIONAL];
+}
+
+message CheckDatasourceResponse {
+  enum Status {
+    STATUS_UNSPECIFIED = 0;
+    // Every synced environment matches Git.
+    STATUS_IN_SYNC = 1;
+    // At least one environment differs from Git.
+    STATUS_DRIFTED = 2;
+    // A sync for this datasource is still running; check again later.
+    STATUS_SYNCING = 3;
+    // Not comparable: never synced, or the datasource could not be read.
+    STATUS_UNKNOWN = 4;
+  }
+
+  Status status = 1 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // "{platform}/{datasource}/{env}" of every environment that differs from Git.
+  repeated string drifted = 2 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // Why the status is what it is, for logs.
+  string message = 3 [(google.api.field_behavior) = OUTPUT_ONLY];
 }

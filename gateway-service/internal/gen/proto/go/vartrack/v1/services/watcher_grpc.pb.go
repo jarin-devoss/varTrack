@@ -20,8 +20,9 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	Watcher_SyncDatasource_FullMethodName = "/vartrack.v1.Watcher/SyncDatasource"
-	Watcher_Ping_FullMethodName           = "/vartrack.v1.Watcher/Ping"
+	Watcher_SyncDatasource_FullMethodName  = "/vartrack.v1.Watcher/SyncDatasource"
+	Watcher_Ping_FullMethodName            = "/vartrack.v1.Watcher/Ping"
+	Watcher_CheckDatasource_FullMethodName = "/vartrack.v1.Watcher/CheckDatasource"
 )
 
 // WatcherClient is the client API for Watcher service.
@@ -43,6 +44,11 @@ type WatcherClient interface {
 	// Ping is a liveness check.  The watcher calls this on startup and before
 	// each heal attempt to confirm the orchestrator is reachable.
 	Ping(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	// CheckDatasource compares the live state of a datasource with the desired
+	// state from Git, key by key.  The watcher calls it when a poll sees the
+	// datasource change, before healing: a change written by a varTrack sync
+	// matches Git and needs no heal; anything else is drift.
+	CheckDatasource(ctx context.Context, in *CheckDatasourceRequest, opts ...grpc.CallOption) (*CheckDatasourceResponse, error)
 }
 
 type watcherClient struct {
@@ -73,6 +79,16 @@ func (c *watcherClient) Ping(ctx context.Context, in *emptypb.Empty, opts ...grp
 	return out, nil
 }
 
+func (c *watcherClient) CheckDatasource(ctx context.Context, in *CheckDatasourceRequest, opts ...grpc.CallOption) (*CheckDatasourceResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(CheckDatasourceResponse)
+	err := c.cc.Invoke(ctx, Watcher_CheckDatasource_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // WatcherServer is the server API for Watcher service.
 // All implementations should embed UnimplementedWatcherServer
 // for forward compatibility.
@@ -92,6 +108,11 @@ type WatcherServer interface {
 	// Ping is a liveness check.  The watcher calls this on startup and before
 	// each heal attempt to confirm the orchestrator is reachable.
 	Ping(context.Context, *emptypb.Empty) (*emptypb.Empty, error)
+	// CheckDatasource compares the live state of a datasource with the desired
+	// state from Git, key by key.  The watcher calls it when a poll sees the
+	// datasource change, before healing: a change written by a varTrack sync
+	// matches Git and needs no heal; anything else is drift.
+	CheckDatasource(context.Context, *CheckDatasourceRequest) (*CheckDatasourceResponse, error)
 }
 
 // UnimplementedWatcherServer should be embedded to have
@@ -106,6 +127,9 @@ func (UnimplementedWatcherServer) SyncDatasource(context.Context, *SyncDatasourc
 }
 func (UnimplementedWatcherServer) Ping(context.Context, *emptypb.Empty) (*emptypb.Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Ping not implemented")
+}
+func (UnimplementedWatcherServer) CheckDatasource(context.Context, *CheckDatasourceRequest) (*CheckDatasourceResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method CheckDatasource not implemented")
 }
 func (UnimplementedWatcherServer) testEmbeddedByValue() {}
 
@@ -163,6 +187,24 @@ func _Watcher_Ping_Handler(srv interface{}, ctx context.Context, dec func(interf
 	return interceptor(ctx, in, info, handler)
 }
 
+func _Watcher_CheckDatasource_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CheckDatasourceRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(WatcherServer).CheckDatasource(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Watcher_CheckDatasource_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(WatcherServer).CheckDatasource(ctx, req.(*CheckDatasourceRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // Watcher_ServiceDesc is the grpc.ServiceDesc for Watcher service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -177,6 +219,10 @@ var Watcher_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "Ping",
 			Handler:    _Watcher_Ping_Handler,
+		},
+		{
+			MethodName: "CheckDatasource",
+			Handler:    _Watcher_CheckDatasource_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
