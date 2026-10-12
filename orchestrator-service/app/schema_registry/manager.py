@@ -127,12 +127,13 @@ class SchemaRegistryManager:
         self,
         tenant_id: str,
         repo_url: Optional[str] = None,
-        branch: str = "main",
+        branch: Optional[str] = None,
         token: Optional[str] = None,
     ) -> Path:
         """
         Return local path of the tenant's schema clone.
         Clones on first call; re-fetches on TTL expiry.
+        *branch* defaults to the tenant's registered branch, then "main".
         """
         cfg = self._tenant_configs.get(tenant_id, {})
         repo_url = repo_url or cfg.get("repo_url")

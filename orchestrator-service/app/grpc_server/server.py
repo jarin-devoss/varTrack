@@ -202,14 +202,32 @@ class OrchestratorServicer:
 
         task = sync_all_task.apply_async(
             kwargs={
-                "rules":     [],       # loader resolves from CUE bundle at runtime
-                "tenant_id": tenant_id,
+                "rules":      [],       # loader resolves from CUE bundle at runtime
+                "tenant_id":  tenant_id,
+                "datasource": request.datasource or None,
+                "platform":   request.platform or None,
             },
             queue="sync",
         )
 
         logger.info("SyncDatasource: enqueued sync_all_task id=%s", task.id)
         return _sync_response(task_id=task.id, status="accepted")
+
+    # ------------------------------------------------------------------
+    # CheckDatasource  (called by watcher-service before healing)
+    # ------------------------------------------------------------------
+
+    def CheckDatasource(self, request, context: "ServicerContext"):
+        """
+        Compare a datasource's live state with the desired state from Git.
+        The watcher sees any write as a change; this tells it whether the
+        change is drift or a sync varTrack just made.
+        """
+        from app.ui.drift import check_datasource
+
+        status, drifted, message = check_datasource(request.datasource, request.platform, request.tenant)
+        logger.info("CheckDatasource: datasource=%s status=%s %s", request.datasource, status, message)
+        return _check_response(status, drifted, message)
 
     # ------------------------------------------------------------------
     # Helpers
@@ -367,6 +385,18 @@ def _sync_response(task_id: str, status: str):
         except ImportError:
             pass
     return type("R", (), {"task_id": task_id, "status": status})()
+
+
+def _check_response(status: str, drifted: list[str], message: str):
+    from vartrack.v1.services import watcher_pb2  # type: ignore
+    resp = watcher_pb2.CheckDatasourceResponse
+    codes = {
+        "in_sync": resp.STATUS_IN_SYNC,
+        "drifted": resp.STATUS_DRIFTED,
+        "syncing": resp.STATUS_SYNCING,
+        "unknown": resp.STATUS_UNKNOWN,
+    }
+    return resp(status=codes.get(status, resp.STATUS_UNKNOWN), drifted=drifted, message=message)
 
 
 def _celery_state_to_proto(state: str) -> int:

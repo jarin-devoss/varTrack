@@ -63,6 +63,8 @@ docker run \
 | `GIT_CACHE_MAX_ENTRIES` | `20` | Max cached repo checkouts |
 | `SCHEMA_CACHE_DIR` | `/tmp/schema_registry` | CUE schema clone directory |
 | `ORCHESTRATOR_ADDR` | `:50051` | gRPC listen address |
+| `UI_DEFAULT_TENANT` | first registered | Tenant the web UI reads when the request has no `X-Tenant-ID` |
+| `UI_COMPARE_TTL_SECONDS` | `10` | How long a sink comparison is answered as is before it is refreshed in the background |
 
 ---
 
@@ -79,9 +81,29 @@ docker run \
 | `GET` | `/metrics` | Prometheus metrics |
 | `GET` | `/docs` | OpenAPI / Swagger UI |
 
+### Web UI read API (port 8000)
+
+The web UI reads everything it shows from these endpoints. The tenant comes from the `X-Tenant-ID` header, then `UI_DEFAULT_TENANT`, then the first registered tenant.
+
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/v1/ui/rules` | Every rule of the tenant with one target per synced environment |
+| `GET` | `/v1/ui/rules/{platform}/{datasource}` | One rule |
+| `GET` | `/v1/ui/rules/{platform}/{datasource}/targets/{env}/keys` | Desired value (Git) and current value (sink) of every key |
+| `POST` | `/v1/ui/rules/{platform}/{datasource}/sync` | Re-sync environments from the branch head in Git — body `{"envs": [], "dryRun": false, "prune": false}` |
+| `GET` | `/v1/ui/events?rule=&limit=` | Pushes, syncs, drift and heals, newest first |
+| `GET` | `/v1/ui/tasks?rule=&limit=` | Sync tasks, newest first |
+| `GET` | `/v1/ui/tasks/{task_id}` | One task with its per-file results |
+| `GET` | `/v1/ui/bundle` | Platforms and datasources, without credentials |
+
+Every sync records the desired state it wrote (secret values only as a digest), its task and its events in Redis next to the Celery broker. Reading a rule compares that desired state with the values read back from the sink, so drift shows key by key even for rules without `self_heal`.
+
+Pages never wait on a sink they have read before. Each comparison is cached: for `UI_COMPARE_TTL_SECONDS` (default 10) it is answered as is, and after that it is still answered at once while the sink is read again in the background — every target shows when it was last checked. The API reads every sink once at startup, and the schema registry's periodic `git fetch` also runs behind requests. Only an environment not read since its last sync is read while the request waits.
+
 ### gRPC (port 50051)
 
 | RPC | Called by | Description |
 |---|---|---|
 | `ProcessWebhook` | gateway-service | Enqueue ETL pipeline |
-| `TriggerSync` | watcher-service | Re-sync datasource on drift |
+| `CheckDatasource` | watcher-service | Does the datasource still match Git? `in_sync`, `drifted`, `syncing` or `unknown`, per environment |
+| `SyncDatasource` | watcher-service | Re-sync one datasource from Git on drift (self-heal) |

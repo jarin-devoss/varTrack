@@ -100,3 +100,77 @@ class HelmSink(BaseSink):
 
     def close(self) -> None:
         pass
+
+    def read_values(
+        self,
+        keys: "Collection[str]",
+        datasource: str,
+        env: str,
+    ) -> "dict[str, str]":
+        """
+        Read the values currently set on the release (or values file) for *env*.
+        Never raises: stage_sync calls this before every write for the change-log.
+        """
+        if not keys:
+            return {}
+        from app.pipeline.sinks.strategies.helm.values_file import ValuesFileStrategy
+
+        try:
+            if isinstance(self._strategy, ValuesFileStrategy):
+                import yaml
+                with open(self._strategy._path, encoding="utf-8") as fh:
+                    values = yaml.safe_load(fh) or {}
+                values.pop("_vartrack", None)
+                # The file holds keys without the strategy's values_prefix.
+                flat = {self._strategy._prefix + k: v for k, v in _flatten(values).items()}
+            else:
+                flat = _flatten(self._release_values(env))
+        except FileNotFoundError:
+            return {}
+        except Exception as exc:
+            logger.warning("HelmSink.read_values failed: %s", exc)
+            return {}
+        return {k: flat[k] for k in keys if k in flat}
+
+    def _release_values(self, env: str) -> dict:
+        import json
+        import os
+        import shutil
+        import subprocess
+
+        release = (
+            resolve_destination(self._dest_tpl, tenant=self._tenant_id, env=env)
+            if self._dest_tpl
+            else self._release_name
+        )
+        helm = os.getenv("HELM_BINARY", "") or shutil.which("helm") or "helm"
+        cmd = [helm, "get", "values", release, "--namespace", self._namespace, "--output", "json"]
+        if self._kubeconfig:
+            cmd += ["--kubeconfig", self._kubeconfig]
+        if self._context:
+            cmd += ["--kube-context", self._context]
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+        if result.returncode != 0:
+            if "not found" in result.stderr:
+                return {}
+            raise RuntimeError(result.stderr.strip() or f"helm get values exited {result.returncode}")
+        return json.loads(result.stdout or "null") or {}
+
+
+def _scalar(value: Any) -> str:
+    # --set types "true"/"false"/"null" (and integers): render them back the way they were written.
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if value is None:
+        return "null"
+    return str(value)
+
+
+def _flatten(node: Any, prefix: str = "") -> dict[str, str]:
+    """{"a": {"b": "c"}} → {"a.b": "c"}"""
+    if not isinstance(node, dict):
+        return {prefix: _scalar(node)} if prefix else {}
+    out: dict[str, str] = {}
+    for k, v in node.items():
+        out.update(_flatten(v, f"{prefix}.{k}" if prefix else str(k)))
+    return out

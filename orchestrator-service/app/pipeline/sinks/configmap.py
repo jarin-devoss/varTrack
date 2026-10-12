@@ -226,6 +226,39 @@ class ConfigmapSink(BaseSink):
     def close(self) -> None:
         pass
 
+    def read_values(
+        self,
+        keys: "Collection[str]",
+        datasource: str,
+        env: str,
+    ) -> "dict[str, str]":
+        """
+        Read current values back from the ConfigMap this sink writes for *env*.
+        Never raises: stage_sync calls this before every write for the
+        change-log, and a failed read must not fail the write.
+        """
+        if not keys:
+            return {}
+        from kubernetes.client.exceptions import ApiException
+
+        try:
+            namespace, cm_name = self._resolve_cm_target(env)
+            data = self._api.read_namespaced_config_map(cm_name, namespace).data or {}
+        except ApiException as exc:
+            if exc.status != 404:
+                logger.warning("ConfigmapSink.read_values failed: %s", exc)
+            return {}
+        except Exception as exc:
+            logger.warning("ConfigmapSink.read_values failed: %s", exc)
+            return {}
+        out: dict[str, str] = {}
+        for k in keys:
+            # Keys are stored in the sink's key format (FLAT by default: "db_host").
+            stored = next(iter(format_keys({k: ""}, self._key_format)))
+            if stored in data:
+                out[k] = data[stored]
+        return out
+
 
 def _k8s_safe_name(env: str) -> str:
     """

@@ -27,6 +27,8 @@ from app.pipeline.stage_payload import run_stage_payload
 from app.pipeline.stage_etl import run_stage_etl
 from app.pipeline.stage_sync import run_stage_sync, sync_result_to_dict
 from app.pipeline.models import PayloadContext, ETLResult
+from app.ui import recorder as ui_recorder
+from app.ui.ledger import TRIGGER_HEADER, trigger_from_headers
 
 logger = logging.getLogger(__name__)
 
@@ -156,6 +158,7 @@ def process_webhook_task(
     )
 
     _t0 = time.perf_counter()
+    ui_task = None
 
     try:
         # ── Stage 1 · PAYLOAD ─────────────────────────────────────────────────
@@ -188,6 +191,19 @@ def process_webhook_task(
         # it into rule_config, so both paths converge here.
         dry_run = dry_run or bool(ctx.rule_config.get("dry_run", False))
 
+        ui_task = ui_recorder.task_started(
+            task_id,
+            tenant=tenant_id,
+            platform=platform,
+            datasource=datasource,
+            trigger=trigger_from_headers(headers),
+            repo_url=ctx.repo_url,
+            ref=ctx.branch or ctx.ref,
+            revision=ctx.commit_sha,
+            dry_run=dry_run,
+            parsed_payload=ctx.parsed_payload,
+        )
+
         # ── Stage 2 · ETL ─────────────────────────────────────────────────────
         self.update_state(
             state="PROGRESS",
@@ -207,6 +223,7 @@ def process_webhook_task(
 
         if not etl.files and not etl.skipped:
             logger.info("stage=etl result=no_files")
+            ui_recorder.task_finished(ui_task, tenant=tenant_id, message="no matching files in this push")
             return ok(task_id, "no_files", **{"dry_run": dry_run, "files": []})
 
         logger.info(
@@ -216,7 +233,9 @@ def process_webhook_task(
 
         # Dry-run exits after ETL — no writes to any datasource.
         if dry_run:
-            return _build_dry_run_report(task_id, ctx, etl, received_at)
+            report = _build_dry_run_report(task_id, ctx, etl, received_at)
+            ui_recorder.task_finished(ui_task, tenant=tenant_id, dry_run_files=report.get("files", []))
+            return report
 
         # ── Stage 3 · SYNC ────────────────────────────────────────────────────
         self.update_state(
@@ -243,6 +262,7 @@ def process_webhook_task(
 
         failed  = [r for r in sync_results if r.status not in ("ok", "empty")]
         overall = "completed" if not failed else "completed_with_errors"
+        ui_recorder.task_finished(ui_task, tenant=tenant_id, etl=etl, results=sync_results)
 
         logger.info(
             "stage=sync written=%d errors=%d duration_ms=%.0f",
@@ -259,11 +279,15 @@ def process_webhook_task(
     except SoftTimeLimitExceeded:
         span.end()
         logger.warning("task=%s hit soft time limit — will retry", task_id)
+        # Left RUNNING, the watcher would wait on this sync for good. A retry
+        # records itself as running again under the same id.
+        ui_recorder.task_errored(ui_task, tenant=tenant_id, error="hit the time limit — retrying once")
         raise self.retry(countdown=30, max_retries=1)
 
     except Exception as exc:
         span.end(exc)
         logger.exception("task=%s unhandled error: %s", task_id, exc)
+        ui_recorder.task_errored(ui_task, tenant=tenant_id, error=str(exc))
         raise
 
     finally:
@@ -321,8 +345,10 @@ def refresh_schema_task(
 def sync_all_task(
     self,
     *,
-    rules:     list[dict],
-    tenant_id: str | None = None,
+    rules:      list[dict],
+    tenant_id:  str | None = None,
+    datasource: str | None = None,
+    platform:   str | None = None,
 ) -> None:
     """
     Periodic self-heal task dispatched by Celery beat every 5 minutes.
@@ -344,6 +370,12 @@ def sync_all_task(
         rules = rules_from_bundle_all(tenant_id)
 
     heal_rules = [r for r in rules if r.get("self_heal", False)]
+    # A heal requested for one datasource (the watcher saw it drift) re-syncs
+    # only that datasource's rules; the periodic beat passes neither and heals all.
+    if datasource:
+        heal_rules = [r for r in heal_rules if r.get("datasource") == datasource]
+    if platform:
+        heal_rules = [r for r in heal_rules if r.get("platform") == platform]
     if not heal_rules:
         logger.info("sync_all task=%s: no self_heal rules, done", task_id)
         return
@@ -351,33 +383,40 @@ def sync_all_task(
     from app.pipeline.git_extractor import GitExtractor
     extractor = GitExtractor()
 
-    def _resolve_sha(rule: dict) -> tuple[dict, str | None]:
+    def _resolve_sha(item: tuple[dict, str]) -> tuple[dict, str, str | None]:
         """Resolve the HEAD SHA for a rule's repo/branch (runs in thread pool)."""
+        rule, branch = item
         repo_url = rule.get("repo_url", "")
-        branch   = rule.get("branch", "main")
         token    = rule.get("token")
         try:
             sha = extractor.get_commit_sha(repo_url, branch, token=token)
-            return rule, sha
+            return rule, branch, sha
         except Exception:
-            logger.exception("sync_all sha_resolve error repo=%s", repo_url)
-            return rule, None
+            logger.exception("sync_all sha_resolve error repo=%s branch=%s", repo_url, branch)
+            return rule, branch, None
+
+    # Every branch that feeds an environment gets healed, not only the
+    # rule's default branch: branch_map {main: production, develop: staging}
+    # heals both production and staging.
+    work: list[tuple[dict, str]] = []
+    for rule in heal_rules:
+        branches = list((rule.get("branch_map") or {}).keys()) or [rule.get("branch", "main")]
+        work.extend((rule, b) for b in dict.fromkeys(branches))
 
     healed, errors = [], []
 
     # Parallelise git ls-remote calls (I/O-bound).
     # max_workers=8: enough parallelism without overwhelming the git host.
     with ThreadPoolExecutor(max_workers=8, thread_name_prefix="sync_sha") as pool:
-        futures = {pool.submit(_resolve_sha, rule): rule for rule in heal_rules}
+        futures = {pool.submit(_resolve_sha, item): item for item in work}
 
         for future in as_completed(futures):
-            rule, sha = future.result()
+            rule, branch, sha = future.result()
             if sha is None:
                 errors.append(rule.get("repo_url", "?"))
                 continue
 
             repo_url = rule.get("repo_url", "")
-            branch   = rule.get("branch", "main")
             try:
                 # Use per-rule tenant_id when rules came from multi-tenant fan-out.
                 dispatch_tenant = rule.get("tenant_id") or tenant_id or "default"
@@ -391,7 +430,7 @@ def sync_all_task(
                             "repository": {"full_name": repo_url},
                             "commits":    [],
                         }),
-                        "headers":     {},
+                        "headers":     {TRIGGER_HEADER: "self_heal"},
                         "received_at": time.time(),
                         "rule_config": rule,
                         "tenant_id":   dispatch_tenant,
@@ -456,6 +495,7 @@ def process_cli_sync_task(
     )
 
     _t0 = time.perf_counter()
+    ui_task = None
 
     try:
         # Resolve rule config for this tenant+datasource from the bundle.
@@ -466,6 +506,20 @@ def process_cli_sync_task(
 
         if dry_run:
             rule_config = {**rule_config, "dry_run": True}
+
+        ui_task = ui_recorder.task_started(
+            task_id,
+            tenant=tenant_id,
+            platform=str(rule_config.get("platform", "cli")),
+            datasource=datasource,
+            trigger="cli",
+            repo_url="local",
+            ref=f"cli/{env}",
+            revision=label or "cli-push",
+            dry_run=dry_run,
+            env=env,
+            submitted_by=submitted_by,
+        )
 
         # Synthetic context — no git platform, no commit SHA.
         ctx = PayloadContext(
@@ -495,9 +549,14 @@ def process_cli_sync_task(
         _observe("etl", time.perf_counter() - _t_etl)
 
         if etl.errors:
+            ui_recorder.task_errored(ui_task, tenant=tenant_id, error=f"etl errors: {etl.errors}")
             return fail(task_id, f"etl errors: {etl.errors}")
 
         if dry_run:
+            ui_recorder.task_finished(ui_task, tenant=tenant_id, dry_run_files=[
+                {"file": f.file_path, "env": f.env, "keys": len(f.flat_data), "validation": f.validation}
+                for f in etl.files
+            ])
             return ok(
                 task_id=task_id,
                 duration=round(time.perf_counter() - _t0, 3),
@@ -528,6 +587,7 @@ def process_cli_sync_task(
         )
         _observe("sync", time.perf_counter() - _t_sync)
 
+        ui_recorder.task_finished(ui_task, tenant=tenant_id, etl=etl, results=sync_results)
         total_written = sum(r.written for r in sync_results)
         total_pruned  = sum(r.pruned  for r in sync_results)
         had_error     = any(r.status == "error" for r in sync_results)
@@ -548,9 +608,11 @@ def process_cli_sync_task(
 
     except SoftTimeLimitExceeded:
         logger.error("cli_sync soft time limit exceeded task=%s", task_id)
+        ui_recorder.task_errored(ui_task, tenant=tenant_id, error="task exceeded time limit")
         return fail(task_id, "task exceeded time limit")
     except Exception as exc:
         logger.exception("cli_sync error task=%s", task_id)
+        ui_recorder.task_errored(ui_task, tenant=tenant_id, error=str(exc))
         return fail(task_id, str(exc))
     finally:
         if span:
