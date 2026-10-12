@@ -1,0 +1,31 @@
+# app-settings.yaml on `develop` → staging
+app:
+  name: checkout-api
+  region: us-east-1
+  env: staging
+
+database:
+  pool_size: "10"
+  max_connections: "100"
+  connect_timeout_ms: "5000"
+  password: "resolved-from-vault"
+
+cache:
+  ttl_seconds: "60"
+  backend: redis
+
+api:
+  rate_limit: "1000"
+  timeout_ms: "30000"
+  version: v2
+  secret_key: "resolved-from-vault"
+
+features:
+  dark_mode: "true"
+  analytics: "false"
+  debug_mode: "true"
+
+observability:
+  log_level: DEBUG
+  service_mesh: istio
+  tracing_enabled: "true"

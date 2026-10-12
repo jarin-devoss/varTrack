@@ -1,0 +1,6 @@
+apiVersion: v2
+name: checkout-api
+description: Demo chart for the varTrack Helm sink — renders its values into a ConfigMap.
+type: application
+version: 0.1.0
+appVersion: "1.0.0"

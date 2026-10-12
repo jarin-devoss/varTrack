@@ -26,6 +26,22 @@ docker compose up
 
 This starts a local Git server, MongoDB, ZooKeeper, Redis, and all three varTrack services with a pre-configured bundle. Push any config change to the local repo and watch it sync.
 
+### With every sink and the web UI
+
+`e2e/docker-compose.live.yml` adds every sink that runs in a container — S3 on MinIO, a Linux server over SSH, and Kubernetes ConfigMaps and Helm releases on k3s — and seeds them through real Gitea pushes and webhooks:
+
+```bash
+buf generate          # the orchestrator image needs the Python gRPC stubs
+cd e2e
+docker compose -f docker-compose.yml -f docker-compose.live.yml up -d --build \
+  gitea redis mongo zookeeper minio minio-init vault vault-init linux-target \
+  k3s k3s-kubeconfig orchestrator-api orchestrator-worker gateway watcher live-seed
+
+cd ../ui && npm install && npm run dev
+```
+
+Open the UI at http://localhost:5173 — every environment shows its desired state in Git next to the current state in its sink.
+
 ---
 
 ## Option B — Build from source

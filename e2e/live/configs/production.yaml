@@ -1,0 +1,31 @@
+# app-settings.yaml on `main` → production
+app:
+  name: checkout-api
+  region: us-east-1
+  env: production
+
+database:
+  pool_size: "50"
+  max_connections: "500"
+  connect_timeout_ms: "3000"
+  password: "resolved-from-vault"
+
+cache:
+  ttl_seconds: "600"
+  backend: redis
+
+api:
+  rate_limit: "5000"
+  timeout_ms: "15000"
+  version: v2
+  secret_key: "resolved-from-vault"
+
+features:
+  dark_mode: "true"
+  analytics: "true"
+  debug_mode: "false"
+
+observability:
+  log_level: WARN
+  service_mesh: istio
+  tracing_enabled: "true"
