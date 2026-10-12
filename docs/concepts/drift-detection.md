@@ -19,21 +19,31 @@ Without drift detection, these changes go unnoticed until something breaks.
 
 ## How detection works
 
+The watcher reads each datasource and keeps a fingerprint of it. A fingerprint only says *that* something changed — varTrack's own syncs change it too — so when it moves, the watcher asks the orchestrator whether the datasource still matches Git, key by key (`CheckDatasource`). Only a mismatch is drift.
+
 ```
 Every POLL_INTERVAL (default: 60s)
   │
-  ├── Read live values from datasource
-  ├── Compare against Git-sourced baseline (key by key)
+  ├── Fingerprint the datasource
+  ├── Same as the baseline → nothing to do
   │
-  ├── No diff   → log "OK", update poll counter
-  │
-  └── Diff found
-        ├── Increment vartrack_watcher_drift_total counter
-        ├── Log the drifted keys and their values
-        └── self_heal: true?
-              ├── Yes → call TriggerSync gRPC → orchestrator re-runs ETL pipeline
-              └── No  → log drift, alert via metrics, do nothing
+  └── Changed → CheckDatasource: compare every synced environment with the
+      desired state varTrack last wrote from Git
+        ├── in sync  → a varTrack sync wrote it: new baseline, no heal
+        ├── syncing  → a sync is still writing: look again on the next poll
+        └── drifted  → (also: orchestrator can't compare, see below)
+              ├── Increment vartrack_watcher_drift_total
+              └── Heal: SyncDatasource gRPC → orchestrator re-syncs this
+                  datasource from the head of every branch that feeds it
 ```
+
+A few rules keep this from healing what it shouldn't, or waiting forever:
+
+- **Unknown** — the orchestrator answers but can't compare (nothing synced yet, or it can't read the sink back, as with Vercel): the watcher heals, as it did before the check existed. A heal only ever writes what Git says.
+- **Orchestrator unreachable or older** (no `CheckDatasource`): the watcher heals on any change, as before.
+- **A sync that died** — a worker killed mid-sync leaves no result. A sync still marked running after 15 minutes (Celery stops any task after 10) no longer counts, so the watcher heals instead of waiting on it.
+- **First start without a saved baseline** — the watcher asks once right away, so drift from before it ever ran is healed too. At startup only a definite *drifted* heals; with no change seen, *unknown* is no evidence.
+- **A failed heal** is not retried until the datasource changes again: the same sync would fail the same way. The web UI shows it as *Heal failed*.
 
 ---
 
@@ -66,11 +76,13 @@ Someone runs `db.variables.updateOne({key: "max_connections"}, {$set: {value: 5}
 
 On the next poll cycle:
 
-1. Watcher reads `max_connections = 5` from MongoDB
-2. Compares against baseline: expected `50`, got `5`
-3. `self_heal: true` → calls `TriggerSync` on orchestrator
+1. Watcher sees the MongoDB fingerprint change
+2. Asks the orchestrator (`CheckDatasource`): Git says `50`, MongoDB has `5` — drifted
+3. `self_heal: true` → calls `SyncDatasource` on the orchestrator
 4. Orchestrator fetches the file from Git, parses it, writes `max_connections = 50` back to MongoDB
-5. Next poll sees no drift — state restored
+5. That write moves the fingerprint again; the orchestrator says it matches Git, so it becomes the new baseline — state restored
+
+Had the change come from a push to Git, step 2 would have answered *in sync* and nothing would be healed.
 
 Total recovery time: up to one `POLL_INTERVAL` (default 60 seconds).
 

@@ -8,11 +8,15 @@ The watcher-service continuously polls your configured datasources and compares 
 
 ```
 Every POLL_INTERVAL
-  ├── Read live values from each datasource
-  ├── Compare against Git baseline
-  ├── No diff   → OK
-  └── Drift     → log + increment metric + (self_heal? → TriggerSync)
+  ├── Fingerprint each datasource
+  ├── Unchanged → OK
+  └── Changed   → CheckDatasource (orchestrator compares with Git, key by key)
+        ├── in sync  → a varTrack sync: new baseline
+        ├── syncing  → look again next poll
+        └── drifted  → log + increment metric + SyncDatasource (heal)
 ```
+
+See [Drift Detection & Self-Heal](../concepts/drift-detection.md) for the edge cases (unknown, a sync that died, first start).
 
 ---
 

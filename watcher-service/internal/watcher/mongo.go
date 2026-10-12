@@ -152,6 +152,11 @@ func (w *MongoWatcher) Restore(ctx context.Context) error {
 	return w.healer.Heal(ctx, w.healOpts)
 }
 
+// CheckGit implements GitChecker.
+func (w *MongoWatcher) CheckGit(ctx context.Context) (healer.GitState, string, error) {
+	return w.healer.Check(ctx, w.healOpts)
+}
+
 // Close disconnects from MongoDB.
 func (w *MongoWatcher) Close() error {
 	return w.client.Disconnect(context.Background())
@@ -160,12 +165,17 @@ func (w *MongoWatcher) Close() error {
 // ─── helpers ──────────────────────────────────────────────────────────────────
 
 // extractRecords pulls config key→value pairs out of a VarTrack MongoDB
-// document.  VT meta fields (_vt_*) are excluded from the fingerprint.
+// document.  VT meta fields (_vt_*) are excluded from the fingerprint, but
+// tenant, datasource and env scope each key: the same key exists once per
+// environment, and without the scope one environment's value would hide the
+// other's.
 func extractRecords(doc bson.M, out map[string]string) {
+	scope := recordScope(doc)
+
 	// DOCUMENT strategy: top-level "key" and "value" fields.
 	if k, ok := doc["key"].(string); ok {
 		if v, ok := doc["value"]; ok {
-			out[k] = fmt.Sprintf("%v", v)
+			out[scope+k] = fmt.Sprintf("%v", v)
 		}
 		return
 	}
@@ -174,7 +184,7 @@ func extractRecords(doc bson.M, out map[string]string) {
 	if dataRaw, ok := doc["data"]; ok {
 		if data, ok := dataRaw.(bson.M); ok {
 			for k, v := range data {
-				out[k] = fmt.Sprintf("%v", v)
+				out[scope+k] = fmt.Sprintf("%v", v)
 			}
 		}
 		return
@@ -188,6 +198,16 @@ func extractRecords(doc bson.M, out map[string]string) {
 		if k == "_id" {
 			continue
 		}
-		out[k] = fmt.Sprintf("%v", v)
+		out[scope+k] = fmt.Sprintf("%v", v)
 	}
+}
+
+// recordScope is "tenant/datasource/env/" from a document's VarTrack labels.
+func recordScope(doc bson.M) string {
+	scope := ""
+	for _, field := range []string{VTTenantField, VTDatasourceField, VTEnvField} {
+		v, _ := doc[field].(string)
+		scope += v + "/"
+	}
+	return scope
 }
