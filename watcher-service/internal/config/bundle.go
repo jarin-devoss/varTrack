@@ -51,8 +51,10 @@ func LoadBundle(cuePath string) (*models.Bundle, error) {
 
 // secretRefFieldNames is the set of JSON field names whose values may be either
 // a plain string (user shorthand) or a SecretRef object (proto wire format).
+// "username" is not one of them: it is a plain string in every proto
+// (linux_server, mongo, redis, zookeeper), so wrapping it breaks unmarshaling.
 var secretRefFieldNames = map[string]struct{}{
-	"token": {}, "secret": {}, "password": {}, "username": {},
+	"token": {}, "secret": {}, "password": {},
 	"private_key": {}, "access_key_id": {}, "secret_access_key": {},
 	"role_id": {}, "secret_id": {},
 }
