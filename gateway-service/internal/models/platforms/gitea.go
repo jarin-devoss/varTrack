@@ -15,10 +15,14 @@ import (
 	"path"
 	"strings"
 
+	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/reflect/protoreflect"
+
 	"gateway-service/internal/models"
 	"gateway-service/internal/protoutil"
 	"gateway-service/internal/secrets"
 
+	validate "gateway-service/internal/gen/proto/go/buf/validate"
 	pb_models "gateway-service/internal/gen/proto/go/vartrack/v1/models"
 	pb_gt "gateway-service/internal/gen/proto/go/vartrack/v1/models/platforms"
 )
@@ -89,10 +93,30 @@ func (g *Gitea) Close(ctx context.Context) error {
 	return nil
 }
 
-func (g *Gitea) EventTypeHeader() string    { return g.config.GetEventTypeHeader() }
-func (g *Gitea) SignatureHeader() string    { return g.config.GetGitScmSignature() }
-func (g *Gitea) IsPushEvent(et string) bool { return et == g.config.GetPushEventName() }
-func (g *Gitea) IsPREvent(et string) bool   { return et == g.config.GetPrEventName() }
+// Gitea's webhook headers and event names are fixed by the proto model:
+// gitea.proto declares each field as an output-only buf.validate string const,
+// so a bundle never sets them and they are read from the descriptor instead.
+var (
+	giteaEventTypeHeader = giteaConst("event_type_header")
+	giteaSignatureHeader = giteaConst("git_scm_signature")
+	giteaPushEventName   = giteaConst("push_event_name")
+	giteaPREventName     = giteaConst("pr_event_name")
+)
+
+// giteaConst returns the string const that gitea.proto pins field to.
+func giteaConst(field protoreflect.Name) string {
+	fd := (&pb_gt.Gitea{}).ProtoReflect().Descriptor().Fields().ByName(field)
+	if fd == nil {
+		return ""
+	}
+	rules, _ := proto.GetExtension(fd.Options(), validate.E_Field).(*validate.FieldRules)
+	return rules.GetString_().GetConst()
+}
+
+func (g *Gitea) EventTypeHeader() string    { return giteaEventTypeHeader }
+func (g *Gitea) SignatureHeader() string    { return giteaSignatureHeader }
+func (g *Gitea) IsPushEvent(et string) bool { return et == giteaPushEventName }
+func (g *Gitea) IsPREvent(et string) bool   { return et == giteaPREventName }
 func (g *Gitea) Secret() string             { return g.secret }
 
 func (g *Gitea) Auth(ctx context.Context) error {
