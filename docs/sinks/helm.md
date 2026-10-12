@@ -18,6 +18,9 @@ datasources: [{
 
 ---
 
+!!! note "Orchestrator image"
+    This sink runs the `helm` CLI, which the orchestrator image leaves out by default. Build it with `--build-arg HELM_VERSION=v3.16.3`.
+
 ## Destination template
 
 The `destination_template` sets the Helm release name:

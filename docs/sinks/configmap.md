@@ -18,6 +18,9 @@ datasources: [{
 
 ---
 
+!!! note "Orchestrator image"
+    This sink needs the Kubernetes Python client, which the orchestrator image leaves out by default. Build it with `--build-arg KUBERNETES_CLIENT=kubernetes==31.0.0`.
+
 ## Destination template
 
 The `destination_template` controls the ConfigMap name:
