@@ -68,7 +68,7 @@ bundle: {
 			datasource:           "mongo-primary"
 			file_name:            "app-settings.yaml"
 			repositories:         ["vartrack-demo/demo-configs"]
-			env_as_branch:        false
+			branch_as_env:        false
 			sync_mode:            "SYNC_MODE_FULL"
 			prune:                {last: false}
 			self_heal:            false
@@ -89,7 +89,7 @@ bundle: {
 			datasource:           "mongo-dr"
 			file_name:            "app-settings.yaml"
 			repositories:         ["vartrack-demo/demo-configs"]
-			env_as_branch:        false
+			branch_as_env:        false
 			sync_mode:            "SYNC_MODE_FULL"
 			prune:                {last: false}
 			self_heal:            false

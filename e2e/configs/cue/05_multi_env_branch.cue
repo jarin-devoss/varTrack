@@ -1,5 +1,5 @@
 // Variation 5: Multi-environment routing via branch_map.
-// main → "production", develop → "staging", feature/* → env_as_branch.
+// main → "production", develop → "staging", feature/* → branch_as_env.
 // destination_template places each env in its own MongoDB collection and ZK path.
 bundle: {
 	platforms: [
@@ -75,7 +75,7 @@ bundle: {
 			datasource:           "mongo-kv"
 			file_name:            "app-settings.yaml"
 			repositories:         ["vartrack-demo/demo-configs"]
-			env_as_branch:        true
+			branch_as_env:        true
 			sync_mode:            "SYNC_MODE_GIT_SMART_REPAIR"
 			prune:                {last: true}
 			self_heal:            true
@@ -91,7 +91,7 @@ bundle: {
 			datasource:           "mongo-file"
 			file_name:            "app-settings.yaml"
 			repositories:         ["vartrack-demo/demo-configs"]
-			env_as_branch:        true
+			branch_as_env:        true
 			sync_mode:            "SYNC_MODE_FULL"
 			prune:                {last: true}
 			self_heal:            false
@@ -107,7 +107,7 @@ bundle: {
 			datasource:           "zk-main"
 			file_name:            "app-settings.yaml"
 			repositories:         ["vartrack-demo/demo-configs"]
-			env_as_branch:        true
+			branch_as_env:        true
 			sync_mode:            "SYNC_MODE_FULL"
 			prune:                true
 			self_heal:            true

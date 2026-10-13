@@ -254,7 +254,7 @@ This single field controls the storage path, collection name, or key prefix in e
 destination_template: "{env}-config"
 // push to "main"    → branch_map resolves "production" → writes to "production-config"
 // push to "develop" → branch_map resolves "staging"    → writes to "staging-config"
-// PR #42 with env_as_pr: true                          → writes to "pr-42-config"
+// PR #42 with pr_as_env: true                          → writes to "pr-42-config"
 ```
 
 | Sink | What it controls | Example template | Resolved value |
@@ -275,9 +275,9 @@ When a webhook fires, VarTrack resolves the target environment in this order:
 
 1. `branch_map[branch]` — explicit mapping (e.g. `main` → `production`)
 2. `file_path_map[file_path]` — glob pattern match on the changed file path
-3. `env_as_pr: true` → environment = `pr-{number}`
-4. `env_as_branch: true` → environment = branch name
-5. `env_as_tags: true` → environment = tag name
+3. `pr_as_env: true` → environment = `pr-{number}`
+4. `branch_as_env: true` → environment = branch name
+5. `tag_as_env: true` → environment = tag name
 6. `"default"` fallback
 
 ---

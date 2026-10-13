@@ -53,9 +53,9 @@ These keys can be set in `vartrack.json` to override the central rule:
 | `file_name` | `string` | Config file path to watch instead of the centrally configured one. |
 | `file_path_map` | `object` | Map of `env → file_path` for per-environment file selection. |
 | `branch_map` | `object` | Map of `branch → env` label. Overrides the central branch mapping. |
-| `env_as_branch` | `bool` | Use branch name as the environment label. |
-| `env_as_pr` | `bool` | Use `pr-{number}` as the environment label. |
-| `env_as_tags` | `bool` | Use tag name as the environment label. |
+| `branch_as_env` | `bool` | Use branch name as the environment label. |
+| `pr_as_env` | `bool` | Use `pr-{number}` as the environment label. |
+| `tag_as_env` | `bool` | Use tag name as the environment label. |
 | `sync_mode` | `string` | `AUTO`, `GIT_UPSERT_ALL`, `GIT_SMART_REPAIR`, or `LIVE_STATE`. |
 | `prune` | `bool` | Delete keys from the datasource that are no longer present in Git. |
 | `strict_validation` | `bool` | Fail the sync if CUE schema validation fails (instead of warn). |

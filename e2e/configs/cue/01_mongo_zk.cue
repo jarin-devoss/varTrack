@@ -62,7 +62,7 @@ bundle: {
 			datasource:           "mongo-kv"
 			file_name:            "app-settings.yaml"
 			repositories:         ["vartrack-demo/demo-configs"]
-			env_as_branch:        true
+			branch_as_env:        true
 			sync_mode:            "SYNC_MODE_FULL"
 			prune:                {last: false}
 			self_heal:            true
@@ -73,7 +73,7 @@ bundle: {
 			datasource:           "zk-main"
 			file_name:            "app-settings.yaml"
 			repositories:         ["vartrack-demo/demo-configs"]
-			env_as_branch:        false
+			branch_as_env:        false
 			sync_mode:            "SYNC_MODE_FULL"
 			prune:                {last: false}
 			self_heal:            true

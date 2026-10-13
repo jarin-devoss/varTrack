@@ -170,9 +170,9 @@ rules: [{
     main:    "production"
     develop: "staging"
   }
-  env_as_pr:     false
-  env_as_branch: false
-  env_as_tags:   false
+  pr_as_env:     false
+  branch_as_env: false
+  tag_as_env:    false
 
   // Sync behavior
   sync_mode:     "AUTO"                       // AUTO, GIT_UPSERT_ALL, GIT_SMART_REPAIR, LIVE_STATE

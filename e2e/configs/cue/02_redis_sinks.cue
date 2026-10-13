@@ -62,7 +62,7 @@ bundle: {
 			datasource:           "redis-hash-sink"
 			file_name:            "app-settings.yaml"
 			repositories:         ["vartrack-demo/demo-configs"]
-			env_as_branch:        true
+			branch_as_env:        true
 			sync_mode:            "SYNC_MODE_FULL"
 			prune:                true
 			self_heal:            false
@@ -73,7 +73,7 @@ bundle: {
 			datasource:           "redis-string-sink"
 			file_name:            "app-settings.yaml"
 			repositories:         ["vartrack-demo/demo-configs"]
-			env_as_branch:        false
+			branch_as_env:        false
 			sync_mode:            "SYNC_MODE_FULL"
 			self_heal:            false
 			destination_template: "vartrack:kv"

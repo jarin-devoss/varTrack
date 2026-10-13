@@ -89,7 +89,7 @@ bundle: {
 			datasource:           "mongo-kv"
 			file_name:            "app-settings.yaml"
 			repositories:         ["vartrack-demo/demo-configs"]
-			env_as_branch:        true
+			branch_as_env:        true
 			sync_mode:            "SYNC_MODE_FULL"
 			prune:                {last: true}
 			self_heal:            true
@@ -100,7 +100,7 @@ bundle: {
 			datasource:           "zk-main"
 			file_name:            "app-settings.yaml"
 			repositories:         ["vartrack-demo/demo-configs"]
-			env_as_branch:        true
+			branch_as_env:        true
 			sync_mode:            "SYNC_MODE_FULL"
 			prune:                true
 			self_heal:            true
@@ -111,7 +111,7 @@ bundle: {
 			datasource:           "redis-data"
 			file_name:            "app-settings.yaml"
 			repositories:         ["vartrack-demo/demo-configs"]
-			env_as_branch:        true
+			branch_as_env:        true
 			sync_mode:            "SYNC_MODE_FULL"
 			prune:                true
 			self_heal:            false
@@ -122,7 +122,7 @@ bundle: {
 			datasource:           "s3-minio"
 			file_name:            "app-settings.yaml"
 			repositories:         ["vartrack-demo/demo-configs"]
-			env_as_branch:        true
+			branch_as_env:        true
 			sync_mode:            "SYNC_MODE_FULL"
 			self_heal:            false
 			destination_template: "configs/{env}"
@@ -132,7 +132,7 @@ bundle: {
 			datasource:           "linux-target"
 			file_name:            "app-settings.yaml"
 			repositories:         ["vartrack-demo/demo-configs"]
-			env_as_branch:        true
+			branch_as_env:        true
 			sync_mode:            "SYNC_MODE_FULL"
 			self_heal:            false
 			destination_template: "/tmp/vartrack/{env}.env"

@@ -75,7 +75,7 @@ rules: [{
   file_name:            "configs/app.yaml"
   repositories:         ["my-org/app"]
   destination_template: "{env}-config"
-  env_as_pr:            true    // PR #42 → env = "pr-42"
+  pr_as_env:            true    // PR #42 → env = "pr-42"
 }]
 ```
 
@@ -101,9 +101,9 @@ Writes znodes under `/acme/production/`, `/acme/staging/`, etc.
 
 If `{env}` appears in the template, at least one environment resolution strategy must be enabled:
 
-- `env_as_branch: true`
-- `env_as_pr: true`
-- `env_as_tags: true`
+- `branch_as_env: true`
+- `pr_as_env: true`
+- `tag_as_env: true`
 - `branch_map: { ... }`
 - `file_path_map: { ... }`
 

@@ -237,7 +237,7 @@ def verify_mongo(rule: dict, result: SuiteResult) -> None:
     uri = rule.get("mongo_uri", "mongodb://mongo:27017")
     db_name = rule.get("database", "vartrack")
     dest_tpl = rule.get("destination_template", "")
-    env = rule.get("branch", "main") if not rule.get("env_as_branch") else rule.get("branch", "main")
+    env = rule.get("branch", "main") if not rule.get("branch_as_env") else rule.get("branch", "main")
     tenant = rule.get("tenant_id", GITEA_ORG)
     safe_env = env.replace("/", "_")
 
