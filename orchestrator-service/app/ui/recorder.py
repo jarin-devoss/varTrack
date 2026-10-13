@@ -84,7 +84,8 @@ def _file_result(r: Any, dry_run_file: dict | None = None) -> dict[str, Any]:
         return {
             "file": dry_run_file.get("file", ""),
             "env": dry_run_file.get("env", ""),
-            "status": "ok",
+            # Nothing is written either way; a file the schema rejects still fails the dry run.
+            "status": "validation_failed" if dry_run_file.get("validation") == "failed" else "ok",
             "syncMode": "dry_run",
             "written": 0,
             "pruned": 0,
@@ -125,6 +126,7 @@ def task_finished(
         envs = sorted({f["env"] for f in files if f["env"] and f["env"] != "unknown"})
         written = sum(f["written"] for f in files)
         pruned = sum(f["pruned"] for f in files)
+        checked = sum((f.get("keys") or 0) for f in files)
 
         task.update({
             "state": "FAILED" if failed else "SUCCEEDED",
@@ -132,6 +134,7 @@ def task_finished(
             "files": files,
             "message": message or (
                 f"{len(failed)} of {len(files)} file(s) failed" if failed
+                else f"{checked} key{'s' if checked != 1 else ''} checked, nothing written" if task.get("dryRun")
                 else f"{written} key{'s' if written != 1 else ''} written" + (f", {pruned} pruned" if pruned else "")
             ),
         })
@@ -140,8 +143,10 @@ def task_finished(
 
         if task.get("dryRun"):
             ledger.record_task(task, tenant=tenant)
-            ledger.record_event(tenant=tenant, reason="SyncSucceeded", rule=task["rule"], task_id=task["taskId"],
-                                message=f"dry run: {sum((f.get('keys') or 0) for f in files)} keys would be written, nothing changed")
+            ledger.record_event(tenant=tenant, reason="SyncFailed" if failed else "SyncSucceeded", rule=task["rule"],
+                                task_id=task["taskId"],
+                                message=f"dry run: {task['message']}" if failed
+                                else f"dry run: {checked} keys would be written, nothing changed")
             return
 
         # The task is marked finished only after the desired state it wrote is

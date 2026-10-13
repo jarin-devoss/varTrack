@@ -522,6 +522,38 @@ class TestRecorderAfterAFailedFile:
         assert ("event", "production", "SyncFailed") in calls
 
 
+class TestRecorderDryRun:
+    @pytest.fixture
+    def run(self, monkeypatch):
+        from app.ui import recorder
+
+        recorded = {}
+        monkeypatch.setattr(ledger, "record_task", lambda task, **kw: recorded.update(task=dict(task)))
+        monkeypatch.setattr(ledger, "record_event", lambda **kw: recorded.update(event=kw))
+        monkeypatch.setattr(ledger, "record_target", lambda **kw: pytest.fail("a dry run records no desired state"))
+
+        def run(*files):
+            task = {"taskId": "t1", "rule": "gitea/s3", "datasource": "s3", "trigger": "ui", "createdAt": "x",
+                    "ref": "develop", "revision": "abc", "dryRun": True}
+            recorder.task_finished(task, tenant="acme", dry_run_files=[
+                {"file": "app.yaml", "env": env, "keys": keys, "validation": validation} for env, keys, validation in files])
+            return recorded
+        return run
+
+    def test_a_dry_run_says_what_it_checked_not_what_it_wrote(self, run):
+        recorded = run(("staging", 19, "ok"), ("production", 19, "warn"))
+        task = recorded["task"]
+        assert task["state"] == "SUCCEEDED" and task["message"] == "38 keys checked, nothing written"
+        assert [f["status"] for f in task["files"]] == ["ok", "ok"] and all(f["written"] == 0 for f in task["files"])
+        assert recorded["event"]["reason"] == "SyncSucceeded"
+
+    def test_a_dry_run_the_schema_rejects_fails(self, run):
+        recorded = run(("staging", 19, "failed"))
+        task = recorded["task"]
+        assert task["state"] == "FAILED" and task["files"][0]["status"] == "validation_failed"
+        assert recorded["event"]["reason"] == "SyncFailed" and "failed" in recorded["event"]["message"]
+
+
 def test_ui_resync_only_rereads_a_branch():
     from app.api.routers.ui import _branch_for
     rule = {"branch_map": {"main": "production"}}
