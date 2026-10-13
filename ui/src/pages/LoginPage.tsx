@@ -4,7 +4,6 @@ import { useApi } from '../api';
 import { createLiveApi } from '../api/live';
 import { Notice } from '../components/common';
 import { Icon } from '../components/Icon';
-import { Logo } from '../layout/Logo';
 import { appPath, platformLabel } from '../lib/platforms';
 import { usePrefs } from '../lib/prefs';
 import { tokenIdentity } from '../lib/token';
@@ -50,7 +49,6 @@ export function LoginPage() {
     <div className="login">
       <div className="login__card">
         <div className="login__brand">
-          <Logo className="brand__logo" />
           <h1 style={{ fontSize: 24, fontWeight: 600 }}>Sign in to varTrack</h1>
           <p className="muted">
             {sso
