@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import json
 import logging
+from collections.abc import Collection
 import mimetypes
 from typing import Any
 from urllib.parse import quote, unquote
