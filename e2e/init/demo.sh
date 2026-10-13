@@ -424,7 +424,7 @@ echo -e "  Gitea              → http://localhost:3000  (${GITEA_USER} / ${GITE
 echo -e "  Watcher admin      → http://localhost:9091/health"
 echo -e "  MongoDB UI         → http://localhost:8081  (mongo-express → vartrack → variables)"
 echo -e "  ZooKeeper UI       → http://localhost:9000  (ZooNavigator → /demo/default)"
-echo -e "  MinIO console      → http://localhost:9001  (minioadmin / minioadmin)"
+echo -e "  S3 console         → http://localhost:9001  (minioadmin / minioadmin)"
 echo -e "  Vault UI           → http://localhost:8200  (token: root)"
 echo -e "  Linux target SSH   → localhost:2222  (vartrack / VarTrack123)"
 echo -e "  Benchmark JSON     → e2e/results/benchmark.json"
