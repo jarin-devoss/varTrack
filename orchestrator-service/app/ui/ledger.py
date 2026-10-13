@@ -128,7 +128,7 @@ def record_target(
         # touched, and the environment's other files still say what it holds.
         prev_raw = r.get(key)
         prev = json.loads(prev_raw) if prev_raw else {}
-        by_file: dict[str, dict] = prev.get("desiredByFile")
+        by_file: dict[str, dict] | None = prev.get("desiredByFile")
         if by_file is None:
             # Recorded before per-file tracking: keep it as one entry until each file is synced again.
             by_file = {",".join(prev["files"]): {"desired": prev["desired"], "secretDigests": prev.get("secretDigests", {})}} \

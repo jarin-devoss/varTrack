@@ -22,6 +22,7 @@ For values_file strategy the labels are written as a top-level
 from __future__ import annotations
 
 import logging
+from collections.abc import Collection
 from typing import Any
 
 from app.pipeline.sinks.base import BaseSink

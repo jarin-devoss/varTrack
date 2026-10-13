@@ -43,7 +43,7 @@ def task_started(
         rule = f"{platform}/{datasource}"
         repo = ledger.repo_name(repo_url)
         message, author = _commit_info(parsed_payload)
-        task = {
+        task: dict[str, Any] = {
             "taskId": task_id,
             "state": "RUNNING",
             "message": "running",
@@ -194,7 +194,7 @@ def _record_envs(task: dict[str, Any], *, tenant: str, envs: list[str], files: l
         error = None
         if env_failed:
             error = env_failed[0].get("error", env_failed[0]["status"])
-        elif rolled_back:
+        elif rolled_back and first_failure:
             error = f"rolled back: {first_failure['file']} failed — {first_failure.get('error', first_failure['status'])}"
         sync = {
             "taskId": task["taskId"],
