@@ -70,4 +70,10 @@ message Gitea {
     (buf.validate.field).string.const = "pull_request",
     (google.api.field_behavior) = OUTPUT_ONLY
   ];
+
+  // Where Gitea serves its REST API under the endpoint — fixed by the Gitea API.
+  string api_path = 18 [
+    (buf.validate.field).string.const = "/api/v1",
+    (google.api.field_behavior) = OUTPUT_ONLY
+  ];
 }

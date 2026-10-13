@@ -31,11 +31,15 @@ plugins:
       - require_unimplemented_servers=false
 
   # --- PYTHON GENERATION ---
+  # include_imports: the stubs import buf.validate and google.api, which no
+  # pip package provides here, so they are generated alongside.
   - remote: buf.build/protocolbuffers/python:v27.3
     out: orchestrator-service/app/generated/proto/python
+    include_imports: true
 
   - remote: buf.build/protocolbuffers/pyi:v27.3
     out: orchestrator-service/app/generated/proto/python
+    include_imports: true
 
   - remote: buf.build/grpc/python:v1.65.0
     out: orchestrator-service/app/generated/proto/python

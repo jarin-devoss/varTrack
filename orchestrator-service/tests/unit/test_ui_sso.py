@@ -130,12 +130,23 @@ class TestProviders:
         assert p.api_url == "http://gitea:3000/api/v1"
 
     @pytest.mark.parametrize("endpoint,api", [
+        ("", "https://api.github.com"),
         ("https://github.com", "https://api.github.com"),
         ("https://api.github.com", "https://api.github.com"),
         ("https://ghe.acme.io", "https://ghe.acme.io/api/v3"),
+        ("https://ghe.acme.io/api/v3", "https://ghe.acme.io/api/v3"),
+        ("https://github.company.com", "https://github.company.com/api/v3"),  # Enterprise, not github.com
     ])
     def test_github_api_address(self, endpoint, api):
         assert scm.GitHub(endpoint=endpoint, public_url="", client_id="c", client_secret="s").api_url == api
+
+    def test_gitea_api_address(self):
+        assert scm.Gitea(endpoint="http://gitea:3000/", public_url="", client_id="c", client_secret="s").api_url == (
+            "http://gitea:3000/api/v1")
+
+    def test_platform_addresses_come_from_the_protos(self):
+        assert scm.proto_const("github", "cloud_api_url") == "https://api.github.com"
+        assert scm.proto_const("gitea", "api_path") == "/api/v1"
 
     def test_repository_permission_from_the_platform(self, monkeypatch):
         class Resp:
