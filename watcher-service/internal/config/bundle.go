@@ -67,11 +67,40 @@ func normalizeSecretRefs(data []byte) []byte {
 	if err := json.Unmarshal(data, &raw); err != nil {
 		return data
 	}
-	out, err := json.Marshal(walkSecretRefs(raw))
+	walked := walkSecretRefs(raw)
+	if m, ok := walked.(map[string]interface{}); ok {
+		normalizeUISecretRefs(m)
+	}
+	out, err := json.Marshal(walked)
 	if err != nil {
 		return data
 	}
 	return out
+}
+
+// normalizeUISecretRefs converts the string shorthand of the web UI's sign-in
+// credentials (ui.auth.providers[].client_id / client_secret, and
+// ui.auth.session_secret) to SecretRef objects. By path, not by key name:
+// auth.oidc.client_id elsewhere in the bundle is a plain string.
+func normalizeUISecretRefs(bundle map[string]interface{}) {
+	ui, _ := bundle["ui"].(map[string]interface{})
+	auth, _ := ui["auth"].(map[string]interface{})
+	if auth == nil {
+		return
+	}
+	wrap := func(m map[string]interface{}, key string) {
+		if s, ok := m[key].(string); ok {
+			m[key] = map[string]interface{}{"value": s}
+		}
+	}
+	wrap(auth, "session_secret")
+	providers, _ := auth["providers"].([]interface{})
+	for _, p := range providers {
+		if provider, ok := p.(map[string]interface{}); ok {
+			wrap(provider, "client_id")
+			wrap(provider, "client_secret")
+		}
+	}
 }
 
 func walkSecretRefs(v interface{}) interface{} {
@@ -79,6 +108,12 @@ func walkSecretRefs(v interface{}) interface{} {
 	case map[string]interface{}:
 		out := make(map[string]interface{}, len(val))
 		for k, child := range val {
+			if k == "secret_managers" {
+				// A secret manager's own credentials (vault token_auth.token,
+				// userpass_auth.password, …) are plain strings in its proto.
+				out[k] = child
+				continue
+			}
 			if _, isRef := secretRefFieldNames[k]; isRef {
 				if s, ok := child.(string); ok {
 					out[k] = map[string]interface{}{"value": s}
