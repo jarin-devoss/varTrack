@@ -1,5 +1,5 @@
 import type { DriftState, FileStatus, TaskState } from '../api/types';
-import { DRIFT, FILE, SYNC, TASK, type SyncStatus, type Tone } from '../lib/status';
+import { DRIFT, FILE, FILE_DRY_RUN, SYNC, TASK, type SyncStatus, type Tone } from '../lib/status';
 import { Icon, type IconName } from './Icon';
 
 /** Status tone → color name used by the pill, dot and text classes. */
@@ -70,8 +70,8 @@ export function TaskPill({ state, large }: { state: TaskState; large?: boolean }
   return <Pill tone={m.tone} label={m.label} description={m.description} pulse={state === 'RUNNING'} large={large} />;
 }
 
-export function FilePill({ status }: { status: FileStatus }) {
-  const m = FILE[status];
+export function FilePill({ status, dryRun = false }: { status: FileStatus; dryRun?: boolean }) {
+  const m = (dryRun && FILE_DRY_RUN[status]) || FILE[status];
   return <Pill tone={m.tone} label={m.label} description={m.description} />;
 }
 

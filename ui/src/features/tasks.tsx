@@ -143,7 +143,7 @@ export function TaskInline({ task: t }: { task: Task }) {
                 <tr key={`${f.file}:${i}`}>
                   <td className="mono">{f.file}</td>
                   <td>
-                    <FilePill status={f.status} />
+                    <FilePill status={f.status} dryRun={t.dryRun} />
                   </td>
                   <td className="num">{t.dryRun ? f.keys ?? '—' : f.written}</td>
                   <td className="num">{f.pruned}</td>

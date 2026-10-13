@@ -44,6 +44,9 @@ export function TaskPage() {
   if (!task.data) return <LoadingRows rows={3} height={110} />;
 
   const t = task.data;
+  const checked = t.files.reduce((n, f) => n + (f.keys ?? 0), 0);
+  // Dry runs recorded before the orchestrator said so read "0 keys written".
+  const result = t.dryRun && t.state === 'SUCCEEDED' ? `${checked} key${checked === 1 ? '' : 's'} checked, nothing written` : t.message;
   return (
     <div className="page-stack">
       <Hero
@@ -118,10 +121,10 @@ export function TaskPage() {
                 {!t.finishedAt && isActive(t.state) && ' (running)'}
               </dd>
             </div>
-            {t.message && (
+            {result && (
               <div>
                 <dt>Result</dt>
-                <dd className="mono">{t.message}</dd>
+                <dd className="mono">{result}</dd>
               </div>
             )}
           </dl>
@@ -153,7 +156,7 @@ export function TaskPage() {
                     <td className="mono">{f.file}</td>
                     <td>{f.env}</td>
                     <td>
-                      <FilePill status={f.status} />
+                      <FilePill status={f.status} dryRun={t.dryRun} />
                     </td>
                     <td className="mono muted">{f.syncMode || '—'}</td>
                     <td className="num">{t.dryRun ? f.keys ?? '—' : f.written}</td>
