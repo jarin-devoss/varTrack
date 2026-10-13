@@ -63,7 +63,7 @@ export function LoginPage() {
         {sso ? (
           <div className="card stack">
             {error && <Notice tone="critical">{LOGIN_ERRORS[error] ?? 'Sign-in failed. Try again.'}</Notice>}
-            {sso.error && <Notice tone="critical">Sign-in is misconfigured on the server: {sso.error}</Notice>}
+            {sso.error && <Notice tone="critical">Sign-in is misconfigured on the server; the orchestrator's log says why.</Notice>}
             {platforms.map(p => (
               <a
                 key={p.platform}
