@@ -5,7 +5,6 @@ import { Dialog } from '../components/Overlay';
 import { useHotkeys } from '../lib/hotkeys';
 import { usePrefs } from '../lib/prefs';
 import { useQuery } from '../lib/useQuery';
-import { Logo } from './Logo';
 import { useSectionCountValue } from './page';
 import { QuickSearch } from './QuickSearch';
 import { DOCS_URL, UserMenu } from './UserMenu';
@@ -66,13 +65,12 @@ export function Shell({ children }: { children: ReactNode }) {
           <div className="container header__row">
             {!searchOpen && (
               <Link to="/" className="brand" aria-label="varTrack dashboard" title="Dashboard">
-                <Logo className="brand__logo" />
                 <span className="brand__title">varTrack</span>
               </Link>
             )}
             {searchOpen && (
               <Link to="/" className="brand hide-mobile" aria-label="varTrack dashboard">
-                <Logo className="brand__logo" />
+                <span className="brand__title">varTrack</span>
               </Link>
             )}
             {searchOpen && <QuickSearch rules={rules.data ?? []} open onOpenChange={setSearchOpen} />}
