@@ -33,11 +33,13 @@ export function SyncPanel({ rule, open, onClose, initialEnvs, initialDryRun = fa
   const [error, setError] = useState<string | null>(null);
   const [confirming, setConfirming] = useState(false);
   const [confirmText, setConfirmText] = useState('');
+  // Signed in without write access to the rule's repository: dry runs only.
+  const readOnly = rule?.canSync === false;
 
   useEffect(() => {
     if (!open || !rule) return;
     setEnvs(initialEnvs?.length ? initialEnvs : rule.targets.map(t => t.env));
-    setDryRun(initialDryRun || rule.dryRun);
+    setDryRun(initialDryRun || rule.dryRun || readOnly);
     setPrune(false);
     setError(null);
     setConfirming(false);
@@ -153,10 +155,14 @@ export function SyncPanel({ rule, open, onClose, initialEnvs, initialDryRun = fa
           <div>
             <div className="field__label" style={{ marginBottom: 2 }}>Options</div>
             <label className="check">
-              <input type="checkbox" checked={dryRun} disabled={rule.dryRun} onChange={e => setDryRun(e.target.checked)} />
+              <input type="checkbox" checked={dryRun} disabled={rule.dryRun || readOnly} onChange={e => setDryRun(e.target.checked)} />
               <span className="check__text">
                 <span>Dry run</span>
-                <span className="check__hint">Run parse, validation and diff without writing. Secret values are masked.</span>
+                <span className="check__hint">
+                  {readOnly && !rule.dryRun
+                    ? "You can read this rule's repository but not write to it, so only dry runs are allowed."
+                    : 'Run parse, validation and diff without writing. Secret values are masked.'}
+                </span>
               </span>
             </label>
             <label className="check" style={{ opacity: rule.prune.enabled ? 1 : 0.6 }}>

@@ -16,7 +16,7 @@ interface Result {
 }
 
 const PAGES: Result[] = [
-  { group: 'Pages', label: 'Dashboard', to: '/', icon: 'overview' },
+  { group: 'Pages', label: 'Home', to: '/home', icon: 'overview' },
   { group: 'Pages', label: 'Favorites', to: '/favorites', icon: 'star' },
   { group: 'Pages', label: 'Rules', to: '/rules', icon: 'rules' },
   { group: 'Pages', label: 'Environments', to: '/environments', icon: 'layers' },

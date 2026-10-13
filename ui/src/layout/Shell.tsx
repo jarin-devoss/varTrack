@@ -1,5 +1,6 @@
-import { useEffect, useState, type ReactNode } from 'react';
-import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { Link, Navigate, NavLink, useLocation, useNavigate } from 'react-router-dom';
+import { setUnauthenticatedHandler } from '../api/http';
 import { Icon } from '../components/Icon';
 import { Dialog } from '../components/Overlay';
 import { useHotkeys } from '../lib/hotkeys';
@@ -11,6 +12,7 @@ import { QuickSearch } from './QuickSearch';
 import { DOCS_URL, UserMenu } from './UserMenu';
 
 const SECTIONS = [
+  { to: '/home', label: 'Home', hotkey: 'h' },
   { to: '/favorites', label: 'Favorites', hotkey: 'f' },
   { to: '/rules', label: 'Rules', hotkey: 'r' },
   { to: '/environments', label: 'Environments', hotkey: 'e' },
@@ -19,6 +21,10 @@ const SECTIONS = [
 ];
 
 const REPO_URL = 'https://github.com/jarin-devoss/varTrack';
+
+function loginPath(returnUrl: string): string {
+  return `/login?${new URLSearchParams({ return_url: returnUrl })}`;
+}
 
 export function Shell({ children }: { children: ReactNode }) {
   const [prefs, setPrefs] = usePrefs();
@@ -31,6 +37,15 @@ export function Shell({ children }: { children: ReactNode }) {
   // Same keys as the pages: one request serves the header and the page.
   const rules = useQuery('rules', a => a.listRules(), { poll: 10000 });
   const health = useQuery('health', a => a.getHealth(), { poll: 15000 });
+  const session = useQuery('auth:session', a => a.getSession(), { poll: 60000 });
+
+  // A request answered "sign in required" (session over or revoked): go sign in, then come back here.
+  const here = useRef('');
+  here.current = location.pathname + location.search;
+  useEffect(() => {
+    setUnauthenticatedHandler(() => navigate(loginPath(here.current), { replace: true }));
+    return () => setUnauthenticatedHandler(null);
+  }, [navigate]);
 
   useEffect(() => {
     const root = document.documentElement;
@@ -42,7 +57,6 @@ export function Shell({ children }: { children: ReactNode }) {
   const bindings: Record<string, () => void> = {
     '?': () => setShortcutsOpen(true),
     l: () => setPrefs(p => ({ live: !p.live })),
-    'g d': () => navigate('/'),
     'g p': () => navigate('/playground'),
     'g s': () => navigate('/settings'),
   };
@@ -50,6 +64,10 @@ export function Shell({ children }: { children: ReactNode }) {
   useHotkeys(bindings);
 
   const allDown = !!health.data && health.data.every(s => s.status === 'down');
+
+  if (session.data?.enabled && !session.data.authenticated) {
+    return <Navigate to={loginPath(here.current)} replace />;
+  }
   const showCount = count && location.pathname === count.path;
 
   return (
@@ -65,13 +83,13 @@ export function Shell({ children }: { children: ReactNode }) {
         <header className="header">
           <div className="container header__row">
             {!searchOpen && (
-              <Link to="/" className="brand" aria-label="varTrack dashboard" title="Dashboard">
+              <Link to="/home" className="brand" aria-label="varTrack home" title="Home">
                 <Logo className="brand__logo" />
                 <span className="brand__title">varTrack</span>
               </Link>
             )}
             {searchOpen && (
-              <Link to="/" className="brand hide-mobile" aria-label="varTrack dashboard">
+              <Link to="/home" className="brand hide-mobile" aria-label="varTrack home">
                 <Logo className="brand__logo" />
               </Link>
             )}
@@ -151,7 +169,7 @@ const SHORTCUTS: [string[], string][] = [
   [['/'], 'Search rules, environments and pages'],
   [['Ctrl', 'K'], 'Search, from anywhere'],
   [['?'], 'Show keyboard shortcuts'],
-  [['g', 'd'], 'Go to the dashboard'],
+  [['g', 'h'], 'Go home'],
   [['g', 'f'], 'Go to Favorites'],
   [['g', 'r'], 'Go to Rules'],
   [['g', 'e'], 'Go to Environments'],

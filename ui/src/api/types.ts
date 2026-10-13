@@ -91,6 +91,8 @@ export interface Target {
 
 export interface RuleView extends Rule {
   targets: Target[];
+  /** False when the signed-in user can read the rule's repositories but not write to them: dry runs only. */
+  canSync?: boolean;
 }
 
 export interface FileResult {
@@ -236,4 +238,44 @@ export interface EventQuery {
 export interface TaskQuery {
   rule?: string;
   limit?: number;
+}
+
+export type AuthProvider = 'github' | 'gitea';
+
+export interface SessionUser {
+  login: string;
+  name: string;
+  email: string;
+  avatarUrl: string;
+  isAdmin: boolean;
+}
+
+/** A Git platform users can sign in with. */
+export interface AuthPlatform {
+  /** Bundle platform name, e.g. "gitea" or "github-enterprise". */
+  platform: string;
+  provider: AuthProvider;
+  /** The rest only once signed in. */
+  providerUrl?: string;
+  /** This session has an account on it. */
+  connected?: boolean;
+  user?: SessionUser;
+  /** Rules of the tenant on this platform (visible ones and not). */
+  rules?: number;
+}
+
+/** Single sign-on with the Git platforms (GET /v1/auth/session). */
+export interface AuthSession {
+  /** Sign-in is required; without it every rule is visible to everyone. */
+  enabled: boolean;
+  authenticated: boolean;
+  platforms: AuthPlatform[];
+  /** The account signed in with first. */
+  user?: SessionUser;
+  primary?: string;
+  startedAt?: string;
+  /** In UI_AUTH_ADMINS: sees every rule. */
+  admin?: boolean;
+  /** Sign-in is configured but cannot work. */
+  error?: string;
 }

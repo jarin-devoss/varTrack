@@ -37,7 +37,7 @@ export function overallStatus(rules: RuleView[]): Overall {
 }
 
 export function DashboardPage() {
-  usePageTitle('');
+  usePageTitle('Home');
   const rules = useQuery('rules', api => api.listRules());
   const bundle = useQuery('bundle', api => api.getBundle(), { poll: false });
   const health = useQuery('health', api => api.getHealth(), { poll: 15000 });
