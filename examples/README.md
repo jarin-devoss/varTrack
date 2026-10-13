@@ -22,6 +22,7 @@ CUE bundle configs — the live configuration loaded by all VarTrack services.
 | `12_production_full.cue` | Full production bundle: multi-platform, multi-sink, Vault |
 | `13_auth_oidc_rbac_opa.cue` | OIDC login, RBAC roles, OPA policy for CLI access control |
 | `14_gitea_platform.cue` | Gitea (self-hosted) as the Git platform |
+| `15_web_ui_sign_in.cue` | Web UI sign-in with GitHub and Gitea: each user sees the rules their accounts can read |
 
 ### How datasource naming works
 

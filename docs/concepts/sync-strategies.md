@@ -137,6 +137,10 @@ POST /v1/webhooks/mongo/dry-run
 
 `@secret`-annotated fields are fetched from Vault but masked as `***` in the report.
 
+In the web UI, **Dry run** on a rule runs the same simulation for the environments you pick:
+
+![Dry run panel for an S3 rule: production and staging selected, Dry run checked](../assets/screenshots/dry-run.png)
+
 ### Prune dry-run — simulate deletes only
 
 Test the prune step independently without touching any writes. Enabled per rule:

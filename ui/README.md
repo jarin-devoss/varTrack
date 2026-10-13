@@ -4,7 +4,7 @@ A web console for varTrack: what is in sync with Git, what drifted, and what eve
 
 | Screen | What it answers |
 |---|---|
-| **Dashboard** (`/`) | Is anything wrong right now? A status card for the whole tenant (click it to see the affected rules), the environments that need attention, tenant facts, service health, per-sink totals and recent events. |
+| **Home** (`/home`) | Is anything wrong right now? A status card for the whole tenant (click it to see the affected rules), the environments that need attention, tenant facts, service health, per-sink totals and recent events. |
 | **Favorites** | The rules you starred, as the same boxes as the Rules list. |
 | **Rules** | Every rule as a box: its sync status, the desired state (repository and file in Git) next to the current state (sink and destination), the last sync, and one line per environment. Filter by sync status, sink, environment and last sync; the status bar under the filters filters too. Filters live in the URL. **New rule** writes the CUE to add to `config.cue`. |
 | **Rule** | A status card, actions (Sync, Dry run, Diff, Refresh), three summary boxes (sync status, self-heal, last sync), an **Environments** panel with one box per environment — desired state in Git on the left, current state in the sink on the right — plus the key table and a full diff, and a **Rule** panel (overview with environment resolution, sync history, events, CUE definition). Opening an environment shows its **Summary**, **Diff** (current and desired side by side), **Current** values, **Desired** values and **History**. |
@@ -24,7 +24,7 @@ npm install
 npm run dev          # http://localhost:5173
 ```
 
-The UI shows your varTrack services — there is no built-in sample data. Start them first (the live stack below runs everything locally). If your gateway requires a token, sign in with the one `vt login` uses (kept in memory for the tab only). The dev server proxies:
+The UI shows your varTrack services — there is no built-in sample data. Start them first (the live stack below runs everything locally). The dev server proxies:
 
 | Path | Default target | Override |
 |---|---|---|
@@ -38,16 +38,24 @@ Other scripts: `npm run build` (type-check + production build into `dist/`), `np
 
 `docker compose up -d` from the repo root also builds and starts the UI on port 8080 (`UI_PORT` to change it). The image serves the static build with nginx and proxies the same `/api/*` paths; point them elsewhere with `GATEWAY_URL`, `ORCHESTRATOR_URL` and `WATCHER_URL`. Upstreams are resolved per request, so a missing service answers 502 instead of stopping nginx.
 
+## Signing in
+
+When the bundle has single sign-on set up (its `ui.auth` block), the UI asks you to **Sign in with GitHub** or **Gitea**. You then see the rules whose repositories that platform lets you read, and can sync the ones you can write to; read-only rules offer a dry run. With rules on both, sign in with one and **Connect** the other (sign-in page, user menu or profile) — each rule is judged with your account on its own platform. Your platform token stays on the server; the browser keeps only a session cookie. Setup, scopes and every setting: [Web UI sign-in](../docs/configuration/auth.md#web-ui-sign-in-with-your-git-platform).
+
+Without single sign-on the UI is open to anyone who can reach it. The Playground's validate and push go through the gateway's CLI API, which takes the bearer token `vt login` uses: paste it under *API token for the Playground* on the sign-in page (kept in memory for the tab only).
+
 ## Live data
 
 The `/v1/ui/*` read API lives in the orchestrator. It reads rules from the tenant's schema registry (`bundle.json`), the desired state each sync wrote from Git, and the current state read back from every sink, so each environment shows Synced or OutOfSync key by key. Tasks and events are recorded by the orchestrator as syncs run.
+
+![An environment's diff: the key that differs, its current value in Redis and its desired value in Git](../docs/assets/screenshots/environment-diff.png)
 
 Loading stays fast because nothing waits on a sink twice. The orchestrator answers from its last comparison and re-reads sinks in the background (`UI_COMPARE_TTL_SECONDS`, "Last checked" on every environment). In the browser, screens asking for the same data share one request and one cached answer: a page you open again shows what it had at once and refreshes behind, and a rule opened from a list starts from the list's copy.
 
 | Screen | Endpoint (orchestrator unless noted) |
 |---|---|
 | Service health | `GET /health/readiness` (gateway, watcher), `GET /v1/health/readiness` |
-| Dashboard, rules, environments | `GET /v1/ui/rules`, `GET /v1/ui/rules/{platform}/{datasource}` |
+| Home, rules, environments | `GET /v1/ui/rules`, `GET /v1/ui/rules/{platform}/{datasource}` |
 | Keys, diff, current and desired values | `GET /v1/ui/rules/{platform}/{datasource}/targets/{env}/keys` |
 | Sync from Git | `POST /v1/ui/rules/{platform}/{datasource}/sync` with `{ "envs": string[], "dryRun": bool, "prune": bool }` |
 | Events | `GET /v1/ui/events?rule=&limit=` |
@@ -57,16 +65,16 @@ Loading stays fast because nothing waits on a sink twice. The orchestrator answe
 
 Responses are JSON in the shapes defined in [`src/api/types.ts`](src/api/types.ts). The tenant is the `X-Tenant-ID` header (Settings → Connection), defaulting to the orchestrator's `UI_DEFAULT_TENANT`.
 
-### A live stack with every sink
+### A live stack with real sinks
 
-`e2e/docker-compose.live.yml` runs the whole system with every sink that runs in a container — MongoDB, ZooKeeper, Redis, S3 (MinIO), a Linux server over SSH, and Kubernetes ConfigMaps and Helm releases on k3s — fed by real pushes through Gitea webhooks. See the comment at the top of that file for the command; then open the UI.
+`e2e/docker-compose.live.yml` runs the whole system with MongoDB, ZooKeeper, Redis, S3 (MinIO), and Kubernetes ConfigMaps and Helm releases on k3s, fed by real pushes through Gitea webhooks. See the comment at the top of that file for the command; then open the UI.
 
 ## Keyboard
 
 | Keys | Action |
 |---|---|
 | `/` or `Ctrl`+`K` | Search rules, environments and pages |
-| `g` then `d` `f` `r` `e` `v` `t` `p` `s` | Dashboard, Favorites, Rules, Environments, Events, Tasks, Playground, Settings |
+| `g` then `h` `f` `r` `e` `v` `t` `p` `s` | Home, Favorites, Rules, Environments, Events, Tasks, Playground, Settings |
 | `l` | Pause or resume live updates |
 | `?` | All shortcuts |
 | `Esc` | Close search, a dialog or a panel |
@@ -85,3 +93,5 @@ src/
 ```
 
 Every environment has a sync status that compares the current state in the sink with the desired state in Git: **Synced**, **OutOfSync** (drifted, being healed, or self-heal gave up) or **Unknown** (not watched, or the sink couldn't be read). Extra pills appear only when they add something: *Healing* or *Heal failed* from self-heal, and *Sync running* or *Sync failed* for the last sync. Status always shows as an icon or a labelled pill, never color alone: green synced, yellow out of sync, blue running, red failed, gray unknown. Inter is bundled, so the UI needs no internet access.
+
+![Rules page: a status bar over the rules, then each rule with its status pill and one line per environment](../docs/assets/screenshots/rules.png)

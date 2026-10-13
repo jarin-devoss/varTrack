@@ -65,6 +65,7 @@ docker run \
 | `ORCHESTRATOR_ADDR` | `:50051` | gRPC listen address |
 | `UI_DEFAULT_TENANT` | first registered | Tenant the web UI reads when the request has no `X-Tenant-ID` |
 | `UI_COMPARE_TTL_SECONDS` | `10` | How long a sink comparison is answered as is before it is refreshed in the background |
+| `UI_AUTH_PLATFORMS` | — | Web UI sign-in when the bundle has no `ui.auth` block; see [Web UI sign-in](../configuration/auth.md#web-ui-sign-in-with-your-git-platform) |
 
 ---
 
@@ -98,7 +99,20 @@ The web UI reads everything it shows from these endpoints. The tenant comes from
 
 Every sync records the desired state it wrote (secret values only as a digest), its task and its events in Redis next to the Celery broker. Reading a rule compares that desired state with the values read back from the sink, so drift shows key by key even for rules without `self_heal`.
 
+A task as the UI shows it from `GET /v1/ui/tasks/{task_id}` — its pipeline stages and per-file results:
+
+![Task page: a Git push to develop synced 19 keys to MongoDB](../assets/screenshots/task.png)
+
 Pages never wait on a sink they have read before. Each comparison is cached: for `UI_COMPARE_TTL_SECONDS` (default 10) it is answered as is, and after that it is still answered at once while the sink is read again in the background — every target shows when it was last checked. The API reads every sink once at startup, and the schema registry's periodic `git fetch` also runs behind requests. Only an environment not read since its last sync is read while the request waits.
+
+With sign-in set up (the bundle's `ui.auth` block), every `/v1/ui/*` endpoint needs a signed-in session and answers only with the rules, environments, tasks and events the user's Git platforms let them see — each rule on its own platform; syncing needs write access to the rule's repository. Sign-in lives under `/v1/auth`:
+
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/v1/auth/session` | Is sign-in on, on which platforms, and who is signed in where |
+| `GET` | `/v1/auth/login?platform=&return_to=` | Start signing in (or connect another platform): redirects to the platform |
+| `GET` | `/v1/auth/callback` | The platform returns here |
+| `POST` | `/v1/auth/logout` | End the session on every platform |
 
 ### gRPC (port 50051)
 
