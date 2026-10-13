@@ -30,6 +30,8 @@ downloads/
 eggs/
 .eggs/
 lib/
+# …but not the UI's own source folder
+!ui/src/lib/
 lib64/
 parts/
 sdist/
@@ -128,3 +130,6 @@ orchestrator-service/rust_core/target/
 
 
 .claude
+
+# Vite dependency cache
+ui/.vite/
