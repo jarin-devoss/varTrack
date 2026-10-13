@@ -44,7 +44,7 @@ Typical entry lifetime
     → evict("feature/login")
 
   Push to feature/login after merge
-    → lookup("feature/login") = None  → falls back to env_as_branch or "default"
+    → lookup("feature/login") = None  → falls back to branch_as_env or "default"
 """
 from __future__ import annotations
 

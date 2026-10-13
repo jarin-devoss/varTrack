@@ -114,9 +114,9 @@ def run_stage_etl(ctx: PayloadContext, datasource: str, tenant_id: str) -> ETLRe
                 tag=ctx.tag,
                 branch_map=rule_config.get("branch_map", {}),
                 file_path_map=rule_config.get("file_path_map", {}),
-                env_as_branch=rule_config.get("env_as_branch", False),
-                env_as_pr=rule_config.get("env_as_pr", False),
-                env_as_tags=rule_config.get("env_as_tags", False),
+                branch_as_env=rule_config.get("branch_as_env", False),
+                pr_as_env=rule_config.get("pr_as_env", False),
+                tag_as_env=rule_config.get("tag_as_env", False),
             )
 
             # ── 1. Parse raw content ──────────────────────────────────────────

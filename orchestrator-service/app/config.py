@@ -146,7 +146,9 @@ def _load_cue_bundle(config_path: str) -> dict[str, Any]:
         logger.warning("CUE export produced invalid JSON (%s) — using env vars only", exc)
         return {}
 
-    return data.get("bundle", data)
+    from app.pipeline.renamed_options import upgrade_bundle
+
+    return upgrade_bundle(data.get("bundle", data), config_path)
 
 
 # ── Datasource URI builders ───────────────────────────────────────────────────

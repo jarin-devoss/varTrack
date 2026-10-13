@@ -46,6 +46,7 @@ from pathlib import Path
 from typing import Optional
 
 from app.config import settings
+from app.pipeline.renamed_options import with_current_names
 
 logger = logging.getLogger(__name__)
 
@@ -280,7 +281,8 @@ class SchemaRegistryManager:
         if _rc is not None:
             cached = _rc.get(_cache_key)
             if cached is not None:
-                return cached  # may be the sentinel {} meaning "no match"
+                # may be the sentinel {} meaning "no match"; cached before an upgrade, it may use old names
+                return with_current_names(cached)
 
         with self._lock:
             for k, entry in self._entries.items():
@@ -521,6 +523,7 @@ def _load_bundle(local_dir: Path) -> list[dict]:
             try:
                 data = json.loads(p.read_text())
                 rules = data if isinstance(data, list) else data.get("rules", [])
+                rules = [with_current_names(r, str(p)) for r in rules]
                 logger.debug("loaded %d rules from %s", len(rules), p)
                 return rules
             except Exception as exc:

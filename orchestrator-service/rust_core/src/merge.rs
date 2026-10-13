@@ -6,7 +6,7 @@
 //   1. base variables_map  (from Rule.variables_map)
 //   2. env via branch_map  (branch → env name)
 //   3. env via file_path_map  (if branch_map miss)
-//   4. env_as_branch / env_as_pr / env_as_tags flags
+//   4. branch_as_env / pr_as_env / tag_as_env flags
 //
 // The caller passes already-resolved env string; this module handles the
 // precedence chain and placeholder substitution {env}, {branch}, {repo} etc.
@@ -122,9 +122,9 @@ fn sanitize_env_name(name: &str) -> String {
 /// Priority:
 ///   1. branch_map[branch]     → env name
 ///   2. file_path_map keys that match branch → derive env from path
-///   3. env_as_branch          → use branch name as env
-///   4. env_as_pr              → use pr_number as env
-///   5. env_as_tags            → use tag ref as env
+///   3. branch_as_env          → use branch name as env
+///   4. pr_as_env              → use pr_number as env
+///   5. tag_as_env             → use tag ref as env
 ///   6. fallback               → "default"
 pub fn resolve_env(
     branch: Option<&str>,
@@ -132,9 +132,9 @@ pub fn resolve_env(
     pr_number: Option<&str>,
     branch_map: &HashMap<String, String>,
     file_path_map: &HashMap<String, String>,
-    env_as_branch: bool,
-    env_as_pr: bool,
-    env_as_tags: bool,
+    branch_as_env: bool,
+    pr_as_env: bool,
+    tag_as_env: bool,
 ) -> String {
     // 1. Explicit branch → env mapping.
     if let Some(b) = branch {
@@ -151,28 +151,28 @@ pub fn resolve_env(
             }
         }
 
-        // 3. env_as_pr (higher priority than env_as_branch).
-        if env_as_pr {
+        // 3. pr_as_env (higher priority than branch_as_env).
+        if pr_as_env {
             if let Some(pr) = pr_number {
                 return format!("pr-{pr}");
             }
         }
 
-        // 4. env_as_branch.
-        if env_as_branch {
+        // 4. branch_as_env.
+        if branch_as_env {
             return sanitize_env_name(b);
         }
     }
 
-    // 5. env_as_pr when no branch is present (standalone PR ref).
-    if env_as_pr {
+    // 5. pr_as_env when no branch is present (standalone PR ref).
+    if pr_as_env {
         if let Some(pr) = pr_number {
             return format!("pr-{pr}");
         }
     }
 
-    // 6. env_as_tags.
-    if env_as_tags {
+    // 6. tag_as_env.
+    if tag_as_env {
         if let Some(t) = tag {
             return t.trim_start_matches("refs/tags/").to_owned();
         }
@@ -220,9 +220,9 @@ pub fn py_merge_variables(
     pr_number = None,
     branch_map = None,
     file_path_map = None,
-    env_as_branch = false,
-    env_as_pr = false,
-    env_as_tags = false,
+    branch_as_env = false,
+    pr_as_env = false,
+    tag_as_env = false,
 ))]
 pub fn py_resolve_env(
     branch: Option<String>,
@@ -230,9 +230,9 @@ pub fn py_resolve_env(
     pr_number: Option<String>,
     branch_map: Option<HashMap<String, String>>,
     file_path_map: Option<HashMap<String, String>>,
-    env_as_branch: bool,
-    env_as_pr: bool,
-    env_as_tags: bool,
+    branch_as_env: bool,
+    pr_as_env: bool,
+    tag_as_env: bool,
 ) -> String {
     resolve_env(
         branch.as_deref(),
@@ -240,8 +240,8 @@ pub fn py_resolve_env(
         pr_number.as_deref(),
         &branch_map.unwrap_or_default(),
         &file_path_map.unwrap_or_default(),
-        env_as_branch,
-        env_as_pr,
-        env_as_tags,
+        branch_as_env,
+        pr_as_env,
+        tag_as_env,
     )
 }

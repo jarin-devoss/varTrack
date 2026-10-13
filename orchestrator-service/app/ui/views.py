@@ -136,9 +136,9 @@ def rule_base(rule: dict, tenant: str) -> dict[str, Any]:
         # bundle.json maps env → path; the UI shows path → env.
         "filePathMap": {path: env for env, path in file_path_map.items()} if file_path_map else {},
         "branchMap": dict(rule.get("branch_map") or {}),
-        "envAsBranch": bool(rule.get("env_as_branch", False)),
-        "envAsPr": bool(rule.get("env_as_pr", False)),
-        "envAsTags": bool(rule.get("env_as_tags", False)),
+        "branchAsEnv": bool(rule.get("branch_as_env", False)),
+        "prAsEnv": bool(rule.get("pr_as_env", False)),
+        "tagAsEnv": bool(rule.get("tag_as_env", False)),
         "destinationTemplate": destination_template(rule),
         "syncMode": _sync_mode(rule.get("sync_mode")),
         "selfHeal": bool(rule.get("self_heal", False)),

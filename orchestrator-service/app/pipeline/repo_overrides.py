@@ -27,6 +27,8 @@ import logging
 from dataclasses import replace
 from typing import TYPE_CHECKING
 
+from app.pipeline.renamed_options import with_current_names
+
 if TYPE_CHECKING:
     from app.pipeline.models import PayloadContext
 
@@ -40,9 +42,9 @@ _OVERRIDABLE_KEYS: frozenset[str] = frozenset({
     "apply_strategy",
     "branch_map",
     "dry_run",
-    "env_as_branch",
-    "env_as_pr",
-    "env_as_tags",
+    "branch_as_env",
+    "pr_as_env",
+    "tag_as_env",
     "file_name",
     "file_path_map",
     "prune",
@@ -105,6 +107,7 @@ def apply_repo_overrides(ctx: "PayloadContext") -> "PayloadContext":
         )
         return ctx
 
+    overrides = with_current_names(overrides, f"{VARTRACK_JSON} in {ctx.repo_url}")
     applicable = {k: v for k, v in overrides.items() if k in _OVERRIDABLE_KEYS}
     blocked    = set(overrides) - _OVERRIDABLE_KEYS
     if blocked:
