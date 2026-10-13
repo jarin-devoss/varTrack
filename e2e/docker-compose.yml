@@ -17,7 +17,7 @@ volumes:
   mongo-data:
   zookeeper-data:
   zookeeper-log:
-  minio-data:
+  s3-data:
   vault-data:
   schema-cache:
 
@@ -223,17 +223,21 @@ services:
       timeout: 5s
       retries: 10
 
-# ── MinIO (S3-compatible object store) ────────────────────────────────────────
+# ── S3-compatible object store ────────────────────────────────────────────────
+# RustFS: MinIO no longer publishes its images. The service keeps the name
+# "minio", its ports and its credentials, which the configs and tests use.
 
   minio:
-    image: minio/minio:latest
+    image: rustfs/rustfs:1.0.1
     networks: [vartrack]
-    command: server /data --console-address ":9001" --address ":9002"
     environment:
-      MINIO_ROOT_USER: minioadmin
-      MINIO_ROOT_PASSWORD: minioadmin
+      RUSTFS_ADDRESS: ":9002"
+      RUSTFS_ACCESS_KEY: minioadmin
+      RUSTFS_SECRET_KEY: minioadmin
+      RUSTFS_CONSOLE_ENABLE: "true"
+      RUSTFS_CONSOLE_ADDRESS: ":9001"
     volumes:
-      - minio-data:/data
+      - s3-data:/data
     ports:
       - "9001:9001"
       - "9002:9002"
@@ -245,16 +249,19 @@ services:
       start_period: 60s
 
   minio-init:
-    image: minio/mc:latest
+    image: amazon/aws-cli:2.37.13
     networks: [vartrack]
     depends_on:
       minio: {condition: service_healthy}
+    environment:
+      AWS_ACCESS_KEY_ID: minioadmin
+      AWS_SECRET_ACCESS_KEY: minioadmin
+      AWS_DEFAULT_REGION: us-east-1
     entrypoint: >
       /bin/sh -c "
-        mc alias set local http://minio:9002 minioadmin minioadmin &&
-        mc mb --ignore-existing local/vartrack &&
-        mc anonymous set none local/vartrack &&
-        echo 'MinIO bucket ready'
+        { aws --endpoint-url http://minio:9002 s3api head-bucket --bucket vartrack 2>/dev/null ||
+          aws --endpoint-url http://minio:9002 s3 mb s3://vartrack; } &&
+        echo 'S3 bucket ready'
       "
     restart: "no"
 
