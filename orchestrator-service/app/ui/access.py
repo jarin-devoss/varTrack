@@ -118,7 +118,7 @@ class UserViewer(Viewer):
             try:
                 return self._call(platform, provider.permission, repo)
             except scm.ScmError as exc:
-                logger.warning("ui access: %s %s for %s: %s", platform, repo, self.user["login"], exc)
+                logger.warning("ui access: %s %s for %s: %s", platform, repo, self.identities[platform]["user"]["login"], exc)
                 return scm.NO_ACCESS  # unknown is not allowed
         return self._cached(platform, repo.lower(), ask)
 
@@ -131,7 +131,8 @@ class UserViewer(Viewer):
             try:
                 return self._call(platform, provider.repos)
             except scm.ScmError as exc:
-                logger.warning("ui access: listing %s repositories for %s: %s", platform, self.user["login"], exc)
+                logger.warning("ui access: listing %s repositories for %s: %s", platform,
+                               self.identities[platform]["user"]["login"], exc)
                 return {}
         return self._cached(platform, "*", ask)
 
@@ -185,7 +186,7 @@ def viewer(session_id: str | None) -> Viewer:
     if cfg is None:
         return Viewer()
     session = sessions.get_session(cfg, session_id)
-    if session is None:
+    if session is None or not session_id:
         raise Unauthenticated("sign in required")
     return UserViewer(cfg, session_id, session)
 

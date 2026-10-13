@@ -143,7 +143,7 @@ def callback(request: Request, code: str = "", state: str = "", error: str = "")
     resp.delete_cookie(sessions.STATE_COOKIE, path="/")
     session_id = request.cookies.get(sessions.SESSION_COOKIE)
     session = sessions.get_session(cfg, session_id)
-    if session:
+    if session and session_id:
         # Already signed in: connect this platform's account to the same session.
         sessions.connect_identity(cfg, session_id, session, platform=platform, user=user, token=token)
         access.forget(session_id)
