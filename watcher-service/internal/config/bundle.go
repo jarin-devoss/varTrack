@@ -70,6 +70,9 @@ func normalizeSecretRefs(data []byte) []byte {
 	walked := walkSecretRefs(raw)
 	if m, ok := walked.(map[string]interface{}); ok {
 		normalizeUISecretRefs(m)
+		// The watcher discards unknown fields, so an old option name would be
+		// dropped silently rather than rejected.
+		upgradeRenamedOptions(m)
 	}
 	out, err := json.Marshal(walked)
 	if err != nil {

@@ -99,6 +99,7 @@ func normalizeSecretRefs(data []byte) ([]byte, error) {
 	}
 
 	normalizeUISecretRefs(bundle)
+	upgradeRenamedOptions(bundle)
 
 	platforms, ok := bundle["platforms"].([]interface{})
 	if !ok {

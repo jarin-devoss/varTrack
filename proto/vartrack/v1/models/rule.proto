@@ -87,9 +87,13 @@ message Rule {
 
   // ── Environment resolution ───────────────────────────────────────────────────
 
-  bool env_as_branch = 7  [(google.api.field_behavior) = OPTIONAL];
-  bool env_as_pr     = 8  [(google.api.field_behavior) = OPTIONAL];
-  bool env_as_tags   = 9  [(google.api.field_behavior) = OPTIONAL];
+  // The branch name is the environment. Formerly env_as_branch.
+  bool branch_as_env = 7  [(google.api.field_behavior) = OPTIONAL];
+  // "pr-{number}" is the environment. Formerly env_as_pr.
+  bool pr_as_env     = 8  [(google.api.field_behavior) = OPTIONAL];
+  // The tag name is the environment. Formerly env_as_tags.
+  // The former names are still read from bundles and vartrack.json.
+  bool tag_as_env    = 9  [(google.api.field_behavior) = OPTIONAL];
 
   map<string, string> branch_map = 10 [(google.api.field_behavior) = OPTIONAL];
 
@@ -172,7 +176,7 @@ message Rule {
     message: "destination_template uses {env} but no environment strategy is enabled",
     expression:
       "!this.destination_template.contains('{env}') || "
-      "(this.env_as_branch || this.env_as_pr || this.env_as_tags || "
+      "(this.branch_as_env || this.pr_as_env || this.tag_as_env || "
       "this.branch_map.size() > 0 || this.file_path_map.size() > 0)"
   };
 }
