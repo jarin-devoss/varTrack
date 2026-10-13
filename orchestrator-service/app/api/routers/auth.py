@@ -29,6 +29,8 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
+MISCONFIGURED = "sign-in is misconfigured; the orchestrator's log says why"
+
 
 def _config_or_none() -> sessions.AuthConfig | None:
     try:
@@ -62,8 +64,10 @@ def get_session(request: Request) -> dict[str, Any]:
     try:
         cfg = sessions.config()
     except sessions.AuthConfigError as exc:
-        # Misconfigured sign-in must not fall back to an open UI.
-        return {"enabled": True, "authenticated": False, "platforms": [], "error": str(exc)}
+        # Misconfigured sign-in must not fall back to an open UI. What is wrong
+        # (settings, file and Vault paths) goes to the log, not to visitors.
+        logger.error("ui auth: %s", exc)
+        return {"enabled": True, "authenticated": False, "platforms": [], "error": MISCONFIGURED}
     if cfg is None:
         return {"enabled": False, "authenticated": False, "platforms": []}
 
@@ -143,7 +147,7 @@ def callback(request: Request, code: str = "", state: str = "", error: str = "")
     resp.delete_cookie(sessions.STATE_COOKIE, path="/")
     session_id = request.cookies.get(sessions.SESSION_COOKIE)
     session = sessions.get_session(cfg, session_id)
-    if session:
+    if session and session_id:
         # Already signed in: connect this platform's account to the same session.
         sessions.connect_identity(cfg, session_id, session, platform=platform, user=user, token=token)
         access.forget(session_id)

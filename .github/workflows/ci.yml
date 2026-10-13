@@ -107,6 +107,17 @@ jobs:
         with:
           version: "0.10.10"
 
+      # The platforms' fixed values (API addresses, webhook headers) are read
+      # from the generated protos, as in the image.
+      - name: Install buf
+        uses: bufbuild/buf-setup-action@a47c93e0b1648d5651a065437926377d060baa99 # v1.50.0
+        with:
+          github_token: ${{ github.token }}
+
+      - name: Generate proto
+        working-directory: .
+        run: buf generate
+
       - name: Install dependencies
         run: uv pip install --system --require-hashes -r requirements-dev.txt
 

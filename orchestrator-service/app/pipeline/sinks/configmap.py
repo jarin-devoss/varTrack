@@ -36,6 +36,7 @@ so tooling (kubectl) can filter/identify per-env ConfigMaps.
 from __future__ import annotations
 
 import logging
+from collections.abc import Collection
 from typing import Any
 
 from app.pipeline.sinks.base import BaseSink

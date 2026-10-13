@@ -97,15 +97,16 @@ func (g *Gitea) Close(ctx context.Context) error {
 // gitea.proto declares each field as an output-only buf.validate string const,
 // so a bundle never sets them and they are read from the descriptor instead.
 var (
-	giteaEventTypeHeader = giteaConst("event_type_header")
-	giteaSignatureHeader = giteaConst("git_scm_signature")
-	giteaPushEventName   = giteaConst("push_event_name")
-	giteaPREventName     = giteaConst("pr_event_name")
+	giteaEventTypeHeader = protoConst(&pb_gt.Gitea{}, "event_type_header")
+	giteaSignatureHeader = protoConst(&pb_gt.Gitea{}, "git_scm_signature")
+	giteaPushEventName   = protoConst(&pb_gt.Gitea{}, "push_event_name")
+	giteaPREventName     = protoConst(&pb_gt.Gitea{}, "pr_event_name")
+	giteaAPIPath         = protoConst(&pb_gt.Gitea{}, "api_path")
 )
 
-// giteaConst returns the string const that gitea.proto pins field to.
-func giteaConst(field protoreflect.Name) string {
-	fd := (&pb_gt.Gitea{}).ProtoReflect().Descriptor().Fields().ByName(field)
+// protoConst returns the string const that a platform proto pins field to.
+func protoConst(m proto.Message, field protoreflect.Name) string {
+	fd := m.ProtoReflect().Descriptor().Fields().ByName(field)
 	if fd == nil {
 		return ""
 	}
@@ -283,7 +284,7 @@ func (g *Gitea) setAuthHeader(req *http.Request) {
 }
 
 func (g *Gitea) getBaseAPIURL() string {
-	return strings.TrimSuffix(g.config.Endpoint, "/") + "/api/v1"
+	return strings.TrimSuffix(g.config.Endpoint, "/") + giteaAPIPath
 }
 
 func (g *Gitea) getNextPageURL(linkHeader string) string {

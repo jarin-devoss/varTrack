@@ -198,18 +198,19 @@ def compare(rule: dict, tenant: str, record: dict, *, fresh: bool = False) -> di
     while True:
         with _compare_lock:
             hit = _compare_cache.get(key)
-            usable = _usable(hit, record)
-            if usable and time.time() - hit[0] < COMPARE_TTL_SECONDS:
+            if not _usable(hit, record):
+                hit = None
+            if hit and time.time() - hit[0] < COMPARE_TTL_SECONDS:
                 return hit[2]
             reading = _compare_reading.get(key)
             if reading is None:
                 reading = _compare_reading[key] = threading.Event()
                 break
-            if usable:
+            if hit:
                 return hit[2]  # stale, and already being read again
         # Another request is reading this sink for a comparison we lack: share its answer.
         reading.wait()
-    if usable:
+    if hit:
         try:
             _refresh_pool.submit(_read_and_release, rule, tenant, record, key, reading)
         except RuntimeError:  # pool shut down at interpreter exit

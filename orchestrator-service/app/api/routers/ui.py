@@ -114,7 +114,8 @@ def _viewer(request: Request) -> access.Viewer:
         raise HTTPException(status_code=401, detail="sign in required") from exc
     except sessions.AuthConfigError as exc:
         # Misconfigured sign-in stays closed rather than falling back to an open UI.
-        raise HTTPException(status_code=503, detail=f"sign-in is misconfigured: {exc}") from exc
+        logger.error("ui auth: %s", exc)
+        raise HTTPException(status_code=503, detail="sign-in is misconfigured; the orchestrator's log says why") from exc
 
 
 def _find_rule(tenant: str, platform: str, datasource: str) -> dict:
