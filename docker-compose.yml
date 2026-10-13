@@ -98,6 +98,8 @@ services:
       GIT_CACHE_DIR: /app/git_cache
       ADMIN_HOST: "0.0.0.0"
       ADMIN_PORT: "9093"
+      # Web UI sign-in with your Git platforms is set in config.cue (bundle.ui):
+      # see docs/configuration/auth.md#web-ui-sign-in-with-your-git-platform
       CORS_ORIGINS: ${CORS_ORIGINS:-}
     volumes:
       - ${CONFIG_PATH:-./config.cue}:/app/config.cue:ro
