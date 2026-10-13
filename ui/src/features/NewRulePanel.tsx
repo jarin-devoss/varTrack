@@ -11,9 +11,9 @@ interface Draft {
   excludeRepositories: string;
   fileName: string;
   branchMap: string;
-  envAsPr: boolean;
-  envAsBranch: boolean;
-  envAsTags: boolean;
+  prAsEnv: boolean;
+  branchAsEnv: boolean;
+  tagAsEnv: boolean;
   destinationTemplate: string;
   syncMode: SyncMode;
   selfHeal: boolean;
@@ -29,9 +29,9 @@ const EMPTY: Draft = {
   excludeRepositories: '',
   fileName: 'configs/app.yaml',
   branchMap: 'main=production\ndevelop=staging',
-  envAsPr: false,
-  envAsBranch: false,
-  envAsTags: false,
+  prAsEnv: false,
+  branchAsEnv: false,
+  tagAsEnv: false,
   destinationTemplate: '{env}-config',
   syncMode: 'AUTO',
   selfHeal: true,
@@ -59,9 +59,9 @@ export function draftToRule(d: Draft, bundle?: BundleView): Rule {
     fileName: d.fileName.trim() || undefined,
     filePathMap: {},
     branchMap,
-    envAsBranch: d.envAsBranch,
-    envAsPr: d.envAsPr,
-    envAsTags: d.envAsTags,
+    branchAsEnv: d.branchAsEnv,
+    prAsEnv: d.prAsEnv,
+    tagAsEnv: d.tagAsEnv,
     destinationTemplate: d.destinationTemplate.trim(),
     syncMode: d.syncMode,
     selfHeal: d.selfHeal,
@@ -78,7 +78,7 @@ export function ruleProblems(r: Rule): string[] {
   if (!r.datasource) problems.push('datasource is required');
   if (r.repositories.length === 0) problems.push('repositories needs at least one entry');
   if (!r.fileName && Object.keys(r.filePathMap).length === 0) problems.push("provide either 'file_name' or 'file_path_map'");
-  const hasEnvStrategy = r.envAsBranch || r.envAsPr || r.envAsTags || Object.keys(r.branchMap).length > 0 || Object.keys(r.filePathMap).length > 0;
+  const hasEnvStrategy = r.branchAsEnv || r.prAsEnv || r.tagAsEnv || Object.keys(r.branchMap).length > 0 || Object.keys(r.filePathMap).length > 0;
   if (r.destinationTemplate.includes('{env}') && !hasEnvStrategy) {
     problems.push('destination_template uses {env} but no environment strategy is enabled');
   }
@@ -170,9 +170,9 @@ export function NewRulePanel({ open, onClose, bundle, existing }: { open: boolea
             <span className="field__hint">One <code>branch=environment</code> per line.</span>
           </label>
           <div>
-            <label className="check"><input type="checkbox" {...check('envAsPr')} /> <span>Pull request #N becomes environment pr-N</span></label>
-            <label className="check"><input type="checkbox" {...check('envAsBranch')} /> <span>Branch name is the environment</span></label>
-            <label className="check"><input type="checkbox" {...check('envAsTags')} /> <span>Tag name is the environment</span></label>
+            <label className="check"><input type="checkbox" {...check('prAsEnv')} /> <span>Pull request #N becomes environment pr-N</span></label>
+            <label className="check"><input type="checkbox" {...check('branchAsEnv')} /> <span>Branch name is the environment</span></label>
+            <label className="check"><input type="checkbox" {...check('tagAsEnv')} /> <span>Tag name is the environment</span></label>
           </div>
           <h3 className="section-label">Destination</h3>
           <label className="field">

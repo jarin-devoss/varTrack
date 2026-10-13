@@ -44,9 +44,9 @@ export interface Rule {
   fileName?: string;
   filePathMap: Record<string, string>;
   branchMap: Record<string, string>;
-  envAsBranch: boolean;
-  envAsPr: boolean;
-  envAsTags: boolean;
+  branchAsEnv: boolean;
+  prAsEnv: boolean;
+  tagAsEnv: boolean;
   destinationTemplate: string;
   syncMode: SyncMode;
   selfHeal: boolean;

@@ -15,7 +15,7 @@ const NOW = Date.parse('2026-10-11T12:00:00Z');
 const mongoDr = makeRule({ datasource: 'mongo-dr', targets: [target({ drift: 'drifted', driftedKeys: 2 })] });
 const mongoPrimary = makeRule({
   datasource: 'mongo-primary',
-  envAsPr: true,
+  prAsEnv: true,
   targets: [target(), target({ env: 'pr-412', ref: 'pr-412', destination: 'pr-412-config' })],
 });
 const zookeeper = makeRule({
@@ -148,7 +148,7 @@ describe('rule definition', () => {
     expect(cue).toMatch(/branch_map:\s+\{/);
     expect(cue).toContain('main:    "production"');
     expect(cue).toContain('protection: ["feature_flags.*", "secrets.*"]');
-    expect(cue).not.toContain('env_as_branch');
+    expect(cue).not.toContain('branch_as_env');
     const byPath = makeRule({ fileName: undefined, branchMap: {}, filePathMap: { 'deploy/prod/*.yaml': 'production' } });
     expect(toCue(byPath)).toMatch(/"deploy\/prod\/\*\.yaml":\s+"production"/);
   });
@@ -158,7 +158,7 @@ describe('rule definition', () => {
     expect(resolvedVia(mongoPrimary, mongoPrimary.targets[1])).toBe('pull request number');
     const byPath = makeRule({ branchMap: {}, filePathMap: { 'deploy/prod/*.yaml': 'production' } });
     expect(resolvedVia(byPath, target())).toBe('file_path_map: deploy/prod/*.yaml');
-    const byBranch = makeRule({ branchMap: {}, envAsBranch: true });
+    const byBranch = makeRule({ branchMap: {}, branchAsEnv: true });
     expect(resolvedVia(byBranch, target({ env: 'main', ref: 'main' }))).toBe('branch name');
   });
 });
