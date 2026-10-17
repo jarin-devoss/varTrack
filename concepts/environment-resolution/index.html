@@ -684,27 +684,27 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#env_as_pr-pr-environments" class="md-nav__link">
+  <a href="#pr_as_env-pr-environments" class="md-nav__link">
     <span class="md-ellipsis">
-      env_as_pr — PR environments
+      pr_as_env — PR environments
     </span>
   </a>
   
 </li>
       
         <li class="md-nav__item">
-  <a href="#env_as_branch-branch-name-as-environment" class="md-nav__link">
+  <a href="#branch_as_env-branch-name-as-environment" class="md-nav__link">
     <span class="md-ellipsis">
-      env_as_branch — branch name as environment
+      branch_as_env — branch name as environment
     </span>
   </a>
   
 </li>
       
         <li class="md-nav__item">
-  <a href="#env_as_tags-tag-name-as-environment" class="md-nav__link">
+  <a href="#tag_as_env-tag-name-as-environment" class="md-nav__link">
     <span class="md-ellipsis">
-      env_as_tags — tag name as environment
+      tag_as_env — tag name as environment
     </span>
   </a>
   
@@ -1729,27 +1729,27 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#env_as_pr-pr-environments" class="md-nav__link">
+  <a href="#pr_as_env-pr-environments" class="md-nav__link">
     <span class="md-ellipsis">
-      env_as_pr — PR environments
+      pr_as_env — PR environments
     </span>
   </a>
   
 </li>
       
         <li class="md-nav__item">
-  <a href="#env_as_branch-branch-name-as-environment" class="md-nav__link">
+  <a href="#branch_as_env-branch-name-as-environment" class="md-nav__link">
     <span class="md-ellipsis">
-      env_as_branch — branch name as environment
+      branch_as_env — branch name as environment
     </span>
   </a>
   
 </li>
       
         <li class="md-nav__item">
-  <a href="#env_as_tags-tag-name-as-environment" class="md-nav__link">
+  <a href="#tag_as_env-tag-name-as-environment" class="md-nav__link">
     <span class="md-ellipsis">
-      env_as_tags — tag name as environment
+      tag_as_env — tag name as environment
     </span>
   </a>
   
@@ -1915,17 +1915,17 @@
 </tr>
 <tr>
 <td>3</td>
-<td><code>env_as_pr: true</code></td>
+<td><code>pr_as_env: true</code></td>
 <td>PR #42 → <code>pr-42</code></td>
 </tr>
 <tr>
 <td>4</td>
-<td><code>env_as_branch: true</code></td>
+<td><code>branch_as_env: true</code></td>
 <td>branch <code>develop</code> → <code>develop</code></td>
 </tr>
 <tr>
 <td>5</td>
-<td><code>env_as_tags: true</code></td>
+<td><code>tag_as_env: true</code></td>
 <td>tag <code>v1.2.3</code> → <code>v1.2.3</code></td>
 </tr>
 <tr>
@@ -1935,6 +1935,7 @@
 </tr>
 </tbody>
 </table>
+<p><code>pr_as_env</code>, <code>branch_as_env</code> and <code>tag_as_env</code> used to be called <code>env_as_pr</code>, <code>env_as_branch</code> and <code>env_as_tags</code> (and the S3 option <code>prefix_as_env</code> was <code>env_as_prefix</code>). The old names still work in <code>config.cue</code>, <code>bundle.json</code> and <code>vartrack.json</code>; varTrack logs a warning with the new name.</p>
 <hr />
 <h2 id="branch_map-explicit-mapping"><code>branch_map</code> — explicit mapping<a class="headerlink" href="#branch_map-explicit-mapping" title="Permanent link">&para;</a></h2>
 <p>Map specific branch names to environment names:</p>
@@ -1965,24 +1966,24 @@
 </span></code></pre></div>
 <p>A push that changes <code>configs/production/app.yaml</code> resolves to <code>production</code>.</p>
 <hr />
-<h2 id="env_as_pr-pr-environments"><code>env_as_pr</code> — PR environments<a class="headerlink" href="#env_as_pr-pr-environments" title="Permanent link">&para;</a></h2>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>env_as_pr: true
+<h2 id="pr_as_env-pr-environments"><code>pr_as_env</code> — PR environments<a class="headerlink" href="#pr_as_env-pr-environments" title="Permanent link">&para;</a></h2>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>pr_as_env: true
 </span></code></pre></div>
 <p>Pull request events resolve to <code>pr-{number}</code>. Useful for ephemeral preview environments.</p>
 <div class="language-text highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>PR #42  → env = &quot;pr-42&quot;
 </span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>PR #103 → env = &quot;pr-103&quot;
 </span></code></pre></div>
 <hr />
-<h2 id="env_as_branch-branch-name-as-environment"><code>env_as_branch</code> — branch name as environment<a class="headerlink" href="#env_as_branch-branch-name-as-environment" title="Permanent link">&para;</a></h2>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>env_as_branch: true
+<h2 id="branch_as_env-branch-name-as-environment"><code>branch_as_env</code> — branch name as environment<a class="headerlink" href="#branch_as_env-branch-name-as-environment" title="Permanent link">&para;</a></h2>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>branch_as_env: true
 </span></code></pre></div>
 <p>The branch name becomes the environment name directly:</p>
 <div class="language-text highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>branch &quot;develop&quot;     → env = &quot;develop&quot;
 </span><span id="__span-5-2"><a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>branch &quot;feature/foo&quot; → env = &quot;feature/foo&quot;
 </span></code></pre></div>
 <hr />
-<h2 id="env_as_tags-tag-name-as-environment"><code>env_as_tags</code> — tag name as environment<a class="headerlink" href="#env_as_tags-tag-name-as-environment" title="Permanent link">&para;</a></h2>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>env_as_tags: true
+<h2 id="tag_as_env-tag-name-as-environment"><code>tag_as_env</code> — tag name as environment<a class="headerlink" href="#tag_as_env-tag-name-as-environment" title="Permanent link">&para;</a></h2>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>tag_as_env: true
 </span></code></pre></div>
 <p>Tag push events use the tag name as the environment:</p>
 <div class="language-text highlight"><pre><span></span><code><span id="__span-7-1"><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>tag &quot;v1.2.3&quot;    → env = &quot;v1.2.3&quot;
@@ -2229,8 +2230,8 @@
 </span><span id="__span-21-5"><a id="__codelineno-21-5" name="__codelineno-21-5" href="#__codelineno-21-5"></a>    main:    &quot;production&quot;   // explicit — highest priority
 </span><span id="__span-21-6"><a id="__codelineno-21-6" name="__codelineno-21-6" href="#__codelineno-21-6"></a>    develop: &quot;staging&quot;
 </span><span id="__span-21-7"><a id="__codelineno-21-7" name="__codelineno-21-7" href="#__codelineno-21-7"></a>  }
-</span><span id="__span-21-8"><a id="__codelineno-21-8" name="__codelineno-21-8" href="#__codelineno-21-8"></a>  env_as_pr:     true       // fallback for PRs not in branch_map
-</span><span id="__span-21-9"><a id="__codelineno-21-9" name="__codelineno-21-9" href="#__codelineno-21-9"></a>  env_as_branch: true       // fallback for all other branches
+</span><span id="__span-21-8"><a id="__codelineno-21-8" name="__codelineno-21-8" href="#__codelineno-21-8"></a>  pr_as_env:     true       // fallback for PRs not in branch_map
+</span><span id="__span-21-9"><a id="__codelineno-21-9" name="__codelineno-21-9" href="#__codelineno-21-9"></a>  branch_as_env: true       // fallback for all other branches
 </span><span id="__span-21-10"><a id="__codelineno-21-10" name="__codelineno-21-10" href="#__codelineno-21-10"></a>}]
 </span></code></pre></div>
 <table>
@@ -2251,11 +2252,11 @@
 </tr>
 <tr>
 <td>PR #42 opened</td>
-<td><code>pr-42</code> (from <code>env_as_pr</code>)</td>
+<td><code>pr-42</code> (from <code>pr_as_env</code>)</td>
 </tr>
 <tr>
 <td>Push to <code>feature/x</code></td>
-<td><code>feature/x</code> (from <code>env_as_branch</code>)</td>
+<td><code>feature/x</code> (from <code>branch_as_env</code>)</td>
 </tr>
 </tbody>
 </table>
