@@ -51,6 +51,8 @@ Each config key becomes a child znode:
 /acme/production/feature.dark_mode = "true"
 ```
 
+A znode per key is the only shape ZooKeeper stores, so `update_strategy` is `STRATEGY_KEY_VALUE` or unset. With `STRATEGY_DOCUMENT` or `STRATEGY_FILE` the sync fails and says so.
+
 ---
 
 ## Znode encoding

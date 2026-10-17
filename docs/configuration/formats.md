@@ -1,6 +1,6 @@
 # Supported File Formats
 
-varTrack auto-detects the format of your config file from its extension. All formats are parsed into the same flat `{ "key": "value" }` map before writing to any sink.
+varTrack auto-detects the format of your config file from its extension. All formats are parsed into the same flat `{ "key": "value" }` map, which is what is validated and what most sinks write. Sinks that store a file as one document (MongoDB and S3 with `update_strategy: "STRATEGY_DOCUMENT"` or `"STRATEGY_FILE"`) also keep the shape the file parsed to: nested for YAML, JSON, TOML, INI, HCL and XML, flat for `.env`.
 
 ---
 

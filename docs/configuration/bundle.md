@@ -88,7 +88,7 @@ datasources: [{
     endpoint:        "mongodb://mongo:27017"
     database:        "vartrack"
     collection:      "variables"
-    update_strategy: "STRATEGY_KEY_VALUE"      // or "STRATEGY_DOCUMENT"
+    update_strategy: "STRATEGY_KEY_VALUE"      // or "STRATEGY_DOCUMENT", "STRATEGY_FILE": see the MongoDB sink
   }
 }]
 ```

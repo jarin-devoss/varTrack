@@ -1,6 +1,6 @@
 # MongoDB Sink
 
-varTrack writes config values to MongoDB as key-value documents. Three write strategies are supported: **key-value** (one document per key), **document** (one document containing all keys), and **file** (one document per file containing all keys as a nested map).
+varTrack writes config values to MongoDB. The datasource's `update_strategy` picks the shape: **key-value** (one document per key), **document** (one nested document per file), or **file** (one document per file, in the shape the file parsed to).
 
 ---
 
@@ -13,7 +13,7 @@ datasources: [{
     endpoint:        "mongodb://mongo:27017"
     database:        "vartrack"
     collection:      "variables"
-    update_strategy: "STRATEGY_KEY_VALUE"       // or "STRATEGY_DOCUMENT"
+    update_strategy: "STRATEGY_KEY_VALUE"       // or "STRATEGY_DOCUMENT", "STRATEGY_FILE"
   }
 }]
 ```
@@ -48,40 +48,56 @@ datasources: [{
 
 ## Write strategies
 
-### `STRATEGY_KEY_VALUE` (default)
+The examples below sync this file:
 
-Each config key is stored as a separate document:
-
-```json
-{ "key": "database.host",     "value": "mongo.prod.internal" }
-{ "key": "max_connections",   "value": "50" }
-{ "key": "feature.dark_mode", "value": "true" }
+```yaml
+# configs/app.yaml
+database:
+  host: mongo.prod.internal
+max_connections: 50
+regions: [eu, us]
 ```
 
-Reading a value: `db.collection.findOne({ key: "database.host" }).value`
+### `STRATEGY_KEY_VALUE` (default)
+
+Each config key is stored as a separate document, its value as a string:
+
+```json
+{ "_vt_env": "production", "key": "database.host",   "value": "mongo.prod.internal" }
+{ "_vt_env": "production", "key": "max_connections", "value": "50" }
+{ "_vt_env": "production", "key": "regions.0",       "value": "eu" }
+```
+
+Reading a value: `db.collection.findOne({ _vt_env: "production", key: "database.host" }).value`
 
 ### `STRATEGY_DOCUMENT`
 
-All config keys are stored in a single document:
+One document per environment and file, with the config always nested under `data`. Values keep the types and arrays they have in the file:
 
 ```json
 {
-  "database.host":     "mongo.prod.internal",
-  "max_connections":   "50",
-  "feature.dark_mode": "true"
+  "_vt_env":  "production",
+  "_vt_file": "configs/app.yaml",
+  "data": {
+    "database":        { "host": "mongo.prod.internal" },
+    "max_connections": 50,
+    "regions":         ["eu", "us"]
+  }
 }
 ```
 
-Reading a value: `db.collection.findOne({})["database.host"]`
+Reading a value: `db.collection.findOne({ _vt_env: "production" }).data.database.host`
+
+A flat file (`.env`, `.properties`) is nested by the dots in its keys: `db.host=x` is stored as `data: { db: { host: "x" } }`. A file where one key is both a value and the parent of other keys (`log=on` next to `log.level=info`) has no nested form, so its sync fails and names the key. Use `STRATEGY_FILE` for such a file.
 
 ### `STRATEGY_FILE`
 
-The entire key set is stored as a single document with a nested `data` map, one document per synced file:
+One document per environment and file, with `data` in the shape the file parsed to: nested for YAML, JSON, TOML and the other tree formats (as in `STRATEGY_DOCUMENT`), flat for `.env` and `.properties`:
 
 ```json
 {
-  "_vt_env":       "production",
-  "_vt_file_path": "configs/app.yaml",
+  "_vt_env":  "production",
+  "_vt_file": "configs/app.properties",
   "data": {
     "database.host":   "mongo.prod.internal",
     "max_connections": "50"
@@ -89,7 +105,7 @@ The entire key set is stored as a single document with a nested `data` map, one 
 }
 ```
 
-Efficient for large key sets since it only touches one document per sync.
+With either document strategy, every sync replaces the file's document, so keys removed from Git disappear without `prune`. Switching a datasource from `STRATEGY_KEY_VALUE` to one of them removes that file's per-key documents on the next sync.
 
 ---
 
@@ -135,7 +151,7 @@ rules: [{
 
 ## Drift detection
 
-The watcher-service reads all documents from the configured collection and compares `key → value` pairs against the Git baseline. Any added, changed, or deleted key triggers a drift event.
+The watcher-service reads every varTrack document in the configured collection: the `key → value` pairs, or the keys inside `data`, flat or nested. When they change, the orchestrator compares each key with Git; a changed or missing key is drift.
 
 Enable self-heal to restore automatically:
 
