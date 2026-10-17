@@ -73,6 +73,7 @@ class VercelSink(BaseSink):
         prune_protection: list[str],
         dry_run_prune: bool,
         total_sources: int,
+        data: Any = None,
     ) -> dict[str, Any]:
         targets  = self._targets or self._default_targets(env)
         existing = self._fetch_existing()

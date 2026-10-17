@@ -17,6 +17,15 @@ VarTrack labels are attached as S3 object tags on every uploaded object:
 Additional tags from rule_config["s3_object_tags"] and rule_config["s3_tag_keys"]
 are merged in — VarTrack labels always win on key collision.
 S3 hard limit: 10 tags total.
+
+The objects follow the datasource's update_strategy (S3Config):
+
+  STRATEGY_KEY_VALUE — one object per key:   {prefix}/db.host
+  STRATEGY_DOCUMENT  — {prefix}/config.json, always nested
+  STRATEGY_FILE      — {prefix}/config.json, in the shape the file parsed to:
+                       nested for JSON, YAML, TOML …, flat for .env / .properties
+  unset              — as before: one object per key with s3_one_file_per_key,
+                       otherwise {prefix}/config.json with the flat keys
 """
 from __future__ import annotations
 
@@ -27,9 +36,10 @@ import mimetypes
 from typing import Any
 from urllib.parse import quote, unquote
 
-from app.pipeline.sinks.base import BaseSink
+from app.pipeline.sinks.base import BaseSink, update_strategy
 from app.pipeline.sinks.labels import VarTrackLabels
 from app.pipeline.sinks.key_formatter import resolve_destination
+from app.pipeline.transformer import _flatten, as_nested
 from app.utils.enums.sync_mode import SyncMode
 
 logger = logging.getLogger(__name__)
@@ -55,7 +65,11 @@ class S3Sink(BaseSink):
         cfg = rule_config or {}
         self._bucket          = cfg["s3_bucket"]
         self._prefix          = cfg.get("s3_key_prefix", "").rstrip("/")
-        self._one_per_key     = bool(cfg.get("s3_one_file_per_key", False))
+        # S3Config.update_strategy; unset keeps s3_one_file_per_key.
+        self._strategy        = update_strategy(cfg.get("update_strategy"))
+        self._one_per_key     = self._strategy == "STRATEGY_KEY_VALUE" or (
+            self._strategy == "STRATEGY_UNSPECIFIED" and bool(cfg.get("s3_one_file_per_key", False))
+        )
         self._static_tags     = cfg.get("s3_object_tags", {})
         self._dynamic_tag_keys= cfg.get("s3_tag_keys", [])
         self._tenant_id       = tenant_id
@@ -88,6 +102,7 @@ class S3Sink(BaseSink):
         prune_protection: list[str],
         dry_run_prune: bool,
         total_sources: int,
+        data: Any = None,
     ) -> dict[str, Any]:
         # Build final tag string: static → dynamic → vartrack labels (last wins)
         tagging = self._resolve_tags(flat_data, labels)
@@ -95,7 +110,7 @@ class S3Sink(BaseSink):
         if self._one_per_key:
             written = self._put_per_key(flat_data, datasource, env, tagging)
         else:
-            written = self._put_single(flat_data, datasource, env, tagging)
+            written = self._put_single(flat_data, self._document(flat_data, data), env, tagging)
 
         return {"written": written, "pruned": 0}
 
@@ -123,8 +138,9 @@ class S3Sink(BaseSink):
                     out[k] = obj["Body"].read().decode("utf-8")
                 return out
             obj = self._s3.get_object(Bucket=self._bucket, Key=f"{prefix}/config.json")
-            data = json.loads(obj["Body"].read())
-            return {k: str(data[k]) for k in keys if k in data}
+            # Flat or nested, config.json reads back as the ETL's flat keys.
+            stored = _flatten(json.loads(obj["Body"].read()))
+            return {k: stored[k] for k in keys if k in stored}
         except self._s3.exceptions.NoSuchKey:
             return {}
         except Exception as exc:
@@ -182,10 +198,18 @@ class S3Sink(BaseSink):
             return resolve_destination(self._dest_tpl, tenant=self._tenant_id, env=env).strip("/")
         return f"{self._prefix}/{env}".lstrip("/")
 
+    def _document(self, flat_data: dict[str, str], data: Any) -> Any:
+        """What config.json holds: always nested for DOCUMENT, the file as it parsed for FILE."""
+        if self._strategy == "STRATEGY_DOCUMENT":
+            return as_nested(data if data is not None else flat_data)
+        if self._strategy == "STRATEGY_FILE" and data is not None:
+            return data
+        return flat_data
+
     def _put_single(
         self,
         flat_data: dict[str, str],
-        datasource: str,
+        document: Any,
         env: str,
         tagging: str,
     ) -> int:
@@ -193,7 +217,7 @@ class S3Sink(BaseSink):
         self._s3.put_object(
             Bucket=self._bucket,
             Key=key,
-            Body=json.dumps(flat_data, indent=2).encode(),
+            Body=json.dumps(document, indent=2).encode(),
             ContentType="application/json",
             Tagging=tagging,
         )

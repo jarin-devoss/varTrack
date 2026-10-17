@@ -1,6 +1,6 @@
 from __future__ import annotations
 from dataclasses import dataclass, field
-from typing import Literal
+from typing import Any, Literal
 
 @dataclass
 class PayloadContext:
@@ -29,6 +29,10 @@ class ETLFile:
     logger_fields: frozenset[str] = field(default_factory=frozenset)
     # Fields annotated @secret() — used by change_logger to mask values in logs.
     secret_fields: frozenset[str] = field(default_factory=frozenset)
+    # The file in the shape it parsed to — a tree for JSON, YAML, TOML …, flat
+    # keys for .env / .properties — with flat_data's renames and secrets. For
+    # sinks that store the file as one document (update_strategy DOCUMENT, FILE).
+    data:          Any = None
 
 @dataclass
 class ETLResult:

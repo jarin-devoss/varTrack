@@ -24,8 +24,9 @@ MongoDB note
 Mongo is a document store — keys are stored as plain JSON fields, NOT as
 path strings.  DOT format is the natural representation:
 
-  Document strategy:  { "key": "db.host", "value": "localhost" }
-  File strategy:      { "data": { "db.host": "localhost", "db.port": "5432" } }
+  STRATEGY_KEY_VALUE: { "key": "db.host", "value": "localhost" }
+  STRATEGY_DOCUMENT:  { "data": { "db": { "host": "localhost" } } }
+  STRATEGY_FILE:      { "data": <the file as it parsed: nested, or flat for .env / .properties> }
 
 Slash or flat keys would be wrong for Mongo and are rejected at construction.
 """

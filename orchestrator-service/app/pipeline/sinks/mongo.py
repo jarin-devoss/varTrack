@@ -8,14 +8,23 @@ Key format: DOT only
 Mongo is a document store.  Dot-separated keys are natural JSON field names —
 no path conversion is needed or allowed.
 
-  Document strategy (default):
+The shape follows the datasource's update_strategy (MongoConfig):
+
+  STRATEGY_KEY_VALUE (default) — one document per key:
     {
       "_vt_tenant": "acme", "_vt_datasource": "payments", "_vt_env": "pr-42",
       "key":   "db.host",
       "value": "localhost"
     }
 
-  File strategy:
+  STRATEGY_DOCUMENT — one document per file, always nested:
+    {
+      "_vt_tenant": "acme", "_vt_datasource": "payments", "_vt_env": "pr-42",
+      "data": {"db": {"host": "localhost", "port": 5432}}
+    }
+
+  STRATEGY_FILE — one document per file, in the shape the file parsed to:
+  nested (as above) for JSON, YAML, TOML …, flat for .env / .properties:
     {
       "_vt_tenant": "acme", "_vt_datasource": "payments", "_vt_env": "pr-42",
       "data": {
@@ -56,7 +65,6 @@ logger = logging.getLogger(__name__)
 
 _DEFAULT_DB         = "vartrack"
 _DEFAULT_COLLECTION = "configs"
-_DEFAULT_STRATEGY   = "document"
 
 
 class MongoSink(BaseSink):
@@ -103,7 +111,8 @@ class MongoSink(BaseSink):
         # Takes precedence over env_as_collection logic when set.
         self._dest_tpl   = cfg.get("destination_template", "")
 
-        strategy_name: str = cfg.get("mongo_strategy", _DEFAULT_STRATEGY)
+        # MongoConfig.update_strategy: STRATEGY_KEY_VALUE (default), STRATEGY_DOCUMENT or STRATEGY_FILE.
+        strategy_name = cfg.get("update_strategy")
         self._strategy: MongoWriteStrategy = get_strategy(strategy_name)
 
         # Mongo only supports DOT format — validate here so misconfiguration
@@ -186,6 +195,7 @@ class MongoSink(BaseSink):
         prune_protection: list[str],
         dry_run_prune: bool,
         total_sources: int,
+        data: Any = None,
     ) -> dict[str, Any]:
         # Collection is auto-provisioned here for new envs (pr-42, v1.2.3 …)
         collection = self._collection_for_env(env)
@@ -203,11 +213,11 @@ class MongoSink(BaseSink):
 
         if sync_mode == SyncMode.GIT_SMART_REPAIR:
             written = self._strategy.repair(
-                collection, flat_data, doc_filter, commit_sha, file_path, meta
+                collection, flat_data, doc_filter, commit_sha, file_path, meta, data=data
             )
         else:
             written = self._strategy.upsert(
-                collection, flat_data, doc_filter, commit_sha, file_path, meta
+                collection, flat_data, doc_filter, commit_sha, file_path, meta, data=data
             )
 
         pruned = 0
@@ -314,16 +324,9 @@ class MongoSink(BaseSink):
             return {}
         try:
             collection = self._collection_for_env(env)
-            docs = collection.find(
-                {
-                    "_vt_tenant":     self._tenant_id,
-                    "_vt_datasource": datasource,
-                    "_vt_env":        env,
-                    "key":            {"$in": list(keys)},
-                },
-                {"key": 1, "value": 1, "_id": 0},
-            )
-            return {doc["key"]: str(doc.get("value", "")) for doc in docs if "key" in doc}
+            doc_filter = {"_vt_tenant": self._tenant_id, "_vt_datasource": datasource, "_vt_env": env}
+            # Each strategy stores the keys its own way: one document per key, or one per file.
+            return self._strategy.read_values(collection, list(keys), doc_filter)
         except Exception as exc:
             logger.warning("MongoSink.read_values failed: %s", exc)
             return {}

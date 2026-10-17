@@ -76,6 +76,7 @@ class HelmSink(BaseSink):
         prune_protection: list[str],
         dry_run_prune: bool,
         total_sources: int,
+        data: Any = None,
     ) -> dict[str, Any]:
         # Inject VarTrack annotations into the flat_data under a reserved prefix
         # so strategies can attach them appropriately (--set or values block)

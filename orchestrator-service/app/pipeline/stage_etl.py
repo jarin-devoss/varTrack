@@ -170,6 +170,9 @@ def run_stage_etl(ctx: PayloadContext, datasource: str, tenant_id: str) -> ETLRe
                 pr_number=ctx.pr_number,
                 tag=ctx.tag,
                 root_key="",  # already extracted above
+                # Already parsed: the JSON in sliced_content would otherwise be
+                # re-parsed as the file's own format (.env, TOML, INI …).
+                parsed=parsed if isinstance(parsed, (dict, list)) else None,
             )
 
             if not flat_data:
@@ -225,6 +228,7 @@ def run_stage_etl(ctx: PayloadContext, datasource: str, tenant_id: str) -> ETLRe
                 validation=validation_status,
                 logger_fields=_logger_fields,
                 secret_fields=frozenset(_secret_fields.keys()),
+                data=transformer.file_shape(parsed, flat_data, variables_map),
             ))
 
             outcome = "ok" if validation_status == "ok" else "validation_failed"
@@ -304,6 +308,7 @@ def run_stage_etl_content(
             pr_number=ctx.pr_number,
             tag=ctx.tag,
             root_key="",
+            parsed=parsed if isinstance(parsed, (dict, list)) else None,
         )
 
         if not flat_data:
@@ -345,6 +350,7 @@ def run_stage_etl_content(
             error=validation_error,
             logger_fields=_logger_fields,
             secret_fields=frozenset(_secret_fields.keys()),
+            data=transformer.file_shape(parsed, flat_data, variables_map),
         ))
 
     except Exception:

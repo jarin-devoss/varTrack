@@ -51,6 +51,7 @@ from app.pipeline.sinks.key_formatter import (
     KeyFormat, format_keys, key_format_from_str, validate_sink_format,
     resolve_destination,
 )
+from app.pipeline.transformer import unflatten
 from app.utils.enums.sync_mode import SyncMode
 
 logger = logging.getLogger(__name__)
@@ -140,6 +141,7 @@ class LinuxServerSink(BaseSink):
         prune_protection: list[str],
         dry_run_prune: bool,
         total_sources: int,
+        data: Any = None,
     ) -> dict[str, Any]:
         target = self._resolve_path(env)
         formatted = format_keys(flat_data, self._key_format)
@@ -204,7 +206,7 @@ def _render(data: dict[str, str], fmt: str, labels: VarTrackLabels, env: str) ->
 
     if fmt in ("json",):
         # Reconstruct nested dict from dot-separated keys for clean JSON output.
-        nested = _unflatten(data)
+        nested = unflatten(data)
         return json.dumps(nested, indent=2, sort_keys=True) + "\n"
 
     if fmt in ("yaml", "yml"):
@@ -214,7 +216,7 @@ def _render(data: dict[str, str], fmt: str, labels: VarTrackLabels, env: str) ->
             raise RuntimeError(
                 "pyyaml is required for YAML file output: pip install pyyaml"
             ) from exc
-        nested = _unflatten(data)
+        nested = unflatten(data)
         return f"# vartrack managed — env={env}\n" + yaml.dump(nested, default_flow_style=False)
 
     if fmt in ("ini", "cfg", "conf", "config"):
@@ -268,18 +270,6 @@ def _flatten(node: Any, prefix: str = "") -> dict[str, str]:
     for k, v in node.items():
         out.update(_flatten(v, f"{prefix}.{k}" if prefix else str(k)))
     return out
-
-
-def _unflatten(flat: dict[str, str]) -> dict:
-    """"a.b.c" → {"a": {"b": {"c": value}}}"""
-    result: dict = {}
-    for key, value in flat.items():
-        parts = key.split(".")
-        node  = result
-        for part in parts[:-1]:
-            node = node.setdefault(part, {})
-        node[parts[-1]] = value
-    return result
 
 
 def _safe_filename(env: str) -> str:
