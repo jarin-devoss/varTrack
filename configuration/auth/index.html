@@ -945,6 +945,48 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#web-ui-sign-in-with-your-git-platform" class="md-nav__link">
+    <span class="md-ellipsis">
+      Web UI sign-in with your Git platform
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Web UI sign-in with your Git platform">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#rules-on-several-platforms" class="md-nav__link">
+    <span class="md-ellipsis">
+      Rules on several platforms
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#set-it-up" class="md-nav__link">
+    <span class="md-ellipsis">
+      Set it up
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#how-sessions-work" class="md-nav__link">
+    <span class="md-ellipsis">
+      How sessions work
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -1656,6 +1698,48 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#web-ui-sign-in-with-your-git-platform" class="md-nav__link">
+    <span class="md-ellipsis">
+      Web UI sign-in with your Git platform
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Web UI sign-in with your Git platform">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#rules-on-several-platforms" class="md-nav__link">
+    <span class="md-ellipsis">
+      Rules on several platforms
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#set-it-up" class="md-nav__link">
+    <span class="md-ellipsis">
+      Set it up
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#how-sessions-work" class="md-nav__link">
+    <span class="md-ellipsis">
+      How sessions work
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -1842,6 +1926,138 @@
 </span><span id="__span-4-13"><a id="__codelineno-4-13" name="__codelineno-4-13" href="#__codelineno-4-13"></a>Handler
 </span></code></pre></div>
 <p>All three must pass. OPA is skipped if no <code>opa</code> block is configured.</p>
+<hr />
+<h2 id="web-ui-sign-in-with-your-git-platform">Web UI sign-in with your Git platform<a class="headerlink" href="#web-ui-sign-in-with-your-git-platform" title="Permanent link">&para;</a></h2>
+<p>The web UI can sign users in with the Git platforms your rules already use (GitHub, GitHub Enterprise, Gitea) and show each user only what those platforms let them see. varTrack keeps no list of who may see what: each rule is judged on its own platform, asked with the user's own account there.</p>
+<table>
+<thead>
+<tr>
+<th>The user can, on the rule's platform…</th>
+<th>…so in the UI they</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>read at least one repository the rule covers</td>
+<td>see the rule, its tasks and its events</td>
+</tr>
+<tr>
+<td>read the repository an environment was last synced from</td>
+<td>see that environment, its keys and its diff</td>
+</tr>
+<tr>
+<td>write to one of the rule's repositories</td>
+<td>can <strong>Sync</strong> it; with read access only they can <strong>Dry run</strong> it</td>
+</tr>
+</tbody>
+</table>
+<p>A rule covers the repositories it names, the ones its patterns (<code>acme/*</code>) match minus its exclusions, and the ones its environments were synced from. A rule, environment or task the user cannot see answers <em>not found</em>, exactly like one that does not exist. Answers are cached for two minutes per session, so a permission change on a platform shows up within that time.</p>
+<h3 id="rules-on-several-platforms">Rules on several platforms<a class="headerlink" href="#rules-on-several-platforms" title="Permanent link">&para;</a></h3>
+<p>With rules on GitHub and on Gitea, add a provider for each. Users sign in with either one and <strong>connect</strong> the other from the sign-in page, the user menu or their profile — the same session then holds both accounts, and each rule is judged with the account on its own platform. A GitHub rule is never judged by a Gitea account, even when the repository names match. Until a platform is connected, its rules stay hidden and the UI says how many there are. Signing out ends the session on every platform. Rules on a platform without sign-in set up are hidden from everyone but admins.</p>
+<h3 id="set-it-up">Set it up<a class="headerlink" href="#set-it-up" title="Permanent link">&para;</a></h3>
+<ol>
+<li>Register an OAuth application on each platform, all with the same callback URL: <code>{public_url}/api/orchestrator/v1/auth/callback</code> — for example <code>http://localhost:8080/api/orchestrator/v1/auth/callback</code>.<ul>
+<li><strong>GitHub:</strong> <em>Settings → Developer settings → OAuth Apps</em>. GitHub OAuth Apps can only read private repositories with the <code>repo</code> scope, which is the default here.</li>
+<li><strong>Gitea:</strong> <em>Settings → Applications → OAuth2 Applications</em>, confidential client. Default scopes: <code>read:user read:repository</code>.</li>
+</ul>
+</li>
+<li>Add a <code>ui</code> block to the bundle (<code>config.cue</code>), with one provider per platform users sign in with:</li>
+</ol>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>bundle: {
+</span><span id="__span-5-2"><a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>  platforms: [
+</span><span id="__span-5-3"><a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>    {github: {endpoint: &quot;https://github.com&quot;, ...}},
+</span><span id="__span-5-4"><a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a>    {gitea:  {endpoint: &quot;http://gitea:3000&quot;, ...}},
+</span><span id="__span-5-5"><a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a>  ]
+</span><span id="__span-5-6"><a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a>
+</span><span id="__span-5-7"><a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a>  ui: {
+</span><span id="__span-5-8"><a id="__codelineno-5-8" name="__codelineno-5-8" href="#__codelineno-5-8"></a>    public_url: &quot;https://vartrack.example.com&quot;   // where users open the UI
+</span><span id="__span-5-9"><a id="__codelineno-5-9" name="__codelineno-5-9" href="#__codelineno-5-9"></a>    auth: {
+</span><span id="__span-5-10"><a id="__codelineno-5-10" name="__codelineno-5-10" href="#__codelineno-5-10"></a>      providers: [
+</span><span id="__span-5-11"><a id="__codelineno-5-11" name="__codelineno-5-11" href="#__codelineno-5-11"></a>        {
+</span><span id="__span-5-12"><a id="__codelineno-5-12" name="__codelineno-5-12" href="#__codelineno-5-12"></a>          platform:      &quot;github&quot;                // a platform&#39;s name from platforms
+</span><span id="__span-5-13"><a id="__codelineno-5-13" name="__codelineno-5-13" href="#__codelineno-5-13"></a>          client_id:     &quot;Iv1.8a61f9b3a7aba766&quot;
+</span><span id="__span-5-14"><a id="__codelineno-5-14" name="__codelineno-5-14" href="#__codelineno-5-14"></a>          client_secret: {file: &quot;/run/secrets/github-oauth&quot;}
+</span><span id="__span-5-15"><a id="__codelineno-5-15" name="__codelineno-5-15" href="#__codelineno-5-15"></a>        },
+</span><span id="__span-5-16"><a id="__codelineno-5-16" name="__codelineno-5-16" href="#__codelineno-5-16"></a>        {
+</span><span id="__span-5-17"><a id="__codelineno-5-17" name="__codelineno-5-17" href="#__codelineno-5-17"></a>          platform:      &quot;gitea&quot;
+</span><span id="__span-5-18"><a id="__codelineno-5-18" name="__codelineno-5-18" href="#__codelineno-5-18"></a>          client_id:     {file: &quot;/run/secrets/gitea-oauth-id&quot;}
+</span><span id="__span-5-19"><a id="__codelineno-5-19" name="__codelineno-5-19" href="#__codelineno-5-19"></a>          client_secret: {ref: {path: &quot;ui/gitea&quot;, key: &quot;client_secret&quot;}}   // from Vault
+</span><span id="__span-5-20"><a id="__codelineno-5-20" name="__codelineno-5-20" href="#__codelineno-5-20"></a>          browser_url:   &quot;https://gitea.example.com&quot;   // when the platform&#39;s endpoint is internal
+</span><span id="__span-5-21"><a id="__codelineno-5-21" name="__codelineno-5-21" href="#__codelineno-5-21"></a>        },
+</span><span id="__span-5-22"><a id="__codelineno-5-22" name="__codelineno-5-22" href="#__codelineno-5-22"></a>      ]
+</span><span id="__span-5-23"><a id="__codelineno-5-23" name="__codelineno-5-23" href="#__codelineno-5-23"></a>      admins: [&quot;github:octo-admin&quot;]              // optional: see and sync every rule
+</span><span id="__span-5-24"><a id="__codelineno-5-24" name="__codelineno-5-24" href="#__codelineno-5-24"></a>      secret_manager: &quot;vault&quot;                    // optional with a single secret manager
+</span><span id="__span-5-25"><a id="__codelineno-5-25" name="__codelineno-5-25" href="#__codelineno-5-25"></a>    }
+</span><span id="__span-5-26"><a id="__codelineno-5-26" name="__codelineno-5-26" href="#__codelineno-5-26"></a>  }
+</span><span id="__span-5-27"><a id="__codelineno-5-27" name="__codelineno-5-27" href="#__codelineno-5-27"></a>}
+</span></code></pre></div>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ui.public_url</code></td>
+<td><code>http://localhost:5173</code></td>
+<td>Where users open the UI; the callback is built from it</td>
+</tr>
+<tr>
+<td><code>ui.auth.providers[].platform</code></td>
+<td>—</td>
+<td>A platform's name from <code>platforms</code>: <code>github</code>, <code>gitea</code>, <code>gitea-team</code>…</td>
+</tr>
+<tr>
+<td><code>ui.auth.providers[].client_id</code> / <code>client_secret</code></td>
+<td>—</td>
+<td>The OAuth application: a string, <code>{value: "…"}</code>, <code>{file: "/path"}</code> or <code>{ref: {path: "…", key: "…"}}</code></td>
+</tr>
+<tr>
+<td><code>ui.auth.providers[].browser_url</code></td>
+<td>the platform's <code>endpoint</code></td>
+<td>The platform's address as the browser sees it, when the endpoint is internal (e.g. <code>http://gitea:3000</code>)</td>
+</tr>
+<tr>
+<td><code>ui.auth.providers[].scopes</code></td>
+<td>per platform, see above</td>
+<td>OAuth scopes</td>
+</tr>
+<tr>
+<td><code>ui.auth.admins</code></td>
+<td>—</td>
+<td><code>platform:login</code> entries that see every rule; with one provider a bare login works. With several, an admin must name the platform: <code>alice</code> on GitHub and <code>alice</code> on Gitea need not be the same person</td>
+</tr>
+<tr>
+<td><code>ui.auth.session_ttl_seconds</code></td>
+<td><code>28800</code></td>
+<td>How long a session lasts (8 hours)</td>
+</tr>
+<tr>
+<td><code>ui.auth.session_secret</code></td>
+<td>derived from the client secrets</td>
+<td>Key for encrypting sessions at rest</td>
+</tr>
+<tr>
+<td><code>ui.auth.redirect_url</code></td>
+<td><code>{public_url}/api/orchestrator/v1/auth/callback</code></td>
+<td>The callback URL, when it differs</td>
+</tr>
+<tr>
+<td><code>ui.auth.secret_manager</code></td>
+<td>the bundle's only secret manager</td>
+<td>Which entry of <a href="../bundle/#secret_managers"><code>secret_managers</code></a> <code>{ref: …}</code> values come from, by name: <code>vault</code>, or <code>vault-{tag}</code> for a tagged one. Needed when there are several</td>
+</tr>
+</tbody>
+</table>
+<p>Without <code>ui.auth</code> the UI is open to anyone who can reach it, as before. If sign-in is set up but cannot work — a missing secret, a file that can't be read, an unknown platform — the UI stays closed and says it is misconfigured; the orchestrator's log says why.</p>
+<p><code>{ref: {path, key}}</code> reads field <code>key</code> of the Vault secret at <code>path</code> (under the secret manager's <code>mount_point</code>). The orchestrator reads files and references when it loads these settings, then again at most once a minute, so a rotated secret is picked up without a restart. If Vault can't be reached or the key is missing, the UI stays closed and the orchestrator's log names the field. Rotating a client secret also ends the sessions in progress unless <code>session_secret</code> is set, since the session key is otherwise derived from the client secrets. The model is <a href="https://github.com/jarin-devoss/varTrack/blob/main/proto/vartrack/v1/models/ui.proto"><code>ui.proto</code></a>.</p>
+<p><strong>Without a <code>ui.auth</code> block</strong>, the orchestrator reads the same settings from environment variables: <code>UI_AUTH_PLATFORMS</code> (<code>github,gitea</code>), then per platform <code>UI_AUTH_{P}_CLIENT_ID</code>, <code>UI_AUTH_{P}_CLIENT_SECRET</code>, <code>UI_AUTH_{P}_URL</code> and <code>UI_AUTH_{P}_SCOPES</code> (<code>{P}</code> is the platform name upper-cased with <code>-</code> as <code>_</code>), plus <code>UI_PUBLIC_URL</code>, <code>UI_AUTH_REDIRECT_URL</code>, <code>UI_AUTH_ADMINS</code>, <code>UI_SESSION_TTL_SECONDS</code> and <code>UI_SESSION_SECRET</code>. Any of them can be read from a file by appending <code>_FILE</code>.</p>
+<h3 id="how-sessions-work">How sessions work<a class="headerlink" href="#how-sessions-work" title="Permanent link">&para;</a></h3>
+<p>Sign-in is the OAuth2 authorization code flow with PKCE. The login state is single-use, expires after five minutes, names the platform, and is bound to the browser that started it by a cookie. After sign-in the browser holds only a random session id in an <code>HttpOnly</code> cookie (<code>Secure</code> when the UI is served over HTTPS). The platform tokens stay on the server, encrypted with AES-256-GCM, in Redis next to the sync ledger, and expired tokens are refreshed when the platform issues refresh tokens. Signing out deletes the session on the server, so a copied cookie stops working too.</p>
+<p>This covers the web UI's API (<code>/v1/ui/*</code>). The CLI API (<code>/v1/cli/*</code>, used by <code>vt</code> and by the UI's Playground) keeps the OIDC, RBAC and OPA layers above; paste a token under <em>API token for the Playground</em> on the sign-in page to use it from the UI.</p>
 
 
 

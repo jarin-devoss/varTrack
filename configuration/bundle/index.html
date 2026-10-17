@@ -943,6 +943,15 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#ui" class="md-nav__link">
+    <span class="md-ellipsis">
+      ui
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#gateway-tuning" class="md-nav__link">
     <span class="md-ellipsis">
       Gateway tuning
@@ -1885,6 +1894,15 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#ui" class="md-nav__link">
+    <span class="md-ellipsis">
+      ui
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#gateway-tuning" class="md-nav__link">
     <span class="md-ellipsis">
       Gateway tuning
@@ -2112,13 +2130,13 @@
 </span><span id="__span-10-8"><a id="__codelineno-10-8" name="__codelineno-10-8" href="#__codelineno-10-8"></a>    token_auth: {
 </span><span id="__span-10-9"><a id="__codelineno-10-9" name="__codelineno-10-9" href="#__codelineno-10-9"></a>      token: &quot;hvs.xxxx&quot;
 </span><span id="__span-10-10"><a id="__codelineno-10-10" name="__codelineno-10-10" href="#__codelineno-10-10"></a>    }
-</span><span id="__span-10-11"><a id="__codelineno-10-11" name="__codelineno-10-11" href="#__codelineno-10-11"></a>    // approle_auth: {
+</span><span id="__span-10-11"><a id="__codelineno-10-11" name="__codelineno-10-11" href="#__codelineno-10-11"></a>    // app_role_auth: {
 </span><span id="__span-10-12"><a id="__codelineno-10-12" name="__codelineno-10-12" href="#__codelineno-10-12"></a>    //   role_id:   &quot;role-id&quot;
 </span><span id="__span-10-13"><a id="__codelineno-10-13" name="__codelineno-10-13" href="#__codelineno-10-13"></a>    //   secret_id: &quot;secret-id&quot;
 </span><span id="__span-10-14"><a id="__codelineno-10-14" name="__codelineno-10-14" href="#__codelineno-10-14"></a>    // }
 </span><span id="__span-10-15"><a id="__codelineno-10-15" name="__codelineno-10-15" href="#__codelineno-10-15"></a>    // kubernetes_auth: {
 </span><span id="__span-10-16"><a id="__codelineno-10-16" name="__codelineno-10-16" href="#__codelineno-10-16"></a>    //   role:            &quot;vartrack&quot;
-</span><span id="__span-10-17"><a id="__codelineno-10-17" name="__codelineno-10-17" href="#__codelineno-10-17"></a>    //   service_account: &quot;/var/run/secrets/kubernetes.io/serviceaccount/token&quot;
+</span><span id="__span-10-17"><a id="__codelineno-10-17" name="__codelineno-10-17" href="#__codelineno-10-17"></a>    //   jwt_path:        &quot;/var/run/secrets/kubernetes.io/serviceaccount/token&quot;
 </span><span id="__span-10-18"><a id="__codelineno-10-18" name="__codelineno-10-18" href="#__codelineno-10-18"></a>    // }
 </span><span id="__span-10-19"><a id="__codelineno-10-19" name="__codelineno-10-19" href="#__codelineno-10-19"></a>    // userpass_auth: {
 </span><span id="__span-10-20"><a id="__codelineno-10-20" name="__codelineno-10-20" href="#__codelineno-10-20"></a>    //   username: &quot;vartrack&quot;
@@ -2218,13 +2236,30 @@
 <p>In a single-Redis setup, all four can point to the same datasource. In production you may want separate instances for isolation. The <code>watcher_leader_election_datasource</code> also accepts <code>"zookeeper"</code>.</p>
 <p>See <a href="../../concepts/drift-detection/">Drift Detection</a> for how the watcher uses these.</p>
 <hr />
+<h2 id="ui"><code>ui</code><a class="headerlink" href="#ui" title="Permanent link">&para;</a></h2>
+<p>The web UI: where users open it, and sign-in with your Git platforms. Each user sees the rules whose repositories their own account on the rule's platform can read, and syncs the ones it can write to. Without <code>ui.auth</code> the UI is open.</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-17-1"><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a>ui: {
+</span><span id="__span-17-2"><a id="__codelineno-17-2" name="__codelineno-17-2" href="#__codelineno-17-2"></a>  public_url: &quot;https://vartrack.example.com&quot;
+</span><span id="__span-17-3"><a id="__codelineno-17-3" name="__codelineno-17-3" href="#__codelineno-17-3"></a>  auth: {
+</span><span id="__span-17-4"><a id="__codelineno-17-4" name="__codelineno-17-4" href="#__codelineno-17-4"></a>    providers: [
+</span><span id="__span-17-5"><a id="__codelineno-17-5" name="__codelineno-17-5" href="#__codelineno-17-5"></a>      {platform: &quot;github&quot;, client_id: &quot;Iv1.8a61…&quot;, client_secret: {file: &quot;/run/secrets/github-oauth&quot;}},
+</span><span id="__span-17-6"><a id="__codelineno-17-6" name="__codelineno-17-6" href="#__codelineno-17-6"></a>      {platform: &quot;gitea&quot;,  client_id: {file: &quot;/run/secrets/gitea-id&quot;}, client_secret: {ref: {path: &quot;ui/gitea&quot;, key: &quot;client_secret&quot;}},
+</span><span id="__span-17-7"><a id="__codelineno-17-7" name="__codelineno-17-7" href="#__codelineno-17-7"></a>       browser_url: &quot;https://gitea.example.com&quot;},
+</span><span id="__span-17-8"><a id="__codelineno-17-8" name="__codelineno-17-8" href="#__codelineno-17-8"></a>    ]
+</span><span id="__span-17-9"><a id="__codelineno-17-9" name="__codelineno-17-9" href="#__codelineno-17-9"></a>    admins: [&quot;github:octo-admin&quot;]
+</span><span id="__span-17-10"><a id="__codelineno-17-10" name="__codelineno-17-10" href="#__codelineno-17-10"></a>    secret_manager: &quot;vault&quot;   // where {ref: …} values come from; optional with one secret manager
+</span><span id="__span-17-11"><a id="__codelineno-17-11" name="__codelineno-17-11" href="#__codelineno-17-11"></a>  }
+</span><span id="__span-17-12"><a id="__codelineno-17-12" name="__codelineno-17-12" href="#__codelineno-17-12"></a>}
+</span></code></pre></div>
+<p>Every field, and how sessions work: <a href="../auth/#web-ui-sign-in-with-your-git-platform">Web UI sign-in</a>. Full example: <a href="https://github.com/jarin-devoss/varTrack/blob/main/examples/bundles/15_web_ui_sign_in.cue"><code>15_web_ui_sign_in.cue</code></a>.</p>
+<hr />
 <h2 id="gateway-tuning">Gateway tuning<a class="headerlink" href="#gateway-tuning" title="Permanent link">&para;</a></h2>
 <p>Fine-tune gateway-service behaviour directly from the bundle:</p>
 <h3 id="max_webhook_body_bytes"><code>max_webhook_body_bytes</code><a class="headerlink" href="#max_webhook_body_bytes" title="Permanent link">&para;</a></h3>
 <p>Maximum size of an incoming webhook request body. Requests larger than this limit are rejected with <strong>HTTP 413</strong>. Defaults to <strong>10 MiB</strong> when unset.</p>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-17-1"><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a>bundle: {
-</span><span id="__span-17-2"><a id="__codelineno-17-2" name="__codelineno-17-2" href="#__codelineno-17-2"></a>  max_webhook_body_bytes: 5242880   // 5 MiB
-</span><span id="__span-17-3"><a id="__codelineno-17-3" name="__codelineno-17-3" href="#__codelineno-17-3"></a>}
+<div class="language-text highlight"><pre><span></span><code><span id="__span-18-1"><a id="__codelineno-18-1" name="__codelineno-18-1" href="#__codelineno-18-1"></a>bundle: {
+</span><span id="__span-18-2"><a id="__codelineno-18-2" name="__codelineno-18-2" href="#__codelineno-18-2"></a>  max_webhook_body_bytes: 5242880   // 5 MiB
+</span><span id="__span-18-3"><a id="__codelineno-18-3" name="__codelineno-18-3" href="#__codelineno-18-3"></a>}
 </span></code></pre></div>
 <table>
 <thead>

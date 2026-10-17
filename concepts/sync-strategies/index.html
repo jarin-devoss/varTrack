@@ -1863,6 +1863,8 @@
 </span><span id="__span-8-5"><a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a>POST<span class="w"> </span>/v1/webhooks/mongo/dry-run
 </span></code></pre></div>
 <p><code>@secret</code>-annotated fields are fetched from Vault but masked as <code>***</code> in the report.</p>
+<p>In the web UI, <strong>Dry run</strong> on a rule runs the same simulation for the environments you pick:</p>
+<p><img alt="Dry run panel for an S3 rule: production and staging selected, Dry run checked" src="../../assets/screenshots/dry-run.png" /></p>
 <h3 id="prune-dry-run-simulate-deletes-only">Prune dry-run — simulate deletes only<a class="headerlink" href="#prune-dry-run-simulate-deletes-only" title="Permanent link">&para;</a></h3>
 <p>Test the prune step independently without touching any writes. Enabled per rule:</p>
 <div class="language-text highlight"><pre><span></span><code><span id="__span-9-1"><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>rules: [{

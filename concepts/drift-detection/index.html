@@ -1762,7 +1762,8 @@
 </span><span id="__span-1-4"><a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>  self_heal:  true    // watcher will restore state on drift
 </span><span id="__span-1-5"><a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>}]
 </span></code></pre></div>
-<p>Rules with <code>self_heal: false</code> (or omitted) are still polled and drift is logged, but no automatic repair is triggered.</p>
+<p>Rules with <code>self_heal: false</code> (or omitted) are not polled by the watcher, and nothing repairs them. The web UI still compares them with Git whenever it reads them, so their drift shows there until someone syncs from Git:</p>
+<p><img alt="A Redis rule with self-heal off: production is out of sync, staging matches Git" src="../../assets/screenshots/rule-drift.png" /></p>
 <hr />
 <h2 id="concrete-example">Concrete example<a class="headerlink" href="#concrete-example" title="Permanent link">&para;</a></h2>
 <p>Your config in Git:</p>
@@ -1780,6 +1781,8 @@
 </ol>
 <p>Had the change come from a push to Git, step 2 would have answered <em>in sync</em> and nothing would be healed.</p>
 <p>Total recovery time: up to one <code>POLL_INTERVAL</code> (default 60 seconds).</p>
+<p>On the web UI's Events page a repair shows as <strong>Healed</strong>. Drift on rules without self-heal shows as <strong>Drift detected</strong> and stays until someone syncs:</p>
+<p><img alt="Events page: Redis and S3 drift detected, MongoDB healed by self-heal" src="../../assets/screenshots/events.png" /></p>
 <hr />
 <h2 id="metrics">Metrics<a class="headerlink" href="#metrics" title="Permanent link">&para;</a></h2>
 <p>Monitor drift in Prometheus / Grafana:</p>

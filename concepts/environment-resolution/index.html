@@ -1949,6 +1949,8 @@
 </span><span id="__span-0-9"><a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>}]
 </span></code></pre></div>
 <p>Pushes to <code>main</code> write to <code>production-config</code>. Pushes to <code>develop</code> write to <code>staging-config</code>. Any branch not in the map falls through to the next strategy.</p>
+<p>The web UI's Environments page lists every resolved environment with the branch it comes from and where it is written:</p>
+<p><img alt="Environments page: each environment with its branch, main or develop, and its destination in the sink" src="../../assets/screenshots/environments.png" /></p>
 <hr />
 <h2 id="file_path_map-path-glob-mapping"><code>file_path_map</code> — path glob mapping<a class="headerlink" href="#file_path_map-path-glob-mapping" title="Permanent link">&para;</a></h2>
 <p>Map file paths (glob patterns) to environment names:</p>

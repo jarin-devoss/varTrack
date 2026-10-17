@@ -1817,6 +1817,11 @@
 <td><code>10</code></td>
 <td>How long a sink comparison is answered as is before it is refreshed in the background</td>
 </tr>
+<tr>
+<td><code>UI_AUTH_PLATFORMS</code></td>
+<td>—</td>
+<td>Web UI sign-in when the bundle has no <code>ui.auth</code> block; see <a href="../../configuration/auth/#web-ui-sign-in-with-your-git-platform">Web UI sign-in</a></td>
+</tr>
 </tbody>
 </table>
 <hr />
@@ -1917,7 +1922,41 @@
 </tbody>
 </table>
 <p>Every sync records the desired state it wrote (secret values only as a digest), its task and its events in Redis next to the Celery broker. Reading a rule compares that desired state with the values read back from the sink, so drift shows key by key even for rules without <code>self_heal</code>.</p>
+<p>A task as the UI shows it from <code>GET /v1/ui/tasks/{task_id}</code> — its pipeline stages and per-file results:</p>
+<p><img alt="Task page: a Git push to develop synced 19 keys to MongoDB" src="../../assets/screenshots/task.png" /></p>
 <p>Pages never wait on a sink they have read before. Each comparison is cached: for <code>UI_COMPARE_TTL_SECONDS</code> (default 10) it is answered as is, and after that it is still answered at once while the sink is read again in the background — every target shows when it was last checked. The API reads every sink once at startup, and the schema registry's periodic <code>git fetch</code> also runs behind requests. Only an environment not read since its last sync is read while the request waits.</p>
+<p>With sign-in set up (the bundle's <code>ui.auth</code> block), every <code>/v1/ui/*</code> endpoint needs a signed-in session and answers only with the rules, environments, tasks and events the user's Git platforms let them see — each rule on its own platform; syncing needs write access to the rule's repository. Sign-in lives under <code>/v1/auth</code>:</p>
+<table>
+<thead>
+<tr>
+<th>Method</th>
+<th>Path</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>GET</code></td>
+<td><code>/v1/auth/session</code></td>
+<td>Is sign-in on, on which platforms, and who is signed in where</td>
+</tr>
+<tr>
+<td><code>GET</code></td>
+<td><code>/v1/auth/login?platform=&amp;return_to=</code></td>
+<td>Start signing in (or connect another platform): redirects to the platform</td>
+</tr>
+<tr>
+<td><code>GET</code></td>
+<td><code>/v1/auth/callback</code></td>
+<td>The platform returns here</td>
+</tr>
+<tr>
+<td><code>POST</code></td>
+<td><code>/v1/auth/logout</code></td>
+<td>End the session on every platform</td>
+</tr>
+</tbody>
+</table>
 <h3 id="grpc-port-50051">gRPC (port 50051)<a class="headerlink" href="#grpc-port-50051" title="Permanent link">&para;</a></h3>
 <table>
 <thead>
