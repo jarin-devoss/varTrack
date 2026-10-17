@@ -1,0 +1,31 @@
+# app-settings.yaml in payments/payments-config on gitea-team, `main` → production
+app:
+  name: payments-api
+  region: eu-west-1
+  env: production
+
+database:
+  pool_size: "20"
+  max_connections: "200"
+  connect_timeout_ms: "2000"
+  password: "resolved-from-vault"
+
+cache:
+  ttl_seconds: "60"
+  backend: redis
+
+api:
+  rate_limit: "1200"
+  timeout_ms: "8000"
+  version: v1
+  secret_key: "resolved-from-vault"
+
+features:
+  dark_mode: "false"
+  analytics: "true"
+  debug_mode: "false"
+
+observability:
+  log_level: INFO
+  service_mesh: istio
+  tracing_enabled: "true"

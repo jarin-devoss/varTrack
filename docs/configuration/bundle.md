@@ -238,13 +238,13 @@ secret_managers: [{
     token_auth: {
       token: "hvs.xxxx"
     }
-    // approle_auth: {
+    // app_role_auth: {
     //   role_id:   "role-id"
     //   secret_id: "secret-id"
     // }
     // kubernetes_auth: {
     //   role:            "vartrack"
-    //   service_account: "/var/run/secrets/kubernetes.io/serviceaccount/token"
+    //   jwt_path:        "/var/run/secrets/kubernetes.io/serviceaccount/token"
     // }
     // userpass_auth: {
     //   username: "vartrack"
@@ -371,6 +371,29 @@ bundle: {
 In a single-Redis setup, all four can point to the same datasource. In production you may want separate instances for isolation. The `watcher_leader_election_datasource` also accepts `"zookeeper"`.
 
 See [Drift Detection](../concepts/drift-detection.md) for how the watcher uses these.
+
+---
+
+## `ui`
+
+The web UI: where users open it, and sign-in with your Git platforms. Each user sees the rules whose repositories their own account on the rule's platform can read, and syncs the ones it can write to. Without `ui.auth` the UI is open.
+
+```cue
+ui: {
+  public_url: "https://vartrack.example.com"
+  auth: {
+    providers: [
+      {platform: "github", client_id: "Iv1.8a61…", client_secret: {file: "/run/secrets/github-oauth"}},
+      {platform: "gitea",  client_id: {file: "/run/secrets/gitea-id"}, client_secret: {ref: {path: "ui/gitea", key: "client_secret"}},
+       browser_url: "https://gitea.example.com"},
+    ]
+    admins: ["github:octo-admin"]
+    secret_manager: "vault"   // where {ref: …} values come from; optional with one secret manager
+  }
+}
+```
+
+Every field, and how sessions work: [Web UI sign-in](auth.md#web-ui-sign-in-with-your-git-platform). Full example: [`15_web_ui_sign_in.cue`](https://github.com/jarin-devoss/varTrack/blob/main/examples/bundles/15_web_ui_sign_in.cue).
 
 ---
 

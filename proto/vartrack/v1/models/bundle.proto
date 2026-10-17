@@ -9,6 +9,7 @@ import "vartrack/v1/models/schema_registry.proto";
 import "vartrack/v1/models/secret_manager.proto";
 import "vartrack/v1/models/monitoring.proto";
 import "vartrack/v1/models/auth/oidc.proto";
+import "vartrack/v1/models/ui.proto";
 import "buf/validate/validate.proto";
 import "google/api/field_behavior.proto";
 import "google/protobuf/timestamp.proto";
@@ -97,6 +98,12 @@ message Bundle {
   // Requests exceeding this limit are rejected with HTTP 413.
   // Defaults to 10 MiB (10 * 1024 * 1024) when unset or zero.
   optional uint64 max_webhook_body_bytes = 15 [
+    (google.api.field_behavior) = OPTIONAL
+  ];
+
+  // ui configures the web UI: where users open it and how they sign in.
+  // When absent the UI is open to anyone who can reach it.
+  optional UIConfig ui = 16 [
     (google.api.field_behavior) = OPTIONAL
   ];
 }

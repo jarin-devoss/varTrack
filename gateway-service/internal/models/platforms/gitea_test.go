@@ -1,10 +1,39 @@
 package platforms
 
 import (
+	"context"
 	"testing"
 
+	pb_models "gateway-service/internal/gen/proto/go/vartrack/v1/models"
 	pb_gt "gateway-service/internal/gen/proto/go/vartrack/v1/models/platforms"
+	pb_utils "gateway-service/internal/gen/proto/go/vartrack/v1/utils"
+	"gateway-service/internal/models"
 )
+
+type inlineResolver struct{}
+
+func (inlineResolver) Resolve(_ context.Context, ref *pb_utils.SecretRef, _ string) (string, error) {
+	return ref.GetValue(), nil
+}
+
+func TestATaggedPlatformOpensTheDriverOfItsType(t *testing.T) {
+	// A second Gitea server, "gitea-team", is still a Gitea: the factory must
+	// open the "gitea" driver, not look for one named "gitea-team".
+	tag := "team"
+	cfg := &pb_models.Platform{Config: &pb_models.Platform_Gitea{Gitea: &pb_gt.Gitea{
+		Tag: &tag, Endpoint: "http://gitea-team:3000", Protocol: "http",
+	}}}
+	if got := models.PlatformName(cfg); got != "gitea-team" {
+		t.Fatalf("PlatformName = %q, want gitea-team", got)
+	}
+	plat, err := models.PlatformFactory.Get(context.Background(), models.PlatformConfig{Platform: cfg, Resolver: inlineResolver{}})
+	if err != nil {
+		t.Fatalf("PlatformFactory.Get: %v", err)
+	}
+	if got := plat.EventTypeHeader(); got != "X-Gitea-Event" {
+		t.Errorf("opened %T with EventTypeHeader %q, want a Gitea platform", plat, got)
+	}
+}
 
 func TestGiteaWebhookHeadersAndEventsComeFromTheProto(t *testing.T) {
 	// A bundle like docs/examples/gitea.md sets none of the fixed fields;

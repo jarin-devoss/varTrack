@@ -59,7 +59,9 @@ rules: [{
 }]
 ```
 
-Rules with `self_heal: false` (or omitted) are still polled and drift is logged, but no automatic repair is triggered.
+Rules with `self_heal: false` (or omitted) are not polled by the watcher, and nothing repairs them. The web UI still compares them with Git whenever it reads them, so their drift shows there until someone syncs from Git:
+
+![A Redis rule with self-heal off: production is out of sync, staging matches Git](../assets/screenshots/rule-drift.png)
 
 ---
 
@@ -85,6 +87,10 @@ On the next poll cycle:
 Had the change come from a push to Git, step 2 would have answered *in sync* and nothing would be healed.
 
 Total recovery time: up to one `POLL_INTERVAL` (default 60 seconds).
+
+On the web UI's Events page a repair shows as **Healed**. Drift on rules without self-heal shows as **Drift detected** and stays until someone syncs:
+
+![Events page: Redis and S3 drift detected, MongoDB healed by self-heal](../assets/screenshots/events.png)
 
 ---
 

@@ -145,12 +145,13 @@ def create_app() -> FastAPI:
         logger.debug("otel: FastAPI auto-instrumentation skipped: %s", exc)
 
     # Routers
-    from app.api.routers import webhooks, tasks, schemas, dry_run, ui
+    from app.api.routers import webhooks, tasks, schemas, dry_run, ui, auth
     app.include_router(webhooks.router,  prefix="/v1", tags=["webhooks"])
     app.include_router(tasks.router,     prefix="/v1", tags=["tasks"])
     app.include_router(schemas.router,   prefix="/v1", tags=["schemas"])
     app.include_router(dry_run.router,   prefix="/v1", tags=["dry-run"])
     app.include_router(ui.router,        prefix="/v1", tags=["ui"])
+    app.include_router(auth.router,      prefix="/v1", tags=["auth"])
 
     @app.get("/v1/health", tags=["health"])
     @app.get("/v1/health/liveness", tags=["health"])

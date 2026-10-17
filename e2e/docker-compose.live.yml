@@ -1,26 +1,34 @@
 # VarTrack live demo — overlay on docker-compose.yml.
 #
-# Every sink that runs in a container — MongoDB, ZooKeeper, Redis, S3 on MinIO,
-# a Linux server over SSH, and Kubernetes ConfigMaps and Helm releases on k3s —
-# is fed by real pushes: Gitea webhooks → gateway → orchestrator. The watcher
-# self-heals MongoDB, ZooKeeper and the ConfigMaps. live-seed creates the repos
-# and webhooks, pushes to main and develop, then edits a few values directly in
-# the sinks so there is drift to see. (Vercel is a hosted service, so it is the
-# one sink left out.)
+# MongoDB, ZooKeeper, Redis, S3 on MinIO, and Kubernetes ConfigMaps and Helm
+# releases on k3s are fed by real pushes: Gitea webhooks → gateway →
+# orchestrator. The watcher self-heals MongoDB, ZooKeeper and the ConfigMaps.
+# live-seed creates the repos and webhooks, pushes to main and develop, then
+# edits a few values directly in the sinks so there is drift to see. (Vercel, a
+# hosted service, and the Linux server sink are left out.)
 #
 # From e2e/ (the orchestrator's Python gRPC stubs must exist first:
 # `buf generate`, see docs/getting-started.md):
 #   docker compose -f docker-compose.yml -f docker-compose.live.yml up -d --build \
-#     gitea redis mongo zookeeper minio minio-init vault vault-init linux-target \
+#     gitea redis mongo zookeeper minio minio-init vault vault-init \
 #     k3s k3s-kubeconfig orchestrator-api orchestrator-worker gateway watcher live-seed
 #
 # Then start the web UI (cd ui && npm run dev); its dev server proxies /api/*
-# to localhost:5657, :8000 and :9091.
+# to localhost:5657, :8000 and :9091. Two Git servers feed it: gitea
+# (localhost:3000, the demo configs) and gitea-team (127.0.0.1:3001, a private
+# payments repository). Sign in with either and connect the other:
+#   gitea       demo-admin   sees and syncs the demo rules
+#               demo-viewer  sees them, dry runs only
+#   gitea-team  team-admin   sees and syncs the payments rule
+#               demo-viewer  is not in the payments team: the rule stays hidden
+# Every password is VarTrack123. To (re)register the UI with both on its own:
+#   docker compose -f docker-compose.yml -f docker-compose.live.yml run --rm --no-deps live-seed ui-sign-in
 
 volumes:
   live-state:
   k3s-output:
   k3s-data:
+  gitea-team-data:
 
 x-orchestrator-live: &orchestrator-live
   build:
@@ -31,6 +39,14 @@ x-orchestrator-live: &orchestrator-live
     SCHEMA_TENANT_DEFAULT_REPO: http://gitea:3000/vartrack-demo/schemas.git
     SCHEMA_TENANT_DEFAULT_BRANCH: main
     UI_DEFAULT_TENANT: default
+    # Web UI sign-in is set in live/config.cue (bundle.ui).
+    # The payments repository on gitea-team is private: varTrack reads it as
+    # vartrack-bot, a read-only collaborator. git adds the credentials for that
+    # host only, so logs keep showing the plain URL.
+    GIT_ALLOWED_HOSTS: "gitea,gitea-team"
+    GIT_CONFIG_COUNT: "1"
+    GIT_CONFIG_KEY_0: url.http://vartrack-bot:VarTrack123@gitea-team:3000/.insteadOf
+    GIT_CONFIG_VALUE_0: http://gitea-team:3000/
     # helm writes its cache and config under $HOME; the service user has none.
     HELM_CACHE_HOME: /tmp/helm/cache
     HELM_CONFIG_HOME: /tmp/helm/config
@@ -47,6 +63,34 @@ services:
     environment:
       # Let Gitea deliver webhooks to the gateway on the compose network.
       GITEA__webhook__ALLOWED_HOST_LIST: "*"
+
+  # A second Git server — another team's — so rules span two platforms and
+  # sign-in spans two accounts. Its payments repository is private.
+  gitea-team:
+    build:
+      context: ./gitea
+      dockerfile: Dockerfile
+    networks: [vartrack]
+    environment:
+      GITEA__database__DB_TYPE: sqlite3
+      GITEA__server__ROOT_URL: http://gitea-team:3000
+      GITEA__server__HTTP_PORT: "3000"
+      GITEA__security__INSTALL_LOCK: "true"
+      GITEA__service__DISABLE_REGISTRATION: "false"
+      GITEA__log__LEVEL: Warn
+      GITEA__webhook__ALLOWED_HOST_LIST: "*"
+      GITEA_ADMIN_USER: team-admin
+      GITEA_ADMIN_PASSWORD: VarTrack123
+      GITEA_ADMIN_EMAIL: team-admin@demo.local
+    volumes:
+      - gitea-team-data:/data
+    ports:
+      - "3001:3000"
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "-u", "team-admin:VarTrack123", "http://localhost:3000/api/v1/user"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
 
   # ── Kubernetes for the ConfigMap and Helm sinks ────────────────────────────
   k3s:
@@ -85,6 +129,8 @@ services:
   gateway:
     volumes:
       - ./live/config.cue:/app/config.cue:ro
+    depends_on:
+      gitea-team: {condition: service_healthy}
 
   orchestrator-api:
     <<: *orchestrator-live
@@ -111,6 +157,9 @@ services:
       GITEA_URL: http://gitea:3000
       GITEA_ADMIN_USER: demo-admin
       GITEA_ADMIN_PASSWORD: VarTrack123
+      TEAM_GITEA_URL: http://gitea-team:3000
+      TEAM_GITEA_ADMIN_USER: team-admin
+      TEAM_GITEA_ADMIN_PASSWORD: VarTrack123
       GATEWAY_URL: http://gateway:5657
       ORCHESTRATOR_URL: http://orchestrator-api:8000
       TENANT_ID: default
@@ -119,11 +168,11 @@ services:
       - live-state:/live-state
     depends_on:
       gitea:               {condition: service_healthy}
+      gitea-team:          {condition: service_healthy}
       orchestrator-api:    {condition: service_healthy}
       orchestrator-worker: {condition: service_started}
       gateway:             {condition: service_healthy}
       watcher:             {condition: service_healthy}
       minio-init:          {condition: service_completed_successfully}
       vault-init:          {condition: service_completed_successfully}
-      linux-target:        {condition: service_healthy}
     restart: "no"

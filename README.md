@@ -305,7 +305,9 @@ rules: [
 ]
 ```
 
-Any combination works — mix and match MongoDB, Redis, S3, ConfigMap, Helm, Vercel, ZooKeeper, and Linux servers.
+Any combination works — mix and match MongoDB, Redis, S3, ConfigMap, Helm, Vercel, ZooKeeper, and Linux servers. The web UI's Rules page shows each rule with its desired state in Git, its current state in the sink, and every environment's status:
+
+![Rules page: rules for Redis, S3, a ConfigMap, a Helm release and MongoDB, two of them out of sync](docs/assets/screenshots/rules.png)
 
 ---
 
@@ -316,6 +318,10 @@ The watcher-service polls every configured datasource at a set interval. When a 
 1. Logs the drift event and increments the `vartrack_watcher_drift_total` Prometheus counter
 2. If `self_heal: true` on the rule → calls the orchestrator to re-run the full ETL pipeline
 3. Correct state is restored — no manual intervention needed
+
+Drift on a rule without self-heal stays until someone syncs from Git, and the web UI shows it key by key — here a value someone changed directly in Redis:
+
+![Diff of a drifted Redis environment: cache.ttl_seconds is 30 in Redis and 900 in Git](docs/assets/screenshots/environment-diff.png)
 
 Running multiple watcher replicas? Enable leader election so only one replica runs the heal loop:
 
@@ -335,7 +341,9 @@ A browser console for rules, environments, drift, sync history and dry runs, rea
 cd ui && npm install && npm run dev   # http://localhost:5173
 ```
 
-With Docker Compose it runs on port 8080. See the [UI README](ui/README.md) for the API it reads and a local stack with every sink.
+With Docker Compose it runs on port 8080. See the [UI README](ui/README.md) for the API it reads and a local stack with real sinks. The home page puts what needs attention first:
+
+![Home page: two environments out of sync, then the tenant's platforms, datasources and rules](docs/assets/screenshots/home.png)
 
 ---
 
@@ -366,6 +374,10 @@ vt validate --file configs/app.yaml --datasource linux-server
 vt task list
 vt task get <task-id>
 ```
+
+The same tasks are on the web UI's Tasks page, each with what triggered it — a Git push, self-heal, or a manual sync or dry run:
+
+![Tasks page: syncs triggered by Git pushes, self-heal and a manual dry run](docs/assets/screenshots/tasks.png)
 
 **In GitHub Actions:**
 

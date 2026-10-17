@@ -243,15 +243,32 @@ func (g *GitHub) setAuthHeader(req *http.Request) {
 	}
 }
 
+// GitHub's REST API addresses are fixed by the proto model: github.proto
+// declares them as output-only buf.validate string consts.
+var (
+	githubCloudEndpoint     = protoConst(&pb_gh.GitHub{}, "cloud_endpoint")
+	githubCloudAPIURL       = protoConst(&pb_gh.GitHub{}, "cloud_api_url")
+	githubEnterpriseAPIPath = protoConst(&pb_gh.GitHub{}, "enterprise_api_path")
+)
+
+// getBaseAPIURL is github.com's API for an endpoint on github.com, and
+// {endpoint}/api/v3 for GitHub Enterprise Server.
 func (g *GitHub) getBaseAPIURL() string {
 	endpoint := strings.TrimSuffix(g.config.Endpoint, "/")
-	if endpoint == "" || strings.Contains(endpoint, "github.com") {
-		return "https://api.github.com"
+	if endpoint == "" || sameHost(endpoint, githubCloudEndpoint) || sameHost(endpoint, githubCloudAPIURL) {
+		return githubCloudAPIURL
 	}
-	if !strings.Contains(endpoint, "/api/v3") {
-		return endpoint + "/api/v3"
+	if !strings.HasSuffix(endpoint, githubEnterpriseAPIPath) {
+		return endpoint + githubEnterpriseAPIPath
 	}
 	return endpoint
+}
+
+// sameHost reports whether two URLs name the same host.
+func sameHost(a, b string) bool {
+	ua, errA := url.Parse(a)
+	ub, errB := url.Parse(b)
+	return errA == nil && errB == nil && ua.Hostname() != "" && strings.EqualFold(ua.Hostname(), ub.Hostname())
 }
 
 func (g *GitHub) getNextPageURL(linkHeader string) string {

@@ -73,4 +73,21 @@ message GitHub {
     (buf.validate.field).string.const = "pull_request",
     (google.api.field_behavior) = OUTPUT_ONLY
   ];
+
+  // --- REST API Address ---
+  // Fixed by GitHub; clients cannot change these values. An endpoint on
+  // cloud_endpoint's host (github.com) is served its API at cloud_api_url;
+  // GitHub Enterprise Server serves it at {endpoint}{enterprise_api_path}.
+  string cloud_endpoint = 17 [
+    (buf.validate.field).string.const = "https://github.com",
+    (google.api.field_behavior) = OUTPUT_ONLY
+  ];
+  string cloud_api_url = 18 [
+    (buf.validate.field).string.const = "https://api.github.com",
+    (google.api.field_behavior) = OUTPUT_ONLY
+  ];
+  string enterprise_api_path = 19 [
+    (buf.validate.field).string.const = "/api/v3",
+    (google.api.field_behavior) = OUTPUT_ONLY
+  ];
 }

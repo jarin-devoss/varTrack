@@ -41,6 +41,10 @@ rules: [{
 
 Pushes to `main` write to `production-config`. Pushes to `develop` write to `staging-config`. Any branch not in the map falls through to the next strategy.
 
+The web UI's Environments page lists every resolved environment with the branch it comes from and where it is written:
+
+![Environments page: each environment with its branch, main or develop, and its destination in the sink](../assets/screenshots/environments.png)
+
 ---
 
 ## `file_path_map` — path glob mapping

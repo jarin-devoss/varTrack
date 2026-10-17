@@ -1,5 +1,6 @@
 import { createContext, useContext, useMemo, type ReactNode } from 'react';
 import type {
+  AuthSession,
   BundleView,
   CliSyncRequest,
   EventQuery,
@@ -30,6 +31,11 @@ export interface VarTrackApi {
   cliSync(req: CliSyncRequest): Promise<{ taskId: string }>;
   getHealth(): Promise<ServiceHealth[]>;
   getBundle(): Promise<BundleView>;
+  /** Is sign-in on, and who is signed in. */
+  getSession(): Promise<AuthSession>;
+  /** Where the browser goes to sign in with (or connect) a Git platform. */
+  loginUrl(platform: string, returnTo: string): string;
+  logout(): Promise<void>;
 }
 
 const ApiContext = createContext<VarTrackApi | null>(null);

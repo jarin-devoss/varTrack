@@ -406,7 +406,7 @@ func (h *WebhookHandler) verifyWebhook(
 
 		// Nonce-based replay check for GitHub and Gitea (no timestamp header).
 		var deliveryHeader string
-		switch platformName {
+		switch platformType(platformName) {
 		case "github":
 			deliveryHeader = "X-GitHub-Delivery"
 		case "gitea":
@@ -430,7 +430,7 @@ func (h *WebhookHandler) verifyWebhook(
 }
 
 func resolveTimestampExtractor(platformName string) middlewares.TimestampExtractor {
-	switch platformName {
+	switch platformType(platformName) {
 	case "slack":
 		return middlewares.ExtractSlackTimestamp
 	case "stripe":
@@ -456,7 +456,7 @@ func validateWebhookStream(platformName, eventType string, r io.Reader) error {
 		return fmt.Errorf("failed to parse payload: %w", err)
 	}
 
-	switch platformName {
+	switch platformType(platformName) {
 	case "github", "gitea":
 		switch eventType {
 		case "push":
@@ -501,6 +501,14 @@ func validateWebhookStream(platformName, eventType string, r io.Reader) error {
 	return nil
 }
 
+// platformType is the type in a resolved platform name: "gitea-team" → "gitea".
+// Names are "{type}" or "{type}-{tag}" (driver.ResolveTagName) and no type has
+// a hyphen, so a tagged second server is validated like any other of its type.
+func platformType(platformName string) string {
+	t, _, _ := strings.Cut(platformName, "-")
+	return t
+}
+
 func extractRepoBranch(platformName string, body []byte) (string, string) {
 	var payload struct {
 		Ref        string `json:"ref"`
@@ -522,7 +530,7 @@ func extractRepoBranch(platformName string, body []byte) (string, string) {
 
 	var repo, branch string
 
-	switch platformName {
+	switch platformType(platformName) {
 	case "github", "gitea":
 		repo = payload.Repository.FullName
 		branch = strings.TrimPrefix(payload.Ref, "refs/heads/")

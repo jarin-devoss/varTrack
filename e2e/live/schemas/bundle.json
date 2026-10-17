@@ -1,7 +1,7 @@
 [
   {
     "platform": "gitea",
-    "datasource": "mongo",
+    "datasource": "mongo-primary",
     "tenant_id": "default",
     "repo_url": "http://gitea:3000/vartrack-demo/demo-configs.git",
     "file_name": "app-settings.yaml",
@@ -145,7 +145,6 @@
   },
   {
     "platform": "gitea",
-    "datasource": "linux_server",
     "tenant_id": "default",
     "repo_url": "http://gitea:3000/vartrack-demo/demo-configs.git",
     "file_name": "app-settings.yaml",
@@ -158,42 +157,7 @@
       "develop": "staging"
     },
     "sync_mode": "AUTO",
-    "self_heal": false,
-    "ssh_host": "linux-target",
-    "ssh_port": 22,
-    "ssh_user": "vartrack",
-    "ssh_password": "VarTrack123",
-    "ssh_known_hosts_file": "/live-state/known_hosts",
-    "destination_template": "/home/vartrack/app/{env}.env",
-    "secrets": {
-      "default": {
-        "type": "vault",
-        "vault_addr": "http://vault:8200",
-        "auth": {
-          "type": "token",
-          "token": "root"
-        },
-        "mount_point": "secret",
-        "path_prefix": "vartrack/configs",
-        "kv_version": 2
-      }
-    }
-  },
-  {
-    "platform": "gitea",
-    "tenant_id": "default",
-    "repo_url": "http://gitea:3000/vartrack-demo/demo-configs.git",
-    "file_name": "app-settings.yaml",
-    "repositories": [
-      "vartrack-demo/demo-configs"
-    ],
-    "branch": "main",
-    "branch_map": {
-      "main": "production",
-      "develop": "staging"
-    },
-    "sync_mode": "AUTO",
-    "datasource": "configmap",
+    "datasource": "configmap-checkout",
     "self_heal": true,
     "k8s_namespace": "default",
     "k8s_configmap_name": "checkout-api",
@@ -228,7 +192,7 @@
       "develop": "staging"
     },
     "sync_mode": "AUTO",
-    "datasource": "helm",
+    "datasource": "helm-checkout",
     "self_heal": false,
     "helm_namespace": "default",
     "helm_chart": "/charts/checkout-api",
@@ -236,6 +200,42 @@
     "helm_upgrade_strategy": "upgrade",
     "helm_values_mode": "file",
     "destination_template": "checkout-api-{env}",
+    "secrets": {
+      "default": {
+        "type": "vault",
+        "vault_addr": "http://vault:8200",
+        "auth": {
+          "type": "token",
+          "token": "root"
+        },
+        "mount_point": "secret",
+        "path_prefix": "vartrack/configs",
+        "kv_version": 2
+      }
+    }
+  },
+  {
+    "platform": "gitea-team",
+    "datasource": "redis-team",
+    "tenant_id": "default",
+    "repo_url": "http://gitea-team:3000/payments/payments-config.git",
+    "file_name": "app-settings.yaml",
+    "repositories": [
+      "payments/payments-config"
+    ],
+    "branch": "main",
+    "branch_map": {
+      "main": "production"
+    },
+    "sync_mode": "AUTO",
+    "prune": true,
+    "self_heal": false,
+    "redis_hosts": [
+      "redis:6379"
+    ],
+    "redis_db": 4,
+    "redis_data_structure": "HASH",
+    "destination_template": "{env}:payments",
     "secrets": {
       "default": {
         "type": "vault",

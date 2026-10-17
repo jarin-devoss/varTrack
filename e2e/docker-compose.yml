@@ -166,7 +166,7 @@ services:
       dockerfile: docker/Dockerfile
     networks: [vartrack]
     command: ["celery", "-A", "app.worker.celery", "worker",
-              "--loglevel=info", "-Q", "webhooks,sync,schema,dlq",
+              "--loglevel=info", "-Q", "webhooks,sync,schema",
               "--concurrency=4"]
     environment:
       APP_ENV: demo

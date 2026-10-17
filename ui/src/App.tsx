@@ -1,4 +1,4 @@
-import { Link, Route, Routes, useLocation } from 'react-router-dom';
+import { Link, Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { EmptyState } from './components/common';
 import { SectionCountProvider, usePageTitle } from './layout/page';
 import { Shell } from './layout/Shell';
@@ -26,7 +26,8 @@ export function App() {
           <SectionCountProvider>
             <Shell>
               <Routes>
-                <Route path="/" element={<DashboardPage />} />
+                <Route path="/" element={<Navigate to="/home" replace />} />
+                <Route path="/home" element={<DashboardPage />} />
                 <Route path="/favorites" element={<FavoritesPage />} />
                 <Route path="/rules" element={<RulesPage />} />
                 <Route path="/rules/:platform/:datasource" element={<RulePage />} />
@@ -53,7 +54,7 @@ function NotFound() {
   usePageTitle('Not found');
   return (
     <div className="card">
-      <EmptyState icon="helpCircle" title="Page not found" action={<Link className="btn btn--primary btn--sm" to="/">Go to the dashboard</Link>}>
+      <EmptyState icon="helpCircle" title="Page not found" action={<Link className="btn btn--primary btn--sm" to="/home">Go home</Link>}>
         There is nothing at <code>{pathname}</code>.
       </EmptyState>
     </div>

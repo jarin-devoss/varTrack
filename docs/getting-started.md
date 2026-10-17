@@ -26,21 +26,30 @@ docker compose up
 
 This starts a local Git server, MongoDB, ZooKeeper, Redis, and all three varTrack services with a pre-configured bundle. Push any config change to the local repo and watch it sync.
 
-### With every sink and the web UI
+### With more sinks and the web UI
 
-`e2e/docker-compose.live.yml` adds every sink that runs in a container — S3 on MinIO, a Linux server over SSH, and Kubernetes ConfigMaps and Helm releases on k3s — and seeds them through real Gitea pushes and webhooks:
+`e2e/docker-compose.live.yml` adds S3 on MinIO and Kubernetes ConfigMaps and Helm releases on k3s, and seeds every sink through real Gitea pushes and webhooks:
 
 ```bash
 buf generate          # the orchestrator image needs the Python gRPC stubs
 cd e2e
 docker compose -f docker-compose.yml -f docker-compose.live.yml up -d --build \
-  gitea redis mongo zookeeper minio minio-init vault vault-init linux-target \
+  gitea redis mongo zookeeper minio minio-init vault vault-init \
   k3s k3s-kubeconfig orchestrator-api orchestrator-worker gateway watcher live-seed
 
 cd ../ui && npm install && npm run dev
 ```
 
-Open the UI at http://localhost:5173 — every environment shows its desired state in Git next to the current state in its sink.
+Open the UI at http://localhost:5173. Two Git servers feed the demo, so sign-in covers two platforms: **gitea** (http://localhost:3000, the demo configs) and **gitea-team** (http://127.0.0.1:3001, a payments team with a private repository). Sign in with one and connect the other — every password is `VarTrack123`:
+
+| Sign in to gitea as… | then connect gitea-team as… | you see |
+|---|---|---|
+| `demo-admin` | `team-admin` | all 8 rules, and can sync them |
+| `demo-viewer` | `demo-viewer` | the 7 demo rules, dry runs only; the payments rule stays hidden — not in that team |
+
+Every environment shows its desired state in Git next to the current state in its sink. See [Web UI sign-in](configuration/auth.md#web-ui-sign-in-with-your-git-platform) to turn sign-in off or set it up for your own platforms.
+
+![A rule's environments: staging differs from Git in S3, production matches](assets/screenshots/rule-environments.png)
 
 ---
 

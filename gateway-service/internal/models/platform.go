@@ -52,7 +52,8 @@ var PlatformFactory = driver.NewFactory(
 		if c.Platform == nil {
 			return ""
 		}
-		return PlatformName(c.Platform)
+		// Drivers are registered by type; a tagged platform ("gitea-team") still opens the "gitea" driver.
+		return PlatformDriverName(c.Platform)
 	},
 	func(c PlatformConfig) error {
 		if c.Platform == nil {

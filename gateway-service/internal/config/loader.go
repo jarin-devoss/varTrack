@@ -98,9 +98,11 @@ func normalizeSecretRefs(data []byte) ([]byte, error) {
 		return nil, err
 	}
 
+	normalizeUISecretRefs(bundle)
+
 	platforms, ok := bundle["platforms"].([]interface{})
 	if !ok {
-		return data, nil
+		return json.Marshal(bundle)
 	}
 
 	for _, p := range platforms {
@@ -118,6 +120,31 @@ func normalizeSecretRefs(data []byte) ([]byte, error) {
 	}
 
 	return json.Marshal(bundle)
+}
+
+// normalizeUISecretRefs converts the string shorthand of the web UI's sign-in
+// credentials (ui.auth.providers[].client_id / client_secret, and
+// ui.auth.session_secret) to SecretRef objects. By path, not by key name:
+// auth.oidc.client_id elsewhere in the bundle is a plain string.
+func normalizeUISecretRefs(bundle map[string]interface{}) {
+	ui, _ := bundle["ui"].(map[string]interface{})
+	auth, _ := ui["auth"].(map[string]interface{})
+	if auth == nil {
+		return
+	}
+	wrap := func(m map[string]interface{}, key string) {
+		if s, ok := m[key].(string); ok {
+			m[key] = map[string]interface{}{"value": s}
+		}
+	}
+	wrap(auth, "session_secret")
+	providers, _ := auth["providers"].([]interface{})
+	for _, p := range providers {
+		if provider, ok := p.(map[string]interface{}); ok {
+			wrap(provider, "client_id")
+			wrap(provider, "client_secret")
+		}
+	}
 }
 
 // normalizeFieldsRecursive recursively traverses maps and slices

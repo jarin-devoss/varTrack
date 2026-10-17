@@ -1,5 +1,6 @@
-// varTrack live demo bundle — every sink that runs in a container
-// (Vercel is a hosted service, so it is the one sink left out).
+// varTrack live demo bundle — MongoDB, ZooKeeper, Redis, S3, and Kubernetes
+// ConfigMaps and Helm on k3s (Vercel, a hosted service, and the Linux server
+// sink are left out).
 //
 // Gitea is the Git platform. One config repo,
 // vartrack-demo/demo-configs, feeds every sink: pushes to `main` land in
@@ -20,12 +21,25 @@ bundle: {
 				max_retries: 3
 			}
 		},
+		{
+			// A second Git server: the payments team's. Its rules are judged by
+			// the account users connect there, not by their gitea account.
+			gitea: {
+				tag:         "team"
+				endpoint:    "http://gitea-team:3000"
+				protocol:    "http"
+				org_name:    "payments"
+				verify_ssl:  false
+				timeout:     "30s"
+				max_retries: 3
+			}
+		},
 	]
 
 	datasources: [
 		{
 			mongo: {
-				tag:             ""
+				tag:             "primary"
 				endpoint:        "mongodb://mongo:27017"
 				host:            "mongo"
 				port:            27017
@@ -65,18 +79,9 @@ bundle: {
 			}
 		},
 		{
-			linux_server: {
-				tag:      ""
-				host:     "linux-target"
-				port:     22
-				username: "vartrack"
-				password: {value: "VarTrack123"}
-			}
-		},
-		{
 			// k3s in a container; live-seed's kubeconfig points at https://k3s:6443.
 			configmap: {
-				tag:             ""
+				tag:             "checkout"
 				kubeconfig_path: "/live-state/kubeconfig"
 				namespace:       "default"
 				configmap_name:  "checkout-api"
@@ -84,7 +89,7 @@ bundle: {
 		},
 		{
 			helm: {
-				tag:             ""
+				tag:             "checkout"
 				kubeconfig_path: "/live-state/kubeconfig"
 				namespace:       "default"
 				release_name:    "checkout-api"
@@ -105,12 +110,20 @@ bundle: {
 				database: 1
 			}
 		},
+		{
+			// The payments team's settings, fed from gitea-team.
+			redis: {
+				tag: "team"
+				hosts: ["redis:6379"]
+				database: 4
+			}
+		},
 	]
 
 	rules: [
 		{
 			platform:   "gitea"
-			datasource: "mongo"
+			datasource: "mongo-primary"
 			file_name:  "app-settings.yaml"
 			repositories: ["vartrack-demo/demo-configs"]
 			branch_map: {main: "production", develop: "staging"}
@@ -152,17 +165,7 @@ bundle: {
 		},
 		{
 			platform:   "gitea"
-			datasource: "linux_server"
-			file_name:  "app-settings.yaml"
-			repositories: ["vartrack-demo/demo-configs"]
-			branch_map: {main: "production", develop: "staging"}
-			sync_mode:            "SYNC_MODE_AUTO"
-			self_heal:            false
-			destination_template: "/home/vartrack/app/{env}.env"
-		},
-		{
-			platform:   "gitea"
-			datasource: "configmap"
+			datasource: "configmap-checkout"
 			file_name:  "app-settings.yaml"
 			repositories: ["vartrack-demo/demo-configs"]
 			branch_map: {main: "production", develop: "staging"}
@@ -172,7 +175,7 @@ bundle: {
 		},
 		{
 			platform:   "gitea"
-			datasource: "helm"
+			datasource: "helm-checkout"
 			file_name:  "app-settings.yaml"
 			repositories: ["vartrack-demo/demo-configs"]
 			branch_map: {main: "production", develop: "staging"}
@@ -180,12 +183,65 @@ bundle: {
 			self_heal:            false
 			destination_template: "checkout-api-{env}"
 		},
+		{
+			platform:   "gitea-team"
+			datasource: "redis-team"
+			file_name:  "app-settings.yaml"
+			repositories: ["payments/payments-config"]
+			branch_map: {main: "production"}
+			sync_mode:            "SYNC_MODE_AUTO"
+			self_heal:            false
+			destination_template: "{env}:payments"
+		},
 	]
 
 	schema_registry: {
 		platform: "gitea"
 		repo:     "vartrack-demo/schemas"
 		branch:   "main"
+	}
+
+	// The demo Vault (dev mode, root token). {ref: {path, key}} values are
+	// read from it: secret/data/{path}, field {key}.
+	secret_managers: [
+		{
+			vault: {
+				endpoint:    "http://vault:8200"
+				mount_point: "secret"
+				kv_version:  2
+				token_auth: {token: "root"}
+			}
+		},
+	]
+
+	// Web UI: where users open it, and sign-in with both Gitea servers. Each
+	// user sees the rules whose repositories their own account on the rule's
+	// platform can read. live-seed registers an OAuth application on each
+	// server: gitea's credentials go to files in /live-state/ui-sign-in,
+	// gitea-team's client secret to Vault.
+	// Remove auth for an open UI.
+	ui: {
+		public_url: "http://localhost:5173"
+		auth: {
+			providers: [
+				{
+					platform: "gitea"
+					client_id: {file: "/live-state/ui-sign-in/gitea-client-id"}
+					client_secret: {file: "/live-state/ui-sign-in/gitea-client-secret"}
+					browser_url: "http://localhost:3000"
+				},
+				{
+					platform: "gitea-team"
+					client_id: {file: "/live-state/ui-sign-in/gitea-team-client-id"}
+					client_secret: {ref: {path: "ui/gitea-team", key: "client_secret"}}
+					// 127.0.0.1, not localhost: browsers share cookies across ports,
+					// and both Gitea servers name their session cookie the same.
+					browser_url: "http://127.0.0.1:3001"
+				},
+			]
+			// Where {ref: …} values come from. With one secret manager it could be left out.
+			secret_manager: "vault"
+		}
 	}
 
 	celery_broker_datasource:  "redis-broker"

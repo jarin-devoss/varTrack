@@ -20,6 +20,21 @@ export class NotAvailableError extends ApiError {
   }
 }
 
+/** The orchestrator answered 401: single sign-on is on and the session is missing or over. */
+export class UnauthenticatedError extends ApiError {
+  constructor(endpoint: string) {
+    super('sign in required', 401, endpoint);
+    this.name = 'UnauthenticatedError';
+  }
+}
+
+let onUnauthenticated: (() => void) | null = null;
+
+/** Called once per 401, so the app can send the user to the sign-in page. */
+export function setUnauthenticatedHandler(handler: (() => void) | null): void {
+  onUnauthenticated = handler;
+}
+
 export interface RequestOptions {
   method?: 'GET' | 'POST';
   body?: unknown;
@@ -71,6 +86,11 @@ export async function requestJson<T>(url: string, opts: RequestOptions = {}): Pr
   }
   if (res.status === 404 || res.status === 405 || res.status === 501) {
     throw new NotAvailableError(url, res.status);
+  }
+  if (res.status === 401 && errorMessage(body) === 'sign in required') {
+    // The orchestrator's single sign-on; a gateway 401 is about the bearer token instead.
+    onUnauthenticated?.();
+    throw new UnauthenticatedError(url);
   }
   const detail = errorMessage(body);
   if (!detail && res.status >= 500) {

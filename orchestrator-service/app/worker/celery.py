@@ -80,7 +80,9 @@ celery.conf.update(
         Queue("webhooks"),
         Queue("sync"),
         Queue("schema"),
-        Queue("dlq"),   # Dead-letter queue — tasks that exhaust retries land here
+        # Dead-letter queue — tasks that exhaust retries land here. No worker
+        # consumes it: dead letters wait for an operator to inspect or replay.
+        Queue("dlq"),
     ],
     task_default_queue="webhooks",
 )
@@ -122,6 +124,13 @@ def _route_to_dlq(
         retries     = getattr(request, "retries", 0) if request else 0
         # Only DLQ when all retries are exhausted (or task has no retry policy)
         if max_retries is not None and retries < max_retries:
+            return
+        # A dead letter that failed again stays dead: re-sending it would loop
+        # forever if anything consumes the DLQ.
+        delivery = getattr(request, "delivery_info", None) or {}
+        if delivery.get("routing_key") == "dlq":
+            _dlq_logger.error("Task %s[%s] failed again from the DLQ: %s — not re-queued",
+                              getattr(sender, "name", sender), task_id, exception)
             return
         _dlq_logger.error(
             "Task %s[%s] permanently failed after %d retries: %s — routing to DLQ",

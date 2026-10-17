@@ -1,0 +1,101 @@
+syntax = "proto3";
+
+package vartrack.v1;
+
+import "google/api/field_behavior.proto";
+import "buf/validate/validate.proto";
+import "vartrack/v1/utils/secret_ref.proto";
+
+// UIConfig configures the web UI the orchestrator serves (/v1/ui and /v1/auth).
+//
+//   ui: {
+//     public_url: "https://vartrack.example.com"
+//     auth: {
+//       providers: [
+//         {platform: "github", client_id: "Iv1.8a61f9b3a7aba766", client_secret: {file: "/run/secrets/github-oauth"}},
+//         {platform: "gitea",  client_id: "c2f3…", client_secret: {ref: {path: "ui/gitea", key: "secret"}}},
+//       ]
+//       admins: ["github:octo-admin"]
+//       secret_manager: "vault"   // where {ref: …} values come from; default: the only one
+//     }
+//   }
+message UIConfig {
+  // Where users open the UI. The OAuth callback every provider registers is
+  // {public_url}/api/orchestrator/v1/auth/callback.
+  // Defaults to http://localhost:5173 (the UI's dev server).
+  string public_url = 1 [
+    (buf.validate.field).string.uri = true,
+    (buf.validate.field).ignore = IGNORE_IF_ZERO_VALUE,
+    (google.api.field_behavior) = OPTIONAL
+  ];
+
+  // Sign-in with the Git platforms. Each user sees the rules whose
+  // repositories their own account on the rule's platform can read, and
+  // syncs the ones it can write to.
+  // Absent: the UI is open to anyone who can reach it.
+  optional UIAuthConfig auth = 2 [(google.api.field_behavior) = OPTIONAL];
+}
+
+message UIAuthConfig {
+  // One per Git platform users sign in with. A user signs in with one and
+  // connects the others to the same session; rules on a platform without a
+  // provider here are hidden from everyone but admins.
+  repeated UIAuthProvider providers = 1 [
+    (buf.validate.field).repeated.min_items = 1,
+    (google.api.field_behavior) = REQUIRED
+  ];
+
+  // "platform:login" entries that see and sync every rule, e.g. "gitea:root".
+  // With a single provider a bare login is accepted.
+  repeated string admins = 2 [(google.api.field_behavior) = OPTIONAL];
+
+  // How long a session lasts. Default 28800 (8 hours).
+  uint32 session_ttl_seconds = 3 [(google.api.field_behavior) = OPTIONAL];
+
+  // Key for encrypting sessions at rest. Default: derived from the client secrets.
+  SecretRef session_secret = 4 [(google.api.field_behavior) = OPTIONAL];
+
+  // The OAuth callback, when it is not {public_url}/api/orchestrator/v1/auth/callback.
+  string redirect_url = 5 [
+    (buf.validate.field).string.uri = true,
+    (buf.validate.field).ignore = IGNORE_IF_ZERO_VALUE,
+    (google.api.field_behavior) = OPTIONAL
+  ];
+
+  // The secret manager (from secret_managers, e.g. "vault" or "vault-prod")
+  // that {ref: {path, key}} values in this block are read from.
+  // Default: the bundle's only secret manager.
+  string secret_manager = 6 [(google.api.field_behavior) = OPTIONAL];
+}
+
+// UIAuthProvider is the OAuth application registered on one Git platform.
+message UIAuthProvider {
+  // The platform's name in platforms: "github", "gitea", "gitea-team"…
+  string platform = 1 [
+    (buf.validate.field).string.min_len = 1,
+    (google.api.field_behavior) = REQUIRED
+  ];
+
+  // The OAuth application's credentials: inline, from a file, or from a
+  // secret manager.
+  SecretRef client_id = 2 [
+    (buf.validate.field).required = true,
+    (google.api.field_behavior) = REQUIRED
+  ];
+  SecretRef client_secret = 3 [
+    (buf.validate.field).required = true,
+    (google.api.field_behavior) = REQUIRED
+  ];
+
+  // The platform's address as the browser sees it, when the platform's
+  // endpoint is an internal one (e.g. http://gitea:3000 inside Docker).
+  string browser_url = 4 [
+    (buf.validate.field).string.uri = true,
+    (buf.validate.field).ignore = IGNORE_IF_ZERO_VALUE,
+    (google.api.field_behavior) = OPTIONAL
+  ];
+
+  // OAuth scopes. Default: GitHub "read:user user:email repo",
+  // Gitea "read:user read:repository".
+  repeated string scopes = 5 [(google.api.field_behavior) = OPTIONAL];
+}

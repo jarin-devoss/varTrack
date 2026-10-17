@@ -1,6 +1,7 @@
 import type { VarTrackApi } from './index';
 import { ApiError, requestJson } from './http';
 import type {
+  AuthSession,
   BundleView,
   FileResult,
   FileStatus,
@@ -71,6 +72,8 @@ export function createLiveApi(cfg: LiveConfig): VarTrackApi {
   const orch = (path: string) => `${cfg.orchestratorUrl.replace(/\/$/, '')}${path}`;
   const auth = { token: cfg.token || undefined, tenant: cfg.tenant || undefined };
   const rulePath = (name: string) => name.split('/').map(encodeURIComponent).join('/');
+  // Whether single sign-on is on, learned from the first session check.
+  let signInRequired: Promise<boolean> | undefined;
 
   async function probe(name: ServiceName, url: string): Promise<ServiceHealth> {
     const checkedAt = new Date().toISOString();
@@ -125,6 +128,9 @@ export function createLiveApi(cfg: LiveConfig): VarTrackApi {
       // fall back to the raw Celery status.
       const recorded = await requestJson<Task>(orch(`/v1/ui/tasks/${encodeURIComponent(taskId)}`), { ...auth, acceptStatus: [404] });
       if (recorded.status === 200) return recorded.body;
+      // With sign-in on, a 404 may mean "not yours": the raw Celery status would show it anyway.
+      signInRequired ??= this.getSession().then(s => s.enabled);
+      if (await signInRequired) throw new ApiError('no such task', 404, orch(`/v1/ui/tasks/${encodeURIComponent(taskId)}`));
 
       // A failed Celery task is reported as HTTP 500 with the failure as detail.
       const { status, body } = await requestJson<Raw>(orch(`/v1/tasks/${encodeURIComponent(taskId)}`), {
@@ -210,6 +216,24 @@ export function createLiveApi(cfg: LiveConfig): VarTrackApi {
     async getBundle() {
       const { body } = await requestJson<BundleView>(orch('/v1/ui/bundle'), auth);
       return body;
+    },
+
+    async getSession() {
+      const { body } = await requestJson<AuthSession>(orch('/v1/auth/session'), { acceptStatus: [404] });
+      // An orchestrator without sign-in support answers 404: the UI is open.
+      const session: AuthSession = body && typeof body === 'object' && 'enabled' in body
+        ? { ...body, platforms: body.platforms ?? [] }
+        : { enabled: false, authenticated: false, platforms: [] };
+      signInRequired = Promise.resolve(session.enabled);
+      return session;
+    },
+
+    loginUrl(platform: string, returnTo: string) {
+      return orch(`/v1/auth/login?${new URLSearchParams({ platform, return_to: returnTo })}`);
+    },
+
+    async logout() {
+      await requestJson<unknown>(orch('/v1/auth/logout'), { method: 'POST' });
     },
   };
 }

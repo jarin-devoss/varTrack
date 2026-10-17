@@ -40,7 +40,8 @@ var SecretManagerFactory = driver.NewFactory(
 		if c == nil {
 			return ""
 		}
-		return SecretManagerName(c)
+		// Drivers are registered by type; a tagged manager ("vault-prod") still opens the "vault" driver.
+		return SecretManagerDriverName(c)
 	},
 	func(c *pb_models.SecretManager) error {
 		if c == nil {
@@ -50,6 +51,17 @@ var SecretManagerFactory = driver.NewFactory(
 	},
 	"secret_manager",
 )
+
+// SecretManagerDriverName returns the driver type name (e.g. "vault")
+// used for registry lookups, independent of the tag.
+func SecretManagerDriverName(sm *pb_models.SecretManager) string {
+	switch sm.Config.(type) {
+	case *pb_models.SecretManager_Vault:
+		return "vault"
+	default:
+		return ""
+	}
+}
 
 // SecretManagerName returns the resolved name for a secret manager.
 // If a tag is set, the name is "{type}-{tag}" (e.g. "vault-prod").

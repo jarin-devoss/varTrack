@@ -21,7 +21,13 @@ Dependencies NOT stubbed (real packages used):
 from __future__ import annotations
 
 import sys
+from pathlib import Path
 from unittest.mock import MagicMock
+
+# The generated proto stubs (buf generate), as PYTHONPATH has them in the image.
+_GENERATED = Path(__file__).resolve().parents[1] / "app" / "generated" / "proto" / "python"
+if _GENERATED.is_dir() and str(_GENERATED) not in sys.path:
+    sys.path.insert(0, str(_GENERATED))
 
 # ── Register stubs before any app module is imported ─────────────────────────
 
