@@ -177,3 +177,36 @@ func TestExtractRecords_keepsEnvironmentsApart(t *testing.T) {
 		t.Error("a change to production did not change the fingerprint")
 	}
 }
+
+func TestExtractRecords_readsFlatAndNestedData(t *testing.T) {
+	scope := bson.M{VTTenantField: "acme", VTDatasourceField: "mongo", VTEnvField: "production"}
+	withData := func(data any) bson.M {
+		doc := bson.M{"data": data}
+		for k, v := range scope {
+			doc[k] = v
+		}
+		return doc
+	}
+	cases := map[string]any{
+		// STRATEGY_FILE of a .properties file: flat keys.
+		"flat": bson.M{"api.rate_limit": "6000"},
+		// STRATEGY_DOCUMENT, decoded as bson.M or as bson.D.
+		"nested bson.M": bson.M{"api": bson.M{"rate_limit": int32(6000)}},
+		"nested bson.D": bson.D{{Key: "api", Value: bson.D{{Key: "rate_limit", Value: int32(6000)}}}},
+	}
+	for name, data := range cases {
+		records := map[string]string{}
+		extractRecords(withData(data), records)
+		if got := records["acme/mongo/production/api.rate_limit"]; got != "6000" {
+			t.Errorf("%s: records = %v", name, records)
+		}
+	}
+
+	// An edit inside a nested document must change the fingerprint.
+	before, after := map[string]string{}, map[string]string{}
+	extractRecords(withData(bson.D{{Key: "api", Value: bson.D{{Key: "rate_limit", Value: int32(6000)}}}}), before)
+	extractRecords(withData(bson.D{{Key: "api", Value: bson.D{{Key: "rate_limit", Value: int32(1)}}}}), after)
+	if FingerprintRecords(before) == FingerprintRecords(after) {
+		t.Error("a change inside data did not change the fingerprint")
+	}
+}

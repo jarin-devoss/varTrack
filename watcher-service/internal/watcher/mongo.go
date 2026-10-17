@@ -131,8 +131,8 @@ func (w *MongoWatcher) Snapshot(ctx context.Context) (string, error) {
 			return "", fmt.Errorf("mongo snapshot %s: decode: %w", w.name, err)
 		}
 		// "key" is the config key (e.g. "db.host"), "value" is the value.
-		// For DOCUMENT strategy: each document is {_vt_*..., "key":"db.host","value":"localhost"}
-		// For FILE strategy:    each document is {_vt_*..., "data":{...}}
+		// KEY_VALUE: each document is {_vt_*..., "key":"db.host","value":"localhost"}
+		// DOCUMENT and FILE: each document is {_vt_*..., "data":{...}}, flat or nested
 		extractRecords(doc, records)
 	}
 	if err := cursor.Err(); err != nil {
@@ -172,7 +172,7 @@ func (w *MongoWatcher) Close() error {
 func extractRecords(doc bson.M, out map[string]string) {
 	scope := recordScope(doc)
 
-	// DOCUMENT strategy: top-level "key" and "value" fields.
+	// KEY_VALUE strategy: top-level "key" and "value" fields.
 	if k, ok := doc["key"].(string); ok {
 		if v, ok := doc["value"]; ok {
 			out[scope+k] = fmt.Sprintf("%v", v)
@@ -180,12 +180,12 @@ func extractRecords(doc bson.M, out map[string]string) {
 		return
 	}
 
-	// FILE strategy: "data" is a sub-document of key→value entries.
-	if dataRaw, ok := doc["data"]; ok {
-		if data, ok := dataRaw.(bson.M); ok {
-			for k, v := range data {
-				out[scope+k] = fmt.Sprintf("%v", v)
-			}
+	// FILE and DOCUMENT strategies: "data" holds the file, flat or nested.
+	if data, ok := doc["data"]; ok {
+		flat := map[string]string{}
+		flattenValues("", plainBSON(data), flat)
+		for k, v := range flat {
+			out[scope+k] = v
 		}
 		return
 	}
@@ -200,6 +200,33 @@ func extractRecords(doc bson.M, out map[string]string) {
 		}
 		out[scope+k] = fmt.Sprintf("%v", v)
 	}
+}
+
+// plainBSON turns the driver's document types into the plain maps and slices
+// flattenValues walks. Embedded documents decode as bson.D or bson.M
+// depending on the decoder, so both are converted.
+func plainBSON(v any) any {
+	switch d := v.(type) {
+	case bson.M:
+		m := make(map[string]any, len(d))
+		for k, val := range d {
+			m[k] = plainBSON(val)
+		}
+		return m
+	case bson.D:
+		m := make(map[string]any, len(d))
+		for _, e := range d {
+			m[e.Key] = plainBSON(e.Value)
+		}
+		return m
+	case bson.A:
+		a := make([]any, len(d))
+		for i, val := range d {
+			a[i] = plainBSON(val)
+		}
+		return a
+	}
+	return v
 }
 
 // recordScope is "tenant/datasource/env/" from a document's VarTrack labels.
