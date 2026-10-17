@@ -1741,6 +1741,10 @@
 </span><span id="__span-0-7"><a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>}]
 </span></code></pre></div>
 <hr />
+<div class="admonition note">
+<p class="admonition-title">Orchestrator image</p>
+<p>This sink runs the <code>helm</code> CLI, which the orchestrator image leaves out by default. Build it with <code>--build-arg HELM_VERSION=v3.16.3</code>.</p>
+</div>
 <h2 id="destination-template">Destination template<a class="headerlink" href="#destination-template" title="Permanent link">&para;</a></h2>
 <p>The <code>destination_template</code> sets the Helm release name:</p>
 <div class="language-text highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>rules: [{

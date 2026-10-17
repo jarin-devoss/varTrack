@@ -1621,6 +1621,10 @@
 </span><span id="__span-0-7"><a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>}]
 </span></code></pre></div>
 <hr />
+<div class="admonition note">
+<p class="admonition-title">Orchestrator image</p>
+<p>This sink needs the Kubernetes Python client, which the orchestrator image leaves out by default. Build it with <code>--build-arg KUBERNETES_CLIENT=kubernetes==31.0.0</code>.</p>
+</div>
 <h2 id="destination-template">Destination template<a class="headerlink" href="#destination-template" title="Permanent link">&para;</a></h2>
 <p>The <code>destination_template</code> controls the ConfigMap name:</p>
 <div class="language-text highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>rules: [{

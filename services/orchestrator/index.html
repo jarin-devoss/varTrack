@@ -1377,6 +1377,15 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#web-ui-read-api-port-8000" class="md-nav__link">
+    <span class="md-ellipsis">
+      Web UI read API (port 8000)
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#grpc-port-50051" class="md-nav__link">
     <span class="md-ellipsis">
       gRPC (port 50051)
@@ -1673,6 +1682,15 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#web-ui-read-api-port-8000" class="md-nav__link">
+    <span class="md-ellipsis">
+      Web UI read API (port 8000)
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#grpc-port-50051" class="md-nav__link">
     <span class="md-ellipsis">
       gRPC (port 50051)
@@ -1789,6 +1807,16 @@
 <td><code>:50051</code></td>
 <td>gRPC listen address</td>
 </tr>
+<tr>
+<td><code>UI_DEFAULT_TENANT</code></td>
+<td>first registered</td>
+<td>Tenant the web UI reads when the request has no <code>X-Tenant-ID</code></td>
+</tr>
+<tr>
+<td><code>UI_COMPARE_TTL_SECONDS</code></td>
+<td><code>10</code></td>
+<td>How long a sink comparison is answered as is before it is refreshed in the background</td>
+</tr>
 </tbody>
 </table>
 <hr />
@@ -1835,6 +1863,61 @@
 </tr>
 </tbody>
 </table>
+<h3 id="web-ui-read-api-port-8000">Web UI read API (port 8000)<a class="headerlink" href="#web-ui-read-api-port-8000" title="Permanent link">&para;</a></h3>
+<p>The web UI reads everything it shows from these endpoints. The tenant comes from the <code>X-Tenant-ID</code> header, then <code>UI_DEFAULT_TENANT</code>, then the first registered tenant.</p>
+<table>
+<thead>
+<tr>
+<th>Method</th>
+<th>Path</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>GET</code></td>
+<td><code>/v1/ui/rules</code></td>
+<td>Every rule of the tenant with one target per synced environment</td>
+</tr>
+<tr>
+<td><code>GET</code></td>
+<td><code>/v1/ui/rules/{platform}/{datasource}</code></td>
+<td>One rule</td>
+</tr>
+<tr>
+<td><code>GET</code></td>
+<td><code>/v1/ui/rules/{platform}/{datasource}/targets/{env}/keys</code></td>
+<td>Desired value (Git) and current value (sink) of every key</td>
+</tr>
+<tr>
+<td><code>POST</code></td>
+<td><code>/v1/ui/rules/{platform}/{datasource}/sync</code></td>
+<td>Re-sync environments from the branch head in Git — body <code>{"envs": [], "dryRun": false, "prune": false}</code></td>
+</tr>
+<tr>
+<td><code>GET</code></td>
+<td><code>/v1/ui/events?rule=&amp;limit=</code></td>
+<td>Pushes, syncs, drift and heals, newest first</td>
+</tr>
+<tr>
+<td><code>GET</code></td>
+<td><code>/v1/ui/tasks?rule=&amp;limit=</code></td>
+<td>Sync tasks, newest first</td>
+</tr>
+<tr>
+<td><code>GET</code></td>
+<td><code>/v1/ui/tasks/{task_id}</code></td>
+<td>One task with its per-file results</td>
+</tr>
+<tr>
+<td><code>GET</code></td>
+<td><code>/v1/ui/bundle</code></td>
+<td>Platforms and datasources, without credentials</td>
+</tr>
+</tbody>
+</table>
+<p>Every sync records the desired state it wrote (secret values only as a digest), its task and its events in Redis next to the Celery broker. Reading a rule compares that desired state with the values read back from the sink, so drift shows key by key even for rules without <code>self_heal</code>.</p>
+<p>Pages never wait on a sink they have read before. Each comparison is cached: for <code>UI_COMPARE_TTL_SECONDS</code> (default 10) it is answered as is, and after that it is still answered at once while the sink is read again in the background — every target shows when it was last checked. The API reads every sink once at startup, and the schema registry's periodic <code>git fetch</code> also runs behind requests. Only an environment not read since its last sync is read while the request waits.</p>
 <h3 id="grpc-port-50051">gRPC (port 50051)<a class="headerlink" href="#grpc-port-50051" title="Permanent link">&para;</a></h3>
 <table>
 <thead>
@@ -1851,9 +1934,14 @@
 <td>Enqueue ETL pipeline</td>
 </tr>
 <tr>
-<td><code>TriggerSync</code></td>
+<td><code>CheckDatasource</code></td>
 <td>watcher-service</td>
-<td>Re-sync datasource on drift</td>
+<td>Does the datasource still match Git? <code>in_sync</code>, <code>drifted</code>, <code>syncing</code> or <code>unknown</code>, per environment</td>
+</tr>
+<tr>
+<td><code>SyncDatasource</code></td>
+<td>watcher-service</td>
+<td>Re-sync one datasource from Git on drift (self-heal)</td>
 </tr>
 </tbody>
 </table>

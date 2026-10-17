@@ -1730,20 +1730,29 @@
 <p>Without drift detection, these changes go unnoticed until something breaks.</p>
 <hr />
 <h2 id="how-detection-works">How detection works<a class="headerlink" href="#how-detection-works" title="Permanent link">&para;</a></h2>
+<p>The watcher reads each datasource and keeps a fingerprint of it. A fingerprint only says <em>that</em> something changed — varTrack's own syncs change it too — so when it moves, the watcher asks the orchestrator whether the datasource still matches Git, key by key (<code>CheckDatasource</code>). Only a mismatch is drift.</p>
 <div class="language-text highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>Every POLL_INTERVAL (default: 60s)
 </span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>  │
-</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>  ├── Read live values from datasource
-</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>  ├── Compare against Git-sourced baseline (key by key)
+</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>  ├── Fingerprint the datasource
+</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>  ├── Same as the baseline → nothing to do
 </span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>  │
-</span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>  ├── No diff   → log &quot;OK&quot;, update poll counter
-</span><span id="__span-0-7"><a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>  │
-</span><span id="__span-0-8"><a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>  └── Diff found
-</span><span id="__span-0-9"><a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>        ├── Increment vartrack_watcher_drift_total counter
-</span><span id="__span-0-10"><a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a>        ├── Log the drifted keys and their values
-</span><span id="__span-0-11"><a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a>        └── self_heal: true?
-</span><span id="__span-0-12"><a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a>              ├── Yes → call TriggerSync gRPC → orchestrator re-runs ETL pipeline
-</span><span id="__span-0-13"><a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a>              └── No  → log drift, alert via metrics, do nothing
+</span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>  └── Changed → CheckDatasource: compare every synced environment with the
+</span><span id="__span-0-7"><a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>      desired state varTrack last wrote from Git
+</span><span id="__span-0-8"><a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>        ├── in sync  → a varTrack sync wrote it: new baseline, no heal
+</span><span id="__span-0-9"><a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>        ├── syncing  → a sync is still writing: look again on the next poll
+</span><span id="__span-0-10"><a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a>        └── drifted  → (also: orchestrator can&#39;t compare, see below)
+</span><span id="__span-0-11"><a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a>              ├── Increment vartrack_watcher_drift_total
+</span><span id="__span-0-12"><a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a>              └── Heal: SyncDatasource gRPC → orchestrator re-syncs this
+</span><span id="__span-0-13"><a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a>                  datasource from the head of every branch that feeds it
 </span></code></pre></div>
+<p>A few rules keep this from healing what it shouldn't, or waiting forever:</p>
+<ul>
+<li><strong>Unknown</strong> — the orchestrator answers but can't compare (nothing synced yet, or it can't read the sink back, as with Vercel): the watcher heals, as it did before the check existed. A heal only ever writes what Git says.</li>
+<li><strong>Orchestrator unreachable or older</strong> (no <code>CheckDatasource</code>): the watcher heals on any change, as before.</li>
+<li><strong>A sync that died</strong> — a worker killed mid-sync leaves no result. A sync still marked running after 15 minutes (Celery stops any task after 10) no longer counts, so the watcher heals instead of waiting on it.</li>
+<li><strong>First start without a saved baseline</strong> — the watcher asks once right away, so drift from before it ever ran is healed too. At startup only a definite <em>drifted</em> heals; with no change seen, <em>unknown</em> is no evidence.</li>
+<li><strong>A failed heal</strong> is not retried until the datasource changes again: the same sync would fail the same way. The web UI shows it as <em>Heal failed</em>.</li>
+</ul>
 <hr />
 <h2 id="enabling-self-heal">Enabling self-heal<a class="headerlink" href="#enabling-self-heal" title="Permanent link">&para;</a></h2>
 <p>Set <code>self_heal: true</code> on a rule to enable automatic repair:</p>
@@ -1763,12 +1772,13 @@
 <p>Someone runs <code>db.variables.updateOne({key: "max_connections"}, {$set: {value: 5}})</code> directly in MongoDB.</p>
 <p>On the next poll cycle:</p>
 <ol>
-<li>Watcher reads <code>max_connections = 5</code> from MongoDB</li>
-<li>Compares against baseline: expected <code>50</code>, got <code>5</code></li>
-<li><code>self_heal: true</code> → calls <code>TriggerSync</code> on orchestrator</li>
+<li>Watcher sees the MongoDB fingerprint change</li>
+<li>Asks the orchestrator (<code>CheckDatasource</code>): Git says <code>50</code>, MongoDB has <code>5</code> — drifted</li>
+<li><code>self_heal: true</code> → calls <code>SyncDatasource</code> on the orchestrator</li>
 <li>Orchestrator fetches the file from Git, parses it, writes <code>max_connections = 50</code> back to MongoDB</li>
-<li>Next poll sees no drift — state restored</li>
+<li>That write moves the fingerprint again; the orchestrator says it matches Git, so it becomes the new baseline — state restored</li>
 </ol>
+<p>Had the change come from a push to Git, step 2 would have answered <em>in sync</em> and nothing would be healed.</p>
 <p>Total recovery time: up to one <code>POLL_INTERVAL</code> (default 60 seconds).</p>
 <hr />
 <h2 id="metrics">Metrics<a class="headerlink" href="#metrics" title="Permanent link">&para;</a></h2>
