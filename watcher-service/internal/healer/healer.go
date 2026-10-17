@@ -200,6 +200,50 @@ func (h *Healer) Heal(ctx context.Context, req HealRequest) error {
 	return nil
 }
 
+// GitState is the orchestrator's verdict on a datasource compared with Git.
+type GitState int
+
+const (
+	// GitStateUnknown: not comparable (never synced, or unreadable).
+	GitStateUnknown GitState = iota
+	// GitStateInSync: every synced environment matches Git.
+	GitStateInSync
+	// GitStateDrifted: at least one environment differs from Git.
+	GitStateDrifted
+	// GitStateSyncing: a sync is still writing; look again on the next poll.
+	GitStateSyncing
+)
+
+// Check asks the orchestrator whether the datasource's live state matches the
+// desired state in Git (Watcher.CheckDatasource). An orchestrator without that
+// RPC answers with an error, and the caller falls back to healing.
+func (h *Healer) Check(ctx context.Context, req HealRequest) (GitState, string, error) {
+	if h.client == nil {
+		return GitStateUnknown, "", fmt.Errorf("healer: gRPC client not initialised (dial failed at startup)")
+	}
+	rctx, cancel := context.WithTimeout(ctx, h.timeout)
+	defer cancel()
+
+	resp, err := h.client.CheckDatasource(rctx, &pb.CheckDatasourceRequest{
+		Datasource: req.Datasource,
+		Platform:   req.Platform,
+		Tenant:     req.Tenant,
+	})
+	if err != nil {
+		return GitStateUnknown, "", fmt.Errorf("healer: CheckDatasource %s: %w", req.Datasource, err)
+	}
+	switch resp.GetStatus() {
+	case pb.CheckDatasourceResponse_STATUS_IN_SYNC:
+		return GitStateInSync, resp.GetMessage(), nil
+	case pb.CheckDatasourceResponse_STATUS_DRIFTED:
+		return GitStateDrifted, resp.GetMessage(), nil
+	case pb.CheckDatasourceResponse_STATUS_SYNCING:
+		return GitStateSyncing, resp.GetMessage(), nil
+	default:
+		return GitStateUnknown, resp.GetMessage(), nil
+	}
+}
+
 // Ping checks the orchestrator liveness via the Watcher.Ping RPC.
 //
 // Results are cached for 5 seconds so that multiple watcher goroutines

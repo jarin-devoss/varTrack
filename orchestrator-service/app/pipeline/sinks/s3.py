@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import json
 import logging
+from collections.abc import Collection
 import mimetypes
 from typing import Any
 from urllib.parse import quote, unquote
@@ -100,6 +101,35 @@ class S3Sink(BaseSink):
 
     def close(self) -> None:
         pass
+
+    def read_values(
+        self,
+        keys: "Collection[str]",
+        datasource: str,
+        env: str,
+    ) -> "dict[str, str]":
+        """Read current values back from the objects this sink writes for *env*."""
+        if not keys:
+            return {}
+        prefix = self._key_prefix(env)
+        try:
+            if self._one_per_key:
+                out: dict[str, str] = {}
+                for k in keys:
+                    try:
+                        obj = self._s3.get_object(Bucket=self._bucket, Key=f"{prefix}/{k}")
+                    except self._s3.exceptions.NoSuchKey:
+                        continue
+                    out[k] = obj["Body"].read().decode("utf-8")
+                return out
+            obj = self._s3.get_object(Bucket=self._bucket, Key=f"{prefix}/config.json")
+            data = json.loads(obj["Body"].read())
+            return {k: str(data[k]) for k in keys if k in data}
+        except self._s3.exceptions.NoSuchKey:
+            return {}
+        except Exception as exc:
+            logger.warning("S3Sink.read_values failed: %s", exc)
+            return {}
 
     # ── Tag resolution ────────────────────────────────────────────────────────
 

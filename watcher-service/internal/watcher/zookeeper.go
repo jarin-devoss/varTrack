@@ -115,6 +115,11 @@ func (w *ZKWatcher) Restore(ctx context.Context) error {
 	return w.healer.Heal(ctx, w.healOpts)
 }
 
+// CheckGit implements GitChecker.
+func (w *ZKWatcher) CheckGit(ctx context.Context) (healer.GitState, string, error) {
+	return w.healer.Check(ctx, w.healOpts)
+}
+
 // Close closes the ZooKeeper connection.
 func (w *ZKWatcher) Close() error {
 	w.conn.Close()

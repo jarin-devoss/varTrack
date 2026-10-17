@@ -5,10 +5,10 @@
 // compares it against the last-known-good fingerprint.  Drift triggers a
 // call to the Healer which asks the orchestrator to re-sync from git.
 //
-// The "desired" state is the fingerprint the watcher stored after the last
-// successful sync.  On startup the watcher takes an initial snapshot —
-// meaning any drift that occurred while the watcher was down is detected on
-// the very first poll after the watcher restarts.
+// The fingerprint is only a change detector: it moves on every write,
+// including the ones varTrack makes when a push is synced.  So when it moves,
+// the manager asks the orchestrator (GitChecker) whether the datasource still
+// matches the desired state in Git, key by key; only a mismatch is drift.
 package watcher
 
 import (
@@ -22,6 +22,8 @@ import (
 	"path/filepath"
 	"sort"
 	"time"
+
+	"watcher-service/internal/healer"
 )
 
 // Watcher polls a single datasource and reports drift.
@@ -40,6 +42,13 @@ type Watcher interface {
 
 	// Close releases all connections held by the watcher.
 	Close() error
+}
+
+// GitChecker is implemented by watchers that can ask the orchestrator whether
+// the live state they see matches the desired state in Git.  The manager asks
+// before healing, so a write made by a varTrack sync is not taken for drift.
+type GitChecker interface {
+	CheckGit(ctx context.Context) (healer.GitState, string, error)
 }
 
 // DriftRecord is emitted when a watcher detects that live state no longer

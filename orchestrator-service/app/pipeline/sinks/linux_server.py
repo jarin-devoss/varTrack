@@ -41,6 +41,7 @@ from __future__ import annotations
 
 import json
 import logging
+from collections.abc import Collection
 from pathlib import Path
 from typing import Any
 
@@ -163,6 +164,37 @@ class LinuxServerSink(BaseSink):
         if self._ssh:
             self._ssh.close()
 
+    def read_values(
+        self,
+        keys: "Collection[str]",
+        datasource: str,
+        env: str,
+    ) -> "dict[str, str]":
+        """
+        Read current values back from the file this sink writes for *env*.
+        Never raises: stage_sync calls this before every write for the
+        change-log, and a file the write is about to replace — even one that
+        no longer parses — must not fail that write.
+        """
+        if not keys:
+            return {}
+        try:
+            target = self._resolve_path(env)
+            content = self._ssh.read(str(target)) if self._ssh else target.read_text(encoding="utf-8")
+            values = _parse(content, self._file_format)
+        except FileNotFoundError:
+            return {}
+        except Exception as exc:
+            logger.warning("LinuxServerSink.read_values failed: %s", exc)
+            return {}
+        out: dict[str, str] = {}
+        for k in keys:
+            # Keys are stored in the sink's key format (e.g. FLAT: "db_host").
+            stored = next(iter(format_keys({k: ""}, self._key_format)))
+            if stored in values:
+                out[k] = values[stored]
+        return out
+
 
 # ── Renderers ─────────────────────────────────────────────────────────────────
 
@@ -205,6 +237,37 @@ def _render(data: dict[str, str], fmt: str, labels: VarTrackLabels, env: str) ->
             v = f'"{v}"'
         lines.append(f"{k}={v}")
     return "\n".join(lines) + "\n"
+
+
+def _parse(content: str, fmt: str) -> dict[str, str]:
+    """Inverse of _render: file content → stored key → value."""
+    if fmt in ("json",):
+        return _flatten(json.loads(content or "{}"))
+    if fmt in ("yaml", "yml"):
+        import yaml
+        return _flatten(yaml.safe_load(content) or {})
+    sep = " = " if fmt in ("ini", "cfg", "conf", "config") else "="
+    values: dict[str, str] = {}
+    for line in content.splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or sep.strip() not in line:
+            continue
+        k, _, v = line.partition(sep) if sep in line else line.partition(sep.strip())
+        v = v.strip()
+        if len(v) >= 2 and v[0] == v[-1] == '"':
+            v = v[1:-1]
+        values[k.strip()] = v
+    return values
+
+
+def _flatten(node: Any, prefix: str = "") -> dict[str, str]:
+    """{"a": {"b": "c"}} → {"a.b": "c"}"""
+    if not isinstance(node, dict):
+        return {prefix: str(node)} if prefix else {}
+    out: dict[str, str] = {}
+    for k, v in node.items():
+        out.update(_flatten(v, f"{prefix}.{k}" if prefix else str(k)))
+    return out
 
 
 def _unflatten(flat: dict[str, str]) -> dict:
@@ -282,6 +345,10 @@ class _SshTransport:
 
         with self._sftp.file(remote_path, "wb") as fh:
             fh.write(content.encode("utf-8"))
+
+    def read(self, remote_path: str) -> str:
+        with self._sftp.file(remote_path, "rb") as fh:
+            return fh.read().decode("utf-8")
 
     def close(self) -> None:
         try:

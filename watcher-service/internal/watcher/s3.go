@@ -138,6 +138,11 @@ func (w *S3Watcher) Restore(ctx context.Context) error {
 	return w.healer.Heal(ctx, w.healOpts)
 }
 
+// CheckGit implements GitChecker.
+func (w *S3Watcher) CheckGit(ctx context.Context) (healer.GitState, string, error) {
+	return w.healer.Check(ctx, w.healOpts)
+}
+
 // Close is a no-op for S3 (HTTP client managed by the AWS SDK).
 func (w *S3Watcher) Close() error { return nil }
 

@@ -160,3 +160,13 @@ services:
       timeout: 5s
       retries: 10
     restart: unless-stopped
+
+  # Web UI — open http://<your-host>:8080. Remove if you only use the CLI.
+  ui:
+    build: ./ui
+    networks: [vartrack]
+    ports:
+      - "${UI_PORT:-8080}:8080"
+    depends_on:
+      gateway: {condition: service_healthy}
+    restart: unless-stopped

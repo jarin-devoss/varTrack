@@ -28,6 +28,12 @@ async def _lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     from app.schema_registry.manager import get_schema_manager
     app.state.schema_manager = get_schema_manager()
 
+    # Read every sink once in the background, so the web UI's first page is
+    # served from the comparison cache instead of waiting on each sink.
+    import threading
+    from app.api.routers import ui as ui_router
+    threading.Thread(target=ui_router.warm_up, name="ui_warm_up", daemon=True).start()
+
     # Initialise monitoring (idempotent — safe if worker already called it).
     try:
         from app.monitoring import init as monitoring_init
@@ -139,11 +145,12 @@ def create_app() -> FastAPI:
         logger.debug("otel: FastAPI auto-instrumentation skipped: %s", exc)
 
     # Routers
-    from app.api.routers import webhooks, tasks, schemas, dry_run
+    from app.api.routers import webhooks, tasks, schemas, dry_run, ui
     app.include_router(webhooks.router,  prefix="/v1", tags=["webhooks"])
     app.include_router(tasks.router,     prefix="/v1", tags=["tasks"])
     app.include_router(schemas.router,   prefix="/v1", tags=["schemas"])
     app.include_router(dry_run.router,   prefix="/v1", tags=["dry-run"])
+    app.include_router(ui.router,        prefix="/v1", tags=["ui"])
 
     @app.get("/v1/health", tags=["health"])
     @app.get("/v1/health/liveness", tags=["health"])

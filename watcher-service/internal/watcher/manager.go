@@ -12,6 +12,7 @@ import (
 
 	"golang.org/x/sync/errgroup"
 
+	"watcher-service/internal/healer"
 	mon "watcher-service/internal/monitoring"
 )
 
@@ -113,17 +114,20 @@ func (m *Manager) runOne(ctx context.Context, w Watcher) error {
 	defer m.metrics.SetWatcherUp(name, false)
 
 	// 1. Establish baseline fingerprint.
-	baseline, err := m.initialSnapshot(ctx, w)
+	baseline, loaded, err := m.initialSnapshot(ctx, w)
 	if err != nil {
 		slog.Error("watcher: initial snapshot failed — watcher will not run",
 			"watcher", name, "error", err)
 		return nil // do not crash manager; one bad watcher shouldn't stop others
 	}
 
+	backoff := newBackoff(5*time.Second, 2.0, 5*time.Minute)
+	if !loaded {
+		m.checkAtStart(ctx, w, backoff)
+	}
+
 	ticker := time.NewTicker(m.pollInterval)
 	defer ticker.Stop()
-
-	backoff := newBackoff(5*time.Second, 2.0, 5*time.Minute)
 
 	for {
 		select {
@@ -150,6 +154,30 @@ func (m *Manager) runOne(ctx context.Context, w Watcher) error {
 				slog.Debug("watcher: no drift", "watcher", name, "hash", hashPrefix)
 				backoff.reset()
 				continue
+			}
+
+			// The datasource changed. A varTrack sync changes it too, so ask
+			// the orchestrator whether it still matches Git before healing.
+			if c, ok := w.(GitChecker); ok {
+				state, detail, err := c.CheckGit(ctx)
+				switch {
+				case err != nil:
+					slog.Warn("watcher: could not compare with Git — treating the change as drift",
+						"watcher", name, "error", err)
+				case state == healer.GitStateInSync:
+					slog.Info("watcher: change matches Git — new baseline, no heal",
+						"watcher", name, "detail", detail)
+					baseline = current
+					if err := m.store.Save(name, baseline); err != nil {
+						slog.Warn("watcher: failed to persist baseline", "watcher", name, "error", err)
+					}
+					backoff.reset()
+					continue
+				case state == healer.GitStateSyncing:
+					slog.Info("watcher: sync in progress — checking again next poll",
+						"watcher", name, "detail", detail)
+					continue
+				}
 			}
 
 			// Drift detected.
@@ -185,9 +213,42 @@ func (m *Manager) runOne(ctx context.Context, w Watcher) error {
 	}
 }
 
+// checkAtStart heals a datasource that already differs from Git when the
+// watcher starts without a persisted baseline: the baseline it just took
+// would otherwise hide that drift for good. Only a definite "drifted" heals —
+// with no change seen yet, an unknown or failed check is no evidence.
+// The baseline stays as taken; the heal's own write moves the fingerprint,
+// and the poll loop then finds it matches Git.
+func (m *Manager) checkAtStart(ctx context.Context, w Watcher, b *backoffState) {
+	c, ok := w.(GitChecker)
+	if !ok {
+		return
+	}
+	name := w.Name()
+	state, detail, err := c.CheckGit(ctx)
+	if err != nil {
+		slog.Info("watcher: could not compare with Git at startup", "watcher", name, "error", err)
+		return
+	}
+	if state != healer.GitStateDrifted {
+		return
+	}
+	slog.Warn("watcher: datasource differs from Git at startup — healing",
+		"watcher", name, "detail", detail)
+	m.metrics.IncDriftDetected(name)
+	if err := m.heal(ctx, w, b); err != nil {
+		m.metrics.IncHealFailed(name)
+		slog.Error("watcher: heal failed", "watcher", name, "error", err)
+		return
+	}
+	m.metrics.IncHealTriggered(name)
+	b.reset()
+}
+
 // initialSnapshot loads the persisted fingerprint (survives restarts) or,
 // if none exists, takes a fresh snapshot and saves it as the baseline.
-func (m *Manager) initialSnapshot(ctx context.Context, w Watcher) (string, error) {
+// loaded reports which of the two it did.
+func (m *Manager) initialSnapshot(ctx context.Context, w Watcher) (fp string, loaded bool, err error) {
 	if saved := m.store.Load(w.Name()); saved != "" {
 		prefix := saved
 		if len(prefix) > 8 {
@@ -195,14 +256,14 @@ func (m *Manager) initialSnapshot(ctx context.Context, w Watcher) (string, error
 		}
 		slog.Info("watcher: loaded persisted baseline",
 			"watcher", w.Name(), "hash", prefix)
-		return saved, nil
+		return saved, true, nil
 	}
 
 	slog.Info("watcher: no persisted baseline — taking initial snapshot",
 		"watcher", w.Name())
-	fp, err := w.Snapshot(ctx)
+	fp, err = w.Snapshot(ctx)
 	if err != nil {
-		return "", err
+		return "", false, err
 	}
 	if err := m.store.Save(w.Name(), fp); err != nil {
 		slog.Warn("watcher: failed to persist initial baseline",
@@ -213,7 +274,7 @@ func (m *Manager) initialSnapshot(ctx context.Context, w Watcher) (string, error
 		prefix = prefix[:8]
 	}
 	slog.Info("watcher: baseline established", "watcher", w.Name(), "hash", prefix)
-	return fp, nil
+	return fp, false, nil
 }
 
 // heal calls w.Restore() with exponential backoff until it succeeds, ctx is

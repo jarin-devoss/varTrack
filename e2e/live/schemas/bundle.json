@@ -1,0 +1,253 @@
+[
+  {
+    "platform": "gitea",
+    "datasource": "mongo",
+    "tenant_id": "default",
+    "repo_url": "http://gitea:3000/vartrack-demo/demo-configs.git",
+    "file_name": "app-settings.yaml",
+    "repositories": [
+      "vartrack-demo/demo-configs"
+    ],
+    "branch": "main",
+    "branch_map": {
+      "main": "production",
+      "develop": "staging"
+    },
+    "sync_mode": "AUTO",
+    "prune": true,
+    "self_heal": true,
+    "mongo_uri": "mongodb://mongo:27017",
+    "database": "vartrack",
+    "collection": "variables",
+    "update_strategy": "STRATEGY_KEY_VALUE",
+    "secrets": {
+      "default": {
+        "type": "vault",
+        "vault_addr": "http://vault:8200",
+        "auth": {
+          "type": "token",
+          "token": "root"
+        },
+        "mount_point": "secret",
+        "path_prefix": "vartrack/configs",
+        "kv_version": 2
+      }
+    }
+  },
+  {
+    "platform": "gitea",
+    "datasource": "zookeeper",
+    "tenant_id": "default",
+    "repo_url": "http://gitea:3000/vartrack-demo/demo-configs.git",
+    "file_name": "app-settings.yaml",
+    "repositories": [
+      "vartrack-demo/demo-configs"
+    ],
+    "branch": "main",
+    "branch_map": {
+      "main": "production",
+      "develop": "staging"
+    },
+    "sync_mode": "AUTO",
+    "prune": true,
+    "self_heal": true,
+    "zk_hosts": [
+      "zookeeper:2181"
+    ],
+    "key_format": "slash",
+    "destination_template": "/vartrack/{tenant}/{env}",
+    "secrets": {
+      "default": {
+        "type": "vault",
+        "vault_addr": "http://vault:8200",
+        "auth": {
+          "type": "token",
+          "token": "root"
+        },
+        "mount_point": "secret",
+        "path_prefix": "vartrack/configs",
+        "kv_version": 2
+      }
+    }
+  },
+  {
+    "platform": "gitea",
+    "datasource": "redis",
+    "tenant_id": "default",
+    "repo_url": "http://gitea:3000/vartrack-demo/demo-configs.git",
+    "file_name": "app-settings.yaml",
+    "repositories": [
+      "vartrack-demo/demo-configs"
+    ],
+    "branch": "main",
+    "branch_map": {
+      "main": "production",
+      "develop": "staging"
+    },
+    "sync_mode": "AUTO",
+    "prune": true,
+    "self_heal": false,
+    "redis_hosts": [
+      "redis:6379"
+    ],
+    "redis_db": 2,
+    "redis_data_structure": "HASH",
+    "destination_template": "{env}:config",
+    "secrets": {
+      "default": {
+        "type": "vault",
+        "vault_addr": "http://vault:8200",
+        "auth": {
+          "type": "token",
+          "token": "root"
+        },
+        "mount_point": "secret",
+        "path_prefix": "vartrack/configs",
+        "kv_version": 2
+      }
+    }
+  },
+  {
+    "platform": "gitea",
+    "datasource": "s3-minio",
+    "tenant_id": "default",
+    "repo_url": "http://gitea:3000/vartrack-demo/demo-configs.git",
+    "file_name": "app-settings.yaml",
+    "repositories": [
+      "vartrack-demo/demo-configs"
+    ],
+    "branch": "main",
+    "branch_map": {
+      "main": "production",
+      "develop": "staging"
+    },
+    "sync_mode": "AUTO",
+    "self_heal": false,
+    "s3_bucket": "vartrack",
+    "s3_region": "us-east-1",
+    "s3_endpoint_url": "http://minio:9002",
+    "s3_access_key_id": "minioadmin",
+    "s3_secret_access_key": "minioadmin",
+    "destination_template": "configs/{tenant}/{env}",
+    "secrets": {
+      "default": {
+        "type": "vault",
+        "vault_addr": "http://vault:8200",
+        "auth": {
+          "type": "token",
+          "token": "root"
+        },
+        "mount_point": "secret",
+        "path_prefix": "vartrack/configs",
+        "kv_version": 2
+      }
+    }
+  },
+  {
+    "platform": "gitea",
+    "datasource": "linux_server",
+    "tenant_id": "default",
+    "repo_url": "http://gitea:3000/vartrack-demo/demo-configs.git",
+    "file_name": "app-settings.yaml",
+    "repositories": [
+      "vartrack-demo/demo-configs"
+    ],
+    "branch": "main",
+    "branch_map": {
+      "main": "production",
+      "develop": "staging"
+    },
+    "sync_mode": "AUTO",
+    "self_heal": false,
+    "ssh_host": "linux-target",
+    "ssh_port": 22,
+    "ssh_user": "vartrack",
+    "ssh_password": "VarTrack123",
+    "ssh_known_hosts_file": "/live-state/known_hosts",
+    "destination_template": "/home/vartrack/app/{env}.env",
+    "secrets": {
+      "default": {
+        "type": "vault",
+        "vault_addr": "http://vault:8200",
+        "auth": {
+          "type": "token",
+          "token": "root"
+        },
+        "mount_point": "secret",
+        "path_prefix": "vartrack/configs",
+        "kv_version": 2
+      }
+    }
+  },
+  {
+    "platform": "gitea",
+    "tenant_id": "default",
+    "repo_url": "http://gitea:3000/vartrack-demo/demo-configs.git",
+    "file_name": "app-settings.yaml",
+    "repositories": [
+      "vartrack-demo/demo-configs"
+    ],
+    "branch": "main",
+    "branch_map": {
+      "main": "production",
+      "develop": "staging"
+    },
+    "sync_mode": "AUTO",
+    "datasource": "configmap",
+    "self_heal": true,
+    "k8s_namespace": "default",
+    "k8s_configmap_name": "checkout-api",
+    "k8s_kubeconfig_path": "/live-state/kubeconfig",
+    "key_format": "dot",
+    "destination_template": "checkout-api-{env}",
+    "secrets": {
+      "default": {
+        "type": "vault",
+        "vault_addr": "http://vault:8200",
+        "auth": {
+          "type": "token",
+          "token": "root"
+        },
+        "mount_point": "secret",
+        "path_prefix": "vartrack/configs",
+        "kv_version": 2
+      }
+    }
+  },
+  {
+    "platform": "gitea",
+    "tenant_id": "default",
+    "repo_url": "http://gitea:3000/vartrack-demo/demo-configs.git",
+    "file_name": "app-settings.yaml",
+    "repositories": [
+      "vartrack-demo/demo-configs"
+    ],
+    "branch": "main",
+    "branch_map": {
+      "main": "production",
+      "develop": "staging"
+    },
+    "sync_mode": "AUTO",
+    "datasource": "helm",
+    "self_heal": false,
+    "helm_namespace": "default",
+    "helm_chart": "/charts/checkout-api",
+    "helm_kubeconfig_path": "/live-state/kubeconfig",
+    "helm_upgrade_strategy": "upgrade",
+    "helm_values_mode": "file",
+    "destination_template": "checkout-api-{env}",
+    "secrets": {
+      "default": {
+        "type": "vault",
+        "vault_addr": "http://vault:8200",
+        "auth": {
+          "type": "token",
+          "token": "root"
+        },
+        "mount_point": "secret",
+        "path_prefix": "vartrack/configs",
+        "kv_version": 2
+      }
+    }
+  }
+]

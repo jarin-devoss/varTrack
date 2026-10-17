@@ -50,17 +50,8 @@ def _grpc_rule_resolver(platform: str, datasource: str):
     carry a tenant header, so we scan every tenant and return the first match.
     """
     try:
-        from app.schema_registry.manager import get_schema_manager
-        mgr = get_schema_manager()
-        if mgr is None:
-            return None
-        # Scan every loaded tenant (entries keyed as "tenant_id:slug")
-        with mgr._lock:
-            for k, entry in mgr._entries.items():
-                for rule in entry.rules:
-                    if rule.get("platform") == platform and rule.get("datasource") == datasource:
-                        return rule
-        return None
+        from app.pipeline.schema_utils import rule_from_any_tenant
+        return rule_from_any_tenant(platform, datasource)
     except Exception:
         return None
 

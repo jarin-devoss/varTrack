@@ -1,0 +1,129 @@
+# VarTrack live demo — overlay on docker-compose.yml.
+#
+# Every sink that runs in a container — MongoDB, ZooKeeper, Redis, S3 on MinIO,
+# a Linux server over SSH, and Kubernetes ConfigMaps and Helm releases on k3s —
+# is fed by real pushes: Gitea webhooks → gateway → orchestrator. The watcher
+# self-heals MongoDB, ZooKeeper and the ConfigMaps. live-seed creates the repos
+# and webhooks, pushes to main and develop, then edits a few values directly in
+# the sinks so there is drift to see. (Vercel is a hosted service, so it is the
+# one sink left out.)
+#
+# From e2e/ (the orchestrator's Python gRPC stubs must exist first:
+# `buf generate`, see docs/getting-started.md):
+#   docker compose -f docker-compose.yml -f docker-compose.live.yml up -d --build \
+#     gitea redis mongo zookeeper minio minio-init vault vault-init linux-target \
+#     k3s k3s-kubeconfig orchestrator-api orchestrator-worker gateway watcher live-seed
+#
+# Then start the web UI (cd ui && npm run dev); its dev server proxies /api/*
+# to localhost:5657, :8000 and :9091.
+
+volumes:
+  live-state:
+  k3s-output:
+  k3s-data:
+
+x-orchestrator-live: &orchestrator-live
+  build:
+    args:
+      KUBERNETES_CLIENT: kubernetes==31.0.0
+      HELM_VERSION: v3.16.3
+  environment:
+    SCHEMA_TENANT_DEFAULT_REPO: http://gitea:3000/vartrack-demo/schemas.git
+    SCHEMA_TENANT_DEFAULT_BRANCH: main
+    UI_DEFAULT_TENANT: default
+    # helm writes its cache and config under $HOME; the service user has none.
+    HELM_CACHE_HOME: /tmp/helm/cache
+    HELM_CONFIG_HOME: /tmp/helm/config
+    HELM_DATA_HOME: /tmp/helm/data
+  volumes:
+    - ./live/config.cue:/app/config.cue:ro
+    - ./live/k8s/checkout-api:/charts/checkout-api:ro
+    - live-state:/live-state:ro
+  depends_on:
+    k3s-kubeconfig: {condition: service_completed_successfully}
+
+services:
+  gitea:
+    environment:
+      # Let Gitea deliver webhooks to the gateway on the compose network.
+      GITEA__webhook__ALLOWED_HOST_LIST: "*"
+
+  # ── Kubernetes for the ConfigMap and Helm sinks ────────────────────────────
+  k3s:
+    image: rancher/k3s:v1.30.6-k3s1
+    privileged: true
+    networks: [vartrack]
+    command: ["server", "--disable=traefik", "--disable=metrics-server", "--disable=servicelb",
+              "--tls-san=k3s", "--write-kubeconfig-mode=644"]
+    environment:
+      K3S_KUBECONFIG_OUTPUT: /output/kubeconfig.yaml
+    tmpfs: [/run, /var/run]
+    volumes:
+      - k3s-output:/output
+      - k3s-data:/var/lib/rancher/k3s
+    ports:
+      - "6443:6443"
+    healthcheck:
+      test: ["CMD", "kubectl", "get", "--raw", "/readyz"]
+      interval: 5s
+      timeout: 5s
+      retries: 60
+
+  # Copies k3s's kubeconfig with the server address the other containers can reach.
+  k3s-kubeconfig:
+    image: alpine:3.19
+    networks: [vartrack]
+    command: ["sh", "-c", "sed 's#https://127.0.0.1:6443#https://k3s:6443#' /output/kubeconfig.yaml > /live-state/kubeconfig && chmod 644 /live-state/kubeconfig && echo kubeconfig ready"]
+    volumes:
+      - k3s-output:/output:ro
+      - live-state:/live-state
+    depends_on:
+      k3s: {condition: service_healthy}
+    restart: "no"
+
+  # ── varTrack services on the live bundle ───────────────────────────────────
+  gateway:
+    volumes:
+      - ./live/config.cue:/app/config.cue:ro
+
+  orchestrator-api:
+    <<: *orchestrator-live
+
+  orchestrator-worker:
+    <<: *orchestrator-live
+
+  watcher:
+    environment:
+      POLL_INTERVAL: ${WATCHER_POLL_INTERVAL:-20s}
+    volumes:
+      - ./live/config.cue:/app/config.cue:ro
+      - live-state:/live-state:ro
+    depends_on:
+      k3s-kubeconfig: {condition: service_completed_successfully}
+
+  live-seed:
+    build:
+      context: ./init
+      dockerfile: Dockerfile
+    networks: [vartrack]
+    entrypoint: ["python3", "/live/seed.py"]
+    environment:
+      GITEA_URL: http://gitea:3000
+      GITEA_ADMIN_USER: demo-admin
+      GITEA_ADMIN_PASSWORD: VarTrack123
+      GATEWAY_URL: http://gateway:5657
+      ORCHESTRATOR_URL: http://orchestrator-api:8000
+      TENANT_ID: default
+    volumes:
+      - ./live:/live:ro
+      - live-state:/live-state
+    depends_on:
+      gitea:               {condition: service_healthy}
+      orchestrator-api:    {condition: service_healthy}
+      orchestrator-worker: {condition: service_started}
+      gateway:             {condition: service_healthy}
+      watcher:             {condition: service_healthy}
+      minio-init:          {condition: service_completed_successfully}
+      vault-init:          {condition: service_completed_successfully}
+      linux-target:        {condition: service_healthy}
+    restart: "no"

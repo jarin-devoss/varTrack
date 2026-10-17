@@ -29,6 +29,25 @@ WORKDIR /app
 COPY requirements.txt .
 RUN /uv pip install --system --no-cache --require-hashes -r requirements.txt
 
+# Optional Kubernetes support for the ConfigMap and Helm sinks — off by default.
+#   --build-arg KUBERNETES_CLIENT=kubernetes==31.0.0   Python client (ConfigMap sink)
+#   --build-arg HELM_VERSION=v3.16.3                   helm CLI (Helm sink)
+# The kubernetes client and its dependencies are not hash-pinned like
+# requirements.txt; the helm archive is checked against its published SHA-256.
+ARG KUBERNETES_CLIENT=""
+ARG HELM_VERSION=""
+ARG TARGETARCH=amd64
+RUN mkdir -p /opt/extra-bin \
+ && if [ -n "$KUBERNETES_CLIENT" ]; then /uv pip install --system --no-cache "$KUBERNETES_CLIENT"; fi \
+ && if [ -n "$HELM_VERSION" ]; then \
+      archive="helm-${HELM_VERSION}-linux-${TARGETARCH}.tar.gz" \
+      && curl -fsSLo "/tmp/${archive}" "https://get.helm.sh/${archive}" \
+      && echo "$(curl -fsSL "https://get.helm.sh/${archive}.sha256sum" | cut -d' ' -f1)  /tmp/${archive}" | sha256sum -c - \
+      && tar -xzf "/tmp/${archive}" -C /tmp \
+      && mv "/tmp/linux-${TARGETARCH}/helm" /opt/extra-bin/helm \
+      && rm -rf "/tmp/${archive}" "/tmp/linux-${TARGETARCH}"; \
+    fi
+
 COPY . .
 
 # ─── Stage 2: Runtime ────────────────────────────────────────────────────────
@@ -65,6 +84,8 @@ COPY --from=builder /usr/local/lib/python3.14/site-packages \
 COPY --from=builder /usr/local/bin/uvicorn /usr/local/bin/uvicorn
 COPY --from=builder /usr/local/bin/celery  /usr/local/bin/celery
 COPY --from=builder /usr/local/bin/gunicorn /usr/local/bin/gunicorn
+# helm, when HELM_VERSION was set (empty otherwise).
+COPY --from=builder /opt/extra-bin/ /usr/local/bin/
 
 WORKDIR /app
 COPY --from=builder /app /app
