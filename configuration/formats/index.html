@@ -1729,7 +1729,7 @@
 
 
 <h1 id="supported-file-formats">Supported File Formats<a class="headerlink" href="#supported-file-formats" title="Permanent link">&para;</a></h1>
-<p>varTrack auto-detects the format of your config file from its extension. All formats are parsed into the same flat <code>{ "key": "value" }</code> map before writing to any sink.</p>
+<p>varTrack auto-detects the format of your config file from its extension. All formats are parsed into the same flat <code>{ "key": "value" }</code> map, which is what is validated and what most sinks write. Sinks that store a file as one document (MongoDB and S3 with <code>update_strategy: "STRATEGY_DOCUMENT"</code> or <code>"STRATEGY_FILE"</code>) also keep the shape the file parsed to: nested for YAML, JSON, TOML, INI, HCL and XML, flat for <code>.env</code>.</p>
 <hr />
 <h2 id="supported-formats">Supported formats<a class="headerlink" href="#supported-formats" title="Permanent link">&para;</a></h2>
 <table>

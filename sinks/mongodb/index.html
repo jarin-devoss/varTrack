@@ -1759,7 +1759,7 @@
 
 
 <h1 id="mongodb-sink">MongoDB Sink<a class="headerlink" href="#mongodb-sink" title="Permanent link">&para;</a></h1>
-<p>varTrack writes config values to MongoDB as key-value documents. Three write strategies are supported: <strong>key-value</strong> (one document per key), <strong>document</strong> (one document containing all keys), and <strong>file</strong> (one document per file containing all keys as a nested map).</p>
+<p>varTrack writes config values to MongoDB. The datasource's <code>update_strategy</code> picks the shape: <strong>key-value</strong> (one document per key), <strong>document</strong> (one nested document per file), or <strong>file</strong> (one document per file, in the shape the file parsed to).</p>
 <hr />
 <h2 id="configuration">Configuration<a class="headerlink" href="#configuration" title="Permanent link">&para;</a></h2>
 <div class="language-text highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>datasources: [{
@@ -1768,7 +1768,7 @@
 </span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>    endpoint:        &quot;mongodb://mongo:27017&quot;
 </span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>    database:        &quot;vartrack&quot;
 </span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>    collection:      &quot;variables&quot;
-</span><span id="__span-0-7"><a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>    update_strategy: &quot;STRATEGY_KEY_VALUE&quot;       // or &quot;STRATEGY_DOCUMENT&quot;
+</span><span id="__span-0-7"><a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>    update_strategy: &quot;STRATEGY_KEY_VALUE&quot;       // or &quot;STRATEGY_DOCUMENT&quot;, &quot;STRATEGY_FILE&quot;
 </span><span id="__span-0-8"><a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>  }
 </span><span id="__span-0-9"><a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>}]
 </span></code></pre></div>
@@ -1794,57 +1794,69 @@
 </span></code></pre></div>
 <hr />
 <h2 id="write-strategies">Write strategies<a class="headerlink" href="#write-strategies" title="Permanent link">&para;</a></h2>
+<p>The examples below sync this file:</p>
+<div class="language-yaml highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="c1"># configs/app.yaml</span>
+</span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="nt">database</span><span class="p">:</span>
+</span><span id="__span-3-3"><a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="w">  </span><span class="nt">host</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">mongo.prod.internal</span>
+</span><span id="__span-3-4"><a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="nt">max_connections</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">50</span>
+</span><span id="__span-3-5"><a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a><span class="nt">regions</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">eu</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">us</span><span class="p p-Indicator">]</span>
+</span></code></pre></div>
 <h3 id="strategy_key_value-default"><code>STRATEGY_KEY_VALUE</code> (default)<a class="headerlink" href="#strategy_key_value-default" title="Permanent link">&para;</a></h3>
-<p>Each config key is stored as a separate document:</p>
-<div class="language-json highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="p">{</span><span class="w"> </span><span class="nt">&quot;key&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;database.host&quot;</span><span class="p">,</span><span class="w">     </span><span class="nt">&quot;value&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;mongo.prod.internal&quot;</span><span class="w"> </span><span class="p">}</span>
-</span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="p">{</span><span class="w"> </span><span class="nt">&quot;key&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;max_connections&quot;</span><span class="p">,</span><span class="w">   </span><span class="nt">&quot;value&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;50&quot;</span><span class="w"> </span><span class="p">}</span>
-</span><span id="__span-3-3"><a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="p">{</span><span class="w"> </span><span class="nt">&quot;key&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;feature.dark_mode&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;value&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;true&quot;</span><span class="w"> </span><span class="p">}</span>
+<p>Each config key is stored as a separate document, its value as a string:</p>
+<div class="language-json highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="p">{</span><span class="w"> </span><span class="nt">&quot;_vt_env&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;production&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;key&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;database.host&quot;</span><span class="p">,</span><span class="w">   </span><span class="nt">&quot;value&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;mongo.prod.internal&quot;</span><span class="w"> </span><span class="p">}</span>
+</span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="p">{</span><span class="w"> </span><span class="nt">&quot;_vt_env&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;production&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;key&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;max_connections&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;value&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;50&quot;</span><span class="w"> </span><span class="p">}</span>
+</span><span id="__span-4-3"><a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="p">{</span><span class="w"> </span><span class="nt">&quot;_vt_env&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;production&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;key&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;regions.0&quot;</span><span class="p">,</span><span class="w">       </span><span class="nt">&quot;value&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;eu&quot;</span><span class="w"> </span><span class="p">}</span>
 </span></code></pre></div>
-<p>Reading a value: <code>db.collection.findOne({ key: "database.host" }).value</code></p>
+<p>Reading a value: <code>db.collection.findOne({ _vt_env: "production", key: "database.host" }).value</code></p>
 <h3 id="strategy_document"><code>STRATEGY_DOCUMENT</code><a class="headerlink" href="#strategy_document" title="Permanent link">&para;</a></h3>
-<p>All config keys are stored in a single document:</p>
-<div class="language-json highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="p">{</span>
-</span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="w">  </span><span class="nt">&quot;database.host&quot;</span><span class="p">:</span><span class="w">     </span><span class="s2">&quot;mongo.prod.internal&quot;</span><span class="p">,</span>
-</span><span id="__span-4-3"><a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="w">  </span><span class="nt">&quot;max_connections&quot;</span><span class="p">:</span><span class="w">   </span><span class="s2">&quot;50&quot;</span><span class="p">,</span>
-</span><span id="__span-4-4"><a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="w">  </span><span class="nt">&quot;feature.dark_mode&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;true&quot;</span>
-</span><span id="__span-4-5"><a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a><span class="p">}</span>
-</span></code></pre></div>
-<p>Reading a value: <code>db.collection.findOne({})["database.host"]</code></p>
-<h3 id="strategy_file"><code>STRATEGY_FILE</code><a class="headerlink" href="#strategy_file" title="Permanent link">&para;</a></h3>
-<p>The entire key set is stored as a single document with a nested <code>data</code> map, one document per synced file:</p>
+<p>One document per environment and file, with the config always nested under <code>data</code>. Values keep the types and arrays they have in the file:</p>
 <div class="language-json highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="p">{</span>
-</span><span id="__span-5-2"><a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="w">  </span><span class="nt">&quot;_vt_env&quot;</span><span class="p">:</span><span class="w">       </span><span class="s2">&quot;production&quot;</span><span class="p">,</span>
-</span><span id="__span-5-3"><a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="w">  </span><span class="nt">&quot;_vt_file_path&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;configs/app.yaml&quot;</span><span class="p">,</span>
+</span><span id="__span-5-2"><a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="w">  </span><span class="nt">&quot;_vt_env&quot;</span><span class="p">:</span><span class="w">  </span><span class="s2">&quot;production&quot;</span><span class="p">,</span>
+</span><span id="__span-5-3"><a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="w">  </span><span class="nt">&quot;_vt_file&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;configs/app.yaml&quot;</span><span class="p">,</span>
 </span><span id="__span-5-4"><a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="w">  </span><span class="nt">&quot;data&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-</span><span id="__span-5-5"><a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a><span class="w">    </span><span class="nt">&quot;database.host&quot;</span><span class="p">:</span><span class="w">   </span><span class="s2">&quot;mongo.prod.internal&quot;</span><span class="p">,</span>
-</span><span id="__span-5-6"><a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a><span class="w">    </span><span class="nt">&quot;max_connections&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;50&quot;</span>
-</span><span id="__span-5-7"><a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a><span class="w">  </span><span class="p">}</span>
-</span><span id="__span-5-8"><a id="__codelineno-5-8" name="__codelineno-5-8" href="#__codelineno-5-8"></a><span class="p">}</span>
+</span><span id="__span-5-5"><a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a><span class="w">    </span><span class="nt">&quot;database&quot;</span><span class="p">:</span><span class="w">        </span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;host&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;mongo.prod.internal&quot;</span><span class="w"> </span><span class="p">},</span>
+</span><span id="__span-5-6"><a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a><span class="w">    </span><span class="nt">&quot;max_connections&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">50</span><span class="p">,</span>
+</span><span id="__span-5-7"><a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a><span class="w">    </span><span class="nt">&quot;regions&quot;</span><span class="p">:</span><span class="w">         </span><span class="p">[</span><span class="s2">&quot;eu&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;us&quot;</span><span class="p">]</span>
+</span><span id="__span-5-8"><a id="__codelineno-5-8" name="__codelineno-5-8" href="#__codelineno-5-8"></a><span class="w">  </span><span class="p">}</span>
+</span><span id="__span-5-9"><a id="__codelineno-5-9" name="__codelineno-5-9" href="#__codelineno-5-9"></a><span class="p">}</span>
 </span></code></pre></div>
-<p>Efficient for large key sets since it only touches one document per sync.</p>
+<p>Reading a value: <code>db.collection.findOne({ _vt_env: "production" }).data.database.host</code></p>
+<p>A flat file (<code>.env</code>, <code>.properties</code>) is nested by the dots in its keys: <code>db.host=x</code> is stored as <code>data: { db: { host: "x" } }</code>. A file where one key is both a value and the parent of other keys (<code>log=on</code> next to <code>log.level=info</code>) has no nested form, so its sync fails and names the key. Use <code>STRATEGY_FILE</code> for such a file.</p>
+<h3 id="strategy_file"><code>STRATEGY_FILE</code><a class="headerlink" href="#strategy_file" title="Permanent link">&para;</a></h3>
+<p>One document per environment and file, with <code>data</code> in the shape the file parsed to: nested for YAML, JSON, TOML and the other tree formats (as in <code>STRATEGY_DOCUMENT</code>), flat for <code>.env</code> and <code>.properties</code>:</p>
+<div class="language-json highlight"><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="p">{</span>
+</span><span id="__span-6-2"><a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="w">  </span><span class="nt">&quot;_vt_env&quot;</span><span class="p">:</span><span class="w">  </span><span class="s2">&quot;production&quot;</span><span class="p">,</span>
+</span><span id="__span-6-3"><a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="w">  </span><span class="nt">&quot;_vt_file&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;configs/app.properties&quot;</span><span class="p">,</span>
+</span><span id="__span-6-4"><a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a><span class="w">  </span><span class="nt">&quot;data&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+</span><span id="__span-6-5"><a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a><span class="w">    </span><span class="nt">&quot;database.host&quot;</span><span class="p">:</span><span class="w">   </span><span class="s2">&quot;mongo.prod.internal&quot;</span><span class="p">,</span>
+</span><span id="__span-6-6"><a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a><span class="w">    </span><span class="nt">&quot;max_connections&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;50&quot;</span>
+</span><span id="__span-6-7"><a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a><span class="w">  </span><span class="p">}</span>
+</span><span id="__span-6-8"><a id="__codelineno-6-8" name="__codelineno-6-8" href="#__codelineno-6-8"></a><span class="p">}</span>
+</span></code></pre></div>
+<p>With either document strategy, every sync replaces the file's document, so keys removed from Git disappear without <code>prune</code>. Switching a datasource from <code>STRATEGY_KEY_VALUE</code> to one of them removes that file's per-key documents on the next sync.</p>
 <hr />
 <h2 id="per-environment-collections">Per-environment collections<a class="headerlink" href="#per-environment-collections" title="Permanent link">&para;</a></h2>
 <p>Set <code>env_as_collection: true</code> to write each environment into its own collection instead of a fixed one:</p>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>datasources: [{
-</span><span id="__span-6-2"><a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>  mongo: {
-</span><span id="__span-6-3"><a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a>    database:          &quot;vartrack&quot;
-</span><span id="__span-6-4"><a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a>    collection:        &quot;configs&quot;
-</span><span id="__span-6-5"><a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a>    env_as_collection: true   // production → &quot;configs_production&quot;, pr-42 → &quot;configs_pr-42&quot;
-</span><span id="__span-6-6"><a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a>  }
-</span><span id="__span-6-7"><a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a>}]
+<div class="language-text highlight"><pre><span></span><code><span id="__span-7-1"><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>datasources: [{
+</span><span id="__span-7-2"><a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>  mongo: {
+</span><span id="__span-7-3"><a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a>    database:          &quot;vartrack&quot;
+</span><span id="__span-7-4"><a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a>    collection:        &quot;configs&quot;
+</span><span id="__span-7-5"><a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a>    env_as_collection: true   // production → &quot;configs_production&quot;, pr-42 → &quot;configs_pr-42&quot;
+</span><span id="__span-7-6"><a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a>  }
+</span><span id="__span-7-7"><a id="__codelineno-7-7" name="__codelineno-7-7" href="#__codelineno-7-7"></a>}]
 </span></code></pre></div>
 <hr />
 <h2 id="destination-template">Destination template<a class="headerlink" href="#destination-template" title="Permanent link">&para;</a></h2>
 <p>The <code>destination_template</code> field controls which collection data is written to:</p>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-7-1"><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>rules: [{
-</span><span id="__span-7-2"><a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>  platform:             &quot;github&quot;
-</span><span id="__span-7-3"><a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a>  datasource:           &quot;mongo&quot;
-</span><span id="__span-7-4"><a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a>  destination_template: &quot;{env}-config&quot;
-</span><span id="__span-7-5"><a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a>  branch_map: {
-</span><span id="__span-7-6"><a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a>    main:    &quot;production&quot;
-</span><span id="__span-7-7"><a id="__codelineno-7-7" name="__codelineno-7-7" href="#__codelineno-7-7"></a>    develop: &quot;staging&quot;
-</span><span id="__span-7-8"><a id="__codelineno-7-8" name="__codelineno-7-8" href="#__codelineno-7-8"></a>  }
-</span><span id="__span-7-9"><a id="__codelineno-7-9" name="__codelineno-7-9" href="#__codelineno-7-9"></a>}]
+<div class="language-text highlight"><pre><span></span><code><span id="__span-8-1"><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>rules: [{
+</span><span id="__span-8-2"><a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>  platform:             &quot;github&quot;
+</span><span id="__span-8-3"><a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a>  datasource:           &quot;mongo&quot;
+</span><span id="__span-8-4"><a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a>  destination_template: &quot;{env}-config&quot;
+</span><span id="__span-8-5"><a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a>  branch_map: {
+</span><span id="__span-8-6"><a id="__codelineno-8-6" name="__codelineno-8-6" href="#__codelineno-8-6"></a>    main:    &quot;production&quot;
+</span><span id="__span-8-7"><a id="__codelineno-8-7" name="__codelineno-8-7" href="#__codelineno-8-7"></a>    develop: &quot;staging&quot;
+</span><span id="__span-8-8"><a id="__codelineno-8-8" name="__codelineno-8-8" href="#__codelineno-8-8"></a>  }
+</span><span id="__span-8-9"><a id="__codelineno-8-9" name="__codelineno-8-9" href="#__codelineno-8-9"></a>}]
 </span></code></pre></div>
 <table>
 <thead>
@@ -1870,13 +1882,13 @@
 </table>
 <hr />
 <h2 id="drift-detection">Drift detection<a class="headerlink" href="#drift-detection" title="Permanent link">&para;</a></h2>
-<p>The watcher-service reads all documents from the configured collection and compares <code>key → value</code> pairs against the Git baseline. Any added, changed, or deleted key triggers a drift event.</p>
+<p>The watcher-service reads every varTrack document in the configured collection: the <code>key → value</code> pairs, or the keys inside <code>data</code>, flat or nested. When they change, the orchestrator compares each key with Git; a changed or missing key is drift.</p>
 <p>Enable self-heal to restore automatically:</p>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-8-1"><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>rules: [{
-</span><span id="__span-8-2"><a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>  platform:   &quot;github&quot;
-</span><span id="__span-8-3"><a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a>  datasource: &quot;mongo&quot;
-</span><span id="__span-8-4"><a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a>  self_heal:  true
-</span><span id="__span-8-5"><a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a>}]
+<div class="language-text highlight"><pre><span></span><code><span id="__span-9-1"><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>rules: [{
+</span><span id="__span-9-2"><a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>  platform:   &quot;github&quot;
+</span><span id="__span-9-3"><a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a>  datasource: &quot;mongo&quot;
+</span><span id="__span-9-4"><a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a>  self_heal:  true
+</span><span id="__span-9-5"><a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a>}]
 </span></code></pre></div>
 
 
