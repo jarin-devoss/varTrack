@@ -8,7 +8,7 @@ RUN go install cuelang.org/go/cmd/cue@${CUE_VERSION}
 # ─── Stage 1: Python dependency builder ──────────────────────────────────────
 # Install Python deps into a separate layer so the runtime image only copies
 # the site-packages directory (not pip / build toolchain).
-FROM python:3.14-slim@sha256:d7a925f9eb9639a93e455b9f12c167569358818c0f62b51b88edbc8fcf34c421 AS builder
+FROM python:3.14-slim@sha256:a2b82f3c48559aa0a8446d9af49826b6e2b2016f4cd2afabfe6013ec53729170 AS builder
 
 ARG VERSION=dev
 ARG COMMIT=unknown
@@ -51,7 +51,7 @@ RUN mkdir -p /opt/extra-bin \
 COPY . .
 
 # ─── Stage 2: Runtime ────────────────────────────────────────────────────────
-FROM python:3.14-slim@sha256:d7a925f9eb9639a93e455b9f12c167569358818c0f62b51b88edbc8fcf34c421 AS runtime
+FROM python:3.14-slim@sha256:a2b82f3c48559aa0a8446d9af49826b6e2b2016f4cd2afabfe6013ec53729170 AS runtime
 
 ARG VERSION=dev
 ARG COMMIT=unknown
