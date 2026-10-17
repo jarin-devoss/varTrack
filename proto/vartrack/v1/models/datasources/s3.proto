@@ -24,7 +24,8 @@ message S3Config {
   optional SecretRef secret_access_key = 7 [(google.api.field_behavior) = OPTIONAL];
   optional SecretRef session_token = 8 [(google.api.field_behavior) = OPTIONAL];
   bool use_iam_role = 9 [(google.api.field_behavior) = OPTIONAL];
-  bool env_as_prefix = 10 [(google.api.field_behavior) = OPTIONAL];
+  // The key prefix is the environment. Formerly env_as_prefix, which is still read.
+  bool prefix_as_env = 10 [(google.api.field_behavior) = OPTIONAL];
   Strategy update_strategy = 11 [(buf.validate.field).enum.defined_only = true];
   bool one_file_per_key = 12 [(google.api.field_behavior) = OPTIONAL];
   optional string file_pattern = 13 [(google.api.field_behavior) = OPTIONAL];

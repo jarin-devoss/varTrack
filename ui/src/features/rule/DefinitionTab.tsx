@@ -32,9 +32,9 @@ export function toCue(rule: Rule): string {
   if (rule.fileName) out.file_name = rule.fileName;
   if (Object.keys(rule.filePathMap).length) out.file_path_map = rule.filePathMap;
   if (Object.keys(rule.branchMap).length) out.branch_map = rule.branchMap;
-  if (rule.envAsPr) out.env_as_pr = true;
-  if (rule.envAsBranch) out.env_as_branch = true;
-  if (rule.envAsTags) out.env_as_tags = true;
+  if (rule.prAsEnv) out.pr_as_env = true;
+  if (rule.branchAsEnv) out.branch_as_env = true;
+  if (rule.tagAsEnv) out.tag_as_env = true;
   out.destination_template = rule.destinationTemplate;
   out.sync_mode = rule.syncMode;
   out.self_heal = rule.selfHeal;

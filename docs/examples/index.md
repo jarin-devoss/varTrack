@@ -294,7 +294,7 @@ rules: [{
   file_name:            "configs/app.yaml"
   repositories:         ["my-org/app"]
   destination_template: "{env}-config"
-  env_as_pr:            true    // PR #42 → collection "pr-42-config"
+  pr_as_env:            true    // PR #42 → collection "pr-42-config"
   self_heal:            false   // preview envs don't need self-heal
 }]
 ```

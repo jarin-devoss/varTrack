@@ -78,16 +78,16 @@ class TestEnvResolve(unittest.TestCase):
         env = resolve(
             branch="main",
             branch_map={"main": "production"},
-            env_as_branch=True,
+            branch_as_env=True,
         )
-        self.assertEqual(env, "production")  # branch_map wins over env_as_branch
+        self.assertEqual(env, "production")  # branch_map wins over branch_as_env
 
     def test_env_as_branch_fallback(self):
-        env = resolve(branch="staging", env_as_branch=True)
+        env = resolve(branch="staging", branch_as_env=True)
         self.assertEqual(env, "staging")
 
     def test_env_as_pr(self):
-        env = resolve(pr_number="42", env_as_pr=True)
+        env = resolve(pr_number="42", pr_as_env=True)
         self.assertEqual(env, "pr-42")
 
     def test_file_path_map(self):
@@ -102,7 +102,7 @@ class TestEnvResolve(unittest.TestCase):
         self.assertEqual(env, "default")
 
     def test_tag_env(self):
-        env = resolve(tag="v1.2.3", env_as_tags=True)
+        env = resolve(tag="v1.2.3", tag_as_env=True)
         self.assertEqual(env, "v1.2.3")
 
 

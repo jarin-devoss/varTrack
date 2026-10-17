@@ -30,16 +30,17 @@ type S3Config struct {
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	Tag                  *string              `protobuf:"bytes,1,opt,name=tag,proto3,oneof" json:"tag,omitempty"`
-	Endpoint             string               `protobuf:"bytes,2,opt,name=endpoint,proto3" json:"endpoint,omitempty"`
-	Region               *string              `protobuf:"bytes,3,opt,name=region,proto3,oneof" json:"region,omitempty"`
-	Bucket               string               `protobuf:"bytes,4,opt,name=bucket,proto3" json:"bucket,omitempty"`
-	Prefix               *string              `protobuf:"bytes,5,opt,name=prefix,proto3,oneof" json:"prefix,omitempty"`
-	AccessKeyId          *utils.SecretRef     `protobuf:"bytes,6,opt,name=access_key_id,json=accessKeyId,proto3,oneof" json:"access_key_id,omitempty"`
-	SecretAccessKey      *utils.SecretRef     `protobuf:"bytes,7,opt,name=secret_access_key,json=secretAccessKey,proto3,oneof" json:"secret_access_key,omitempty"`
-	SessionToken         *utils.SecretRef     `protobuf:"bytes,8,opt,name=session_token,json=sessionToken,proto3,oneof" json:"session_token,omitempty"`
-	UseIamRole           bool                 `protobuf:"varint,9,opt,name=use_iam_role,json=useIamRole,proto3" json:"use_iam_role,omitempty"`
-	EnvAsPrefix          bool                 `protobuf:"varint,10,opt,name=env_as_prefix,json=envAsPrefix,proto3" json:"env_as_prefix,omitempty"`
+	Tag             *string          `protobuf:"bytes,1,opt,name=tag,proto3,oneof" json:"tag,omitempty"`
+	Endpoint        string           `protobuf:"bytes,2,opt,name=endpoint,proto3" json:"endpoint,omitempty"`
+	Region          *string          `protobuf:"bytes,3,opt,name=region,proto3,oneof" json:"region,omitempty"`
+	Bucket          string           `protobuf:"bytes,4,opt,name=bucket,proto3" json:"bucket,omitempty"`
+	Prefix          *string          `protobuf:"bytes,5,opt,name=prefix,proto3,oneof" json:"prefix,omitempty"`
+	AccessKeyId     *utils.SecretRef `protobuf:"bytes,6,opt,name=access_key_id,json=accessKeyId,proto3,oneof" json:"access_key_id,omitempty"`
+	SecretAccessKey *utils.SecretRef `protobuf:"bytes,7,opt,name=secret_access_key,json=secretAccessKey,proto3,oneof" json:"secret_access_key,omitempty"`
+	SessionToken    *utils.SecretRef `protobuf:"bytes,8,opt,name=session_token,json=sessionToken,proto3,oneof" json:"session_token,omitempty"`
+	UseIamRole      bool             `protobuf:"varint,9,opt,name=use_iam_role,json=useIamRole,proto3" json:"use_iam_role,omitempty"`
+	// The key prefix is the environment. Formerly env_as_prefix, which is still read.
+	PrefixAsEnv          bool                 `protobuf:"varint,10,opt,name=prefix_as_env,json=prefixAsEnv,proto3" json:"prefix_as_env,omitempty"`
 	UpdateStrategy       enums.Strategy       `protobuf:"varint,11,opt,name=update_strategy,json=updateStrategy,proto3,enum=vartrack.v1.Strategy" json:"update_strategy,omitempty"`
 	OneFilePerKey        bool                 `protobuf:"varint,12,opt,name=one_file_per_key,json=oneFilePerKey,proto3" json:"one_file_per_key,omitempty"`
 	FilePattern          *string              `protobuf:"bytes,13,opt,name=file_pattern,json=filePattern,proto3,oneof" json:"file_pattern,omitempty"`
@@ -152,9 +153,9 @@ func (x *S3Config) GetUseIamRole() bool {
 	return false
 }
 
-func (x *S3Config) GetEnvAsPrefix() bool {
+func (x *S3Config) GetPrefixAsEnv() bool {
 	if x != nil {
-		return x.EnvAsPrefix
+		return x.PrefixAsEnv
 	}
 	return false
 }
@@ -308,9 +309,9 @@ var file_vartrack_v1_models_datasources_s3_proto_rawDesc = []byte{
 	0x73, 0x65, 0x73, 0x73, 0x69, 0x6f, 0x6e, 0x54, 0x6f, 0x6b, 0x65, 0x6e, 0x88, 0x01, 0x01, 0x12,
 	0x25, 0x0a, 0x0c, 0x75, 0x73, 0x65, 0x5f, 0x69, 0x61, 0x6d, 0x5f, 0x72, 0x6f, 0x6c, 0x65, 0x18,
 	0x09, 0x20, 0x01, 0x28, 0x08, 0x42, 0x03, 0xe0, 0x41, 0x01, 0x52, 0x0a, 0x75, 0x73, 0x65, 0x49,
-	0x61, 0x6d, 0x52, 0x6f, 0x6c, 0x65, 0x12, 0x27, 0x0a, 0x0d, 0x65, 0x6e, 0x76, 0x5f, 0x61, 0x73,
-	0x5f, 0x70, 0x72, 0x65, 0x66, 0x69, 0x78, 0x18, 0x0a, 0x20, 0x01, 0x28, 0x08, 0x42, 0x03, 0xe0,
-	0x41, 0x01, 0x52, 0x0b, 0x65, 0x6e, 0x76, 0x41, 0x73, 0x50, 0x72, 0x65, 0x66, 0x69, 0x78, 0x12,
+	0x61, 0x6d, 0x52, 0x6f, 0x6c, 0x65, 0x12, 0x27, 0x0a, 0x0d, 0x70, 0x72, 0x65, 0x66, 0x69, 0x78,
+	0x5f, 0x61, 0x73, 0x5f, 0x65, 0x6e, 0x76, 0x18, 0x0a, 0x20, 0x01, 0x28, 0x08, 0x42, 0x03, 0xe0,
+	0x41, 0x01, 0x52, 0x0b, 0x70, 0x72, 0x65, 0x66, 0x69, 0x78, 0x41, 0x73, 0x45, 0x6e, 0x76, 0x12,
 	0x48, 0x0a, 0x0f, 0x75, 0x70, 0x64, 0x61, 0x74, 0x65, 0x5f, 0x73, 0x74, 0x72, 0x61, 0x74, 0x65,
 	0x67, 0x79, 0x18, 0x0b, 0x20, 0x01, 0x28, 0x0e, 0x32, 0x15, 0x2e, 0x76, 0x61, 0x72, 0x74, 0x72,
 	0x61, 0x63, 0x6b, 0x2e, 0x76, 0x31, 0x2e, 0x53, 0x74, 0x72, 0x61, 0x74, 0x65, 0x67, 0x79, 0x42,

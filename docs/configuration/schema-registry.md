@@ -121,9 +121,9 @@ Two formats are accepted:
 | `prune_last` | No | Defer key deletion until all sources are processed |
 | `self_heal` | No | Auto-restore on drift (default: `false`) |
 | `root_key` | No | Subtree key to extract before flattening (default: `"vartrack"`) |
-| `env_as_branch` | No | Use branch name as the environment label |
-| `env_as_pr` | No | Use `pr-{number}` as the environment label |
-| `env_as_tags` | No | Use tag name as the environment label |
+| `branch_as_env` | No | Use branch name as the environment label |
+| `pr_as_env` | No | Use `pr-{number}` as the environment label |
+| `tag_as_env` | No | Use tag name as the environment label |
 
 Additional sink-specific fields (connection strings, credentials, etc.) are included inline per rule — see the individual [sink pages](../sinks/index.md) for what each datasource type accepts.
 

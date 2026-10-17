@@ -6,12 +6,12 @@ Centralised environment resolution.
 Priority order (first match wins):
   1. branch_map[branch]          explicit mapping
   2. file_path_map[file_path]    file-path exact match
-  3. env_as_branch               branch name IS the env
-  4. env_as_pr                   "pr-{number}"
-  5. env_as_tags                 tag name IS the env
+  3. branch_as_env               branch name IS the env
+  4. pr_as_env                   "pr-{number}"
+  5. tag_as_env                  tag name IS the env
   6. "default"                   hardcoded fallback
 
-env_as_pr — how pr_number is resolved
+pr_as_env — how pr_number is resolved
 ──────────────────────────────────────
 PR webhook events (opened, synchronize, reopened) carry pr_number in the
 payload and also call pr_branch_cache.register(branch, pr_number).
@@ -19,7 +19,7 @@ payload and also call pr_branch_cache.register(branch, pr_number).
 Plain branch push events do NOT carry pr_number.  But if the branch
 belongs to an open PR, we still want env = "pr-{number}".
 
-The fix: when env_as_pr is true and pr_number is None (plain push), we
+The fix: when pr_as_env is true and pr_number is None (plain push), we
 consult the PRBranchCache.  If the branch is registered there, we get the
 PR number and produce the correct env.  If not, we fall through normally.
 
@@ -33,7 +33,7 @@ Flow for a push to "feature/login" (branch has open PR #42):
     env_resolver.resolve(
         branch="feature/login",
         pr_number=None,           ← not in push payload
-        env_as_pr=True,
+        pr_as_env=True,
     )
       → pr_number is None
       → check cache: lookup("feature/login") → "42"
@@ -45,7 +45,7 @@ Flow for a push to "feature/login" (branch has open PR #42):
 
   Push to feature/login after merge:
     → lookup("feature/login") → None
-    → falls through to env_as_branch / "default"
+    → falls through to branch_as_env / "default"
 """
 from __future__ import annotations
 
@@ -61,9 +61,9 @@ def resolve(
     tag: str | None = None,
     branch_map: dict[str, str] | None = None,
     file_path_map: dict[str, str] | None = None,
-    env_as_branch: bool = False,
-    env_as_pr: bool = False,
-    env_as_tags: bool = False,
+    branch_as_env: bool = False,
+    pr_as_env: bool = False,
+    tag_as_env: bool = False,
 ) -> str:
     """
     Resolve the environment string from git event metadata and rule config.
@@ -87,12 +87,12 @@ def resolve(
         logger.debug("env_resolve via=file_path_map path=%s env=%s", file_path, env)
         return env
 
-    # 3. env_as_branch — branch name itself is the env
-    if env_as_branch and branch:
-        logger.debug("env_resolve via=env_as_branch branch=%s", branch)
+    # 3. branch_as_env — branch name itself is the env
+    if branch_as_env and branch:
+        logger.debug("env_resolve via=branch_as_env branch=%s", branch)
         return branch
 
-    # 4. env_as_pr — "pr-{number}"
+    # 4. pr_as_env — "pr-{number}"
     #
     # Two sources for pr_number:
     #   a) Directly in the payload (PR webhook events: opened, synchronize, reopened)
@@ -100,7 +100,7 @@ def resolve(
     #
     # (b) is the key fix: without it, a plain push to a branch that already has
     # an open PR would fall through to "default" and miss the PR environment.
-    if env_as_pr:
+    if pr_as_env:
         effective_pr = pr_number
 
         if effective_pr is None and branch:
@@ -115,13 +115,13 @@ def resolve(
 
         if effective_pr:
             env = f"pr-{effective_pr}"
-            logger.debug("env_resolve via=env_as_pr pr=%s env=%s", effective_pr, env)
+            logger.debug("env_resolve via=pr_as_env pr=%s env=%s", effective_pr, env)
             return env
 
-    # 5. env_as_tags — tag name is the env
-    if env_as_tags and tag:
+    # 5. tag_as_env — tag name is the env
+    if tag_as_env and tag:
         env = tag.removeprefix("refs/tags/")
-        logger.debug("env_resolve via=env_as_tags tag=%s env=%s", tag, env)
+        logger.debug("env_resolve via=tag_as_env tag=%s env=%s", tag, env)
         return env
 
     # 6. Default fallback

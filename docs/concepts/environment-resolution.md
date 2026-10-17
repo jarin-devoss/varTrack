@@ -16,10 +16,12 @@ varTrack tries each strategy in order and uses the first one that produces a mat
 |---|---|---|
 | 1 | `branch_map[branch]` | `main` → `production` |
 | 2 | `file_path_map[file_path]` | `configs/prod/**` → `production` |
-| 3 | `env_as_pr: true` | PR #42 → `pr-42` |
-| 4 | `env_as_branch: true` | branch `develop` → `develop` |
-| 5 | `env_as_tags: true` | tag `v1.2.3` → `v1.2.3` |
+| 3 | `pr_as_env: true` | PR #42 → `pr-42` |
+| 4 | `branch_as_env: true` | branch `develop` → `develop` |
+| 5 | `tag_as_env: true` | tag `v1.2.3` → `v1.2.3` |
 | 6 | fallback | always → `default` |
+
+`pr_as_env`, `branch_as_env` and `tag_as_env` used to be called `env_as_pr`, `env_as_branch` and `env_as_tags` (and the S3 option `prefix_as_env` was `env_as_prefix`). The old names still work in `config.cue`, `bundle.json` and `vartrack.json`; varTrack logs a warning with the new name.
 
 ---
 
@@ -66,10 +68,10 @@ A push that changes `configs/production/app.yaml` resolves to `production`.
 
 ---
 
-## `env_as_pr` — PR environments
+## `pr_as_env` — PR environments
 
 ```cue
-env_as_pr: true
+pr_as_env: true
 ```
 
 Pull request events resolve to `pr-{number}`. Useful for ephemeral preview environments.
@@ -81,10 +83,10 @@ PR #103 → env = "pr-103"
 
 ---
 
-## `env_as_branch` — branch name as environment
+## `branch_as_env` — branch name as environment
 
 ```cue
-env_as_branch: true
+branch_as_env: true
 ```
 
 The branch name becomes the environment name directly:
@@ -96,10 +98,10 @@ branch "feature/foo" → env = "feature/foo"
 
 ---
 
-## `env_as_tags` — tag name as environment
+## `tag_as_env` — tag name as environment
 
 ```cue
-env_as_tags: true
+tag_as_env: true
 ```
 
 Tag push events use the tag name as the environment:
@@ -354,8 +356,8 @@ rules: [{
     main:    "production"   // explicit — highest priority
     develop: "staging"
   }
-  env_as_pr:     true       // fallback for PRs not in branch_map
-  env_as_branch: true       // fallback for all other branches
+  pr_as_env:     true       // fallback for PRs not in branch_map
+  branch_as_env: true       // fallback for all other branches
 }]
 ```
 
@@ -363,5 +365,5 @@ rules: [{
 |---|---|
 | Push to `main` | `production` (from `branch_map`) |
 | Push to `develop` | `staging` (from `branch_map`) |
-| PR #42 opened | `pr-42` (from `env_as_pr`) |
-| Push to `feature/x` | `feature/x` (from `env_as_branch`) |
+| PR #42 opened | `pr-42` (from `pr_as_env`) |
+| Push to `feature/x` | `feature/x` (from `branch_as_env`) |

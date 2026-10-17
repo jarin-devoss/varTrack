@@ -194,7 +194,7 @@ def _branch_for(rule: dict, env: str, record: dict | None) -> str | None:
     for branch, mapped in (rule.get("branch_map") or {}).items():
         if mapped == env:
             return branch
-    if rule.get("env_as_branch"):
+    if rule.get("branch_as_env"):
         return env
     return None
 
@@ -391,8 +391,8 @@ def get_bundle(request: Request, viewer: access.Viewer = Depends(_viewer)) -> di
                 "namespace": inline.get("k8s_namespace") or inline.get("helm_namespace"),
             }),
             "detail": _public_detail({k: v for k, v in inline.items() if k not in (
-                "repo_url", "file_name", "repositories", "branch", "branch_map", "tenant_id", "env_as_branch",
-                "env_as_pr", "env_as_tags", "self_heal", "prune", "prune_last", "sync_mode", "destination_template",
+                "repo_url", "file_name", "repositories", "branch", "branch_map", "tenant_id", "branch_as_env",
+                "pr_as_env", "tag_as_env", "self_heal", "prune", "prune_last", "sync_mode", "destination_template",
                 "root_key", "platform", "datasource")}),
             "rules": used_by.get(name, []),
         })

@@ -61,7 +61,7 @@ bundle: {
 			datasource:           "s3-minio"
 			file_name:            "app-settings.yaml"
 			repositories:         ["vartrack-demo/demo-configs"]
-			env_as_branch:        true
+			branch_as_env:        true
 			sync_mode:            "SYNC_MODE_FULL"
 			self_heal:            false
 			destination_template: "configs/{env}"
@@ -71,7 +71,7 @@ bundle: {
 			datasource:           "linux-target"
 			file_name:            "app-settings.yaml"
 			repositories:         ["vartrack-demo/demo-configs"]
-			env_as_branch:        true
+			branch_as_env:        true
 			sync_mode:            "SYNC_MODE_FULL"
 			self_heal:            false
 			destination_template: "/tmp/vartrack/{env}.env"

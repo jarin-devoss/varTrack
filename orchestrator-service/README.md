@@ -115,9 +115,9 @@ Priority order when resolving the environment from a webhook event:
 
 1. `branch_map[branch]` — explicit mapping (`main` → `production`)
 2. `file_path_map[file_path]` — glob patterns on the changed file path
-3. `env_as_pr: true` → `pr-{number}`
-4. `env_as_branch: true` → branch name
-5. `env_as_tags: true` → tag name
+3. `pr_as_env: true` → `pr-{number}`
+4. `branch_as_env: true` → branch name
+5. `tag_as_env: true` → tag name
 6. `"default"` fallback
 
 ---

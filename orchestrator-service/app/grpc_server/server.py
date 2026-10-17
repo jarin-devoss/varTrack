@@ -235,10 +235,12 @@ class OrchestratorServicer:
 
     def _resolve_rule(self, platform: str, datasource: str) -> Optional[dict]:
         """Resolve rule_config from registry. Supports dict or callable."""
+        from app.pipeline.renamed_options import with_current_names
+
         if callable(self._rule_registry):
-            return self._rule_registry(platform, datasource)
+            return with_current_names(self._rule_registry(platform, datasource))
         key = f"{platform}:{datasource}"
-        return self._rule_registry.get(key) or self._rule_registry.get(datasource)
+        return with_current_names(self._rule_registry.get(key) or self._rule_registry.get(datasource))
 
 
 # ---------------------------------------------------------------------------

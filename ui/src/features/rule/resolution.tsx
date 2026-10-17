@@ -6,9 +6,9 @@ export function resolvedVia(rule: RuleView, t: Target): string {
   if (rule.branchMap[t.ref] === t.env) return `branch_map: ${t.ref} → ${t.env}`;
   const pattern = Object.entries(rule.filePathMap).find(([, env]) => env === t.env)?.[0];
   if (pattern) return `file_path_map: ${pattern}`;
-  if (rule.envAsPr && /^pr-\d+$/.test(t.env)) return 'pull request number';
-  if (rule.envAsBranch && t.env === t.ref) return 'branch name';
-  if (rule.envAsTags) return 'tag name';
+  if (rule.prAsEnv && /^pr-\d+$/.test(t.env)) return 'pull request number';
+  if (rule.branchAsEnv && t.env === t.ref) return 'branch name';
+  if (rule.tagAsEnv) return 'tag name';
   return 'default';
 }
 
@@ -26,9 +26,9 @@ function steps(rule: RuleView) {
       active: Object.keys(rule.filePathMap).length > 0,
       entries: Object.entries(rule.filePathMap).map(([p, e]) => `${p} → ${e}`),
     },
-    { name: 'env_as_pr', description: 'pull request #N becomes pr-N', active: rule.envAsPr, entries: [] },
-    { name: 'env_as_branch', description: 'the branch name is the environment', active: rule.envAsBranch, entries: [] },
-    { name: 'env_as_tags', description: 'the tag name is the environment', active: rule.envAsTags, entries: [] },
+    { name: 'pr_as_env', description: 'pull request #N becomes pr-N', active: rule.prAsEnv, entries: [] },
+    { name: 'branch_as_env', description: 'the branch name is the environment', active: rule.branchAsEnv, entries: [] },
+    { name: 'tag_as_env', description: 'the tag name is the environment', active: rule.tagAsEnv, entries: [] },
     { name: 'default', description: 'fallback when nothing else matches', active: true, entries: [] },
   ];
 }
