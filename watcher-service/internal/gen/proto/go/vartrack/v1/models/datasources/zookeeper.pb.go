@@ -39,15 +39,16 @@ type ZooKeeperConfig struct {
 	AuthScheme        *string              `protobuf:"bytes,7,opt,name=auth_scheme,json=authScheme,proto3,oneof" json:"auth_scheme,omitempty"`
 	SessionTimeout    *durationpb.Duration `protobuf:"bytes,8,opt,name=session_timeout,json=sessionTimeout,proto3" json:"session_timeout,omitempty"`
 	ConnectionTimeout *durationpb.Duration `protobuf:"bytes,9,opt,name=connection_timeout,json=connectionTimeout,proto3" json:"connection_timeout,omitempty"`
-	UpdateStrategy    enums.Strategy       `protobuf:"varint,10,opt,name=update_strategy,json=updateStrategy,proto3,enum=vartrack.v1.Strategy" json:"update_strategy,omitempty"`
-	MaxRetries        int32                `protobuf:"varint,11,opt,name=max_retries,json=maxRetries,proto3" json:"max_retries,omitempty"`
-	RetryBackoff      *durationpb.Duration `protobuf:"bytes,12,opt,name=retry_backoff,json=retryBackoff,proto3" json:"retry_backoff,omitempty"`
-	WorldReadable     bool                 `protobuf:"varint,13,opt,name=world_readable,json=worldReadable,proto3" json:"world_readable,omitempty"`
-	AclScheme         *string              `protobuf:"bytes,14,opt,name=acl_scheme,json=aclScheme,proto3,oneof" json:"acl_scheme,omitempty"`
-	AclId             *string              `protobuf:"bytes,15,opt,name=acl_id,json=aclId,proto3,oneof" json:"acl_id,omitempty"`
-	Ephemeral         bool                 `protobuf:"varint,16,opt,name=ephemeral,proto3" json:"ephemeral,omitempty"`
-	Sequential        bool                 `protobuf:"varint,17,opt,name=sequential,proto3" json:"sequential,omitempty"`
-	Encoding          string               `protobuf:"bytes,18,opt,name=encoding,proto3" json:"encoding,omitempty"`
+	// One znode per key: STRATEGY_KEY_VALUE (or unset) only.
+	UpdateStrategy enums.Strategy       `protobuf:"varint,10,opt,name=update_strategy,json=updateStrategy,proto3,enum=vartrack.v1.Strategy" json:"update_strategy,omitempty"`
+	MaxRetries     int32                `protobuf:"varint,11,opt,name=max_retries,json=maxRetries,proto3" json:"max_retries,omitempty"`
+	RetryBackoff   *durationpb.Duration `protobuf:"bytes,12,opt,name=retry_backoff,json=retryBackoff,proto3" json:"retry_backoff,omitempty"`
+	WorldReadable  bool                 `protobuf:"varint,13,opt,name=world_readable,json=worldReadable,proto3" json:"world_readable,omitempty"`
+	AclScheme      *string              `protobuf:"bytes,14,opt,name=acl_scheme,json=aclScheme,proto3,oneof" json:"acl_scheme,omitempty"`
+	AclId          *string              `protobuf:"bytes,15,opt,name=acl_id,json=aclId,proto3,oneof" json:"acl_id,omitempty"`
+	Ephemeral      bool                 `protobuf:"varint,16,opt,name=ephemeral,proto3" json:"ephemeral,omitempty"`
+	Sequential     bool                 `protobuf:"varint,17,opt,name=sequential,proto3" json:"sequential,omitempty"`
+	Encoding       string               `protobuf:"bytes,18,opt,name=encoding,proto3" json:"encoding,omitempty"`
 }
 
 func (x *ZooKeeperConfig) Reset() {

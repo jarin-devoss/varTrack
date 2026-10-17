@@ -119,6 +119,7 @@ class RedisSink(BaseSink):
         prune_protection: list[str],
         dry_run_prune: bool,
         total_sources: int,
+        data: Any = None,
     ) -> dict[str, Any]:
         prefix = self._key_prefix(datasource, env)
         formatted = format_keys(flat_data, self._key_format)

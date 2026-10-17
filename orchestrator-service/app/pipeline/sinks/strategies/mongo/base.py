@@ -3,30 +3,37 @@ app/pipeline/sinks/strategies/mongo/base.py
 ────────────────────────────────────────────
 Abstract base for MongoDB write strategies.
 
-Two concrete strategies:
-  DocumentStrategy  — one MongoDB document per flat key
-  FileStrategy      — one MongoDB document holds the entire flat_data dict
+One concrete strategy per Strategy value (MongoConfig.update_strategy):
+  KeyValueStrategy  — STRATEGY_KEY_VALUE: one MongoDB document per flat key
+  DocumentStrategy  — STRATEGY_DOCUMENT:  one document per file, always nested
+  FileStrategy      — STRATEGY_FILE:      one document per file, as it parsed
 """
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from typing import Any
 
 
 class MongoWriteStrategy(ABC):
     """
     Defines how flat_data is written to MongoDB.
 
-    DocumentStrategy  — one doc per flat key.
+    KeyValueStrategy  — one doc per flat key.
                         Shape: { _vt_tenant, _vt_datasource, _vt_env,
                                   key, value, _vt_commit, _vt_file, ... }
                         Fast individual key lookups.
                         Prune deletes stale key docs explicitly.
 
-    FileStrategy      — one doc holds the entire flat_data dict.
+    FileStrategy      — one doc holds the whole file in the shape it parsed
+                        to: nested for JSON, YAML, TOML …, flat for .env /
+                        .properties.
                         Shape: { _vt_tenant, _vt_datasource, _vt_env,
-                                  _vt_file, _vt_commit, data: {key: value} }
+                                  _vt_file, _vt_commit, data: {...} }
                         Atomic full-config replace.
                         Prune is a no-op — stale keys vanish on next write.
+
+    DocumentStrategy  — as FileStrategy, always nested:
+                        data: {database: {host: ...}}.
     """
 
     @abstractmethod
@@ -38,8 +45,9 @@ class MongoWriteStrategy(ABC):
         commit_sha: str,
         file_path: str,
         meta: dict,
+        data: Any = None,
     ) -> int:
-        """Write flat_data. Returns number of docs written."""
+        """Write flat_data (*data*: the file in the shape it parsed to). Returns number of docs written."""
 
     @abstractmethod
     def repair(
@@ -50,6 +58,7 @@ class MongoWriteStrategy(ABC):
         commit_sha: str,
         file_path: str,
         meta: dict,
+        data: Any = None,
     ) -> int:
         """Re-write docs that are missing or out of sync. Returns count repaired."""
 
@@ -63,3 +72,8 @@ class MongoWriteStrategy(ABC):
         last: bool,
     ) -> int:
         """Delete stale docs no longer in flat_data. Returns count pruned."""
+
+    def read_values(self, collection, keys: list[str], doc_filter: dict) -> dict[str, str]:
+        """Current values of *keys* (the ETL's flat keys), from one document per key."""
+        docs = collection.find({**doc_filter, "key": {"$in": keys}}, {"key": 1, "value": 1, "_id": 0})
+        return {doc["key"]: str(doc.get("value", "")) for doc in docs if "key" in doc}

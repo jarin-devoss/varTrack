@@ -30,17 +30,22 @@ type MongoConfig struct {
 	// --- Identity ---
 	// Optional tag to distinguish multiple instances of the same type.
 	// Resolved name: "mongo-{tag}" if set, otherwise "mongo".
-	Tag                         *string        `protobuf:"bytes,1,opt,name=tag,proto3,oneof" json:"tag,omitempty"`
-	Endpoint                    string         `protobuf:"bytes,2,opt,name=endpoint,proto3" json:"endpoint,omitempty"`
-	Token                       *string        `protobuf:"bytes,3,opt,name=token,proto3,oneof" json:"token,omitempty"`
-	Username                    *string        `protobuf:"bytes,4,opt,name=username,proto3,oneof" json:"username,omitempty"`
-	Password                    *string        `protobuf:"bytes,5,opt,name=password,proto3,oneof" json:"password,omitempty"`
-	Host                        string         `protobuf:"bytes,6,opt,name=host,proto3" json:"host,omitempty"`
-	Port                        int32          `protobuf:"varint,7,opt,name=port,proto3" json:"port,omitempty"`
-	Database                    *string        `protobuf:"bytes,8,opt,name=database,proto3,oneof" json:"database,omitempty"`
-	Collection                  *string        `protobuf:"bytes,9,opt,name=collection,proto3,oneof" json:"collection,omitempty"`
-	EnvAsCollection             bool           `protobuf:"varint,10,opt,name=env_as_collection,json=envAsCollection,proto3" json:"env_as_collection,omitempty"`
-	Hosts                       []string       `protobuf:"bytes,11,rep,name=hosts,proto3" json:"hosts,omitempty"`
+	Tag             *string  `protobuf:"bytes,1,opt,name=tag,proto3,oneof" json:"tag,omitempty"`
+	Endpoint        string   `protobuf:"bytes,2,opt,name=endpoint,proto3" json:"endpoint,omitempty"`
+	Token           *string  `protobuf:"bytes,3,opt,name=token,proto3,oneof" json:"token,omitempty"`
+	Username        *string  `protobuf:"bytes,4,opt,name=username,proto3,oneof" json:"username,omitempty"`
+	Password        *string  `protobuf:"bytes,5,opt,name=password,proto3,oneof" json:"password,omitempty"`
+	Host            string   `protobuf:"bytes,6,opt,name=host,proto3" json:"host,omitempty"`
+	Port            int32    `protobuf:"varint,7,opt,name=port,proto3" json:"port,omitempty"`
+	Database        *string  `protobuf:"bytes,8,opt,name=database,proto3,oneof" json:"database,omitempty"`
+	Collection      *string  `protobuf:"bytes,9,opt,name=collection,proto3,oneof" json:"collection,omitempty"`
+	EnvAsCollection bool     `protobuf:"varint,10,opt,name=env_as_collection,json=envAsCollection,proto3" json:"env_as_collection,omitempty"`
+	Hosts           []string `protobuf:"bytes,11,rep,name=hosts,proto3" json:"hosts,omitempty"`
+	// How the config is stored in the collection:
+	//
+	//	STRATEGY_KEY_VALUE (default)  one document per key: {key: "db.host", value: "x"}
+	//	STRATEGY_DOCUMENT             one document per file, nested: {data: {db: {host: "x"}}}
+	//	STRATEGY_FILE                 one document per file, as it parsed: nested, or flat for .env / .properties
 	UpdateStrategy              enums.Strategy `protobuf:"varint,12,opt,name=update_strategy,json=updateStrategy,proto3,enum=vartrack.v1.Strategy" json:"update_strategy,omitempty"`
 	AuthSource                  string         `protobuf:"bytes,13,opt,name=auth_source,json=authSource,proto3" json:"auth_source,omitempty"`
 	AuthMechanism               *string        `protobuf:"bytes,14,opt,name=auth_mechanism,json=authMechanism,proto3,oneof" json:"auth_mechanism,omitempty"`

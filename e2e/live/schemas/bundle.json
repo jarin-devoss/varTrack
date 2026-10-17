@@ -19,7 +19,7 @@
     "mongo_uri": "mongodb://mongo:27017",
     "database": "vartrack",
     "collection": "variables",
-    "update_strategy": "STRATEGY_KEY_VALUE",
+    "update_strategy": "STRATEGY_DOCUMENT",
     "secrets": {
       "default": {
         "type": "vault",

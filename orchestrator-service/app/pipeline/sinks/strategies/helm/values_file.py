@@ -27,6 +27,7 @@ import os
 from typing import Any
 
 from app.pipeline.sinks.strategies.helm.base import HelmWriteStrategy
+from app.pipeline.transformer import unflatten
 
 logger = logging.getLogger(__name__)
 
@@ -59,7 +60,7 @@ class ValuesFileStrategy(HelmWriteStrategy):
                 if k.startswith(self._prefix)
             }
 
-        nested = _unflatten(data_keys)
+        nested = unflatten(data_keys)
 
         # Write _vartrack block with labels stripped of the leading prefix
         if vt_keys:
@@ -80,17 +81,6 @@ class ValuesFileStrategy(HelmWriteStrategy):
 
         logger.info("ValuesFileStrategy: wrote %d keys to %s", len(data_keys), self._path)
         return {"written": len(data_keys), "pruned": 0}
-
-
-def _unflatten(flat: dict[str, str], sep: str = ".") -> dict:
-    result: dict = {}
-    for key, value in flat.items():
-        parts = key.split(sep)
-        node  = result
-        for part in parts[:-1]:
-            node = node.setdefault(part, {})
-        node[parts[-1]] = value
-    return result
 
 
 def _to_yaml(data: dict) -> str:

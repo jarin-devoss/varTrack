@@ -1,7 +1,10 @@
 """
 app/pipeline/sinks/strategies/mongo/document.py
 ─────────────────────────────────────────────────
-DocumentStrategy — one MongoDB document per flat key.
+DocumentStrategy — the config as one nested document (STRATEGY_DOCUMENT): one
+MongoDB document per environment and file, "data" always nested. It is the
+tree the ETL cut from the file (root_key, environment), so arrays and value
+types are kept; a flat file (.env, .properties) is nested by its dotted keys.
 
 Document shape
 ──────────────
@@ -14,115 +17,28 @@ Document shape
     "_vt_branch":     "main",
     "_vt_commit":     "a1b2c3d4e5f6",
     "_vt_file":       "services/payments/production.yaml",
-    "key":            "database.host",
-    "value":          "prod-db.internal",
+    "data": {
+        "database": {"host": "prod-db.internal", "port": 5432},
+        "cache":    {"ttl": 300, "regions": ["eu", "us"]},
+    }
 }
 
-Index recommendation
-────────────────────
-db.configs.createIndex(
-    { "_vt_tenant": 1, "_vt_datasource": 1, "_vt_env": 1, "key": 1 },
-    { unique: true }
-)
+Reading a value: db.configs.findOne({_vt_env: "production"}).data.database.host
+
+Writing, pruning and reading back work as for FileStrategy: the document is
+replaced on every write, so keys removed from Git disappear with it.
 """
 from __future__ import annotations
 
-import fnmatch
-import logging
+from typing import Any
 
-from app.pipeline.sinks.strategies.mongo.base import MongoWriteStrategy
-
-logger = logging.getLogger(__name__)
+from app.pipeline.sinks.strategies.mongo.file import FileStrategy
+from app.pipeline.transformer import as_nested
 
 
-class DocumentStrategy(MongoWriteStrategy):
+class DocumentStrategy(FileStrategy):
 
-    def upsert(self, collection, flat_data, doc_filter, commit_sha, file_path, meta) -> int:
-        if not flat_data:
-            return 0
-        import time
-        from pymongo import UpdateOne
-        from pymongo.errors import BulkWriteError
-        ops = [
-            UpdateOne(
-                {**doc_filter, "key": key},
-                {"$set": {**meta, **doc_filter, "key": key, "value": value}},
-                upsert=True,
-            )
-            for key, value in flat_data.items()
-        ]
-        max_retries = 3
-        for attempt in range(max_retries + 1):
-            try:
-                collection.bulk_write(ops, ordered=False)
-                break
-            except BulkWriteError as exc:
-                if attempt >= max_retries:
-                    raise
-                logger.debug("bulk_write attempt %d failed: %s — retrying", attempt + 1, exc)
-                time.sleep(0.1 * (attempt + 1))
-        return len(flat_data)
-
-    def repair(self, collection, flat_data, doc_filter, commit_sha, file_path, meta) -> int:
-        try:
-            from vartrack_core import py_diff  # type: ignore[import]
-            _use_rust = True
-        except ImportError:
-            _use_rust = False
-
-        if _use_rust:
-            current = {
-                doc["key"]: doc["value"]
-                for doc in collection.find(doc_filter, {"key": 1, "value": 1, "_id": 0})
-            }
-            diff = py_diff(current, flat_data)
-            if diff["is_empty"]:
-                return 0
-            from pymongo import UpdateOne
-            to_upsert = {
-                **diff["added"],
-                **{k: v["new"] for k, v in diff["changed"].items()},
-            }
-            ops = [
-                UpdateOne(
-                    {**doc_filter, "key": key},
-                    {"$set": {**meta, **doc_filter, "key": key, "value": value}},
-                    upsert=True,
-                )
-                for key, value in to_upsert.items()
-            ]
-            if ops:
-                collection.bulk_write(ops, ordered=False)
-            return len(ops)
-
-        # Fallback: per-key loop
-        repaired = 0
-        for key, value in flat_data.items():
-            flt = {**doc_filter, "key": key}
-            existing = collection.find_one(flt, {"value": 1, "_vt_commit": 1})
-            if existing is None or existing.get("value") != value:
-                doc = {**meta, **doc_filter, "key": key, "value": value}
-                collection.update_one(flt, {"$set": doc}, upsert=True)
-                repaired += 1
-        return repaired
-
-    def prune(self, collection, flat_data, doc_filter, protection, last) -> int:
-        git_keys  = set(flat_data.keys())
-        all_docs  = collection.find(doc_filter, {"key": 1})
-        to_delete = []
-        for doc in all_docs:
-            key = doc.get("key", "")
-            if key not in git_keys and not any(
-                fnmatch.fnmatch(key, p) for p in protection
-            ):
-                to_delete.append(key)
-
-        if last:
-            to_delete = to_delete[-1:] if to_delete else []
-
-        if to_delete:
-            from pymongo import DeleteOne
-            ops = [DeleteOne({**doc_filter, "key": key}) for key in to_delete]
-            collection.bulk_write(ops, ordered=False)
-            logger.info("DocumentStrategy pruned %d keys", len(to_delete))
-        return len(to_delete)
+    @staticmethod
+    def _shape(flat_data: dict, data: Any) -> Any:
+        # The file's tree; flat keys (.env, .properties) are nested by their dots.
+        return as_nested(data if data is not None else flat_data)

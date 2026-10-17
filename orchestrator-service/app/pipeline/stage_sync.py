@@ -111,6 +111,7 @@ def run_stage_sync(
                 _t_write = time.perf_counter()
                 write_result = sink.write(
                     flat_data=etl_file.flat_data,
+                    data=etl_file.data,
                     sync_mode=sync_mode,
                     datasource=datasource,
                     env=etl_file.env,

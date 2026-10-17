@@ -26,6 +26,11 @@ message S3Config {
   bool use_iam_role = 9 [(google.api.field_behavior) = OPTIONAL];
   // The key prefix is the environment. Formerly env_as_prefix, which is still read.
   bool prefix_as_env = 10 [(google.api.field_behavior) = OPTIONAL];
+  // How the config is stored under the prefix:
+  //   STRATEGY_KEY_VALUE  one object per key
+  //   STRATEGY_DOCUMENT   config.json, nested
+  //   STRATEGY_FILE       config.json, as the file parsed: nested, or flat for .env / .properties
+  // Unset: one object per key with one_file_per_key, otherwise config.json with the keys flat.
   Strategy update_strategy = 11 [(buf.validate.field).enum.defined_only = true];
   bool one_file_per_key = 12 [(google.api.field_behavior) = OPTIONAL];
   optional string file_pattern = 13 [(google.api.field_behavior) = OPTIONAL];

@@ -47,7 +47,7 @@ bundle: {
 				collection:      "variables"
 				auth_source:     "admin"
 				max_pool_size:   5
-				update_strategy: "STRATEGY_KEY_VALUE"
+				update_strategy: "STRATEGY_DOCUMENT"
 			}
 		},
 		{

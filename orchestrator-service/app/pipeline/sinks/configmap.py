@@ -158,6 +158,7 @@ class ConfigmapSink(BaseSink):
         prune_protection: list[str],
         dry_run_prune: bool,
         total_sources: int,
+        data: Any = None,
     ) -> dict[str, Any]:
         from kubernetes.client.exceptions import ApiException
 

@@ -30,6 +30,7 @@ message ZooKeeperConfig {
     (buf.validate.field).duration.gte = {seconds: 1},
     (google.api.field_behavior) = OPTIONAL
   ];
+  // One znode per key: STRATEGY_KEY_VALUE (or unset) only.
   Strategy update_strategy = 10 [(buf.validate.field).enum.defined_only = true];
   int32 max_retries = 11 [
     (buf.validate.field).int32.gte = 0,

@@ -21,7 +21,8 @@ import tempfile
 from typing import Any
 
 from app.pipeline.sinks.strategies.helm.base import HelmWriteStrategy
-from app.pipeline.sinks.strategies.helm.values_file import _unflatten, _to_yaml
+from app.pipeline.sinks.strategies.helm.values_file import _to_yaml
+from app.pipeline.transformer import unflatten
 
 logger = logging.getLogger(__name__)
 
@@ -187,7 +188,7 @@ def _set_flags(flat_data: dict[str, str]) -> list[str]:
 
 def _values_file_flags(flat_data: dict[str, str]) -> tuple[list[str], str]:
     """Return (["--values", path], path) — caller is responsible for cleanup."""
-    content = _to_yaml(_unflatten(flat_data))
+    content = _to_yaml(unflatten(flat_data))
     tmp = tempfile.NamedTemporaryFile(
         mode="w", suffix=".yaml", prefix="vartrack_helm_",
         delete=False, encoding="utf-8",

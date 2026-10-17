@@ -13,6 +13,11 @@ ZooKeeper stores values at hierarchical znode paths.
 DOT and FLAT are not valid for ZooKeeper.
 rule.proto SinkKeyFormat.zookeeper enforces this at validation time.
 
+update_strategy
+───────────────
+A znode per key is the only shape ZooKeeper stores, so STRATEGY_KEY_VALUE
+(or unset) is the only update_strategy; DOCUMENT and FILE are refused.
+
 Auto-provision
 ──────────────
 When an env is new (e.g. "pr-42" from a first PR push), the sink creates
@@ -38,7 +43,7 @@ import logging
 from collections.abc import Collection
 from typing import Any
 
-from app.pipeline.sinks.base import BaseSink
+from app.pipeline.sinks.base import BaseSink, update_strategy
 from app.pipeline.sinks.labels import VarTrackLabels
 from app.pipeline.sinks.key_formatter import (
     KeyFormat, format_keys, key_format_from_str, validate_sink_format,
@@ -69,6 +74,13 @@ class ZookeeperSink(BaseSink):
             raise RuntimeError("kazoo is required: pip install kazoo") from exc
 
         cfg = rule_config or {}
+
+        strategy = update_strategy(cfg.get("update_strategy"))
+        if strategy not in ("STRATEGY_UNSPECIFIED", "STRATEGY_KEY_VALUE"):
+            raise ValueError(
+                f"ZooKeeper stores one znode per key; update_strategy {strategy} is not supported. "
+                "Use STRATEGY_KEY_VALUE or leave it unset."
+            )
 
         self._base_path     = cfg.get("zk_base_path", "").rstrip("/")
         self._tenant_id     = tenant_id
@@ -114,6 +126,7 @@ class ZookeeperSink(BaseSink):
         prune_protection: list[str],
         dry_run_prune: bool,
         total_sources: int,
+        data: Any = None,
     ) -> dict[str, Any]:
         # Auto-provision: ensure_path creates every node in the path that
         # doesn't exist yet, including new env subtrees like /pr-42/.

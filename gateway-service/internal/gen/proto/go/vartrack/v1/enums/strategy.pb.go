@@ -27,9 +27,12 @@ const (
 	Strategy_STRATEGY_UNSPECIFIED Strategy = 0
 	// Write each variable as a flat key/value pair.
 	Strategy_STRATEGY_KEY_VALUE Strategy = 1
-	// Write the entire variable set as a single document (JSON/YAML blob).
+	// Write each file's variables as one document, always nested:
+	// {"db": {"host": "x"}}; the flat keys of a .env or .properties file are
+	// nested by their dots.
 	Strategy_STRATEGY_DOCUMENT Strategy = 2
-	// Write each variable set as a file named after the key.
+	// Write each file as one document, in the shape it parsed to: nested for
+	// JSON, YAML, TOML and the other tree formats, flat for .env and .properties.
 	Strategy_STRATEGY_FILE Strategy = 3
 )
 

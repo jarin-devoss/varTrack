@@ -40,7 +40,14 @@ type S3Config struct {
 	SessionToken    *utils.SecretRef `protobuf:"bytes,8,opt,name=session_token,json=sessionToken,proto3,oneof" json:"session_token,omitempty"`
 	UseIamRole      bool             `protobuf:"varint,9,opt,name=use_iam_role,json=useIamRole,proto3" json:"use_iam_role,omitempty"`
 	// The key prefix is the environment. Formerly env_as_prefix, which is still read.
-	PrefixAsEnv          bool                 `protobuf:"varint,10,opt,name=prefix_as_env,json=prefixAsEnv,proto3" json:"prefix_as_env,omitempty"`
+	PrefixAsEnv bool `protobuf:"varint,10,opt,name=prefix_as_env,json=prefixAsEnv,proto3" json:"prefix_as_env,omitempty"`
+	// How the config is stored under the prefix:
+	//
+	//	STRATEGY_KEY_VALUE  one object per key
+	//	STRATEGY_DOCUMENT   config.json, nested
+	//	STRATEGY_FILE       config.json, as the file parsed: nested, or flat for .env / .properties
+	//
+	// Unset: one object per key with one_file_per_key, otherwise config.json with the keys flat.
 	UpdateStrategy       enums.Strategy       `protobuf:"varint,11,opt,name=update_strategy,json=updateStrategy,proto3,enum=vartrack.v1.Strategy" json:"update_strategy,omitempty"`
 	OneFilePerKey        bool                 `protobuf:"varint,12,opt,name=one_file_per_key,json=oneFilePerKey,proto3" json:"one_file_per_key,omitempty"`
 	FilePattern          *string              `protobuf:"bytes,13,opt,name=file_pattern,json=filePattern,proto3,oneof" json:"file_pattern,omitempty"`

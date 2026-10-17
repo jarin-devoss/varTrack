@@ -22,6 +22,10 @@ message MongoConfig {
   optional string collection = 9;
   bool env_as_collection = 10;
   repeated string hosts = 11;
+  // How the config is stored in the collection:
+  //   STRATEGY_KEY_VALUE (default)  one document per key: {key: "db.host", value: "x"}
+  //   STRATEGY_DOCUMENT             one document per file, nested: {data: {db: {host: "x"}}}
+  //   STRATEGY_FILE                 one document per file, as it parsed: nested, or flat for .env / .properties
   Strategy update_strategy = 12 [(buf.validate.field).enum.defined_only = true];
 
   string auth_source = 13;
