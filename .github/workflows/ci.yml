@@ -235,8 +235,9 @@ jobs:
           - service: watcher-service
             context: .
             dockerfile: watcher-service/Dockerfile
+          # The orchestrator generates its Python stubs from proto/, at the root.
           - service: orchestrator-service
-            context: orchestrator-service
+            context: .
             dockerfile: orchestrator-service/docker/Dockerfile
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -274,6 +275,14 @@ jobs:
         if: always()
         working-directory: e2e
         run: docker compose logs e2e-demo
+
+      # A service that fails to start only shows "exited (1)" in the start step.
+      - name: Dump every service's logs
+        if: failure()
+        working-directory: e2e
+        run: |
+          docker compose ps -a
+          docker compose logs --no-color --timestamps
 
       - name: Upload test results
         if: always()
@@ -324,8 +333,9 @@ jobs:
           - service: watcher-service
             context: .
             dockerfile: watcher-service/Dockerfile
+          # The orchestrator generates its Python stubs from proto/, at the root.
           - service: orchestrator-service
-            context: orchestrator-service
+            context: .
             dockerfile: orchestrator-service/docker/Dockerfile
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2

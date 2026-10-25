@@ -572,12 +572,11 @@ cd e2e && docker compose up
 
 ```bash
 docker build -t jarin-devoss/gateway-service:latest      --file ./gateway-service/Dockerfile .
-docker build -t jarin-devoss/orchestrator-service:latest ./orchestrator-service/docker/Dockerfile \
-  --file ./orchestrator-service/docker/Dockerfile ./orchestrator-service
+docker build -t jarin-devoss/orchestrator-service:latest --file ./orchestrator-service/docker/Dockerfile .
 docker build -t jarin-devoss/watcher-service:latest      --file ./watcher-service/Dockerfile .
 ```
 
-The gateway and the watcher build from the repository root, because both use the shared Go module in `libs/go`.
+All three build from the repository root: the gateway and the watcher use the shared Go module in `libs/go`, and the orchestrator image generates its Python gRPC stubs from `proto/` in its own build stage, so an image does not depend on a `buf generate` run in the checkout.
 
 Pre-built multi-arch images (`linux/amd64`, `linux/arm64`) are published on every tagged release:
 

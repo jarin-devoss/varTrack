@@ -122,13 +122,13 @@ flower: ## Start Flower task monitoring UI (port 5555)
 # ── Docker ────────────────────────────────────────────────────────────────────
 
 .PHONY: docker-build
-docker-build: ## Build Docker image
+docker-build: ## Build Docker image (context: the repository root, one level up)
 	docker build \
 	  --build-arg VERSION=$(VERSION) \
 	  --build-arg COMMIT=$(COMMIT) \
 	  --build-arg BUILD_DATE=$(BUILD_DATE) \
 	  -t $(IMAGE_NAME):$(IMAGE_TAG) \
-	  -f docker/Dockerfile .
+	  -f docker/Dockerfile ..
 
 .PHONY: docker-build-multi
 docker-build-multi: ## Build multi-arch image (amd64 + arm64) and push
@@ -139,7 +139,7 @@ docker-build-multi: ## Build multi-arch image (amd64 + arm64) and push
 	  --build-arg BUILD_DATE=$(BUILD_DATE) \
 	  -t $(IMAGE_NAME):$(IMAGE_TAG) \
 	  -f docker/Dockerfile \
-	  --push .
+	  --push ..
 
 .PHONY: docker-run
 docker-run: ## Run the Docker image locally (HTTP :8000, gRPC :50051)

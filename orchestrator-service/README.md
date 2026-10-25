@@ -244,12 +244,13 @@ make test-cov       # with HTML coverage report
 ## Docker
 
 ```bash
-# Build
+# Build (the context is the repository root: the image generates its own
+# Python gRPC stubs from proto/, so no buf generate is needed first)
 docker build \
   --build-arg VERSION=1.0.0 \
   --build-arg COMMIT=$(git rev-parse --short HEAD) \
   -t vartrack/orchestrator-service:1.0.0 \
-  -f docker/Dockerfile .
+  -f docker/Dockerfile ..
 
 # Run API server
 make docker-run

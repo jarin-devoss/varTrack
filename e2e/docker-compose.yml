@@ -123,8 +123,9 @@ services:
 
   orchestrator-api:
     build:
-      context: ../orchestrator-service
-      dockerfile: docker/Dockerfile
+      # The repository root: the image generates its Python stubs from proto/.
+      context: ..
+      dockerfile: orchestrator-service/docker/Dockerfile
     networks: [vartrack]
     command: ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--log-level", "info"]
     environment:
@@ -167,8 +168,9 @@ services:
 
   orchestrator-worker:
     build:
-      context: ../orchestrator-service
-      dockerfile: docker/Dockerfile
+      # The repository root: the image generates its Python stubs from proto/.
+      context: ..
+      dockerfile: orchestrator-service/docker/Dockerfile
     networks: [vartrack]
     command: ["celery", "-A", "app.worker.celery", "worker",
               "--loglevel=info", "-Q", "webhooks,sync,schema",
