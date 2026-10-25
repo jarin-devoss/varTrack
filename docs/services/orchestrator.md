@@ -63,7 +63,7 @@ docker run \
 | `GIT_CACHE_MAX_ENTRIES` | `20` | Max cached repo checkouts |
 | `SCHEMA_CACHE_DIR` | `/tmp/schema_registry` | CUE schema clone directory |
 | `ORCHESTRATOR_ADDR` | `:50051` | gRPC listen address |
-| `UI_DEFAULT_TENANT` | first registered | Tenant the web UI reads when the request has no `X-Tenant-ID` |
+| `UI_DEFAULT_TENANT` | `default` | Tenant the web UI reads when no tenant is registered at all |
 | `UI_COMPARE_TTL_SECONDS` | `10` | How long a sink comparison is answered as is before it is refreshed in the background |
 | `UI_AUTH_PLATFORMS` | — | Web UI sign-in when the bundle has no `ui.auth` block; see [Web UI sign-in](../configuration/auth.md#web-ui-sign-in-with-your-git-platform) |
 
@@ -84,18 +84,18 @@ docker run \
 
 ### Web UI read API (port 8000)
 
-The web UI reads everything it shows from these endpoints. The tenant comes from the `X-Tenant-ID` header, then `UI_DEFAULT_TENANT`, then the first registered tenant.
+The web UI reads everything it shows from these endpoints. They cover every registered tenant at once and answer with what the viewer's Git permissions allow (see [Tenants are shown, not chosen](../configuration/auth.md#tenants-are-shown-not-chosen)); `?tenant=` or the `X-Tenant-ID` header narrows an answer to one tenant. A rule endpoint without `?tenant=` takes the only visible tenant that has the rule, and answers `409` when several do.
 
 | Method | Path | Description |
 |---|---|---|
-| `GET` | `/v1/ui/rules` | Every rule of the tenant with one target per synced environment |
+| `GET` | `/v1/ui/rules` | Every visible rule, of every tenant, with one target per synced environment; `hidden` counts rules on platforms the user has not connected |
 | `GET` | `/v1/ui/rules/{platform}/{datasource}` | One rule |
 | `GET` | `/v1/ui/rules/{platform}/{datasource}/targets/{env}/keys` | Desired value (Git) and current value (sink) of every key |
 | `POST` | `/v1/ui/rules/{platform}/{datasource}/sync` | Re-sync environments from the branch head in Git — body `{"envs": [], "dryRun": false, "prune": false}` |
 | `GET` | `/v1/ui/events?rule=&limit=` | Pushes, syncs, drift and heals, newest first |
 | `GET` | `/v1/ui/tasks?rule=&limit=` | Sync tasks, newest first |
 | `GET` | `/v1/ui/tasks/{task_id}` | One task with its per-file results |
-| `GET` | `/v1/ui/bundle` | Platforms and datasources, without credentials |
+| `GET` | `/v1/ui/bundle` | Platforms and datasources, without credentials; `tenants` lists the visible tenants and each datasource names its rules as `{tenant, name}` |
 
 Every sync records the desired state it wrote (secret values only as a digest), its task and its events in Redis next to the Celery broker. Reading a rule compares that desired state with the values read back from the sink, so drift shows key by key even for rules without `self_heal`.
 
@@ -121,3 +121,9 @@ With sign-in set up (the bundle's `ui.auth` block), every `/v1/ui/*` endpoint ne
 | `ProcessWebhook` | gateway-service | Enqueue ETL pipeline |
 | `CheckDatasource` | watcher-service | Does the datasource still match Git? `in_sync`, `drifted`, `syncing` or `unknown`, per environment |
 | `SyncDatasource` | watcher-service | Re-sync one datasource from Git on drift (self-heal) |
+| `CLIService.SyncFile` | gateway-service | `vt sync`: run a file's content through the pipeline for the rule of its datasource |
+| `CLIService.ValidateFile` | gateway-service | `vt validate`: parse and check a file against the tenant's schema |
+| `CLIService.ValidateConfig` | gateway-service | `vt validate-config`: check a `vartrack.json` or `bundle.json` the way a sync would read it |
+| `CLIService.GetTask`, `ListTasks` | gateway-service | `vt task`: a CLI sync task, recent CLI tasks |
+
+The gateway calls `CLIService` only after a request passed its [Git permission and OPA checks](../configuration/auth.md), and names the caller (`login@platform`) in the `x-cli-user` metadata; the task records it. A CLI sync belongs to the rule for its datasource: in the web UI it shows under that rule, marked **CLI**.

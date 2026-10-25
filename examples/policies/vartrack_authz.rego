@@ -1,70 +1,65 @@
 package vartrack.authz
 
+# OPA runs after the Git platform has had its say: by the time this policy is
+# asked, the caller's own Git token has shown push access to the rule's
+# repositories for a sync, and read access for anything else. This policy
+# adds the rules Git permissions cannot express — which environment, which
+# file path.
+#
+# input.user.permission is the caller's permission on the rule's
+# repositories ("admin", "write" or "read"); input.user.admin is true for the
+# "platform:login" entries of config.cue's ui.auth.admins.
+
 # Default deny — all requests are blocked unless explicitly allowed.
 default allow = false
 
-# ── Allow non-sync actions for operators and above ────────────────────────────
+# ── Anything but a sync (validate, task get/list): Git read access decided ───
 
 allow {
     input.action != "sync"
-    is_operator_or_above
 }
 
-# ── Allow sync to non-production environments for operators ───────────────────
+# ── varTrack admins and repository admins may sync anywhere ──────────────────
 
 allow {
     input.action == "sync"
-    not is_production
-    is_operator_or_above
-}
-
-# ── Production sync requires admin role ───────────────────────────────────────
-
-allow {
-    input.action == "sync"
-    is_production
     is_admin
 }
 
-# ── Dry-run syncs are always allowed for operators (no writes happen) ─────────
+# ── Writers may sync outside production, except secrets paths ────────────────
+
+allow {
+    input.action == "sync"
+    is_writer
+    not is_production
+    not is_secret_path
+}
+
+# ── Dry runs write nothing: read access is enough, anywhere ──────────────────
 
 allow {
     input.action == "sync"
     input.dry_run == true
-    is_operator_or_above
-}
-
-# ── Block writes to secrets paths for non-admins ─────────────────────────────
-
-deny_secret_path {
-    startswith(input.file_path, "configs/secrets/")
-    not is_admin
-}
-
-allow {
-    not deny_secret_path
-    input.action == "sync"
-    is_admin
 }
 
 # ── Helper rules ─────────────────────────────────────────────────────────────
 
 is_production {
-    input.env == "production"
+    startswith(input.env, "prod")    # production, prod-eu, …
 }
 
-is_production {
-    startswith(input.env, "prod")
+is_secret_path {
+    startswith(input.file_path, "configs/secrets/")
 }
 
 is_admin {
-    "role:admin" == input.user.groups[_]
+    input.user.admin == true
 }
 
-is_operator_or_above {
-    is_admin
+is_admin {
+    input.user.permission == "admin"
 }
 
-is_operator_or_above {
-    "role:operator" == input.user.groups[_]
+is_writer {
+    input.user.permission == "write"
 }

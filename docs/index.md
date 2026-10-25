@@ -34,19 +34,19 @@ If someone edits MongoDB directly and changes `max_connections` to `5`, the watc
 
 ## Why varTrack?
 
-Tools like **ArgoCD** and **FluxCD** are excellent at deploying *Kubernetes manifests* from Git. They don't solve a different problem: syncing runtime configuration values into the datastores your applications actually read — MongoDB documents, Redis hashes, ZooKeeper znodes, S3 objects, Linux `.env` files.
+Git is a good home for application configuration, but the values your applications read live in datastores — MongoDB documents, Redis hashes, ZooKeeper znodes, S3 objects, Linux `.env` files — and nothing keeps them in step with Git.
 
-varTrack fills that gap. It treats Git as the single source of truth for **application configuration data** — not Kubernetes resources.
+varTrack fills that gap. It treats Git as the single source of truth for **application configuration data**, and writes it to the datastores your applications actually read.
 
-| | ArgoCD / FluxCD | varTrack |
-|---|---|---|
-| Target | Kubernetes manifests | MongoDB, Redis, ZooKeeper, S3, ConfigMap, Helm, Vercel, Linux |
-| Trigger | Git push | Git push / webhook |
-| Drift detection | Kubernetes state | Any datasource |
-| Secret management | Kubernetes secrets | HashiCorp Vault integration |
-| Schema validation | None | CUE schema per tenant |
+| | varTrack |
+|---|---|
+| Target | MongoDB, Redis, ZooKeeper, S3, ConfigMap, Helm, Vercel, Linux |
+| Trigger | Git push / webhook |
+| Drift detection | Any datasource |
+| Secret management | HashiCorp Vault integration |
+| Schema validation | CUE schema per tenant |
 
-They complement each other: use ArgoCD to deploy your services, use varTrack to keep their runtime config in sync.
+It works alongside whatever deploys your services: varTrack only keeps their runtime config in sync.
 
 ---
 
@@ -82,7 +82,7 @@ They complement each other: use ArgoCD to deploy your services, use varTrack to 
 
     ---
 
-    Watcher polls each datasource and compares against the Git baseline. On drift, logs the delta and optionally restores correct state — automatically
+    The watcher asks the orchestrator each poll whether a datasource still matches Git. On drift, it logs the delta and optionally restores correct state — automatically
 
     [:octicons-arrow-right-24: How drift detection works](concepts/drift-detection.md)
 
@@ -153,15 +153,14 @@ flowchart LR
     ORCH -->|write| S3["S3 / MinIO"]
     ORCH -->|write| OTHER["ConfigMap · Helm\nVercel · Linux"]
 
-    WATCH -->|"poll\n(drift check)"| MONGO
-    WATCH -->|"poll"| REDIS
-    WATCH -->|"TriggerSync\n(self-heal)"| ORCH
+    WATCH -->|"CheckDatasource\n(drift check)"| ORCH
+    WATCH -->|"SyncDatasource\n(self-heal)"| ORCH
 ```
 
 1. You push a config file.
 2. **gateway-service** (Go) receives the webhook, verifies the HMAC signature, and forwards it via gRPC.
 3. **orchestrator-service** (Python) fetches the file from Git, validates it against a CUE schema, runs the Rust ETL core (diff, merge, prune), and writes to all configured sinks.
-4. **watcher-service** (Go) polls datasources on a configurable interval. On drift, it logs the delta and — if `self_heal: true` — calls the orchestrator to restore correct state.
+4. **watcher-service** (Go) asks the orchestrator on a configurable interval whether each `self_heal` rule's datasource still matches Git — the orchestrator reads the sink — and on drift has it restore correct state.
 
 !!! info "Why Rust inside the orchestrator?"
     The ETL core (diff, flatten, merge, prune) is implemented in Rust and called from Python via FFI. This keeps the hot path allocation-free and handles multi-megabyte config payloads without GC pressure, while the Python layer handles I/O, Vault, and sink drivers.

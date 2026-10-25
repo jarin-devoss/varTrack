@@ -1,6 +1,6 @@
 # Drift Detection & Self-Heal
 
-The watcher-service continuously polls every configured datasource and compares the live state against the Git baseline. When values diverge, it can restore the correct state automatically.
+For every rule with `self_heal: true`, the watcher-service asks the orchestrator on each poll whether the datasource still matches Git, and has it restore the ones that don't.
 
 ---
 
@@ -19,31 +19,26 @@ Without drift detection, these changes go unnoticed until something breaks.
 
 ## How detection works
 
-The watcher reads each datasource and keeps a fingerprint of it. A fingerprint only says *that* something changed — varTrack's own syncs change it too — so when it moves, the watcher asks the orchestrator whether the datasource still matches Git, key by key (`CheckDatasource`). Only a mismatch is drift.
+The orchestrator is the one component that reads and writes the sinks: it holds their credentials and their client code. So it also does the comparing. On every poll the watcher calls `CheckDatasource`; the orchestrator reads, in each synced environment, the keys varTrack wrote and compares them with what it last synced from Git (the sync ledger). The watcher itself reads no sink and holds no sink credentials.
 
 ```
-Every POLL_INTERVAL (default: 60s)
+Every POLL_INTERVAL (default: 60s), for each self_heal rule
   │
-  ├── Fingerprint the datasource
-  ├── Same as the baseline → nothing to do
-  │
-  └── Changed → CheckDatasource: compare every synced environment with the
-      desired state varTrack last wrote from Git
-        ├── in sync  → a varTrack sync wrote it: new baseline, no heal
+  └── CheckDatasource → the orchestrator reads the sink, key by key
+        ├── in sync  → nothing to do
         ├── syncing  → a sync is still writing: look again on the next poll
-        └── drifted  → (also: orchestrator can't compare, see below)
-              ├── Increment vartrack_watcher_drift_total
-              └── Heal: SyncDatasource gRPC → orchestrator re-syncs this
+        ├── unknown  → can't tell (never synced, sink unreadable): no heal
+        └── drifted  → vartrack_watcher_drift_detected_total + 1
+              └── Heal: SyncDatasource → the orchestrator re-syncs this
                   datasource from the head of every branch that feeds it
 ```
 
 A few rules keep this from healing what it shouldn't, or waiting forever:
 
-- **Unknown** — the orchestrator answers but can't compare (nothing synced yet, or it can't read the sink back, as with Vercel): the watcher heals, as it did before the check existed. A heal only ever writes what Git says.
-- **Orchestrator unreachable or older** (no `CheckDatasource`): the watcher heals on any change, as before.
+- **Unknown is not drift.** A sink that cannot be read answers *unknown*, never "every key is missing", so an outage does not set off heals. A value the sink never gives back — a Vercel *sensitive* variable — is neither missing nor changed.
+- **One heal at a time.** After it asks for a heal, the watcher waits two poll intervals (at least 30 s) before asking again for the same drift, so the queued sync has time to start; a check that answers *in sync* ends the wait.
+- **A failed heal** is tried again on the next poll; while heal requests keep failing, a circuit breaker stops sending them for a while.
 - **A sync that died** — a worker killed mid-sync leaves no result. A sync still marked running after 15 minutes (Celery stops any task after 10) no longer counts, so the watcher heals instead of waiting on it.
-- **First start without a saved baseline** — the watcher asks once right away, so drift from before it ever ran is healed too. At startup only a definite *drifted* heals; with no change seen, *unknown* is no evidence.
-- **A failed heal** is not retried until the datasource changes again: the same sync would fail the same way. The web UI shows it as *Heal failed*.
 
 ---
 
@@ -59,7 +54,7 @@ rules: [{
 }]
 ```
 
-Rules with `self_heal: false` (or omitted) are not polled by the watcher, and nothing repairs them. The web UI still compares them with Git whenever it reads them, so their drift shows there until someone syncs from Git:
+The watcher asks the orchestrator which rules to watch on every poll, so a rule that gains `self_heal`, or is suspended or removed, is picked up at the next poll, without restarting the watcher. Rules with `self_heal: false` (or omitted) are not polled by the watcher, and nothing repairs them. The web UI still compares them with Git whenever it reads them, so their drift shows there until someone syncs from Git:
 
 ![A Redis rule with self-heal off: production is out of sync, staging matches Git](../assets/screenshots/rule-drift.png)
 
@@ -78,13 +73,12 @@ Someone runs `db.variables.updateOne({key: "max_connections"}, {$set: {value: 5}
 
 On the next poll cycle:
 
-1. Watcher sees the MongoDB fingerprint change
-2. Asks the orchestrator (`CheckDatasource`): Git says `50`, MongoDB has `5` — drifted
-3. `self_heal: true` → calls `SyncDatasource` on the orchestrator
-4. Orchestrator fetches the file from Git, parses it, writes `max_connections = 50` back to MongoDB
-5. That write moves the fingerprint again; the orchestrator says it matches Git, so it becomes the new baseline — state restored
+1. The watcher asks the orchestrator (`CheckDatasource`): Git says `50`, MongoDB has `5` — drifted
+2. `self_heal: true` → it calls `SyncDatasource` on the orchestrator
+3. The orchestrator fetches the file from Git, parses it, writes `max_connections = 50` back to MongoDB
+4. The next check answers *in sync* — state restored
 
-Had the change come from a push to Git, step 2 would have answered *in sync* and nothing would be healed.
+Had the change come from a push to Git, the sync of that push would have recorded it, step 1 would have answered *in sync*, and nothing would be healed.
 
 Total recovery time: up to one `POLL_INTERVAL` (default 60 seconds).
 
@@ -100,11 +94,11 @@ Monitor drift in Prometheus / Grafana:
 
 | Metric | Type | Description |
 |---|---|---|
-| `vartrack_watcher_poll_total` | Counter | Total poll cycles, labeled by datasource |
-| `vartrack_watcher_drift_total` | Counter | Drift events detected |
-| `vartrack_watcher_heal_total` | Counter | Self-heal calls triggered |
-| `vartrack_watcher_heal_errors_total` | Counter | Self-heal calls that failed |
-| `vartrack_watcher_poll_duration_seconds` | Histogram | Poll cycle duration |
+| `vartrack_watcher_drift_detected_total` | Counter | Drift found, by rule |
+| `vartrack_watcher_heal_triggered_total` | Counter | Heals the orchestrator accepted |
+| `vartrack_watcher_heal_failed_total` | Counter | Heals that could not be requested |
+| `vartrack_watcher_poll_duration_seconds` | Histogram | How long a `CheckDatasource` took |
+| `vartrack_watcher_up` | Gauge | 1 while a rule's loop runs |
 
 ---
 
@@ -116,7 +110,7 @@ Adjust how often the watcher checks each datasource:
 POLL_INTERVAL=30s go run ./watcher-service/cmd
 ```
 
-Lower values mean faster drift detection but more load on datasources.
+Lower values mean faster drift detection but more load on the orchestrator, which reads every self-heal datasource each poll.
 
 ---
 
@@ -139,36 +133,25 @@ A unified polling model means a single code path works across all backends with 
 
 **How the overhead is minimised:**
 
-- **Lightweight reads** — for key/value stores (Redis, MongoDB document), the watcher fetches only the keys declared in the rule's config file, not the entire database.
+- **Lightweight reads** — the orchestrator reads only the keys varTrack wrote in each environment, not the entire datasource, and reads the environments of a datasource in parallel.
 - **Configurable interval** — default 60 s; set `POLL_INTERVAL` to match your SLA.
-- **Leader election** — in multi-replica deployments, only one replica polls at a time (ZooKeeper or Redis distributed lock).
-- **Shared state store** — replicas share the baseline via Redis so each poll compares against a consistent snapshot.
-- **Circuit breaker** — if a datasource is unreachable, the watcher backs off exponentially rather than hammering it.
+- **Leader election** — in multi-replica deployments, only one replica polls (ZooKeeper or Redis distributed lock).
+- **Circuit breaker** — while heal requests keep failing, the watcher stops sending them for a while.
 
 ---
 
 ## Multi-replica deployments
 
-When running multiple watcher replicas, only one should run the heal loop at a time. Leader election ensures this:
+When running multiple watcher replicas, only one should poll and heal at a time. Leader election ensures this:
 
 ```cue
-global_tags: {
+bundle: {
   watcher_leader_election_datasource: "redis"   // or "zookeeper"
 }
 ```
 
-Replicas that are not the leader still poll and detect drift, but defer healing to the current leader. If the leader crashes, another replica acquires the lock within one TTL window (15 seconds for Redis).
+This is the only thing the watcher reads `config.cue` for. The datasource is one of the bundle's `datasources`, named like the others (`redis`, or `redis-broker` for the one tagged `broker`). Its password may be written inline or as a `{file: …}`; a `{ref: …}` is refused at startup, because the watcher has no secret manager.
 
----
+Replicas that are not the leader stay idle. If the leader crashes, another replica acquires the lock within one TTL window (15 seconds for Redis).
 
-## Shared state store
-
-In multi-replica deployments, all replicas can share the same baseline state via Redis:
-
-```cue
-global_tags: {
-  watcher_state_redis: "redis"   // name of a configured redis datasource
-}
-```
-
-This prevents replicas from triggering unnecessary heals due to stale local state.
+The watcher keeps no state between polls: the orchestrator compares with its sync ledger. (`watcher_state_datasource` was removed; a `config.cue` that still sets it loads, with a log line.)

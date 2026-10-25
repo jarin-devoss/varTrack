@@ -100,26 +100,33 @@ bundle: {
 		},
 	]
 
+	// Vault, for @secret() fields and {ref: {path, key}} credentials,
+	// logged in with the pod's Kubernetes service account.
+	secret_managers: [
+		{
+			vault: {
+				tag:         "default"
+				endpoint:    "https://vault.acme.internal:8200"
+				mount_point: "secret"
+				kv_version:  2
+				kubernetes_auth: {role: "vartrack-orchestrator"}
+			}
+		},
+	]
+
 	rules: [
 		{
 			platform:   "github"
 			datasource: "mongo-primary"
 			self_heal:  true
-			vault: {
-				address: "https://vault.acme.internal:8200"
-				auth_method: "kubernetes"
-				role:    "vartrack-orchestrator"
-			}
+			// Production never prunes, whatever the tenant's bundle.json or a
+			// repo's vartrack.json says: force is applied after both.
+			force: {prune: {enabled: false}}
 		},
 		{
 			platform:   "github"
 			datasource: "mongo-dr"
 			self_heal:  true
-			vault: {
-				address: "https://vault.acme.internal:8200"
-				auth_method: "kubernetes"
-				role:    "vartrack-orchestrator"
-			}
 		},
 		{
 			platform:   "github"

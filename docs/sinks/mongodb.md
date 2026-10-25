@@ -1,6 +1,6 @@
 # MongoDB Sink
 
-varTrack writes config values to MongoDB. The datasource's `update_strategy` picks the shape: **key-value** (one document per key), **document** (one nested document per file), or **file** (one document per file, in the shape the file parsed to).
+varTrack writes config values to MongoDB. The datasource's `update_strategy` picks the shape: **document** (one nested document per file, the default), **key-value** (one document per key), or **file** (one document per file, in the shape the file parsed to).
 
 ---
 
@@ -13,7 +13,7 @@ datasources: [{
     endpoint:        "mongodb://mongo:27017"
     database:        "vartrack"
     collection:      "variables"
-    update_strategy: "STRATEGY_KEY_VALUE"       // or "STRATEGY_DOCUMENT", "STRATEGY_FILE"
+    update_strategy: "STRATEGY_DOCUMENT"        // the default; or "STRATEGY_KEY_VALUE", "STRATEGY_FILE"
   }
 }]
 ```
@@ -58,7 +58,7 @@ max_connections: 50
 regions: [eu, us]
 ```
 
-### `STRATEGY_KEY_VALUE` (default)
+### `STRATEGY_KEY_VALUE`
 
 Each config key is stored as a separate document, its value as a string:
 
@@ -70,7 +70,7 @@ Each config key is stored as a separate document, its value as a string:
 
 Reading a value: `db.collection.findOne({ _vt_env: "production", key: "database.host" }).value`
 
-### `STRATEGY_DOCUMENT`
+### `STRATEGY_DOCUMENT` (default)
 
 One document per environment and file, with the config always nested under `data`. Values keep the types and arrays they have in the file:
 
@@ -106,6 +106,9 @@ One document per environment and file, with `data` in the shape the file parsed 
 ```
 
 With either document strategy, every sync replaces the file's document, so keys removed from Git disappear without `prune`. Switching a datasource from `STRATEGY_KEY_VALUE` to one of them removes that file's per-key documents on the next sync.
+
+!!! note "The default changed"
+    A Mongo datasource that sets no `update_strategy` used to store one document per key. It now stores one nested document per file. To keep per-key documents, set `update_strategy: "STRATEGY_KEY_VALUE"`; without it, the next sync replaces the per-key documents of each file with its document.
 
 ---
 
@@ -151,7 +154,7 @@ rules: [{
 
 ## Drift detection
 
-The watcher-service reads every varTrack document in the configured collection: the `key → value` pairs, or the keys inside `data`, flat or nested. When they change, the orchestrator compares each key with Git; a changed or missing key is drift.
+The watcher asks the orchestrator each poll; the orchestrator reads the keys varTrack wrote — the `key → value` documents, or the keys inside `data` and compares them with what it last synced from Git — a changed or missing key is drift ([Drift Detection](../concepts/drift-detection.md)).
 
 Enable self-heal to restore automatically:
 

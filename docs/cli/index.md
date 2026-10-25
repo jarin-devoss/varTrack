@@ -22,32 +22,14 @@ mv vt /usr/local/bin/vt
 
 ## Authentication
 
-### OIDC / SSO login
+`vt` authenticates with your Git token — a GitHub or Gitea personal access token. What it may do is what that token may do in the rule's repositories: push access syncs, read access validates and dry-runs ([Authentication & Authorization](../configuration/auth.md)).
 
 ```bash
-# Azure AD / Entra ID
-vt login \
-  --server         https://gateway.example.com \
-  --oidc-issuer    "https://login.microsoftonline.com/<tenant-id>/v2.0" \
-  --oidc-client-id "<app-client-id>"
-
-# Google
-vt login \
-  --server         https://gateway.example.com \
-  --oidc-issuer    https://accounts.google.com \
-  --oidc-client-id "<client-id>"
-```
-
-A browser window opens for login. The token is saved automatically.
-
-### Static token (for CI/CD)
-
-```bash
-vt login --server https://gateway.example.com --token "$VARTRACK_TOKEN"
+vt login --server https://gateway.example.com --token "$GIT_TOKEN"
 
 # Or skip login entirely — set env vars
 export VARTRACK_SERVER=https://gateway.example.com
-export VARTRACK_TOKEN=eyJ...
+export VARTRACK_TOKEN=<your Git token>
 ```
 
 ---
@@ -90,6 +72,7 @@ vt sync --file configs/app.yaml --datasource mongo --env staging --json
 |---|---|---|
 | `--file` | — | Path to the config file (**required**) |
 | `--datasource` | — | Target datasource name (**required**) |
+| `--platform` | — | Platform of the rule (for example `github`, `gitea-internal`); needed only when rules on several platforms write to the datasource |
 | `--env` | — | Deployment environment (**required**) |
 | `--tenant` | from context | Tenant ID |
 | `--dry-run` | false | Validate without writing |
@@ -120,9 +103,41 @@ vt validate --file configs/app.yaml --datasource mongo --tenant myapp
 |---|---|---|
 | `--file` | — | Path to the config file (**required**) |
 | `--datasource` | — | Datasource name (selects the schema) |
+| `--platform` | — | Platform of the rule; needed only when rules on several platforms write to the datasource |
 | `--tenant` | from context | Tenant ID |
 | `--format` | auto | File format override |
 | `--json` | false | Print result as JSON |
+
+---
+
+### `vt validate-config`
+
+Check a `vartrack.json` or a tenant's `bundle.json` before pushing it, with the code a sync reads it with. Exits with code 1 when there are errors.
+
+```bash
+vt validate-config vartrack.json
+vt validate-config .gitea/vartrack.json
+vt validate-config schemas/bundle.json --tenant payments
+```
+
+The file's name says what it is: `vartrack.json` (also under `.github/`, `.gitea/` or `.gitlab/`), `bundle.json` or `rules.json`.
+
+| It reports | What it means |
+|---|---|
+| **errors** | what a sync rejects: invalid JSON, a value of the wrong type, a second rule for one platform and datasource, a rule `config.cue` does not have or a tenant may not layer |
+| **warnings** | what a sync ignores: keys only `config.cue` sets, [removed options](../configuration/schema-registry.md#how-a-rule-is-built), `prune` that has no effect on a whole-object sink |
+| **migrations** | options under a name that changed (`env_as_branch` → `branch_as_env`); a sync still reads them |
+
+A `vartrack.json`'s `extends` presets are checked by name, not fetched. A `bundle.json`'s presets are fetched from the tenant's schema repository, as a sync does.
+
+**Flags:**
+
+| Flag | Default | Description |
+|---|---|---|
+| `--tenant` | from context | Tenant ID: whose rules and presets a `bundle.json` is checked against |
+| `--json` | false | Print `errors`, `warnings` and `migrations` as JSON |
+
+The caller needs a token any platform of the bundle accepts; the file names no rule, so no repository permission is asked.
 
 ---
 
@@ -181,7 +196,7 @@ vt version
 | Variable | Purpose |
 |---|---|
 | `VARTRACK_SERVER` | Gateway base URL |
-| `VARTRACK_TOKEN` | Bearer token — skips `vt login` |
+| `VARTRACK_TOKEN` | Your Git token — skips `vt login` |
 | `VARTRACK_TENANT` | Tenant ID |
 | `VARTRACK_CONTEXT` | Named context to activate |
 

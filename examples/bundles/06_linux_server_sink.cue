@@ -20,18 +20,21 @@ bundle: {
 			linux_server: {
 				// No tag → datasource name is "linux_server".
 				tag:  ""
-				host: "app-server-01.internal"
-				port: 22
-				user: "deploy"
+				host:     "app-server-01.internal"
+				port:     22
+				username: "deploy"
 
-				// Password auth — prefer key_file in production.
+				// Password auth — prefer an SSH key in production.
 				password: "deploy-password"
 
-				// Or use an SSH key:
-				// key_file: "/secrets/id_rsa"
+				// Or use an SSH key (one or the other, not both):
+				// ssh_key: {private_key: {file: "/secrets/id_rsa"}}
 
-				// Remote base directory: files land at {base_path}/{env}/{filename}.
-				base_path: "/etc/vartrack"
+				// The file written, relative to base_directory; with env_as_path
+				// each environment gets its own directory: /etc/vartrack/{env}/app.env.
+				base_directory: "/etc/vartrack"
+				file_paths:     ["app.env"]
+				env_as_path:    true
 			}
 		},
 		{

@@ -1,6 +1,6 @@
 # Linux Server Sink
 
-varTrack writes config values as a file on a remote Linux server over SSH. Useful for servers that read configuration from flat files (`.env`, INI, etc.) and can't use a central datastore.
+varTrack writes config values as a file on a remote Linux server over SSH (SFTP). Useful for servers that read configuration from flat files (`.env`, `.properties`, JSON, YAML) and can't use a central datastore.
 
 ---
 
@@ -9,172 +9,101 @@ varTrack writes config values as a file on a remote Linux server over SSH. Usefu
 ```cue
 datasources: [{
   linux_server: {
-    tag:         ""
-    host:        "server.example.com"
-    port:        22
-    username:    "deploy"
-    private_key: "-----BEGIN OPENSSH PRIVATE KEY-----\n..."
-    base_path:   "/etc/app"
-  }
-}]
-```
-
-### Password authentication
-
-```cue
-datasources: [{
-  linux_server: {
+    tag:      ""                         // optional — resolves to "linux_server-{tag}"
     host:     "server.example.com"
+    port:     22                         // optional, default 22
     username: "deploy"
-    password: "secret"
+
+    // One of password or ssh_key:
+    ssh_key: {private_key: {file: "/run/secrets/id_rsa"}}
+    // password: {file: "/run/secrets/ssh-password"}
+
+    base_directory: "/etc/app"
+    file_paths:     ["app.env"]          // the file written; relative paths are under base_directory
+    env_as_path:    false                // true: one directory per environment
+
+    known_hosts_file: "/etc/vartrack/known_hosts"   // optional
   }
 }]
 ```
+
+The SSH key is read from a file, so give `private_key` as `{file: "/path"}`. `password` takes any credential form: a string, `{file: …}` or `{ref: …}` from Vault.
 
 ---
 
-## Destination template
+## Where the file goes
 
-The `destination_template` sets the full remote file path:
-
-```cue
-rules: [{
-  platform:             "github"
-  datasource:           "linux_server"
-  destination_template: "/etc/app/{env}.env"
-}]
-```
-
-| Push branch | File written |
+| Setting | `production` is written to |
 |---|---|
-| `main` | `/etc/app/production.env` |
-| `develop` | `/etc/app/staging.env` |
+| default | `/etc/app/app_production.env` |
+| `env_as_path: true` | `/etc/app/production/app.env` |
+| rule `destination_template: "/etc/app/{env}.env"` | `/etc/app/production.env` |
 
-The file is written in `KEY=value` format by default:
+`destination_template` on the rule takes precedence over `base_directory` and `file_paths`. Missing directories are created.
+
+The file's extension sets its format: `.env` writes `key=value` lines; `.json`, `.yaml`, `.properties` and `.ini` are written in their own format. Keys are written as they come out of the config file, sorted; `.env`, `.properties` and `.ini` files start with a header line:
 
 ```bash
-# /etc/app/production.env
-DATABASE_HOST=mongo.prod.internal
-MAX_CONNECTIONS=50
-FEATURE_DARK_MODE=true
+# /etc/app/production/app.env — from a YAML file with database.host, feature.dark_mode, max_connections
+# vartrack managed — env=production tenant=default
+database.host=mongo.prod.internal
+feature.dark_mode=true
+max_connections=50
 ```
 
 ---
 
-## File permissions & ownership
+## Host keys
 
 ```cue
-datasources: [{
-  linux_server: {
-    host:              "server.example.com"
-    username:          "deploy"
-    private_key:       "..."
-    file_permissions:  "0640"       // octal — owner rw, group r
-    file_owner:        "app"        // chown user
-    file_group:        "appgroup"   // chown group
-    create_parent_dirs: true        // mkdir -p before writing
-  }
-}]
-```
-
----
-
-## Backup before write
-
-```cue
-datasources: [{
-  linux_server: {
-    host:          "server.example.com"
-    username:      "deploy"
-    private_key:   "..."
-    backup_suffix: ".bak"   // creates /etc/app/production.env.bak before overwrite
-  }
-}]
-```
-
----
-
-## Post-write commands
-
-Run shell commands on the server after the file is written (e.g. reload a service):
-
-```cue
-datasources: [{
-  linux_server: {
-    host:        "server.example.com"
-    username:    "deploy"
-    private_key: "..."
-    post_write_commands: [
-      "systemctl reload nginx",
-      "systemctl restart myapp",
-    ]
-    continue_on_command_error: false   // abort remaining commands on first failure
-  }
-}]
-```
-
-Commands run in order. Set `continue_on_command_error: true` to keep running even if one fails.
-
----
-
-## Sudo
-
-```cue
-datasources: [{
-  linux_server: {
-    host:          "server.example.com"
-    username:      "deploy"
-    private_key:   "..."
-    use_sudo:      true
-    sudo_password: "sudo-secret"            // optional — for passworded sudo
-  }
-}]
-```
-
----
-
-## SFTP mode
-
-By default varTrack uses SCP. Switch to SFTP for environments where SCP is disabled:
-
-```cue
-datasources: [{
-  linux_server: {
-    host:        "server.example.com"
-    username:    "deploy"
-    private_key: "..."
-    enable_sftp: true
-  }
-}]
-```
-
----
-
-## Host key verification
-
-```cue
-datasources: [{
-  linux_server: {
-    host:                    "server.example.com"
-    username:                "deploy"
-    private_key:             "..."
-    host_key_verification:   "strict"           // "strict" (default), "accept-new", "off"
-    known_hosts_file:        "~/.ssh/known_hosts"
-  }
-}]
+host_key_verification: "strict"     // "strict" (default), "accept-new", "off"
+known_hosts_file:      "/etc/vartrack/known_hosts"
 ```
 
 | Mode | Behaviour |
 |---|---|
-| `strict` | Reject unknown hosts — recommended for production |
-| `accept-new` | Accept new hosts on first connect, reject changed keys |
-| `off` | Disable host key checking — not recommended |
+| `strict` | The host's key must already be in `known_hosts_file` (or the orchestrator's system known hosts) |
+| `accept-new` | A host seen for the first time is accepted and recorded in `known_hosts_file`; a changed key is refused |
+| `off` | Any key is accepted — not recommended |
+
+---
+
+## Writing the file
+
+```cue
+linux_server: {
+  // …connection, file_paths…
+  file_mode:           "0640"
+  file_owner:          "app:app"          // chown; usually needs use_sudo
+  create_directories:  true               // default; false fails when the directory is missing
+  backup_before_write: true
+  backup_suffix:       ".bak"             // default
+  validation_command:          "nginx -t -c {file}"
+  rollback_on_validation_fail: true
+  post_write_commands:         ["systemctl reload nginx"]
+  continue_on_command_error:   false
+}
+```
+
+In order: missing directories are created, the previous file is copied to `{file}{backup_suffix}` when `backup_before_write` is on, the new file is written, then `file_mode` and `file_owner` are applied. `validation_command` runs next — `{file}` is the written file — and when it fails the sync fails; with `rollback_on_validation_fail` the previous file is put back first. Last, `post_write_commands` run in order: a failing one fails the sync unless `continue_on_command_error` is on.
+
+## Transfer, sudo and connection
+
+| Field | Effect |
+|---|---|
+| `use_sftp` | Files move over SFTP (default); `false` moves them through shell commands, for servers without SFTP |
+| `use_sudo`, `sudo_password` | File operations and commands run with `sudo`; the file is uploaded to `/tmp` first and installed from there. `sudo_password` takes any credential form |
+| `connection_timeout`, `command_timeout` | Limits for connecting and for each command |
+| `max_retries`, `retry_backoff` | Connection attempts after the first, and the wait between them; a changed host key is never retried |
+| `enable_compression` | SSH compression |
+
+Files are written as the SSH user (or root with `use_sudo`); without `file_mode` they get that user's default permissions.
 
 ---
 
 ## Drift detection
 
-The watcher connects via SSH, reads the remote file, and compares its contents against the Git baseline.
+The watcher asks the orchestrator each poll; the orchestrator reads the remote file over SSH and compares its keys with what it last synced from Git — a changed or missing key is drift ([Drift Detection](../concepts/drift-detection.md)).
 
 ```cue
 rules: [{

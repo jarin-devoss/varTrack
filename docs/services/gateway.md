@@ -58,6 +58,7 @@ docker run \
 | `GRPC_TLS_KEY` | — | Client key for mTLS outbound gRPC |
 | `GATEWAY_TLS_CERT` | — | Inbound TLS cert |
 | `GATEWAY_TLS_KEY` | — | Inbound TLS key |
+| `OPA_RELOAD_INTERVAL` | `30m` | How often an `auth.opa.policy_file` is re-read |
 
 ---
 
@@ -80,6 +81,26 @@ POST /webhooks/{datasource}
 | `429` | Rate limit exceeded |
 | `502` | gRPC call to orchestrator failed |
 | `503` | Circuit breaker open |
+
+### CLI API
+
+```
+POST /v1/cli/sync
+POST /v1/cli/validate
+POST /v1/cli/validate-config
+GET  /v1/cli/tasks/{id}
+GET  /v1/cli/tasks?tenant_id=&limit=
+```
+
+Used by `vt` and the web UI's Playground. Every request carries the caller's Git token; the rule's Git platform says what it may do, then OPA decides when configured — see [Authentication & Authorization](../configuration/auth.md). The request is then served by the orchestrator's `CLIService` over gRPC.
+
+### OPA policy reload
+
+```
+POST /admin/opa/reload   # admin port; present when auth.opa is configured
+```
+
+`200` once the policy is recompiled; `422` with the compile error when it does not compile, the previous policy staying in force.
 
 ### Health
 

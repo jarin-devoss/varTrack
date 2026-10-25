@@ -48,6 +48,11 @@ bundle: {
 		},
 	]
 
+	// Two platforms write to mongo-primary, one rule each: a rule is identified
+	// by its platform and datasource. A webhook to /webhooks/mongo-primary is
+	// told apart by the headers of the platform that sent it (X-Gitea-Event,
+	// X-GitHub-Event), and `vt sync` / `vt validate` take --platform to say
+	// which rule they mean.
 	rules: [
 		{
 			platform:     "github"

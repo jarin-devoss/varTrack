@@ -54,18 +54,18 @@ Push a config change to the local repo and watch it sync automatically.
 
 ## Why VarTrack?
 
-Tools like **ArgoCD** and **FluxCD** are excellent at syncing Kubernetes manifests from Git into a cluster. They don't solve a different problem: syncing runtime configuration values into the datastores your applications actually read at runtime — MongoDB documents, Redis hashes, ZooKeeper znodes, S3 objects, Linux `.env` files.
+Git is a good home for application configuration, but the values your applications read at runtime live in datastores — MongoDB documents, Redis hashes, ZooKeeper znodes, S3 objects, Linux `.env` files — and nothing keeps them in step with Git.
 
-VarTrack fills that gap. It treats Git as the single source of truth for **application configuration data** — not Kubernetes resources.
+VarTrack fills that gap. It treats Git as the single source of truth for **application configuration data**, and writes it to the datastores your applications actually read.
 
-| | ArgoCD / FluxCD | VarTrack |
-|---|---|---|
-| Target | Kubernetes manifests | MongoDB, Redis, ZooKeeper, S3, ConfigMap, Helm, Vercel, Linux |
-| Drift detection | Kubernetes state | Any datasource |
-| Secret management | External Secrets Operator | HashiCorp Vault + `@secret()` annotations |
-| Schema validation | None | CUE per tenant, enforced before every write |
+| | VarTrack |
+|---|---|
+| Target | MongoDB, Redis, ZooKeeper, S3, ConfigMap, Helm, Vercel, Linux |
+| Drift detection | Any datasource |
+| Secret management | HashiCorp Vault + `@secret()` annotations |
+| Schema validation | CUE per tenant, enforced before every write |
 
-They complement each other: use ArgoCD to deploy your services, use VarTrack to keep their runtime config in sync.
+It works alongside whatever deploys your services: VarTrack only keeps their runtime config in sync.
 
 **VarTrack is the right fit if you:**
 
@@ -84,28 +84,30 @@ They complement each other: use ArgoCD to deploy your services, use VarTrack to 
 - **7 config formats** — YAML, JSON, TOML, .env, INI, HCL, XML — format auto-detected from file extension
 - **Multi-sink fan-out** — one push writes to multiple sinks in parallel from one rule set
 - **4 sync strategies** — `AUTO` (cost-model picks for you), `GIT_UPSERT_ALL`, `GIT_SMART_REPAIR`, `LIVE_STATE`
-- **Stale key pruning** — automatically delete keys no longer present in Git, with `prune_protection` glob patterns for keys that must never be removed
+- **Stale key pruning** — once per environment, after all its files are written, delete the keys varTrack wrote before that Git no longer holds; `prune.protection` globs keep keys that must never go, and a key changed outside varTrack is kept and reported
+- **MongoDB shapes** — one nested document per file by default (`STRATEGY_DOCUMENT`); one document per key or per file as it parsed are one `update_strategy` away
 
 ### Routing & environments
 - **`destination_template`** — control exactly where data lands per rule using `{tenant}` and `{env}` placeholders
 - **Environment resolution** — map branch names, PR numbers, tags, or file paths to environment names
-- **Per-repo overrides** — add a `vartrack.json` to any repository to override rule settings (file paths, branch maps, sync mode, prune) without touching the central bundle
+- **Layered rules** — `config.cue` → the tenant's `bundle.json` → a repository's `vartrack.json` → `force`; each layer overrides the one before, keys only `config.cue` sets stay out of the lower layers, and shared settings come in with `extends` presets
 - **Multi-platform** — GitHub webhooks fully supported; GitLab, Bitbucket driver interface ready to extend
 
 ### Validation & safety
 - **CUE schema validation** — validate every payload against a per-tenant schema before any write
-- **Dry-run mode** — simulate any sync without touching a datasource; separate `dry_run_prune` to audit deletes independently
+- **Dry-run mode** — simulate any sync without touching a datasource; `prune: {dry_run: true}` audits deletes independently
 - **`@secret()` annotations** — resolve Vault secrets into config values at ETL time; values masked as `***` in dry-run reports
 - **`@logger()` annotations** — emit structured change-log entries when specific fields change value
 
 ### Drift detection
-- **Drift detection** — watcher-service polls every datasource continuously and alerts on mismatch
+- **Drift detection** — watcher-service polls continuously; the orchestrator reads the sinks and compares them, key by key, with what it last synced from Git. `suspend` pauses a rule, `drift_ignore` lists keys the application changes itself
 - **Self-heal** — set `self_heal: true` on a rule and VarTrack restores correct state automatically on drift
 - **Leader election** — ZooKeeper or Redis distributed lock keeps multi-replica watchers in sync
 
 ### Operations
-- **CLI (`vt`)** — push any local file directly from terminal or CI/CD without a Git push
-- **OIDC + RBAC + OPA** — optional auth stack for the CLI API; fine-grained per-env, per-datasource policies
+- **CLI (`vt`)** — push any local file directly from terminal or CI/CD without a Git push; `vt validate-config` checks a `vartrack.json` or `bundle.json` before it is pushed
+- **Git-permission auth** — the CLI API asks the rule's Git platform what the caller's own token may do (push syncs, read validates and dry-runs); an optional OPA policy adds per-env, per-datasource rules
+- **Web UI with Git sign-in** — every tenant at once, each user seeing the rules their Git account can read
 - **Observability** — OpenTelemetry traces, Prometheus metrics, and structured logs with optional ELK shipping on every service
 
 ---
@@ -122,14 +124,15 @@ flowchart LR
     GIT -->|"webhook\npush / PR"| GW
     GW -->|"gRPC"| ORCH
     ORCH -->|write| DB["MongoDB · Redis · ZooKeeper\nS3 · ConfigMap · Helm\nVercel · Linux"]
-    WATCH -->|"poll\n(drift check)"| DB
-    WATCH -->|"TriggerSync\n(self-heal)"| ORCH
+    WATCH -->|"CheckDatasource\n(drift check)"| ORCH
+    ORCH -->|"read back\nand compare"| DB
+    WATCH -->|"SyncDatasource\n(self-heal)"| ORCH
 ```
 
 1. You push a config file to Git.
 2. The **gateway-service** (Go) receives the webhook, verifies the HMAC signature, and forwards it via gRPC.
 3. The **orchestrator-service** (Python) fetches the file from Git, validates it against a CUE schema, runs the **Rust ETL core** (diff, flatten, merge, prune) for performance-critical operations, and writes to all configured sinks.
-4. The **watcher-service** (Go) polls datasources on a configurable interval. When a value diverges from Git, it logs the delta and — if `self_heal: true` — calls the orchestrator to restore correct state.
+4. The **watcher-service** (Go) asks the orchestrator, on a configurable interval, whether each datasource still matches Git; the orchestrator reads the sinks back and compares. When a value diverges, the watcher logs the delta and — if `self_heal: true` — has the orchestrator restore correct state.
 
 > **Why Rust inside the orchestrator?** The ETL core (diff, flatten, merge, prune) is implemented in Rust and called from Python via FFI. This keeps the hot path allocation-free and handles multi-megabyte config payloads without GC pressure, while the Python layer handles I/O, Vault, and sink drivers.
 
@@ -177,6 +180,8 @@ git clone https://github.com/jarin-devoss/vartrack
 cd vartrack
 buf generate
 ```
+
+`buf generate` writes the Go code once, to `libs/go/gen` (the gateway and the watcher both build against that module), and the Python stubs to `orchestrator-service/app/generated`.
 
 #### 2. Write your `config.cue`
 
@@ -323,11 +328,11 @@ Drift on a rule without self-heal stays until someone syncs from Git, and the we
 
 ![Diff of a drifted Redis environment: cache.ttl_seconds is 30 in Redis and 900 in Git](docs/assets/screenshots/environment-diff.png)
 
-Running multiple watcher replicas? Enable leader election so only one replica runs the heal loop:
+Running multiple watcher replicas? Enable leader election so only one replica runs the heal loop, by naming the datasource they elect a leader on:
 
 ```cue
-global_tags: {
-  watcher_leader_election_datasource: "redis"  // or "zookeeper"
+bundle: {
+  watcher_leader_election_datasource: "redis"  // a Redis or ZooKeeper datasource of the bundle
 }
 ```
 
@@ -335,7 +340,7 @@ global_tags: {
 
 ## Web UI
 
-A browser console for rules, environments, drift, sync history and dry runs, reading from your running varTrack services:
+A browser console for rules, environments, drift, sync history and dry runs, reading from your running varTrack services. With sign-in on, users sign in with their Git account and see every tenant's rules whose repositories that account can read; admins see everything. See [Web UI sign-in](docs/configuration/auth.md#web-ui-sign-in-with-your-git-platform):
 
 ```bash
 cd ui && npm install && npm run dev   # http://localhost:5173
@@ -355,8 +360,8 @@ Sync any local file directly without a Git push — runs the same ETL pipeline a
 # Install
 cd cli && go build -o vt ./cmd && mv vt /usr/local/bin/vt
 
-# Authenticate
-vt login --server https://gateway.example.com --token eyJ...
+# Authenticate with your Git token (GitHub or Gitea personal access token)
+vt login --server https://gateway.example.com --token "$GIT_TOKEN"
 
 # Sync to a Kubernetes ConfigMap
 vt sync --file configs/app.yaml --datasource configmap --env production --wait
@@ -369,6 +374,12 @@ vt sync --file configs/app.yaml --datasource s3 --env staging --dry-run
 
 # Validate against the CUE schema (great for PR checks)
 vt validate --file configs/app.yaml --datasource linux-server
+
+# Check a vartrack.json or bundle.json the way a sync will read it
+vt validate-config vartrack.json
+
+# A datasource written by rules on several platforms needs the platform
+vt sync --file configs/app.yaml --datasource mongo --platform gitea --env staging
 
 # Inspect tasks
 vt task list
@@ -389,7 +400,7 @@ The same tasks are on the web UI's Tasks page, each with what triggered it — a
   run: vt sync --file configs/app.yaml --datasource helm --env production --wait
 ```
 
-See the full [CLI documentation](cli/README.md) for all commands, flags, and OIDC / SSO login.
+See the full [CLI documentation](cli/README.md) for all commands, flags, and access control.
 
 ---
 
@@ -442,7 +453,7 @@ bundle: {
       linux_server: {
         host:     "app-server.example.com"
         username: "deploy"
-        private_key: "-----BEGIN OPENSSH PRIVATE KEY-----\n..."
+        ssh_key:  {private_key: {file: "/run/secrets/deploy_key"}}   // a key file, not inline
       }
     }
   ]
@@ -511,6 +522,8 @@ bundle: {
 | `POST` | `/webhooks/schema-registry` | Schema-registry push trigger |
 | `GET` | `/health/liveness` | Liveness probe |
 | `GET` | `/health/readiness` | Readiness probe |
+| `POST` | `/v1/cli/sync`, `/v1/cli/validate`, `/v1/cli/validate-config` | The CLI API, authorized by the caller's Git token |
+| `GET` | `/v1/cli/tasks`, `/v1/cli/tasks/{id}` | CLI task status |
 
 ### orchestrator-service (port 8000 HTTP / 50051 gRPC)
 
@@ -518,25 +531,36 @@ bundle: {
 |---|---|---|
 | `POST` | `/v1/webhooks/{datasource}` | Direct HTTP ingestion |
 | `POST` | `/v1/webhooks/{datasource}/dry-run` | Simulate without writing |
+| `GET` | `/v1/ui/*` | The web UI's read API, every tenant the viewer may see (`?tenant=` narrows) |
 | `GET` | `/docs` | OpenAPI / Swagger UI |
 | gRPC | `ProcessWebhook` | Called by gateway-service |
-| gRPC | `TriggerSync` | Called by watcher-service for self-heal |
+| gRPC | `CLIService` (`SyncFile`, `ValidateFile`, `ValidateConfig`, `GetTask`, `ListTasks`) | Called by gateway-service for the CLI API |
+| gRPC | `ListWatchTargets`, `CheckDatasource`, `SyncDatasource` | Called by watcher-service: which rules to watch, whether a datasource still matches Git, and self-heal |
 
 ---
 
 ## Testing
 
 ```bash
+# shared Go module (generated code, bundle loader)
+cd libs/go && go test ./...
+
 # gateway-service
 cd gateway-service && go test ./...
 
 # watcher-service
 cd watcher-service && go test ./...
 
+# cli
+cd cli && go test ./...
+
 # orchestrator-service
 cd orchestrator-service
 pip install -e ".[test]"
 pytest tests/
+
+# web UI
+cd ui && npm install && npm run typecheck && npm test
 
 # End-to-end (Docker Compose)
 cd e2e && docker compose up
@@ -547,11 +571,13 @@ cd e2e && docker compose up
 ## Docker
 
 ```bash
-docker build -t jarin-devoss/gateway-service:latest      ./gateway-service
+docker build -t jarin-devoss/gateway-service:latest      --file ./gateway-service/Dockerfile .
 docker build -t jarin-devoss/orchestrator-service:latest ./orchestrator-service/docker/Dockerfile \
   --file ./orchestrator-service/docker/Dockerfile ./orchestrator-service
-docker build -t jarin-devoss/watcher-service:latest      ./watcher-service
+docker build -t jarin-devoss/watcher-service:latest      --file ./watcher-service/Dockerfile .
 ```
+
+The gateway and the watcher build from the repository root, because both use the shared Go module in `libs/go`.
 
 Pre-built multi-arch images (`linux/amd64`, `linux/arm64`) are published on every tagged release:
 
@@ -569,12 +595,14 @@ docker pull jarin-devoss/watcher-service:latest
 varTrack/
 ├── config.cue                    # Shared CUE bundle (all services read this)
 ├── proto/                        # Protobuf definitions
-├── buf.gen.yaml                  # Buf code-generation config
+├── buf.gen.yaml                  # Buf code-generation config (one template)
+├── libs/go/                      # Go — generated code, bundle loader, secret files (shared)
 │
-├── gateway-service/              # Go — HTTP ingress, webhook receiver
+├── gateway-service/              # Go — HTTP ingress, webhook receiver, CLI API
 ├── orchestrator-service/         # Python + Rust — ETL pipeline, sink writer
 ├── watcher-service/              # Go — drift detection, self-heal
 ├── cli/                          # Go — vt command-line tool
+├── ui/                           # React — web UI
 ├── examples/                     # Example bundles and config files
 └── e2e/                          # End-to-end demo + test suite
 ```

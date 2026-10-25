@@ -209,26 +209,37 @@ The Kubernetes fields (`replicaCount`, `image`, `resources`) are never touched.
 
 ### Multiple files
 
-Each rule targets one file. To sync multiple files to the same (or different) sinks, add more rules:
+A rule is identified by its **platform and datasource**: there is at most one rule for the pair, and varTrack refuses to start when two share it. There are two ways to sync more than one file.
+
+**To one destination**, use one rule. Leave out `file_name` and every file a push touches is synced, or list the files in `file_path_map`. When a sync writes several files to one environment, prune runs once afterwards, so a key that moved from one file to the other is not deleted.
+
+**To different destinations in the same database**, declare a datasource for each (a datasource has an optional `tag`, so these are `mongo-app` and `mongo-db`), and give each its own rule:
 
 ```cue
+datasources: [
+  {mongo: {tag: "app", endpoint: "mongodb://mongo:27017", database: "vartrack", collection: "app"}},
+  {mongo: {tag: "db",  endpoint: "mongodb://mongo:27017", database: "vartrack", collection: "db"}},
+]
+
 rules: [
   {
     platform:             "github"
-    datasource:           "mongo"
+    datasource:           "mongo-app"
     file_name:            "configs/app.yaml"
     repositories:         ["my-org/*"]
     destination_template: "{env}-app"
   },
   {
     platform:             "github"
-    datasource:           "mongo"
+    datasource:           "mongo-db"
     file_name:            "configs/database.yaml"
     repositories:         ["my-org/*"]
     destination_template: "{env}-db"
   },
 ]
 ```
+
+The datasource name is the webhook URL, so point one webhook of the repository at each: `/webhooks/mongo-app` and `/webhooks/mongo-db`.
 
 ---
 

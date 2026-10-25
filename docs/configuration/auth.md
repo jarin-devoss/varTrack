@@ -1,126 +1,82 @@
 # Authentication & Authorization
 
-varTrack's CLI API (`/v1/cli/*`) is secured by a three-layer auth stack: **OIDC** for identity, **RBAC** for coarse-grained roles, and **OPA** for fine-grained policy. All three are optional — when absent, CLI routes are disabled.
+varTrack's CLI API (`/v1/cli/*`, used by `vt`) keeps no users or roles of its own. The caller shows their own Git token, and the rule's Git platform says what they may do. An optional **OPA** policy then decides with the whole request.
 
 ---
 
-## Enabling auth
+## Git permissions
 
-Auth is configured in the bundle under `auth`:
+`vt` sends the caller's Git token for the rule's platform — a GitHub or Gitea personal access token — as `Authorization: Bearer <token>`:
 
-```cue
-bundle: {
-  auth: {
-    oidc: {
-      issuer_url: "https://accounts.google.com"
-      client_id:  "my-client-id"
-    }
-    rbac: {
-      policy: """
-        p, role:admin,    *, *,         allow
-        p, role:operator, datasource, sync,     allow
-        p, role:operator, datasource, validate, allow
-        p, role:operator, task,       get,      allow
-        p, role:viewer,   datasource, validate, allow
-        p, role:viewer,   task,       get,      allow
-
-        g, alice@myorg.com, role:admin
-        g, bob@myorg.com,   role:operator
-      """
-      default_role: "role:viewer"
-    }
-  }
-}
+```bash
+vt login --server https://gateway.example.com --token <your Git token>
 ```
 
----
+For each request the gateway asks the platform of the rule that syncs to the datasource who the token belongs to (`GET /user`) and what they may do in the rule's repositories (`GET /repos/{owner}/{repo}`, and `GET /user/repos` for patterns such as `acme/*`):
 
-## OIDC — identity layer
+| The caller can, in one of the rule's repositories… | …so they may |
+|---|---|
+| push | `vt sync` |
+| read | `vt sync --dry-run`, `vt validate`, `vt task` |
 
-varTrack validates the `Authorization: Bearer <token>` header against your OIDC provider. Any compliant provider works.
+A rule's repositories are the ones its `repositories` and enabled `overrides` name or match, minus its exclusions — the repositories the gateway routes pushes from. The web UI decides the same way (see below).
 
-```cue
-auth: {
-  oidc: {
-    issuer_url:   "https://accounts.google.com"  // required
-    client_id:    "my-client-id"                 // required
-    audience:     ""          // optional — defaults to client_id
-    extra_scopes: []          // optional additional OAuth2 scopes
-    groups_claim: "groups"    // JWT claim for group memberships
-  }
-}
-```
+| Answer | When |
+|---|---|
+| `401` | no token, or the platform rejects it |
+| `403` | the caller lacks the access above, or the OPA policy denies the request |
+| `404` | no rule syncs to the datasource; a task of a rule the caller cannot read |
 
-**Supported providers:** Google, Azure AD / Entra ID, Okta, Auth0, Keycloak, GitLab, any OIDC-compliant provider.
+`vt validate` without `--datasource`, and `vt validate-config`, need a token any platform of the bundle accepts. `vt task list` shows the tasks of the rules the caller can read.
 
-The CLI logs in via `vt login` and stores the token locally. The token is sent as a Bearer header on every request.
+The `platform:login` entries of [`ui.auth.admins`](#set-it-up) may do anything, on the CLI API as in the UI. Tasks record their caller as `login@platform`.
 
----
-
-## RBAC — role layer (Casbin)
-
-Casbin RBAC maps users and groups to roles, and roles to allowed actions.
-
-```cue
-auth: {
-  rbac: {
-    policy: """
-      // Format: p, <role>, <resource>, <action>, allow
-      p, role:admin,    *,          *,        allow
-      p, role:operator, datasource, sync,     allow
-      p, role:operator, datasource, validate, allow
-      p, role:operator, task,       get,      allow
-      p, role:viewer,   datasource, validate, allow
-      p, role:viewer,   task,       get,      allow
-
-      // Format: g, <email-or-group>, <role>
-      g, alice@myorg.com,   role:admin
-      g, bob@myorg.com,     role:operator
-      g, platform-team,     role:operator    // group from groups_claim
-    """
-    default_role: "role:viewer"              // for users with no explicit assignment
-  }
-}
-```
-
-**Resources:** `datasource`, `task`, `bundle`, `watcher`
-
-**Actions:** `sync`, `validate`, `get`, `list`, `heal`
-
-The `default_role` applies to any authenticated user who has no explicit role assignment.
+The bundle's `auth.oidc` and `auth.rbac` blocks are no longer used; the gateway logs a warning when they are set.
 
 ---
 
 ## OPA — policy layer (Open Policy Agent)
 
-OPA runs after RBAC for fine-grained decisions that RBAC can't express — e.g., "only allow syncing to `production` if the user's group is `platform-team`".
+OPA runs after the Git permission check for decisions Git permissions can't express — e.g., "writers may sync anywhere but production". Give the policy in exactly one of three ways:
 
 ```cue
 auth: {
   opa: {
-    policy: """
+    inline_policy: """
       package vartrack.authz
 
       default allow = false
 
+      # validate and task reads: Git read access has decided
       allow {
-        input.action == "sync"
-        input.env    != "production"   // anyone can sync non-prod
+        input.action != "sync"
       }
 
+      # anyone who may push syncs outside production
+      allow {
+        input.action == "sync"
+        input.env    != "production"
+      }
+
+      # only repository admins sync production
       allow {
         input.action == "sync"
         input.env    == "production"
-        "platform-team" in input.user.groups   // only platform-team can sync prod
-      }
-
-      allow {
-        input.action == "validate"     // everyone can validate
+        input.user.permission == "admin"
       }
     """
+
+    // policy_file: "/etc/vartrack/policy.rego"                      // a file on the gateway
+    // server_url:  "http://opa:8181/v1/data/vartrack/authz/allow"  // a remote OPA server
   }
 }
 ```
+
+The policy must be in package `vartrack.authz` and define `allow`; anything but `allow == true` denies the request. Policies are written in Rego v0 syntax (`allow { … }`), as above. To write Rego v1 syntax (`allow if { … }`, `x in xs`), start the policy with `import rego.v1`.
+
+`inline_policy` and `policy_file` are compiled in-process (tens of microseconds per decision) — no OPA server required. With `server_url` the gateway asks that server instead: point it at the rule (`…/v1/data/vartrack/authz/allow`) or at the package (`…/v1/data/vartrack/authz`, whose `allow` is then read). A server that cannot be reached, answers anything but 2xx, or takes longer than five seconds denies the request with `500`. A policy that does not compile, or a policy file that cannot be read, stops the gateway at startup.
+
+A full example policy — admins sync anywhere, writers outside production but never `configs/secrets/*`, dry runs anywhere — is at [`examples/policies/vartrack_authz.rego`](https://github.com/jarin-devoss/varTrack/blob/main/examples/policies/vartrack_authz.rego).
 
 ### OPA input document
 
@@ -128,20 +84,22 @@ Every request evaluation receives:
 
 | Field | Example |
 |---|---|
-| `input.user.sub` | `"alice@myorg.com"` |
-| `input.user.email` | `"alice@myorg.com"` |
-| `input.user.groups` | `["platform-team", "sre"]` |
-| `input.action` | `"sync"` |
+| `input.user.login` | `"alice"` — on the rule's platform |
+| `input.user.platform` | `"gitea"` |
+| `input.user.permission` | `"admin"`, `"write"` or `"read"` — in the rule's repositories |
+| `input.user.admin` | `true` for `ui.auth.admins` entries |
+| `input.user.repositories` | `["acme/configs"]` — the rule's repository names and patterns |
+| `input.action` | `"sync"`, `"validate"` |
 | `input.resource` | `"datasource"` |
 | `input.datasource` | `"mongo"` |
-| `input.env` | `"production"` |
+| `input.env` | `"production"` (lower-cased) |
 | `input.file_path` | `"configs/app.yaml"` |
 | `input.tenant_id` | `"acme"` |
 | `input.dry_run` | `false` |
 
-OPA runs embedded (in-process, ~50µs) — no external OPA server required. To reload a policy without restarting, call `POST /admin/opa/reload`.
+### Reloading the policy
 
-A full example policy is at [`examples/policies/vartrack_authz.rego`](../../examples/policies/vartrack_authz.rego).
+`POST /admin/opa/reload` on the gateway's admin port (`ADMIN_ADDR`, default `:9090`) recompiles the policy and re-reads `policy_file`. If the new policy does not compile, the call answers `422` with the compile error and the previous policy stays in force. A `policy_file` is also re-read every `OPA_RELOAD_INTERVAL` (default `30m`).
 
 ---
 
@@ -151,19 +109,19 @@ A full example policy is at [`examples/policies/vartrack_authz.rego`](../../exam
 Request
   │
   ▼
-OIDC validation       ← 401 if token invalid or expired
+Git token             ← 401 if missing, or the rule's platform rejects it
   │
   ▼
-RBAC check            ← 403 if role doesn't allow action
+Git permission        ← 403 without push (sync) or read (anything else) access
   │
   ▼
-OPA evaluation        ← 403 if policy returns false
+OPA evaluation        ← 403 if the policy does not allow it
   │
   ▼
 Handler
 ```
 
-All three must pass. OPA is skipped if no `opa` block is configured.
+OPA is skipped if no `opa` block is configured.
 
 ---
 
@@ -178,6 +136,22 @@ The web UI can sign users in with the Git platforms your rules already use (GitH
 | write to one of the rule's repositories | can **Sync** it; with read access only they can **Dry run** it |
 
 A rule covers the repositories it names, the ones its patterns (`acme/*`) match minus its exclusions, and the ones its environments were synced from. A rule, environment or task the user cannot see answers *not found*, exactly like one that does not exist. Answers are cached for two minutes per session, so a permission change on a platform shows up within that time.
+
+### Tenants are shown, not chosen
+
+The UI covers **every tenant at once**: a rule, task or event carries its tenant, and what a person sees is what Git lets them read, whichever tenant it belongs to. There is no tenant to switch to.
+
+| Who | Sees |
+|---|---|
+| Sign-in is off | every rule of every tenant |
+| An admin (`ui.auth.admins`) | every rule of every tenant |
+| A signed-in user | every rule, of any tenant, whose repository their account can read on the rule's platform. A tenant with no such rule does not appear at all. |
+
+When the viewer sees more than one tenant, the Rules, Environments, Events and Tasks pages show the tenant and offer a Tenant filter that lists only those tenants. The same `platform/datasource` can exist in two tenants, so a rule is identified by its tenant too: `/rules/{tenant}/{platform}/{datasource}`; a link without the tenant still opens the rule when only one visible tenant has it.
+
+A rule you cannot see because you have not connected its platform is counted, never named: the Rules page says "3 rules on gitea are hidden" with a **Connect gitea** button. Rules on a platform you are connected to, in repositories your account cannot read, are not counted — that would show that a private repository's rules exist.
+
+The UI API takes an optional `?tenant=` (or the `X-Tenant-ID` header) to narrow an answer to one tenant. It narrows only: it never shows a rule the viewer cannot read.
 
 ### Rules on several platforms
 
@@ -243,4 +217,4 @@ Without `ui.auth` the UI is open to anyone who can reach it, as before. If sign-
 
 Sign-in is the OAuth2 authorization code flow with PKCE. The login state is single-use, expires after five minutes, names the platform, and is bound to the browser that started it by a cookie. After sign-in the browser holds only a random session id in an `HttpOnly` cookie (`Secure` when the UI is served over HTTPS). The platform tokens stay on the server, encrypted with AES-256-GCM, in Redis next to the sync ledger, and expired tokens are refreshed when the platform issues refresh tokens. Signing out deletes the session on the server, so a copied cookie stops working too.
 
-This covers the web UI's API (`/v1/ui/*`). The CLI API (`/v1/cli/*`, used by `vt` and by the UI's Playground) keeps the OIDC, RBAC and OPA layers above; paste a token under *API token for the Playground* on the sign-in page to use it from the UI.
+This covers the web UI's API (`/v1/ui/*`). The CLI API (`/v1/cli/*`, used by `vt` and by the UI's Playground) takes a Git token instead, as above; paste one under *API token for the Playground* on the sign-in page to use it from the UI.

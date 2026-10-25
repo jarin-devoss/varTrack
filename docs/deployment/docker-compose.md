@@ -83,7 +83,6 @@ bundle: {
 
   celery_broker_datasource:   "redis"
   celery_backend_datasource:  "redis"
-  watcher_state_datasource:   "redis"
 
   datasources: [{
     redis: {
