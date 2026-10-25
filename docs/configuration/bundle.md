@@ -1,6 +1,6 @@
 # Bundle Reference
 
-All three varTrack services read a single shared CUE bundle (`config.cue`). The bundle declares your platforms, datasources, routing rules, schema registry, and secret managers.
+All three varTrack services read a single shared CUE bundle (`config.cue`), at the path in `CONFIG_PATH`. The bundle declares your platforms, datasources, routing rules, schema registry, and secret managers. It is the first of the files a rule is built from — see [Configuration files](index.md) for where the others live and how they combine.
 
 ---
 
@@ -146,7 +146,6 @@ Two platforms of the **same type** (say two GitHub hosts) send the same headers,
 rules: [{
   platform:             "github"              // matches platform name (or "github-{tag}")
   datasource:           "mongo"               // matches datasource name (or "mongo-{tag}")
-  file_name:            "configs/app.yaml"    // file path in the repo to watch
   repositories:         ["my-org/*"]          // glob patterns — which repos trigger this
 
   // Where data lands
@@ -164,9 +163,9 @@ rules: [{
   root_key: "vartrack"                        // extract subtree before flattening
                                               // set to "" to process the whole file
 
-  // Variable overlay (optional)
+  // Key renames (optional): NEW_NAME ← the flat key in the file
   variables_map: {
-    REGION: "us-east-1"                       // inject or override any key
+    DB_HOST: "database.host"                  // writes database.host's value as DB_HOST
   }
 
   // Environment resolution
@@ -214,19 +213,7 @@ rules: [{
 
 ## Per-repo overrides
 
-Individual repositories can override a subset of their rule settings without touching `config.cue`. Add a `vartrack.json` file at the root of the repository:
-
-```json
-{
-  "root_key": "app_config",
-  "branch_map": { "main": "production", "staging": "staging" },
-  "prune": true
-}
-```
-
-Keys in `vartrack.json` are merged on top of the rule for that repository on every webhook (`branch_map`, `file_path_map`, `variables_map` and `prune` key by key), and the rule's `force` keys are applied after them. Infrastructure keys (`platform`, `datasource`, `token`, `repositories`, `self_heal`, …) are always taken from the bundle and cannot be overridden. The schema registry is unaffected.
-
-See the full [Per-Repo Overrides reference](per-repo-overrides.md) for the complete list of overridable keys, security model, and troubleshooting.
+A repository can change some of its rule's settings with a `vartrack.json`, and a tenant with its `bundle.json`; the rule's `force` keys are applied after both. [Configuration files](index.md#how-a-rule-is-built) shows how the layers combine, [Rule options](rule-options.md) which option each file may set, and [Per-Repo Overrides](per-repo-overrides.md) where `vartrack.json` lives.
 
 ---
 

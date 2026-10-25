@@ -38,7 +38,9 @@ A sync strategy controls how varTrack applies the flattened config values to a d
 
 === "GIT_SMART_REPAIR"
 
-    Reads the current live state first, computes a diff (added / changed / removed keys), and writes only the differences. Uses BLAKE3 content hashing to detect unchanged values.
+    Reads what the datasource holds first and writes only what differs. Uses BLAKE3 content hashing to detect unchanged values.
+
+    Only the MongoDB sink reads before writing: with `STRATEGY_KEY_VALUE` it writes the keys whose value changed, with a document strategy it rewrites the file's document when it was written from another commit. Every other sink writes every key, as with `GIT_UPSERT_ALL`.
 
     **Best for:** Large configs (> 500 keys), or datasources where minimizing write operations matters.
 
@@ -50,14 +52,12 @@ A sync strategy controls how varTrack applies the flattened config values to a d
     |---|---|
     | Read before write | Yes |
     | Keys written | Changed only |
-    | Stale key cleanup | Yes, on diff |
+    | Stale key cleanup | Only if `prune: true` set |
     | Best for | Large configs |
 
 === "LIVE_STATE"
 
-    Replaces the entire stored state with Git's current view. No diff computed — direct overwrite.
-
-    **Best for:** Low-latency sinks, or scenarios where the simplest possible write path matters more than efficiency.
+    Written like `GIT_UPSERT_ALL`: every key, without reading the datasource first. Keys Git no longer holds are deleted only by [prune](#stale-key-pruning).
 
     ```cue
     sync_mode: "SYNC_MODE_LIVE_STATE"
