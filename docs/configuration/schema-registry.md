@@ -50,7 +50,17 @@ varTrack builds the rule a sync runs with in layers: the admin's config, the ten
 **Keys only `config.cue` sets.** These are dropped from `bundle.json` with a warning (`… sets mongo_uri, self_heal, which only config.cue sets — ignored`). The gateway routes pushes by `config.cue`'s repositories and the watcher heals the rules `config.cue` marks `self_heal`, so another value further down would split the services:
 
 - the datasource's connection settings and credentials: every sink key a [datasource block](bundle.md#datasources) sets (`mongo_uri`, `database`, `collection`, `update_strategy`, `redis_hosts`, `s3_bucket`, `ssh_host`, …)
-- the rule's `secret_manager`, `repositories`, `exclude_repositories`, `overrides`, `self_heal`, `force` and `tenants`
+- these rule options:
+
+<!-- rule-options:admin-only -->
+- [`exclude_repositories`](rule-options.md#exclude_repositories)
+- [`force`](rule-options.md#force)
+- [`overrides`](rule-options.md#overrides)
+- [`repositories`](rule-options.md#repositories)
+- [`secret_manager`](rule-options.md#secret_manager)
+- [`self_heal`](rule-options.md#self_heal)
+- [`tenants`](rule-options.md#tenants)
+<!-- /rule-options:admin-only -->
 
 `force` cannot pin these either; they are set on the rule itself.
 
@@ -161,6 +171,8 @@ The rule a sync runs with: `file_name` `configs/app.yaml`, `branch_map` `{main: 
 
 ### Rule object fields
 
+Every option, with the files that may set it, is in [Rule options](rule-options.md). The fields of a `bundle.json` rule:
+
 | Field | Required | Description |
 |---|---|---|
 | `platform` | Yes | Platform name — `github`, `gitea`, or `{type}-{tag}`; with `datasource`, picks the `config.cue` rule |
@@ -172,9 +184,9 @@ The rule a sync runs with: `file_name` `configs/app.yaml`, `branch_map` `{main: 
 | `branch` | No | Branch to heal when there is no `branch_map` (default: `main`) |
 | `max_changed_files` | No | The most files one push syncs (default: 500). A push that changed more is cut to the first of them, with a warning in the log |
 | `branch_map` | No | `{ branch → env }` label mapping — merged |
-| `variables_map` | No | Merged |
+| `variables_map` | No | Key renames, `{NEW_NAME: flat.key}` — merged |
 | `sync_mode` | No | `AUTO`, `GIT_UPSERT_ALL`, `GIT_SMART_REPAIR`, `LIVE_STATE` (`FULL` reads as `GIT_UPSERT_ALL`) |
-| `prune` | No | `true`, or `{enabled, last, dry_run, protection}` — merged with the other layers; `protection` patterns add up, and an object with only `protection` does not enable pruning |
+| `prune` | No | `true`, or `{enabled, dry_run, protection}` — merged with the other layers; `protection` patterns add up, and an object with only `protection` does not enable pruning |
 | `prune_protection` | No | Former flat name of `prune.protection`, still read. `prune_last` and `prune.last` were removed and are ignored |
 | `root_key` | No | Subtree key to extract before flattening (default: `"vartrack"`) |
 | `branch_as_env` / `pr_as_env` / `tag_as_env` | No | Environment from the branch name, `pr-{number}`, or the tag |

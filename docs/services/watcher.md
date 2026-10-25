@@ -66,6 +66,8 @@ docker run \
 | `OTEL_ENABLED` | `false` | Enable OpenTelemetry tracing |
 | `ELK_ENABLED` | `false` | Enable Elasticsearch log shipping |
 
+Every variable, with the observability ones, is in [Environment variables](../reference/environment-variables.md).
+
 ---
 
 ## Health + metrics

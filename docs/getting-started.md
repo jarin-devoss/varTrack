@@ -224,3 +224,11 @@ vt sync --file app-settings.yaml --datasource mongo-primary --env staging --wait
     Understand how the watcher detects and heals config drift
 
 </div>
+
+---
+
+## Next steps
+
+- [Configuration files](configuration/index.md) — where `config.cue`, `bundle.json` and `vartrack.json` live, and how they make a rule
+- [Onboard a config repository](guides/onboard-a-repository.md) — your own repository, end to end
+- [Production checklist](operations/production-checklist.md) — before syncing production

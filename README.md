@@ -146,6 +146,20 @@ flowchart LR
 
 ---
 
+## Where configuration lives
+
+A rule is built from up to three files, each owned by a different team and kept in a different place. Each layer overrides the one before it; `config.cue`'s `force` block is applied last.
+
+| File | Lives in | Edited by | Holds |
+|---|---|---|---|
+| `config.cue` | the varTrack hosts (`CONFIG_PATH`), read by every service | the team that runs varTrack | platforms, datasources and their credentials, the rules, `force` |
+| `bundle.json` | the root of a tenant's schema repository, next to its CUE schemas | the tenant | the tenant's settings for the rules `config.cue` defines |
+| `vartrack.json` | the pushed config repository (`vartrack.json`, or under `.github/`, `.gitea/`, `.gitlab/`), read at the pushed commit | the repository's owners | the repository's overrides: `branch_map`, `root_key`, `prune`, `sync_mode`, … |
+
+Which file may set which option is generated from `proto/vartrack/v1/models/rule.proto` into the [Rule options](docs/configuration/rule-options.md) reference; [Configuration files](docs/configuration/index.md) walks through an example of the three files and the rule they make. `vt validate-config` checks a `vartrack.json` or `bundle.json` before it is pushed.
+
+---
+
 ## Quick Start
 
 ### Option A — Docker Compose (recommended)
@@ -156,7 +170,7 @@ The fastest way to run varTrack against your own GitHub repos:
 git clone https://github.com/jarin-devoss/vartrack
 cd vartrack
 cp .env.example .env          # fill in MONGO_ROOT_PASSWORD at minimum
-# write your config.cue (see Configuration Reference below)
+# write your config.cue (see Where configuration lives above)
 docker compose up -d
 ```
 
@@ -293,8 +307,8 @@ When a webhook fires, VarTrack resolves the target environment in this order:
 |---|---|
 | `AUTO` | Recommended — VarTrack picks the strategy based on payload size |
 | `GIT_UPSERT_ALL` | Write all keys from Git; best for small configs |
-| `GIT_SMART_REPAIR` | Read live state first, write only changed keys; best for large configs |
-| `LIVE_STATE` | Replace the entire stored state with Git's current view |
+| `GIT_SMART_REPAIR` | On MongoDB, read what is stored first and write only what changed; best for large configs. Other sinks write every key |
+| `LIVE_STATE` | Written like `GIT_UPSERT_ALL` |
 
 ---
 

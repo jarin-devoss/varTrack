@@ -94,11 +94,13 @@ Monitor drift in Prometheus / Grafana:
 
 | Metric | Type | Description |
 |---|---|---|
-| `vartrack_watcher_drift_detected_total` | Counter | Drift found, by rule |
-| `vartrack_watcher_heal_triggered_total` | Counter | Heals the orchestrator accepted |
-| `vartrack_watcher_heal_failed_total` | Counter | Heals that could not be requested |
-| `vartrack_watcher_poll_duration_seconds` | Histogram | How long a `CheckDatasource` took |
 | `vartrack_watcher_up` | Gauge | 1 while a rule's loop runs |
+
+`vartrack_watcher_drift_detected_total`, `vartrack_watcher_heal_triggered_total`,
+`vartrack_watcher_heal_failed_total` and `vartrack_watcher_poll_duration_seconds` are
+registered, but the current watcher does not record them: they stay at zero. Follow drift
+with the web UI's **Environments** page and the `DriftDetected`, `HealSucceeded` and
+`HealFailed` events. All metrics are in [Monitoring](../operations/monitoring.md).
 
 ---
 

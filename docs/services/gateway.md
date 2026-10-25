@@ -48,7 +48,7 @@ docker run \
 
 | Variable | Default | Description |
 |---|---|---|
-| `APP_ENV` | `test` | `production` enables TLS and signature enforcement |
+| `APP_ENV` | `test` | `production` enables TLS and signature and replay checks; any other value skips both |
 | `LOG_LEVEL` | `INFO` | `DEBUG`, `INFO`, `WARN`, `ERROR` |
 | `GATEWAY_ADDR` | `:5657` | Webhook listener |
 | `ORCHESTRATOR_ADDR` | `localhost:50051` | gRPC address of the orchestrator |
@@ -59,6 +59,11 @@ docker run \
 | `GATEWAY_TLS_CERT` | — | Inbound TLS cert |
 | `GATEWAY_TLS_KEY` | — | Inbound TLS key |
 | `OPA_RELOAD_INTERVAL` | `30m` | How often an `auth.opa.policy_file` is re-read |
+
+!!! warning
+    Outside `APP_ENV=production` the gateway does not check webhook signatures or replays.
+
+Every variable, with the observability ones, is in [Environment variables](../reference/environment-variables.md).
 
 ---
 

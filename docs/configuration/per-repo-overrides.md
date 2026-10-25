@@ -1,6 +1,9 @@
 # Per-Repo Overrides (`vartrack.json`)
 
-Individual repositories can override a subset of their central rule configuration without touching `config.cue`. Place a `vartrack.json` file at the root of the repository and varTrack will apply its settings on top of the matching rule whenever a webhook is received — the third of the [layers a rule is built from](schema-registry.md#how-a-rule-is-built).
+Individual repositories can override a subset of their central rule configuration without touching `config.cue`. Place a `vartrack.json` file in the repository and varTrack will apply its settings on top of the matching rule whenever a webhook is received — the third of the [layers a rule is built from](index.md#how-a-rule-is-built), after `config.cue` and the tenant's `bundle.json`.
+
+!!! tip "Check it in CI"
+    `vt validate-config` finds the repository's `vartrack.json` and checks it the way a sync reads it; it exits 1 on errors or warnings. See [CI/CD integration](../cli/cicd.md).
 
 ---
 
@@ -68,22 +71,24 @@ my-repo/
 
 ## Overridable keys
 
-These keys can be set in `vartrack.json` to override the central rule:
+These keys can be set in `vartrack.json`; what each does, its type, and how it combines with the other layers is in [Rule options](rule-options.md):
 
-| Key | Type | Description |
-|---|---|---|
-| `root_key` | `string` | Subtree to extract before flattening. `""` processes the whole file. |
-| `file_name` | `string` | Config file path to watch instead of the centrally configured one. |
-| `file_path_map` | `object` | Map of `env → file_path` for per-environment file selection. Merged like `branch_map`. |
-| `branch_map` | `object` | Map of `branch → env` label. Merged into the central branch mapping; a branch set here wins. |
-| `branch_as_env` | `bool` | Use branch name as the environment label. |
-| `pr_as_env` | `bool` | Use `pr-{number}` as the environment label. |
-| `tag_as_env` | `bool` | Use tag name as the environment label. |
-| `sync_mode` | `string` | `AUTO`, `GIT_UPSERT_ALL`, `GIT_SMART_REPAIR`, or `LIVE_STATE`. |
-| `prune` | `bool` or `object` | Delete keys from the datasource that are no longer present in Git. An object (`{enabled, last, dry_run, protection}`) is merged with the rule's; its `protection` patterns are added to the rule's, never replace them. |
-| `strict_validation` | `bool` | Fail the sync if CUE schema validation fails (instead of warn). |
-| `variables_map` | `object` | Key-value pairs injected or overridden after ETL transform. Merged like `branch_map`. |
-| `dry_run` | `bool` | Permanently shadow this repo — Stage 3 never writes anything. |
+<!-- rule-options:repo-overridable -->
+- [`branch_as_env`](rule-options.md#branch_as_env)
+- [`branch_map`](rule-options.md#branch_map)
+- [`dry_run`](rule-options.md#dry_run)
+- [`file_name`](rule-options.md#file_name)
+- [`file_path_map`](rule-options.md#file_path_map)
+- [`pr_as_env`](rule-options.md#pr_as_env)
+- [`prune`](rule-options.md#prune)
+- [`root_key`](rule-options.md#root_key)
+- [`strict_validation`](rule-options.md#strict_validation)
+- [`sync_mode`](rule-options.md#sync_mode)
+- [`tag_as_env`](rule-options.md#tag_as_env)
+- [`variables_map`](rule-options.md#variables_map)
+<!-- /rule-options:repo-overridable -->
+
+`branch_map`, `file_path_map`, `variables_map` and `prune` are merged with the rule's key by key — a branch set here is added, and `prune.protection` patterns are added to the rule's, never replace them. The others replace the rule's value.
 
 ---
 

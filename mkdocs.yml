@@ -17,10 +17,17 @@ nav:
     - Environment Resolution: concepts/environment-resolution.md
     - Sync Strategies: concepts/sync-strategies.md
     - Drift Detection & Self-Heal: concepts/drift-detection.md
+    - Glossary: concepts/glossary.md
+  - Guides:
+    - Overview: guides/index.md
+    - Onboard a Config Repository: guides/onboard-a-repository.md
+    - Add a Tenant: guides/add-a-tenant.md
   - Configuration:
-    - Bundle Reference: configuration/bundle.md
-    - Schema Registry: configuration/schema-registry.md
-    - Per-Repo Overrides: configuration/per-repo-overrides.md
+    - Configuration Files: configuration/index.md
+    - Bundle Reference (config.cue): configuration/bundle.md
+    - Schema Registry (bundle.json): configuration/schema-registry.md
+    - Per-Repo Overrides (vartrack.json): configuration/per-repo-overrides.md
+    - Rule Options: configuration/rule-options.md
     - File Formats: configuration/formats.md
     - Schema Annotations: configuration/annotations.md
     - Authentication & Authorization: configuration/auth.md
@@ -43,6 +50,15 @@ nav:
     - watcher-service: services/watcher.md
   - Deployment:
     - Docker Compose: deployment/docker-compose.md
+  - Operations:
+    - Production Checklist: operations/production-checklist.md
+    - High Availability & Scaling: operations/high-availability.md
+    - Monitoring: operations/monitoring.md
+    - Troubleshooting: operations/troubleshooting.md
+    - Upgrading: operations/upgrading.md
+  - Reference:
+    - Environment Variables: reference/environment-variables.md
+  - FAQ: faq.md
   - Examples:
     - Overview: examples/index.md
     - Gitea platform: examples/gitea.md
@@ -86,6 +102,7 @@ theme:
 markdown_extensions:
   - admonition
   - attr_list
+  - def_list
   - md_in_html
   - footnotes
   - toc:
@@ -111,6 +128,11 @@ markdown_extensions:
 plugins:
   - search:
       lang: en
+
+# A link to a heading that does not exist is a warning, so `mkdocs build --strict`
+# (CI) fails on it like on a link to a missing page.
+validation:
+  anchors: warn
 
 extra:
   social:

@@ -184,8 +184,16 @@ type Rule struct {
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	Platform     string   `protobuf:"bytes,1,opt,name=platform,proto3" json:"platform,omitempty"`
-	Datasource   string   `protobuf:"bytes,2,opt,name=datasource,proto3" json:"datasource,omitempty"`
+	// The platform that sends this rule's pushes: a platforms entry's name,
+	// "github", "gitea", or "{type}-{tag}" for a tagged one. With datasource it
+	// names the rule: a bundle.json rule layers the config.cue rule with the same
+	// platform and datasource, and there is at most one of each pair.
+	Platform string `protobuf:"bytes,1,opt,name=platform,proto3" json:"platform,omitempty"`
+	// Where the rule writes: a datasources entry's name, "mongo", "redis", or
+	// "{type}-{tag}" for a tagged one ("mongo-billing").
+	Datasource string `protobuf:"bytes,2,opt,name=datasource,proto3" json:"datasource,omitempty"`
+	// The repositories whose pushes this rule syncs, as "owner/name" glob
+	// patterns ("acme/*", "acme/payments-*"). The gateway routes a push by them.
 	Repositories []string `protobuf:"bytes,5,rep,name=repositories,proto3" json:"repositories,omitempty"`
 	// Explicit single file to track in every repository.
 	// Mutually exclusive with file_path_map (validated below).
@@ -219,9 +227,9 @@ type Rule struct {
 	//	root_key: "vartrack"    → (default) sync "vartrack" section or whole file
 	//	root_key: ""            → always sync whole file
 	//
-	// Works the same way for every supported format: JSON, YAML, TOML, XML,
-	// .env, .properties, HCL, INI, JS-module — because lookup happens after
-	// parsing, against a plain Python/Rust dict.
+	// Works the same way for every supported format (JSON, YAML, TOML, XML,
+	// .env, .properties, HCL, INI, JS module): the key is looked up after the
+	// file is parsed.
 	RootKey *string `protobuf:"bytes,24,opt,name=root_key,json=rootKey,proto3,oneof" json:"root_key,omitempty"`
 	// The branch name is the environment. Formerly env_as_branch.
 	BranchAsEnv bool `protobuf:"varint,7,opt,name=branch_as_env,json=branchAsEnv,proto3" json:"branch_as_env,omitempty"`
@@ -229,7 +237,11 @@ type Rule struct {
 	PrAsEnv bool `protobuf:"varint,8,opt,name=pr_as_env,json=prAsEnv,proto3" json:"pr_as_env,omitempty"`
 	// The tag name is the environment. Formerly env_as_tags.
 	// The former names are still read from bundles and vartrack.json.
-	TagAsEnv  bool              `protobuf:"varint,9,opt,name=tag_as_env,json=tagAsEnv,proto3" json:"tag_as_env,omitempty"`
+	TagAsEnv bool `protobuf:"varint,9,opt,name=tag_as_env,json=tagAsEnv,proto3" json:"tag_as_env,omitempty"`
+	// Branch → environment, e.g. {main: "production", develop: "staging"}.
+	// A push to a branch that is not listed, and that no file_path_map,
+	// branch_as_env, pr_as_env or tag_as_env places, is synced to the
+	// environment "default".
 	BranchMap map[string]string `protobuf:"bytes,10,rep,name=branch_map,json=branchMap,proto3" json:"branch_map,omitempty" protobuf_key:"bytes,1,opt,name=key,proto3" protobuf_val:"bytes,2,opt,name=value,proto3"`
 	// The secret manager (a secret_managers entry: "vault" or "vault-{tag}")
 	// that {ref: …} credentials of this rule's platform and datasource, and its
@@ -250,12 +262,31 @@ type Rule struct {
 	// configmap   ConfigMap name               "myapp-{env}"      → myapp-pr-42
 	//
 	// When not set each sink falls back to its own sink-specific config key.
-	DestinationTemplate string                `protobuf:"bytes,12,opt,name=destination_template,json=destinationTemplate,proto3" json:"destination_template,omitempty"`
-	VariablesMap        map[string]string     `protobuf:"bytes,13,rep,name=variables_map,json=variablesMap,proto3" json:"variables_map,omitempty" protobuf_key:"bytes,1,opt,name=key,proto3" protobuf_val:"bytes,2,opt,name=value,proto3"`
-	SyncMode            enums.SyncMode        `protobuf:"varint,14,opt,name=sync_mode,json=syncMode,proto3,enum=vartrack.v1.SyncMode" json:"sync_mode,omitempty"`
-	ExcludeRepositories []string              `protobuf:"bytes,6,rep,name=exclude_repositories,json=excludeRepositories,proto3" json:"exclude_repositories,omitempty"`
-	Overrides           []*RepositoryOverride `protobuf:"bytes,15,rep,name=overrides,proto3" json:"overrides,omitempty"`
-	Prune               *PruneConfig          `protobuf:"bytes,16,opt,name=prune,proto3" json:"prune,omitempty"`
+	DestinationTemplate string `protobuf:"bytes,12,opt,name=destination_template,json=destinationTemplate,proto3" json:"destination_template,omitempty"`
+	// Renames of flat keys before they are written: {"NEW_NAME": "path.in.file"}
+	// writes the value at path.in.file under NEW_NAME.
+	VariablesMap map[string]string `protobuf:"bytes,13,rep,name=variables_map,json=variablesMap,proto3" json:"variables_map,omitempty" protobuf_key:"bytes,1,opt,name=key,proto3" protobuf_val:"bytes,2,opt,name=value,proto3"`
+	// How a sync writes. AUTO (the default) uses GIT_UPSERT_ALL for a file of
+	// up to 500 keys and GIT_SMART_REPAIR above. GIT_UPSERT_ALL writes every
+	// key. GIT_SMART_REPAIR, on MongoDB, reads the stored documents and writes
+	// only what differs; other sinks write every key. LIVE_STATE is written like
+	// GIT_UPSERT_ALL. The proto names (SYNC_MODE_AUTO, ...) are read too, and
+	// FULL as GIT_UPSERT_ALL.
+	SyncMode enums.SyncMode `protobuf:"varint,14,opt,name=sync_mode,json=syncMode,proto3,enum=vartrack.v1.SyncMode" json:"sync_mode,omitempty"`
+	// Repositories (glob patterns) this rule skips although repositories
+	// matches them.
+	ExcludeRepositories []string `protobuf:"bytes,6,rep,name=exclude_repositories,json=excludeRepositories,proto3" json:"exclude_repositories,omitempty"`
+	// Turns the rule on or off for some repositories:
+	// [{match_repositories: ["other-org/*"], enable: true}].
+	Overrides []*RepositoryOverride `protobuf:"bytes,15,rep,name=overrides,proto3" json:"overrides,omitempty"`
+	// Delete keys varTrack wrote before that Git no longer holds: true, or
+	// {enabled, dry_run, protection}. Prune runs once per environment after all
+	// its files are written, only on sinks that keep each key separately (Redis,
+	// ZooKeeper, Vercel, MongoDB with STRATEGY_KEY_VALUE). A key changed outside
+	// varTrack is kept and reported. protection lists glob patterns of keys that
+	// are never deleted; every layer's patterns add up. An object with only
+	// protection does not turn pruning on.
+	Prune *PruneConfig `protobuf:"bytes,16,opt,name=prune,proto3" json:"prune,omitempty"`
 	// ── Dry-run mode ──────────────────────────────────────────────────────────────
 	//
 	// When true, the pipeline runs in simulation mode for every webhook that
@@ -268,7 +299,9 @@ type Rule struct {
 	//
 	// This flag is always forced to true by the /dry-run API endpoint even if
 	// the rule itself has dry_run = false.
-	DryRun   bool `protobuf:"varint,25,opt,name=dry_run,json=dryRun,proto3" json:"dry_run,omitempty"`
+	DryRun bool `protobuf:"varint,25,opt,name=dry_run,json=dryRun,proto3" json:"dry_run,omitempty"`
+	// The watcher compares the datasource with Git on every poll and, on drift,
+	// has the orchestrator write Git's values back.
 	SelfHeal bool `protobuf:"varint,20,opt,name=self_heal,json=selfHeal,proto3" json:"self_heal,omitempty"`
 	// Rule keys pinned by this bundle. The orchestrator builds the rule it syncs
 	// with in layers, each overriding the one before: this rule, the schema
