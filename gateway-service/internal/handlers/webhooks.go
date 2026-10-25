@@ -174,7 +174,7 @@ func (h *WebhookHandler) Handle(w http.ResponseWriter, r *http.Request) {
 
 	if !platform.IsPushEvent(eventType) && !platform.IsPREvent(eventType) {
 		slog.Info("ignoring unhandled event type",
-			"event_type", eventType, "datasource", datasourceName,
+			"event_type", knownEventType(platform, eventType), "datasource", datasourceName,
 			"correlation_id", cid, "request_id", rid)
 		writeJSON(w, http.StatusOK, jsonResponse{Message: "event ignored"})
 		return
@@ -313,7 +313,7 @@ func (h *WebhookHandler) HandleSchemaRegistry(w http.ResponseWriter, r *http.Req
 
 	if !platform.IsPushEvent(eventType) {
 		slog.Info("schema registry: ignoring non-push event",
-			"event_type", eventType,
+			"event_type", knownEventType(platform, eventType),
 			"correlation_id", cid, "request_id", rid)
 		writeJSON(w, http.StatusOK, jsonResponse{Message: "event ignored"})
 		return
@@ -415,7 +415,7 @@ func (h *WebhookHandler) verifyWebhook(
 
 	if err := validateWebhookStream(platformName, eventType, hr); err != nil {
 		slog.Warn("webhook payload failed structural validation",
-			"platform", platformName, "event_type", eventType,
+			"platform", platformName, "event_type", knownEventType(platform, eventType),
 			"error", err,
 			"correlation_id", correlationID, "request_id", requestID)
 
@@ -479,7 +479,6 @@ func (h *WebhookHandler) verifyWebhook(
 			if !h.replayProtector.CheckNonce(deliveryID) {
 				slog.Warn("replay detected: duplicate delivery ID",
 					"platform", platformName,
-					"delivery_id", deliveryID,
 					"correlation_id", correlationID, "request_id", requestID)
 				writeErrorJSON(w, http.StatusUnauthorized,
 					ErrCodeReplayDetected, "duplicate delivery: request already processed")
@@ -499,6 +498,20 @@ func resolveTimestampExtractor(platformName string) middlewares.TimestampExtract
 		return middlewares.ExtractStripeTimestamp
 	default:
 		return middlewares.ExtractGitHubTimestamp
+	}
+}
+
+// knownEventType names an event for the log: "push", "pull_request", or "other".
+// The event type header is the sender's to set, so its value is never logged
+// as it came; the name returned is one of these constants, not the request's.
+func knownEventType(platform models.Platform, eventType string) string {
+	switch {
+	case platform.IsPushEvent(eventType):
+		return "push"
+	case platform.IsPREvent(eventType):
+		return "pull_request"
+	default:
+		return "other"
 	}
 }
 
