@@ -1,0 +1,11 @@
+{
+  "description": "Tenants that feed production: also keep keys an operator added by hand",
+  "extends": [
+    "local>vartrack-demo/presets"
+  ],
+  "prune": {
+    "protection": [
+      "manual.*"
+    ]
+  }
+}

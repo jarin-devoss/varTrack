@@ -91,7 +91,7 @@ bundle: {
 			repositories:         ["vartrack-demo/demo-configs"]
 			branch_as_env:        true
 			sync_mode:            "SYNC_MODE_FULL"
-			prune:                {last: true}
+			prune:                {enabled: true}
 			self_heal:            true
 			destination_template: "{env}-vars"
 		},

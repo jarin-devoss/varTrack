@@ -4,13 +4,18 @@ Seeds the live demo through the real paths:
   0. Web UI sign-in: an OAuth application on each Gitea server (gitea's
      credentials go to /live-state/ui-sign-in, gitea-team's client secret to
      Vault) and a read-only user
-  1. Gitea: org, a config repo and a schema repo (bundle.json + CUE schema)
+  1. Gitea: org, a config repo, a schema repo (bundle.json + CUE schema) and
+     a presets repo: rule settings the bundle.json files and vartrack.json
+     files share through "extends"
+  1b. The config repo's vartrack.json: one on main, another on develop
   2. Schema registry warm-up for the tenant
   3. Gitea webhooks on the config repo → gateway /webhooks/{datasource}
   4. Real commits: production config on `main`, staging config on `develop`,
      then a follow-up change on `main` — each push syncs every sink
   4b. gitea-team, a second Git server: the payments org with a private repo,
-      read by varTrack as vartrack-bot and synced to Redis (redis-team)
+      read by varTrack as vartrack-bot and synced to Redis (redis-team), and
+      its own schema repo — tenant "payments", whose bundle.json extends a
+      preset on gitea — and .gitea/vartrack.json in the payments repo
   5. A few direct edits in the sinks so there is drift to look at:
      MongoDB is put back by self-heal; Redis and S3 stay out of sync until
      someone syncs them from Git.
@@ -41,6 +46,9 @@ TENANT = os.environ.get("TENANT_ID", "default")
 ORG = "vartrack-demo"
 CONFIG_REPO = "demo-configs"
 SCHEMA_REPO = "schemas"
+PRESETS_REPO = "presets"
+REPO_CONFIG = "vartrack.json"
+TEAM_TENANT = "payments"
 CONFIG_FILE = "app-settings.yaml"
 DATASOURCES = ["mongo-primary", "zookeeper", "redis", "s3-minio", "configmap-checkout", "helm-checkout"]
 HERE = Path(__file__).parent
@@ -136,6 +144,26 @@ def ensure_repo(name: str, server: Server = MAIN, private: bool = False) -> None
               json={"name": name, "auto_init": True, "default_branch": "main", "private": private})
     r.raise_for_status()
     log(f"created {'private ' if private else ''}repo {server.org}/{name} on {server.name}")
+
+
+def put_tree(repo: str, local: Path, message: str, server: Server = MAIN) -> None:
+    """Commit every file under *local* to *repo* at the same relative path."""
+    for f in sorted(p for p in local.rglob("*") if p.is_file()):
+        put_file(repo, f.relative_to(local).as_posix(), f.read_text(), message, server=server)
+
+
+def push_repo_configs() -> None:
+    """The config repo's vartrack.json on each branch that exists: main and develop differ."""
+    for branch in ("main", "develop"):
+        if branch == "main" or gitea("GET", f"/repos/{ORG}/{CONFIG_REPO}/branches/{branch}").ok:
+            put_file(CONFIG_REPO, REPO_CONFIG, (HERE / "repo-config" / f"demo-configs.{branch}.json").read_text(),
+                     f"vartrack.json for {branch}", branch=branch)
+
+
+def warm_tenant(tenant: str, repo_url: str) -> None:
+    warm = requests.post(f"{ORCH}/v1/tenants/{tenant}/schemas/warm", timeout=60,
+                         json={"repo_url": repo_url, "branch": "main"})
+    log(f"schema registry warm-up ({tenant}): {warm.status_code} {warm.text[:200]}")
 
 
 def ensure_user(user: tuple[str, str], server: Server = MAIN) -> None:
@@ -245,9 +273,19 @@ def payments_team() -> None:
     if gitea("POST", "/orgs", TEAM, json={"username": TEAM.org, "visibility": "private"}).ok:
         log(f"created private org {TEAM.org} on {TEAM.name}")
     ensure_repo(TEAM_REPO, TEAM, private=True)
+    ensure_repo(SCHEMA_REPO, TEAM, private=True)
     ensure_user(BOT, TEAM)
-    gitea("PUT", f"/repos/{TEAM.org}/{TEAM_REPO}/collaborators/{BOT[0]}", TEAM,
-          json={"permission": "read"}).raise_for_status()
+    for repo in (TEAM_REPO, SCHEMA_REPO):
+        gitea("PUT", f"/repos/{TEAM.org}/{repo}/collaborators/{BOT[0]}", TEAM,
+              json={"permission": "read"}).raise_for_status()
+
+    # The payments tenant: its own schema repo, whose bundle.json extends a
+    # preset in vartrack-demo/presets on gitea — and a preset of its own, which
+    # the payments repo's .gitea/vartrack.json extends.
+    put_tree(SCHEMA_REPO, HERE / "team-schemas", "The payments tenant's rules", server=TEAM)
+    put_file(TEAM_REPO, f".gitea/{REPO_CONFIG}", (HERE / "repo-config" / "payments-config.json").read_text(),
+             "vartrack.json for payments-config", server=TEAM)
+    warm_tenant(TEAM_TENANT, f"{TEAM_GITEA}/{TEAM.org}/{SCHEMA_REPO}.git")
 
     url = f"{GATEWAY}/webhooks/{TEAM_DATASOURCE}"
     hooks = {h["config"]["url"] for h in gitea("GET", f"/repos/{TEAM.org}/{TEAM_REPO}/hooks", TEAM).json()}
@@ -270,8 +308,10 @@ def drift() -> None:
     from pymongo import MongoClient
 
     mongo = MongoClient("mongodb://mongo:27017", serverSelectionTimeoutMS=5000)
+    # mongo-primary stores one nested document per file (STRATEGY_DOCUMENT).
     res = mongo.vartrack.variables.update_one(
-        {"key": "features.debug_mode", "_vt_env": "production", "_vt_datasource": "mongo-primary"}, {"$set": {"value": "true"}}
+        {"_vt_env": "production", "_vt_datasource": "mongo-primary", "_vt_file": "app-settings.yaml"},
+        {"$set": {"data.features.debug_mode": "true"}},
     )
     log(f"MongoDB: production features.debug_mode → true ({res.modified_count} doc) — self-heal should put it back")
     mongo.close()
@@ -306,15 +346,15 @@ def main() -> None:
     r = gitea("POST", "/orgs", json={"username": ORG, "visibility": "public"})
     if r.ok:
         log(f"created org {ORG}")
-    for name in (CONFIG_REPO, SCHEMA_REPO):
+    for name in (CONFIG_REPO, SCHEMA_REPO, PRESETS_REPO):
         ensure_repo(name)
 
+    put_tree(PRESETS_REPO, HERE / "presets", "Shared rule settings")
     put_file(SCHEMA_REPO, "bundle.json", (HERE / "schemas" / "bundle.json").read_text(), "Rules for every sink")
     put_file(SCHEMA_REPO, "app-settings.yaml.cue", (HERE / "schemas" / "app-settings.yaml.cue").read_text(), "Schema for app-settings.yaml")
+    push_repo_configs()
 
-    warm = requests.post(f"{ORCH}/v1/tenants/{TENANT}/schemas/warm", timeout=60,
-                         json={"repo_url": f"{GITEA}/{ORG}/{SCHEMA_REPO}.git", "branch": "main"})
-    log(f"schema registry warm-up: {warm.status_code} {warm.text[:200]}")
+    warm_tenant(TENANT, f"{GITEA}/{ORG}/{SCHEMA_REPO}.git")
 
     wanted = {f"{GATEWAY}/webhooks/{ds}" for ds in DATASOURCES}
     hooks = {h["config"]["url"]: h["id"] for h in gitea("GET", f"/repos/{ORG}/{CONFIG_REPO}/hooks").json()}
@@ -347,6 +387,7 @@ def main() -> None:
     if not gitea("GET", f"/repos/{ORG}/{CONFIG_REPO}/branches/develop").ok:
         gitea("POST", f"/repos/{ORG}/{CONFIG_REPO}/branches", json={"new_branch_name": "develop", "old_branch_name": "main"}).raise_for_status()
         log("created branch develop")
+        push_repo_configs()
     time.sleep(2)
     put_file(CONFIG_REPO, CONFIG_FILE, config_file("staging.yaml"), "Staging: debug logging and a smaller pool", branch="develop")
     wait_for_syncs(2 * len(DATASOURCES), seen)

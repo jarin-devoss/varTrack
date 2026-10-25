@@ -5,17 +5,10 @@
     "tenant_id": "demo",
     "repo_url": "http://gitea:3000/vartrack-demo/demo-configs.git",
     "file_name": "app-settings.yaml",
-    "repositories": ["vartrack-demo/demo-configs"],
     "branch_as_env": false,
     "branch": "main",
     "sync_mode": "SYNC_MODE_FULL",
-    "prune": true,
-    "prune_last": false,
-    "self_heal": true,
-    "mongo_uri": "mongodb://mongo:27017",
-    "database": "vartrack",
-    "collection": "variables",
-    "update_strategy": "STRATEGY_KEY_VALUE"
+    "prune": true
   },
   {
     "platform": "github",
@@ -23,14 +16,10 @@
     "tenant_id": "demo",
     "repo_url": "http://gitea:3000/vartrack-demo/demo-configs.git",
     "file_name": "app-settings.yaml",
-    "repositories": ["vartrack-demo/demo-configs"],
     "branch_as_env": false,
     "branch": "main",
     "sync_mode": "SYNC_MODE_FULL",
     "prune": true,
-    "prune_last": false,
-    "self_heal": true,
-    "zk_hosts": ["zookeeper:2181"],
     "key_format": "slash"
   }
 ]

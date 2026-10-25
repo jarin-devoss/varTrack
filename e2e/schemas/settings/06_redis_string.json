@@ -1,7 +1,7 @@
 [
   {
     "platform": "github",
-    "datasource": "redis",
+    "datasource": "redis-string",
     "repo_url": "http://gitea:3000/vartrack-demo/demo-configs.git",
     "file_name": "app-settings.yaml",
     "repositories": ["vartrack-demo/demo-configs"],

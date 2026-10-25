@@ -1,0 +1,8 @@
+{
+  "description": "Org baseline for every tenant: never prune varTrack's own bookkeeping keys",
+  "prune": {
+    "protection": [
+      "_vt_*"
+    ]
+  }
+}

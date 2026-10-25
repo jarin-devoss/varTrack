@@ -1,0 +1,8 @@
+{
+  "description": "checkout-api's config repo (vartrack.json): keep feature flags toggled in the sinks",
+  "prune": {
+    "protection": [
+      "features.*"
+    ]
+  }
+}
