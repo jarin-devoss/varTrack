@@ -63,8 +63,8 @@ known_hosts_file:      "/etc/vartrack/known_hosts"
 | Mode | Behaviour |
 |---|---|
 | `strict` | The host's key must already be in `known_hosts_file` (or the orchestrator's system known hosts) |
-| `accept-new` | A host seen for the first time is accepted and recorded in `known_hosts_file`; a changed key is refused |
-| `off` | Any key is accepted — not recommended |
+| `accept-new` | Needs `known_hosts_file`. A host seen for the first time is accepted and its key is written to that file before the first command runs, so the next connection checks it; a changed key is refused |
+| `off` | Any key is accepted and nothing is recorded. Every connection logs a warning: a man in the middle would not be detected. Not recommended |
 
 ---
 

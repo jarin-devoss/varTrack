@@ -153,8 +153,11 @@ bundle: {
 				base_directory: "/tmp/vartrack"
 				file_paths:     ["app.env"]
 				// The target is a throwaway container with a host key generated at every
-				// start; strict checking (the default) would refuse it.
+				// start; strict checking (the default) would refuse it. accept-new
+				// records the key in a file outside any volume, so the next stack
+				// (new key) starts clean.
 				host_key_verification: "accept-new"
+				known_hosts_file:      "/tmp/vt_known_hosts"
 			}
 		},
 		{

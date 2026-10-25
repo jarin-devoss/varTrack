@@ -410,6 +410,38 @@ class _LocalFs:
 
 # ── SSH transport ────────────────────────────────────────────────────────────
 
+def _host_key_policy(paramiko: Any, verification: str, known_hosts: str | None) -> Any:
+    """What paramiko does with a host whose key is not known yet.
+
+    strict      refuse it
+    accept-new  trust it and write its key to *known_hosts* at once, before the
+                session starts, so the next connection checks it; a known host
+                with another key never reaches the policy (paramiko raises
+                BadHostKeyException first)
+    off         trust it and write nothing down: nothing protects the connection
+                from a man in the middle, and every connection says so in the log
+    """
+    if verification == "strict":
+        return paramiko.RejectPolicy()
+
+    class _TrustNewHostKey(paramiko.MissingHostKeyPolicy):
+        def missing_host_key(self, client: Any, hostname: str, key: Any) -> None:
+            fingerprint = key.get_fingerprint().hex()
+            if verification == "off":
+                logger.warning("LinuxServerSink: host key of %s (%s %s) is not verified: "
+                               "a man in the middle would not be detected",
+                               hostname, key.get_name(), fingerprint)
+                return
+            client.get_host_keys().add(hostname, key.get_name(), key)
+            if known_hosts:
+                os.makedirs(os.path.dirname(os.path.abspath(known_hosts)), exist_ok=True)
+                client.save_host_keys(known_hosts)
+            logger.info("LinuxServerSink: new host %s, %s key %s recorded",
+                        hostname, key.get_name(), fingerprint)
+
+    return _TrustNewHostKey()
+
+
 class _SshTransport:
     """A server reached over SSH.
 
@@ -419,8 +451,9 @@ class _SshTransport:
     sudo's password and the file's content never share stdin.
 
     host_key_verification: "strict" (default) refuses a host whose key is not
-    known; "accept-new" accepts and records a host seen for the first time but
-    refuses a changed key; "off" accepts any key.
+    known; "accept-new" accepts a host seen for the first time and records its
+    key in known_hosts_file (required), but refuses a changed key; "off" accepts
+    any key and logs a warning on every connection.
     """
 
     def __init__(self, cfg: dict) -> None:
@@ -443,6 +476,9 @@ class _SshTransport:
         if verification not in ("strict", "accept-new", "off"):
             raise ValueError(f"host_key_verification {verification!r}: use strict, accept-new or off")
         known_hosts = cfg.get("ssh_known_hosts_file")
+        if verification == "accept-new" and not known_hosts:
+            raise ValueError("host_key_verification accept-new needs known_hosts_file: "
+                             "with nowhere to record a new key it would verify nothing")
         timeout = float(cfg.get("ssh_connect_timeout_secs") or 30)
         attempts = 1 + max(0, int(cfg.get("ssh_max_retries") or 0))
         backoff = float(cfg.get("ssh_retry_backoff_secs") or 2)
@@ -457,9 +493,7 @@ class _SshTransport:
                         raise RuntimeError(f"known_hosts_file {known_hosts} does not exist")
                 else:
                     client.load_system_host_keys()
-            client.set_missing_host_key_policy(
-                paramiko.RejectPolicy() if verification == "strict" else paramiko.AutoAddPolicy()
-            )
+            client.set_missing_host_key_policy(_host_key_policy(paramiko, verification, known_hosts))
             try:
                 client.connect(
                     hostname=self._host,
@@ -482,8 +516,6 @@ class _SshTransport:
                                self._host, exc, attempt, attempts - 1, backoff)
                 time.sleep(backoff)
                 continue
-            if verification == "accept-new" and known_hosts:
-                client.save_host_keys(known_hosts)
             return client
         raise RuntimeError(f"cannot connect to {self._host}")
 

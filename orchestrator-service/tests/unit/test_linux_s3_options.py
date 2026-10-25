@@ -98,9 +98,21 @@ def test_config_cue_linux_options():
 
 # ── SSH host keys and retries ────────────────────────────────────────────────
 
+class _FakeHostKeys:
+    def __init__(self):
+        self.added = []
+
+    def add(self, hostname, keytype, key):
+        self.added.append((hostname, keytype))
+
+
 class _FakeClient:
     def __init__(self):
         self.policy, self.loaded, self.saved, self.system, self.kw = None, None, None, False, {}
+        self.host_keys = _FakeHostKeys()
+
+    def get_host_keys(self):
+        return self.host_keys
 
     def load_host_keys(self, path):
         self.loaded = path
@@ -128,7 +140,7 @@ class _FakeClient:
 def fake_paramiko(monkeypatch):
     fake = MagicMock()
     fake.RejectPolicy = lambda: "reject"
-    fake.AutoAddPolicy = lambda: "auto-add"
+    fake.MissingHostKeyPolicy = type("MissingHostKeyPolicy", (), {})
     fake.BadHostKeyException = type("BadHostKeyException", (Exception,), {})
     fake.SSHException = type("SSHException", (Exception,), {})
     clients = []
@@ -142,20 +154,55 @@ def fake_paramiko(monkeypatch):
     return clients
 
 
-@pytest.mark.parametrize("mode,policy,saves", [
-    ("strict", "reject", False), ("accept-new", "auto-add", True), ("off", "auto-add", False),
-])
-def test_host_key_verification(fake_paramiko, tmp_path, mode, policy, saves):
+@pytest.mark.parametrize("mode", ["strict", "accept-new", "off"])
+def test_host_key_verification(fake_paramiko, tmp_path, mode):
     from app.pipeline.sinks.linux_server import _SshTransport
     known = tmp_path / "known_hosts"
     known.write_text("")
     _SshTransport({"ssh_host": "h", "ssh_known_hosts_file": str(known), "ssh_host_key_verification": mode,
                    "ssh_connect_timeout_secs": 7, "ssh_compression": True})
     client = fake_paramiko[-1]
-    assert client.policy == policy
-    assert (client.saved == str(known)) is saves
+    assert (client.policy == "reject") is (mode == "strict")
+    assert client.saved is None                      # nothing is written by connecting to a known host
     assert client.loaded == (None if mode == "off" else str(known))
     assert (client.kw["timeout"], client.kw["compress"]) == (7.0, True)
+
+
+class _Key:
+    def get_name(self):
+        return "ssh-ed25519"
+
+    def get_fingerprint(self):
+        return b"\x01\x02"
+
+
+def _unknown_host(fake_paramiko, tmp_path, mode, known_hosts):
+    from app.pipeline.sinks.linux_server import _SshTransport
+    _SshTransport({"ssh_host": "h", "ssh_known_hosts_file": known_hosts, "ssh_host_key_verification": mode})
+    client = fake_paramiko[-1]
+    client.policy.missing_host_key(client, "h", _Key())
+    return client
+
+
+def test_accept_new_records_a_new_host_key_in_known_hosts(fake_paramiko, tmp_path):
+    known = str(tmp_path / "keys" / "known_hosts")
+    client = _unknown_host(fake_paramiko, tmp_path, "accept-new", known)
+    assert client.host_keys.added == [("h", "ssh-ed25519")]
+    assert client.saved == known                    # written when the key is seen, not after the session
+
+
+def test_accept_new_without_a_known_hosts_file_is_refused(fake_paramiko):
+    from app.pipeline.sinks.linux_server import _SshTransport
+    with pytest.raises(ValueError, match="needs known_hosts_file"):
+        _SshTransport({"ssh_host": "h", "ssh_host_key_verification": "accept-new"})
+    assert not fake_paramiko
+
+
+def test_off_trusts_a_new_host_key_and_warns_every_time(fake_paramiko, tmp_path, caplog):
+    with caplog.at_level("WARNING"):
+        client = _unknown_host(fake_paramiko, tmp_path, "off", None)
+    assert client.saved is None and client.host_keys.added == []
+    assert "is not verified" in caplog.text
 
 
 def test_connection_is_retried(fake_paramiko, monkeypatch):
