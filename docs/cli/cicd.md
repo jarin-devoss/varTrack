@@ -48,7 +48,7 @@ jobs:
           VARTRACK_TOKEN:  ${{ secrets.VARTRACK_TOKEN }}
         run: |
           vt validate --file configs/app.yaml --datasource mongo
-          test ! -f vartrack.json || vt validate-config vartrack.json
+          vt validate-config
 
   sync:
     name: Sync to production

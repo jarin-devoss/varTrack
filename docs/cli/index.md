@@ -112,9 +112,13 @@ vt validate --file configs/app.yaml --datasource mongo --tenant myapp
 
 ### `vt validate-config`
 
-Check a `vartrack.json` or a tenant's `bundle.json` before pushing it, with the code a sync reads it with. Exits with code 1 when there are errors.
+Check a `vartrack.json` or a tenant's `bundle.json` before pushing it, with the code a sync reads it with. With no file named, it checks the `vartrack.json` files in the current directory (`vartrack.json`, `.github/vartrack.json`, `.gitea/vartrack.json`, `.gitlab/vartrack.json`); with none, it prints `no vartrack.json found` and exits 0.
+
+It exits with code 1 when any file has **errors or warnings**, and with `--strict` also when a file has **migrations**.
 
 ```bash
+vt validate-config
+vt validate-config --strict
 vt validate-config vartrack.json
 vt validate-config .gitea/vartrack.json
 vt validate-config schemas/bundle.json --tenant payments
@@ -135,7 +139,8 @@ A `vartrack.json`'s `extends` presets are checked by name, not fetched. A `bundl
 | Flag | Default | Description |
 |---|---|---|
 | `--tenant` | from context | Tenant ID: whose rules and presets a `bundle.json` is checked against |
-| `--json` | false | Print `errors`, `warnings` and `migrations` as JSON |
+| `--strict` | false | Also exit 1 when a file uses options under a name that changed (migrations) |
+| `--json` | false | Print `[{file, errors, warnings, migrations}]` as JSON |
 
 The caller needs a token any platform of the bundle accepts; the file names no rule, so no repository permission is asked.
 

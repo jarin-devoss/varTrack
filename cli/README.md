@@ -124,9 +124,11 @@ vt validate --file configs/app.yaml --datasource mongo --tenant myapp
 
 ### validate-config
 
-Check a `vartrack.json` or a tenant's `bundle.json` before pushing it, the way a sync would read it. Reports errors, warnings and migrations; exit code 1 on errors.
+Check a `vartrack.json` or a tenant's `bundle.json` before pushing it, the way a sync would read it. Reports errors, warnings and migrations; exit code 1 on errors or warnings (`--strict`: also on migrations). With no file named it checks the `vartrack.json` files in the current directory, and has nothing to do when there are none.
 
 ```bash
+vt validate-config
+vt validate-config --strict
 vt validate-config vartrack.json
 vt validate-config schemas/bundle.json --tenant payments
 ```
@@ -134,7 +136,8 @@ vt validate-config schemas/bundle.json --tenant payments
 | Flag | Default | Description |
 |---|---|---|
 | `--tenant` | (from context) | Tenant ID: whose rules and presets a `bundle.json` is checked against |
-| `--json` | false | Print result as JSON |
+| `--strict` | false | Also fail when a file has migrations (options under a name that changed) |
+| `--json` | false | Print `[{file, errors, warnings, migrations}]` as JSON |
 
 ---
 
