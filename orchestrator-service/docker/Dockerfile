@@ -1,14 +1,14 @@
 # ─── Stage 0: Build CUE from source ─────────────────────────────────────────
 # Build the CUE binary with a current Go toolchain so the embedded stdlib
 # is up to date. Avoids shipping a pre-built binary whose Go version may lag.
-FROM golang:1.26-alpine@sha256:91eda9776261207ea25fd06b5b7fed8d397dd2c0a283e77f2ab6e91bfa71079d AS cue-builder
+FROM golang:1.27-alpine@sha256:f92b6ef800e499660581efdabdf25d9d817a9d124eaf900924f0504e7e27e12d AS cue-builder
 ARG CUE_VERSION=v0.16.0
 RUN go install cuelang.org/go/cmd/cue@${CUE_VERSION}
 
 # ─── Stage 1: Python dependency builder ──────────────────────────────────────
 # Install Python deps into a separate layer so the runtime image only copies
 # the site-packages directory (not pip / build toolchain).
-FROM python:3.14-slim@sha256:d7a925f9eb9639a93e455b9f12c167569358818c0f62b51b88edbc8fcf34c421 AS builder
+FROM python:3.14-slim@sha256:a2b82f3c48559aa0a8446d9af49826b6e2b2016f4cd2afabfe6013ec53729170 AS builder
 
 ARG VERSION=dev
 ARG COMMIT=unknown
@@ -51,7 +51,7 @@ RUN mkdir -p /opt/extra-bin \
 COPY . .
 
 # ─── Stage 2: Runtime ────────────────────────────────────────────────────────
-FROM python:3.14-slim@sha256:d7a925f9eb9639a93e455b9f12c167569358818c0f62b51b88edbc8fcf34c421 AS runtime
+FROM python:3.14-slim@sha256:a2b82f3c48559aa0a8446d9af49826b6e2b2016f4cd2afabfe6013ec53729170 AS runtime
 
 ARG VERSION=dev
 ARG COMMIT=unknown
