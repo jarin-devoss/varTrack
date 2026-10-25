@@ -53,7 +53,7 @@ dependencies = [
     "structlog>=24.1",
     "prometheus-client>=0.20",
     # OpenTelemetry SDK + exporters + auto-instrumentation
-    "opentelemetry-sdk>=1.24",
+    "opentelemetry-sdk>=1.41.1",
     "opentelemetry-exporter-otlp-proto-grpc>=1.24",
     "opentelemetry-exporter-otlp-proto-http>=1.24",
     "opentelemetry-instrumentation-fastapi>=0.45b0",
