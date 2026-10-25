@@ -536,29 +536,29 @@ func validateWebhookStream(platformName, eventType string, r io.Reader) error {
 		switch eventType {
 		case "push":
 			if payload.Ref == nil || payload.Repository == nil {
-				return fmt.Errorf("missing required field 'ref' or 'repository' for %s/%s event", platformName, eventType)
+				return fmt.Errorf("missing required field 'ref' or 'repository' for %s/push event", platformName)
 			}
 		case "pull_request":
 			if payload.Action == nil || payload.PullRequest == nil || payload.Repository == nil {
-				return fmt.Errorf("missing required field 'action', 'pull_request', or 'repository' for %s/%s event", platformName, eventType)
+				return fmt.Errorf("missing required field 'action', 'pull_request', or 'repository' for %s/pull_request event", platformName)
 			}
 		}
 	case "gitlab":
 		switch eventType {
 		case "Push Hook", "Tag Push Hook":
 			if payload.Ref == nil || payload.Project == nil {
-				return fmt.Errorf("missing required field 'ref' or 'project' for %s/%s event", platformName, eventType)
+				return fmt.Errorf("missing required field 'ref' or 'project' for %s/Push Hook event", platformName)
 			}
 		case "Merge Request Hook":
 			if payload.ObjectAttr == nil || payload.Project == nil {
-				return fmt.Errorf("missing required field 'object_attributes' or 'project' for %s/%s event", platformName, eventType)
+				return fmt.Errorf("missing required field 'object_attributes' or 'project' for %s/Merge Request Hook event", platformName)
 			}
 		}
 	case "bitbucket":
 		switch eventType {
 		case "repo:push":
 			if payload.Push == nil || payload.Repository == nil {
-				return fmt.Errorf("missing required field 'push' or 'repository' for %s/%s event", platformName, eventType)
+				return fmt.Errorf("missing required field 'push' or 'repository' for %s/repo:push event", platformName)
 			}
 		}
 	case "slack":

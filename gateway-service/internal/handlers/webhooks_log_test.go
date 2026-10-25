@@ -61,3 +61,18 @@ func TestARawEventTypeHeaderIsNotLogged(t *testing.T) {
 		t.Fatalf("the event type header's value was logged: %s", out)
 	}
 }
+
+func TestStructuralValidationNamesTheEventItKnows(t *testing.T) {
+	for _, c := range []struct{ platform, event, want string }{
+		{"github", "push", "github/push event"},
+		{"gitea", "pull_request", "gitea/pull_request event"},
+		{"gitlab", "Push Hook", "gitlab/Push Hook event"},
+		{"gitlab", "Merge Request Hook", "gitlab/Merge Request Hook event"},
+		{"bitbucket", "repo:push", "bitbucket/repo:push event"},
+	} {
+		err := validateWebhookStream(c.platform, c.event, strings.NewReader(`{}`))
+		if err == nil || !strings.Contains(err.Error(), c.want) {
+			t.Errorf("%s %s: error = %v, want it to name %q", c.platform, c.event, err, c.want)
+		}
+	}
+}
