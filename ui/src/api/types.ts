@@ -144,6 +144,8 @@ export type EventReason =
   | 'KeysPruned'
   | 'PruneFailed'
   | 'PruneSkipped'
+  | 'ShapeChanged'
+  | 'SharedKeySpace'
   | 'DriftDetected'
   | 'HealSucceeded'
   | 'HealFailed'

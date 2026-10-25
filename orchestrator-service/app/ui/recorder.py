@@ -103,6 +103,7 @@ def _file_result(r: Any, dry_run_file: dict | None = None) -> dict[str, Any]:
         "written": r.written,
         "pruned": r.pruned,
         **({"rootKey": r.root_key} if r.root_key else {}),
+        **({"replaced": r.replaced, "replacedBy": r.replaced_by} if r.replaced else {}),
         **({"error": r.error} if r.error else {}),
         # Keys only: prune's values stay in the ledger's target, not in a task.
         **({"prunePending": r.prune_pending} if r.prune_pending is not None else {}),
@@ -256,6 +257,10 @@ def _record_envs(task: dict[str, Any], *, tenant: str, envs: list[str], files: l
             rule=rule, env=env, task_id=task["taskId"],
             message=f"wrote {sync['written']} key{'s' if sync['written'] != 1 else ''} to {datasource}",
         )
+        for f in env_files:
+            if f.get("replaced"):
+                ledger.record_event(tenant=tenant, reason="ShapeChanged", rule=rule, env=env,
+                                    task_id=task["taskId"], message=_shape_changed(f))
         if sync["pruned"]:
             ledger.record_event(tenant=tenant, reason="KeysPruned", rule=rule, env=env, task_id=task["taskId"],
                                 message=f"pruned {sync['pruned']} key{'s' if sync['pruned'] != 1 else ''} no longer in Git")
@@ -271,6 +276,15 @@ def _record_envs(task: dict[str, Any], *, tenant: str, envs: list[str], files: l
                                     message=f"{len(keys)} key{'s' if len(keys) != 1 else ''} no longer in Git "
                                             f"changed outside varTrack, not deleted: {', '.join(keys[:5])}"
                                             + (" …" if len(keys) > 5 else ""))
+
+
+def _shape_changed(f: dict[str, Any]) -> str:
+    n, strategy = f["replaced"], f.get("replacedBy", "")
+    if strategy == "STRATEGY_KEY_VALUE":
+        what = f"replaced the document of {f['file']} with one document per key"
+    else:
+        what = f"replaced {n} per-key document{'s' if n != 1 else ''} of {f['file']} with one document"
+    return f"{what} (update_strategy {strategy})" if strategy else what
 
 
 def task_errored(task: dict[str, Any] | None, *, tenant: str, error: str) -> None:

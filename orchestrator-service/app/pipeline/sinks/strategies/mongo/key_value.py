@@ -29,16 +29,23 @@ from __future__ import annotations
 
 import logging
 
-from app.pipeline.sinks.strategies.mongo.base import MongoWriteStrategy
+from app.pipeline.sinks.strategies.mongo.base import MongoWriteStrategy, Written, deleted
 
 logger = logging.getLogger(__name__)
 
 
 class KeyValueStrategy(MongoWriteStrategy):
 
-    def upsert(self, collection, flat_data, doc_filter, commit_sha, file_path, meta, data=None) -> int:
+    @staticmethod
+    def _drop_file_document(collection, doc_filter: dict, file_path: str) -> int:
+        """The one document that held this file, left from before the datasource's
+        update_strategy changed to key-value. Returns how many were removed."""
+        return deleted(collection.delete_many({**doc_filter, "_vt_file": file_path, "data": {"$exists": True}}))
+
+    def upsert(self, collection, flat_data, doc_filter, commit_sha, file_path, meta, data=None) -> Written:
+        replaced = self._drop_file_document(collection, doc_filter, file_path)
         if not flat_data:
-            return 0
+            return Written(0, replaced)
         import time
         from pymongo import UpdateOne
         from pymongo.errors import BulkWriteError
@@ -60,9 +67,10 @@ class KeyValueStrategy(MongoWriteStrategy):
                     raise
                 logger.debug("bulk_write attempt %d failed: %s — retrying", attempt + 1, exc)
                 time.sleep(0.1 * (attempt + 1))
-        return len(flat_data)
+        return Written(len(flat_data), replaced)
 
-    def repair(self, collection, flat_data, doc_filter, commit_sha, file_path, meta, data=None) -> int:
+    def repair(self, collection, flat_data, doc_filter, commit_sha, file_path, meta, data=None) -> Written:
+        replaced = self._drop_file_document(collection, doc_filter, file_path)
         try:
             from vartrack_core import py_diff  # type: ignore[import]
             _use_rust = True
@@ -76,7 +84,7 @@ class KeyValueStrategy(MongoWriteStrategy):
             }
             diff = py_diff(current, flat_data)
             if diff["is_empty"]:
-                return 0
+                return Written(0, replaced)
             from pymongo import UpdateOne
             to_upsert = {
                 **diff["added"],
@@ -92,7 +100,7 @@ class KeyValueStrategy(MongoWriteStrategy):
             ]
             if ops:
                 collection.bulk_write(ops, ordered=False)
-            return len(ops)
+            return Written(len(ops), replaced)
 
         # Fallback: per-key loop
         repaired = 0
@@ -103,4 +111,4 @@ class KeyValueStrategy(MongoWriteStrategy):
                 doc = {**meta, **doc_filter, "key": key, "value": value}
                 collection.update_one(flt, {"$set": doc}, upsert=True)
                 repaired += 1
-        return repaired
+        return Written(repaired, replaced)

@@ -105,10 +105,10 @@ One document per environment and file, with `data` in the shape the file parsed 
 }
 ```
 
-With either document strategy, every sync replaces the file's document, so keys removed from Git disappear without `prune`. Switching a datasource from `STRATEGY_KEY_VALUE` to one of them removes that file's per-key documents on the next sync.
+With either document strategy, every sync replaces the file's document, so keys removed from Git disappear without `prune`. Switching a datasource from `STRATEGY_KEY_VALUE` to one of them removes that file's per-key documents on the next sync; switching back to `STRATEGY_KEY_VALUE` removes the file's document the same way. The orchestrator logs a warning with the number of documents removed, and the UI shows a **Shape changed** event on the environment.
 
 !!! note "The default changed"
-    A Mongo datasource that sets no `update_strategy` used to store one document per key. It now stores one nested document per file. To keep per-key documents, set `update_strategy: "STRATEGY_KEY_VALUE"`; without it, the next sync replaces the per-key documents of each file with its document.
+    A Mongo datasource that sets no `update_strategy` used to store one document per key. It now stores one nested document per file. To keep per-key documents, set `update_strategy: "STRATEGY_KEY_VALUE"`; without it, the next sync replaces the per-key documents of each file with its document, logs how many it removed and shows a **Shape changed** event.
 
 ---
 

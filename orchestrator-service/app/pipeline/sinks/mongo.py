@@ -115,6 +115,7 @@ class MongoSink(BaseSink):
         # MongoConfig.update_strategy: STRATEGY_DOCUMENT (default), STRATEGY_KEY_VALUE or STRATEGY_FILE.
         strategy_name = cfg.get("update_strategy")
         self._strategy: MongoWriteStrategy = get_strategy(strategy_name)
+        self._strategy_name = update_strategy(strategy_name) if strategy_name else "STRATEGY_DOCUMENT"
 
         # Mongo only supports DOT format — validate here so misconfiguration
         # is caught at construction, not at write time.
@@ -209,15 +210,24 @@ class MongoSink(BaseSink):
         )
 
         if sync_mode == SyncMode.GIT_SMART_REPAIR:
-            written = self._strategy.repair(
+            result = self._strategy.repair(
                 collection, flat_data, doc_filter, commit_sha, file_path, meta, data=data
             )
         else:
-            written = self._strategy.upsert(
+            result = self._strategy.upsert(
                 collection, flat_data, doc_filter, commit_sha, file_path, meta, data=data
             )
 
-        return {"written": written}
+        if result.replaced:
+            # The datasource's update_strategy changed since this file was last
+            # written: what the old strategy stored for it is gone.
+            logger.warning(
+                "MongoSink: update_strategy %s replaced %d document%s of the previous shape "
+                "tenant=%s datasource=%s env=%s file=%s",
+                self._strategy_name, result.replaced, "" if result.replaced == 1 else "s",
+                self._tenant_id, datasource, env, file_path,
+            )
+        return {"written": result.written, "replaced": result.replaced, "strategy": self._strategy_name}
 
     # ── Prune ─────────────────────────────────────────────────────────────────
 

@@ -55,6 +55,11 @@ class SyncResult:
     pruned:    int = 0
     error:     str = ""
     root_key:  str = ""
+    # Documents the sink removed because the datasource's update_strategy
+    # changed since this file was last written (the strategy now in use is
+    # replaced_by), so a change of shape is never silent.
+    replaced:    int = 0
+    replaced_by: str = ""
     # Prune runs once per environment, after all its files are written: its
     # outcome is on the last file of the environment.
     #   prune_pending      keys it could not delete (the next sync retries

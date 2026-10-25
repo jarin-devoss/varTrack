@@ -36,7 +36,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from app.pipeline.sinks.strategies.mongo.base import MongoWriteStrategy
+from app.pipeline.sinks.strategies.mongo.base import MongoWriteStrategy, Written, deleted
 from app.pipeline.transformer import _flatten
 
 logger = logging.getLogger(__name__)
@@ -44,21 +44,22 @@ logger = logging.getLogger(__name__)
 
 class FileStrategy(MongoWriteStrategy):
 
-    def upsert(self, collection, flat_data, doc_filter, commit_sha, file_path, meta, data=None) -> int:
+    def upsert(self, collection, flat_data, doc_filter, commit_sha, file_path, meta, data=None) -> Written:
         flt = {**doc_filter, "_vt_file": file_path}
         doc = {**meta, **doc_filter, "_vt_file": file_path, "data": self._shape(flat_data, data)}
         collection.replace_one({**flt, "data": {"$exists": True}}, doc, upsert=True)
         # One document per key for this file, left from before the
-        # datasource's update_strategy changed, no longer says anything.
-        collection.delete_many({**flt, "data": {"$exists": False}})
-        return len(flat_data)
+        # datasource's update_strategy changed, no longer says anything. They
+        # are counted: the sink logs it and the UI shows a Shape changed event.
+        replaced = deleted(collection.delete_many({**flt, "data": {"$exists": False}}))
+        return Written(len(flat_data), replaced)
 
-    def repair(self, collection, flat_data, doc_filter, commit_sha, file_path, meta, data=None) -> int:
+    def repair(self, collection, flat_data, doc_filter, commit_sha, file_path, meta, data=None) -> Written:
         flt      = {**doc_filter, "_vt_file": file_path}
         existing = collection.find_one(flt, {"_vt_commit": 1})
         if existing is None or existing.get("_vt_commit") != commit_sha:
             return self.upsert(collection, flat_data, doc_filter, commit_sha, file_path, meta, data=data)
-        return 0
+        return Written(0)
 
     def read_values(self, collection, keys, doc_filter) -> dict[str, str]:
         # Flat or nested, "data" reads back as the ETL's flat keys.

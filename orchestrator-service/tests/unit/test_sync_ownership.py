@@ -676,3 +676,35 @@ def test_datasources_do_not_share_mongo_documents_so_mongo_names_no_store():
     # Documents are filtered by tenant, datasource and env: the key space already says it all.
     assert MongoSink.store({"mongo_uri": "mongodb://a"}) == ""
     assert MongoSink.key_space({"datasource": "mongo-a"}, "acme", "staging") !=         MongoSink.key_space({"datasource": "mongo-b"}, "acme", "staging")
+
+
+# ── A change of update_strategy is reported ───────────────────────────────────
+
+class ShapeShiftingSink(_sink_class(prunes=False)):
+    """A Mongo-like sink that removes `replaced` documents of the old shape on each write."""
+
+    replaced = 19
+
+    def write(self, **kw):
+        return {**super().write(**kw), "replaced": self.replaced, "strategy": "STRATEGY_DOCUMENT"}
+
+
+def test_replaced_documents_reach_the_result_and_become_a_shape_changed_event(redis):
+    results = _sync(ShapeShiftingSink(), [_file("app.yaml", "production", a="1")], prune=False)
+
+    assert (results[0].replaced, results[0].replaced_by) == (19, "STRATEGY_DOCUMENT")
+    events = [c.kwargs for c in redis.events.call_args_list if c.kwargs["reason"] == "ShapeChanged"]
+    assert len(events) == 1 and events[0]["env"] == "production"
+    assert events[0]["message"] == ("replaced 19 per-key documents of app.yaml with one document "
+                                    "(update_strategy STRATEGY_DOCUMENT)")
+
+
+def test_a_sync_that_replaced_nothing_records_no_shape_event(redis):
+    _sync(_sink_class(prunes=False)(), [_file("app.yaml", "production", a="1")], prune=False)
+    assert not [c for c in redis.events.call_args_list if c.kwargs["reason"] == "ShapeChanged"]
+
+
+def test_the_key_value_direction_has_its_own_wording():
+    from app.ui.recorder import _shape_changed
+    msg = _shape_changed({"file": "app.yaml", "replaced": 1, "replacedBy": "STRATEGY_KEY_VALUE"})
+    assert msg == "replaced the document of app.yaml with one document per key (update_strategy STRATEGY_KEY_VALUE)"

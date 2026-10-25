@@ -17,6 +17,8 @@ export const REASON: Record<EventReason, { label: string; icon: IconName; tone: 
   KeysPruned: { label: 'Keys pruned', icon: 'trash', tone: 'neutral' },
   PruneFailed: { label: 'Prune failed', icon: 'xCircle', tone: 'warning' },
   PruneSkipped: { label: 'Prune skipped', icon: 'trash', tone: 'warning' },
+  ShapeChanged: { label: 'Shape changed', icon: 'refresh', tone: 'neutral' },
+  SharedKeySpace: { label: 'Shared key space', icon: 'arrowUpCircle', tone: 'warning' },
   DriftDetected: { label: 'Drift detected', icon: 'arrowUpCircle', tone: 'warning' },
   HealSucceeded: { label: 'Healed', icon: 'refresh', tone: 'good' },
   HealFailed: { label: 'Heal failed', icon: 'xCircle', tone: 'critical' },

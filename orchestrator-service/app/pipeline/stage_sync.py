@@ -373,6 +373,8 @@ def run_stage_sync(
 
                     sync_result.sync_mode = sync_mode.name
                     sync_result.written   = write_result.get("written", 0)
+                    sync_result.replaced  = write_result.get("replaced", 0) or 0
+                    sync_result.replaced_by = write_result.get("strategy", "") if sync_result.replaced else ""
                     written_files.append((datasource, etl_file.env, etl_file.file_path, snapshot))
                     from app.ui import ledger
                     written_by_env.setdefault(etl_file.env, {})[
@@ -478,6 +480,7 @@ def sync_result_to_dict(r: SyncResult) -> dict:
         "written":   r.written,
         "pruned":    r.pruned,
         "root_key":  r.root_key,
+        **({"replaced": r.replaced, "replaced_by": r.replaced_by} if r.replaced else {}),
         **({"error": r.error} if r.error else {}),
         **({"prune_pending": r.prune_pending} if r.prune_pending is not None else {}),
         **({"prune_skipped": r.prune_skipped} if r.prune_skipped else {}),

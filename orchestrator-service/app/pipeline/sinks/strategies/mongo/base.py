@@ -11,7 +11,21 @@ One concrete strategy per Strategy value (MongoConfig.update_strategy):
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import Any
+from typing import Any, NamedTuple
+
+
+class Written(NamedTuple):
+    """What a write did: documents written, and documents of the other shape
+    removed because the datasource's update_strategy changed since the file
+    was last written (a key-value document per key vs one document per file)."""
+    written:  int
+    replaced: int = 0
+
+
+def deleted(result: Any) -> int:
+    """How many documents a delete_many removed."""
+    count = getattr(result, "deleted_count", 0)
+    return count if isinstance(count, int) else 0
 
 
 class MongoWriteStrategy(ABC):
@@ -46,8 +60,9 @@ class MongoWriteStrategy(ABC):
         file_path: str,
         meta: dict,
         data: Any = None,
-    ) -> int:
-        """Write flat_data (*data*: the file in the shape it parsed to). Returns number of docs written."""
+    ) -> Written:
+        """Write flat_data (*data*: the file in the shape it parsed to). Returns the
+        number of docs written and of other-shape docs replaced."""
 
     @abstractmethod
     def repair(
@@ -59,8 +74,9 @@ class MongoWriteStrategy(ABC):
         file_path: str,
         meta: dict,
         data: Any = None,
-    ) -> int:
-        """Re-write docs that are missing or out of sync. Returns count repaired."""
+    ) -> Written:
+        """Re-write docs that are missing or out of sync. Returns the count repaired
+        and the other-shape docs replaced."""
 
     def read_values(self, collection, keys: list[str], doc_filter: dict) -> dict[str, str]:
         """Current values of *keys* (the ETL's flat keys), from one document per key."""
