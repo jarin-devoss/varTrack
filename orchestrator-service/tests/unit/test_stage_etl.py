@@ -65,6 +65,19 @@ class TestRunStageETL(unittest.TestCase):
             from app.pipeline.stage_etl import run_stage_etl
             return run_stage_etl(ctx, datasource="mongo", tenant_id="acme")
 
+    def test_files_are_read_at_the_pushed_commit(self):
+        ctx = _ctx(commit_sha="c" * 40)
+        mock_schema = MagicMock()
+        mock_schema.tenant_schema_root.return_value = Path("/nonexistent/schemas")
+        with (
+            patch("app.pipeline.stage_etl.collect_files", return_value=[]) as collect,
+            patch("app.schema_registry.manager.get_schema_manager", return_value=mock_schema),
+        ):
+            from app.pipeline.stage_etl import run_stage_etl
+            run_stage_etl(ctx, datasource="mongo", tenant_id="acme")
+        self.assertEqual(collect.call_args.kwargs["revision"], "c" * 40)
+        self.assertEqual(collect.call_args.kwargs["ref"], "refs/heads/main")
+
     def test_single_file_produces_one_etlfile(self):
         result = self._run([("config.yaml", "db:\n  host: localhost\n")])
         self.assertEqual(len(result.files), 1)

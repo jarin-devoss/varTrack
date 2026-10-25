@@ -84,7 +84,9 @@ def apply_repo_overrides(ctx: "PayloadContext") -> "PayloadContext":
     try:
         extractor = GitExtractor()
         for name in VARTRACK_JSON_NAMES:
-            content = extractor.extract_file(ctx.repo_url, ctx.ref, name, token=token)
+            content = extractor.extract_file(
+                ctx.repo_url, ctx.ref, name, token=token, revision=ctx.commit_sha,
+            )
             if content is not None:
                 break
     except Exception:

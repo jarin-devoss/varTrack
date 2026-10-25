@@ -57,7 +57,7 @@ def test_vartrack_json_with_old_names_still_overrides(monkeypatch):
 
     monkeypatch.setattr(git_extractor.GitExtractor, "extract_file",
                         lambda self, *a, **kw: json.dumps({"env_as_tags": True, "branch_as_env": False}))
-    ctx = SimpleNamespace(rule_config={"datasource": "mongo", "branch_as_env": True}, repo_url="r", ref="main")
+    ctx = SimpleNamespace(rule_config={"datasource": "mongo", "branch_as_env": True}, repo_url="r", ref="main", commit_sha="")
     monkeypatch.setattr(repo_overrides, "replace", lambda c, **kw: SimpleNamespace(**{**vars(c), **kw}))
     out = repo_overrides.apply_repo_overrides(ctx)
     assert out.rule_config == {"datasource": "mongo", "branch_as_env": False, "tag_as_env": True}

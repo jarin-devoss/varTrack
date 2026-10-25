@@ -82,6 +82,7 @@ def run_stage_etl(ctx: PayloadContext, datasource: str, tenant_id: str) -> ETLRe
         rule_config=rule_config,
         repo_url=ctx.repo_url,
         ref=ctx.ref,
+        revision=ctx.commit_sha,
     )
 
     schema_dir = get_schema_manager().tenant_schema_root(tenant_id)

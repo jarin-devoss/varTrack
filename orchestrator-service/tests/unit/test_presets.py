@@ -159,7 +159,7 @@ def test_vartrack_json_under_another_name():
                          branch="main", commit_sha="abc", tag=None, pr_number=None,
                          rule_config={}, parsed_payload={})
     with patch("app.pipeline.git_extractor.GitExtractor") as extractor:
-        extractor.return_value = MagicMock(extract_file=MagicMock(side_effect=lambda u, r, name, token: files.get(name)))
+        extractor.return_value = MagicMock(extract_file=MagicMock(side_effect=lambda u, r, name, token, revision=None: files.get(name)))
         assert apply_repo_overrides(ctx).rule_config == {"root_key": "gitea"}
 
 

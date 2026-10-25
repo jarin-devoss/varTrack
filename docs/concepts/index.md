@@ -29,7 +29,7 @@ When a webhook arrives at the gateway-service, varTrack resolves:
 
 The orchestrator-service:
 
-1. Clones or fetches the pushed Git ref (LRU cache, max 20 repos)
+1. Reads the files at the pushed commit, from a bare mirror of the repository kept under `GIT_CACHE_DIR` (at most 20 repos, least recently used removed first)
 2. Parses the file (YAML / JSON / TOML / .env / HCL / XML / INI)
 3. Extracts the subtree under the `vartrack` root key (if present)
 4. Detects the environment key pattern (branch-keyed or flat)
@@ -74,7 +74,7 @@ Writes the validated flat map to every configured sink:
                     ┌────────────────▼─────────────────────┐
                     │        orchestrator-service           │
                     │  ┌────────────────────────────────┐  │
-                    │  │  fetch Git ref (LRU cache)      │  │
+                    │  │  read files at pushed commit    │  │
                     │  │  parse + flatten (Rust)         │  │
                     │  │  validate CUE schema            │  │
                     │  │  write to sinks                 │──┼──► MongoDB

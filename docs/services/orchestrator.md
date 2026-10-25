@@ -59,8 +59,8 @@ docker run \
 | `APP_ENV` | `development` | `production` enforces mTLS |
 | `CELERY_BROKER_URL` | `redis://localhost:6379/0` | Celery broker |
 | `CONFIG_PATH` | `config.cue` | CUE bundle path |
-| `GIT_CACHE_DIR` | `/tmp/vt_gitcache` | Git repo LRU cache directory |
-| `GIT_CACHE_MAX_ENTRIES` | `20` | Max cached repo checkouts |
+| `GIT_CACHE_DIR` | `/tmp/vt_gitcache` | Directory of the bare Git mirrors, one per repository. Give the API and every worker the same directory (a shared volume) to clone once per host |
+| `GIT_CACHE_MAX_ENTRIES` | `20` | Mirrors kept; past that the least recently used are removed, never one in use |
 | `SCHEMA_CACHE_DIR` | `/tmp/schema_registry` | CUE schema clone directory |
 | `ORCHESTRATOR_ADDR` | `:50051` | gRPC listen address |
 | `UI_DEFAULT_TENANT` | `default` | Tenant the web UI reads when no tenant is registered at all |

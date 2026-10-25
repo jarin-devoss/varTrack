@@ -22,7 +22,7 @@ gateway-service (gRPC) ──► Celery task queue ──► ETL pipeline ──
    → resolve platform + rule → PayloadContext
 
 2. ETL stage
-   → clone / fetch the pushed Git ref (LRU cache, max 20 repos)
+   → read the files at the pushed commit from a bare mirror (max 20 repos, LRU)
    → parse file  (YAML / JSON / TOML / .env / HCL / XML / INI)
    → slice subtree under "vartrack" root key
    → detect environment key pattern (branch-keyed or flat)
@@ -182,8 +182,8 @@ Priority order when resolving the environment from a webhook event:
 | `CONFIG_PATH` | `config.cue` | Path to the shared CUE bundle |
 | `SCHEMA_CACHE_DIR` | `/tmp/schema_registry` | Root directory for per-tenant CUE schema clones |
 | `SCHEMA_TTL_SECONDS` | `300` | How long a schema clone stays fresh (seconds) |
-| `GIT_CACHE_DIR` | `/tmp/vt_gitcache` | Root directory for Git repo cache |
-| `GIT_CACHE_MAX_ENTRIES` | `20` | LRU cap on cached repo checkouts |
+| `GIT_CACHE_DIR` | `/tmp/vt_gitcache` | Directory of the bare Git mirrors, one per repository; share it between the API and the workers of a host |
+| `GIT_CACHE_MAX_ENTRIES` | `20` | LRU cap on mirrors; one in use is never removed |
 | `CUE_BINARY` | `cue` | Path to the CUE binary |
 | `CUE_TIMEOUT_SECONDS` | `15` | Subprocess timeout for `cue vet` |
 | `ORCHESTRATOR_ADDR` | `:50051` | gRPC listen address |
@@ -297,7 +297,7 @@ orchestrator-service/
 │   │   ├── presets.py          # `extends` presets
 │   │   ├── transformer.py      # Flatten + variables_map overlay
 │   │   ├── validator.py        # CUE schema validation subprocess
-│   │   ├── git_extractor.py    # Git file fetch with LRU cache
+│   │   ├── git_extractor.py    # Reads files at a commit, through a bare mirror
 │   │   ├── env_resolver.py     # Branch / PR / tag → env string
 │   │   └── sinks/
 │   │       ├── mongo.py        # MongoDB sink
