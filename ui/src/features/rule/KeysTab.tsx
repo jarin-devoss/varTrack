@@ -14,7 +14,11 @@ const STATE: Record<KeyState, { label: string; tone: Tone; icon: 'checkCircle' |
   drifted: { label: 'Changed in sink', tone: 'warning', icon: 'alertTriangle' },
   missing: { label: 'Missing from sink', tone: 'warning', icon: 'minusCircle' },
   unmanaged: { label: 'Not in Git', tone: 'serious', icon: 'helpCircle' },
+  unreadable: { label: 'Write-only in sink', tone: 'neutral', icon: 'helpCircle' },
+  ignored: { label: 'Not compared', tone: 'neutral', icon: 'minusCircle' },
 };
+
+const CHANGED: KeyState[] = ['drifted', 'missing', 'unmanaged'];
 
 interface Props {
   rule: RuleView;
@@ -26,7 +30,7 @@ interface Props {
 }
 
 export function KeysTab({ rule, env, onEnvChange, filter, onFilterChange, onSync }: Props) {
-  const keys = useQuery(`keys:${rule.name}:${env}`, api => api.listKeys(rule.name, env));
+  const keys = useQuery(`keys:${rule.tenant}:${rule.name}:${env}`, api => api.listKeys(rule.name, env, rule.tenant));
   const [search, setSearch] = useState('');
   const target = rule.targets.find(t => t.env === env);
 
@@ -41,7 +45,7 @@ export function KeysTab({ rule, env, onEnvChange, filter, onFilterChange, onSync
   const shown = useMemo(() => {
     const q = search.trim().toLowerCase();
     return all.filter(k => {
-      if (filter === 'changed' && k.state === 'synced') return false;
+      if (filter === 'changed' && !CHANGED.includes(k.state)) return false;
       if (filter === 'secrets' && !k.secret) return false;
       if (filter === 'protected' && !k.protected) return false;
       if (!q) return true;
@@ -133,7 +137,7 @@ function KeyTable({ keys, protection }: { keys: KeyEntry[]; protection: string[]
         <tbody>
           {keys.map(k => {
             const s = STATE[k.state];
-            const differs = k.state !== 'synced';
+            const differs = CHANGED.includes(k.state);
             return (
               <tr key={k.key} className={k.state === 'drifted' ? 'row--drifted' : undefined}>
                 <td>

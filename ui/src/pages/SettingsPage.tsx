@@ -100,11 +100,6 @@ function ConnectionSection() {
             <input className="input mono" {...field('watcherUrl')} />
             <span className="field__hint">Readiness and active watchers</span>
           </label>
-          <label className="field">
-            <span className="field__label">Tenant</span>
-            <input className="input mono" {...field('tenant')} />
-            <span className="field__hint">Sent as X-Tenant-ID</span>
-          </label>
         </div>
         <p className="field__hint">
           The defaults are the dev server's proxy paths (<code>/api/gateway</code> and so on). The bearer token is set on the sign-in page and
@@ -182,7 +177,7 @@ function BundleSection() {
   const b = bundle.data;
   return (
     <>
-      <Panel title="Datasources" subtitle={<>From <code>config.cue</code> · tenant <span className="mono">{b.tenant}</span> · read-only</>} id="datasources">
+      <Panel title="Datasources" subtitle={<>From <code>config.cue</code> · {b.tenants.length === 1 ? 'tenant' : 'tenants'} <span className="mono">{b.tenants.join(', ') || '—'}</span> · read-only</>} id="datasources">
         <div className="table-wrap">
           <table className="table">
             <thead>

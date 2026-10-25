@@ -41,7 +41,6 @@ export function toCue(rule: Rule): string {
   if (rule.dryRun) out.dry_run = true;
   if (rule.prune.enabled) {
     const prune: Record<string, CueValue> = { enabled: true };
-    if (rule.prune.last) prune.last = true;
     if (rule.prune.dryRun) prune.dry_run = true;
     if (rule.prune.protection.length) prune.protection = rule.prune.protection;
     out.prune = prune;

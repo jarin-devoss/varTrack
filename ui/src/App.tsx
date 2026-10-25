@@ -30,6 +30,8 @@ export function App() {
                 <Route path="/home" element={<DashboardPage />} />
                 <Route path="/favorites" element={<FavoritesPage />} />
                 <Route path="/rules" element={<RulesPage />} />
+                <Route path="/rules/:tenant/:platform/:datasource" element={<RulePage />} />
+                {/* Without a tenant (links and favorites from before rules had one): the rule when one tenant has it. */}
                 <Route path="/rules/:platform/:datasource" element={<RulePage />} />
                 <Route path="/environments" element={<EnvironmentsPage />} />
                 <Route path="/events" element={<EventsPage />} />

@@ -1,4 +1,5 @@
 import { useCallback, useSyncExternalStore } from 'react';
+import { isPinned, ruleKey } from './rules';
 
 export type Theme = 'system' | 'light' | 'dark';
 
@@ -7,7 +8,6 @@ export interface ConnectionPrefs {
   orchestratorUrl: string;
   watcherUrl: string;
   token: string;
-  tenant: string;
 }
 
 export interface Prefs {
@@ -33,7 +33,6 @@ export const DEFAULT_PREFS: Prefs = {
     orchestratorUrl: '/api/orchestrator',
     watcherUrl: '/api/watcher',
     token: '',
-    tenant: 'default',
   },
 };
 
@@ -47,7 +46,10 @@ function load(): Prefs {
     return {
       ...DEFAULT_PREFS,
       ...parsed,
-      connection: { ...DEFAULT_PREFS.connection, ...parsed.connection },
+      // A tenant saved by an earlier version is dropped: the tenants come from what Git lets the user see.
+      connection: (({ tenant: _tenant, ...rest }) => ({ ...DEFAULT_PREFS.connection, ...rest }))(
+        (parsed.connection ?? {}) as Partial<ConnectionPrefs> & { tenant?: string },
+      ),
     };
   } catch {
     return DEFAULT_PREFS;
@@ -80,11 +82,19 @@ export function usePrefs(): [Prefs, typeof setPrefs] {
   return [prefs, setPrefs];
 }
 
-export function usePinned(): [string[], (name: string) => void] {
+/**
+ * Favorites, and a toggle for one. Entries are `tenant/platform/datasource`
+ * (see lib/rules.ts); toggling a rule off also drops a bare `platform/datasource`
+ * entry saved by an earlier version.
+ */
+export function usePinned(): [string[], (rule: { name: string; tenant?: string }) => void] {
   const [prefs, set] = usePrefs();
   const toggle = useCallback(
-    (name: string) =>
-      set(p => ({ pinned: p.pinned.includes(name) ? p.pinned.filter(n => n !== name) : [...p.pinned, name] })),
+    (rule: { name: string; tenant?: string }) =>
+      set(p => {
+        const key = ruleKey(rule);
+        return { pinned: isPinned(p.pinned, rule) ? p.pinned.filter(n => n !== key && n !== rule.name) : [...p.pinned, key] };
+      }),
     [set],
   );
   return [prefs.pinned, toggle];

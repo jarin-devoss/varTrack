@@ -12,7 +12,7 @@ A web console for varTrack: what is in sync with Git, what drifted, and what eve
 | **Events** | Pushes, syncs, drift, heals and prunes, newest first, with repeats folded together. |
 | **Tasks** | Every pipeline run; expand for stages and per-file results, or open a task by ID (the one `vt sync` prints). |
 | **Playground** | Paste a config file, see the flattened keys varTrack will extract, validate it, or dry-run it. |
-| **Settings, Profile** | Service URLs and tenant, datasources and platforms, theme; who you are signed in as. |
+| **Settings, Profile** | Service URLs, datasources and platforms, theme; who you are signed in as. |
 
 Configuration stays in Git: the UI shows rules and the bundle read-only. The actions it offers are the ones that also exist outside Git — re-sync from Git, dry run, and `vt sync`-style pushes from the Playground. Pruning a production-like environment (`prod`, `production`, `main`, `master`, `live`) asks you to type `prune` first.
 
@@ -46,7 +46,7 @@ Without single sign-on the UI is open to anyone who can reach it. The Playground
 
 ## Live data
 
-The `/v1/ui/*` read API lives in the orchestrator. It reads rules from the tenant's schema registry (`bundle.json`), the desired state each sync wrote from Git, and the current state read back from every sink, so each environment shows Synced or OutOfSync key by key. Tasks and events are recorded by the orchestrator as syncs run.
+The `/v1/ui/*` read API lives in the orchestrator. It reads rules from `config.cue` and every tenant's schema registry (`bundle.json`), the desired state each sync wrote from Git, and the current state read back from every sink, so each environment shows Synced or OutOfSync key by key. Tasks and events are recorded by the orchestrator as syncs run.
 
 ![An environment's diff: the key that differs, its current value in Redis and its desired value in Git](../docs/assets/screenshots/environment-diff.png)
 
@@ -63,7 +63,7 @@ Loading stays fast because nothing waits on a sink twice. The orchestrator answe
 | Tenant, datasources | `GET /v1/ui/bundle` — endpoints without credentials |
 | Playground | `POST /v1/cli/validate`, `POST /v1/cli/sync` (gateway; only when the bundle configures `auth`) |
 
-Responses are JSON in the shapes defined in [`src/api/types.ts`](src/api/types.ts). The tenant is the `X-Tenant-ID` header (Settings → Connection), defaulting to the orchestrator's `UI_DEFAULT_TENANT`.
+Responses are JSON in the shapes defined in [`src/api/types.ts`](src/api/types.ts). Every tenant is covered at once: each rule, event and task carries its tenant, and with sign-in on a user sees the rules their Git account can read, whichever tenant they belong to (admins see everything). The Rules, Environments, Events and Tasks pages show a Tenant filter when more than one tenant is visible; `?tenant=` narrows an API answer to one.
 
 ### A live stack with real sinks
 

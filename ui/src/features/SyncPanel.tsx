@@ -58,7 +58,7 @@ export function SyncPanel({ rule, open, onClose, initialEnvs, initialDryRun = fa
     setBusy(true);
     setError(null);
     try {
-      const { taskIds } = await api.sync({ rule: rule.name, envs, dryRun, prune });
+      const { taskIds } = await api.sync({ rule: rule.name, tenant: rule.tenant, envs, dryRun, prune });
       notify({
         tone: 'progress',
         title: dryRun ? 'Dry run started' : `Sync started for ${envs.length} environment${envs.length === 1 ? '' : 's'}`,

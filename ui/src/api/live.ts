@@ -5,6 +5,7 @@ import type {
   BundleView,
   FileResult,
   FileStatus,
+  HiddenRules,
   KeyEntry,
   RuleView,
   ServiceHealth,
@@ -19,7 +20,6 @@ export interface LiveConfig {
   orchestratorUrl: string;
   watcherUrl: string;
   token: string;
-  tenant: string;
 }
 
 const TASK_STATES: TaskState[] = ['PENDING', 'RUNNING', 'SUCCEEDED', 'FAILED', 'RETRYING'];
@@ -70,7 +70,9 @@ export function mapFileResult(raw: Raw): FileResult {
 export function createLiveApi(cfg: LiveConfig): VarTrackApi {
   const gw = (path: string) => `${cfg.gatewayUrl.replace(/\/$/, '')}${path}`;
   const orch = (path: string) => `${cfg.orchestratorUrl.replace(/\/$/, '')}${path}`;
-  const auth = { token: cfg.token || undefined, tenant: cfg.tenant || undefined };
+  // No tenant is sent: every tenant is covered, and Git decides what the viewer sees.
+  const auth = { token: cfg.token || undefined };
+  const tenantQuery = (tenant?: string) => (tenant ? `?tenant=${encodeURIComponent(tenant)}` : '');
   const rulePath = (name: string) => name.split('/').map(encodeURIComponent).join('/');
   // Whether single sign-on is on, learned from the first session check.
   let signInRequired: Promise<boolean> | undefined;
@@ -93,17 +95,17 @@ export function createLiveApi(cfg: LiveConfig): VarTrackApi {
 
   return {
     async listRules() {
-      const { body } = await requestJson<{ rules: RuleView[] }>(orch('/v1/ui/rules'), auth);
-      return body.rules;
+      const { body } = await requestJson<{ rules: RuleView[]; hidden?: HiddenRules[] }>(orch('/v1/ui/rules'), auth);
+      return { rules: body.rules, hidden: body.hidden ?? [] };
     },
 
-    async getRule(name) {
-      const { body } = await requestJson<RuleView>(orch(`/v1/ui/rules/${rulePath(name)}`), auth);
+    async getRule(name, tenant) {
+      const { body } = await requestJson<RuleView>(orch(`/v1/ui/rules/${rulePath(name)}${tenantQuery(tenant)}`), auth);
       return body;
     },
 
-    async listKeys(rule, env) {
-      const url = orch(`/v1/ui/rules/${rulePath(rule)}/targets/${encodeURIComponent(env)}/keys`);
+    async listKeys(rule, env, tenant) {
+      const url = orch(`/v1/ui/rules/${rulePath(rule)}/targets/${encodeURIComponent(env)}/keys${tenantQuery(tenant)}`);
       const { body } = await requestJson<{ keys: KeyEntry[] }>(url, auth);
       return body.keys;
     },
@@ -111,6 +113,7 @@ export function createLiveApi(cfg: LiveConfig): VarTrackApi {
     async listEvents(query = {}) {
       const params = new URLSearchParams();
       if (query.rule) params.set('rule', query.rule);
+      if (query.tenant) params.set('tenant', query.tenant);
       params.set('limit', String(query.limit ?? 200));
       const { body } = await requestJson<{ events: VtEvent[] }>(orch(`/v1/ui/events?${params}`), auth);
       return body.events;
@@ -119,6 +122,7 @@ export function createLiveApi(cfg: LiveConfig): VarTrackApi {
     async listTasks(query = {}) {
       const params = new URLSearchParams({ limit: String(query.limit ?? 100) });
       if (query.rule) params.set('rule', query.rule);
+      if (query.tenant) params.set('tenant', query.tenant);
       const { body } = await requestJson<{ tasks: Task[] }>(orch(`/v1/ui/tasks?${params}`), auth);
       return body.tasks;
     },
@@ -167,7 +171,7 @@ export function createLiveApi(cfg: LiveConfig): VarTrackApi {
     },
 
     async sync(req) {
-      const { body } = await requestJson<{ taskIds: string[] }>(orch(`/v1/ui/rules/${rulePath(req.rule)}/sync`), {
+      const { body } = await requestJson<{ taskIds: string[] }>(orch(`/v1/ui/rules/${rulePath(req.rule)}/sync${tenantQuery(req.tenant)}`), {
         ...auth,
         method: 'POST',
         body: { envs: req.envs, dryRun: req.dryRun, prune: req.prune },
@@ -181,7 +185,7 @@ export function createLiveApi(cfg: LiveConfig): VarTrackApi {
         {
           ...auth,
           method: 'POST',
-          body: { file_path: req.filePath, content: req.content, datasource: req.datasource, tenant_id: cfg.tenant },
+          body: { file_path: req.filePath, content: req.content, datasource: req.datasource, platform: req.platform, tenant_id: req.tenant },
         },
       );
       return { status: body.status, messages: body.messages ?? [], keyCount: body.key_count ?? 0 };
@@ -193,12 +197,13 @@ export function createLiveApi(cfg: LiveConfig): VarTrackApi {
         method: 'POST',
         body: {
           datasource: req.datasource,
+          platform: req.platform,
           env: req.env,
           file_path: req.filePath,
           content: req.content,
           dry_run: req.dryRun,
           label: req.label,
-          tenant_id: cfg.tenant,
+          tenant_id: req.tenant,
         },
       });
       if (!body?.task_id) throw new ApiError('server did not return a task id', 200, gw('/v1/cli/sync'));

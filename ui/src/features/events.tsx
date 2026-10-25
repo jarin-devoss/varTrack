@@ -15,6 +15,8 @@ export const REASON: Record<EventReason, { label: string; icon: IconName; tone: 
   SyncFailed: { label: 'Sync failed', icon: 'xCircle', tone: 'critical' },
   ValidationFailed: { label: 'Validation failed', icon: 'xCircle', tone: 'critical' },
   KeysPruned: { label: 'Keys pruned', icon: 'trash', tone: 'neutral' },
+  PruneFailed: { label: 'Prune failed', icon: 'xCircle', tone: 'warning' },
+  PruneSkipped: { label: 'Prune skipped', icon: 'trash', tone: 'warning' },
   DriftDetected: { label: 'Drift detected', icon: 'arrowUpCircle', tone: 'warning' },
   HealSucceeded: { label: 'Healed', icon: 'refresh', tone: 'good' },
   HealFailed: { label: 'Heal failed', icon: 'xCircle', tone: 'critical' },
@@ -47,10 +49,11 @@ export function groupEvents(events: VtEvent[]): EventGroup[] {
 
 export const asGroups = (events: VtEvent[]): EventGroup[] => events.map(e => ({ event: e, count: 1, firstSeen: e.time }));
 
-export function EventRow({ group, showSubject = true }: { group: EventGroup; showSubject?: boolean }) {
+export function EventRow({ group, showSubject = true, showTenant }: { group: EventGroup; showSubject?: boolean; showTenant?: boolean }) {
   const e = group.event;
   const r = REASON[e.reason];
-  const [prefix, name] = subject(e);
+  const [prefix, name] = subject(e, showTenant);
+  const rule = e.rule ? { name: e.rule, tenant: e.tenant } : undefined;
   return (
     <ExpandRow
       label={`${r.label} ${e.message}`}
@@ -63,7 +66,7 @@ export function EventRow({ group, showSubject = true }: { group: EventGroup; sho
           {showSubject && name && (
             <>
               <span className="rowx__prefix"> · </span>
-              <NameLabel prefix={prefix} name={name} to={e.rule ? (e.env ? envHref(e.rule, e.env) : ruleHref(e.rule)) : undefined} />
+              <NameLabel prefix={prefix} name={name} to={rule ? (e.env ? envHref(rule, e.env) : ruleHref(rule)) : undefined} />
             </>
           )}
         </>
@@ -100,7 +103,7 @@ export function EventRow({ group, showSubject = true }: { group: EventGroup; sho
             <div>
               <dt>Rule</dt>
               <dd>
-                <Link to={ruleHref(e.rule)} className="mono">
+                <Link to={ruleHref({ name: e.rule, tenant: e.tenant })} className="mono">
                   {e.rule}
                 </Link>
                 {e.env && <> · {e.env}</>}
@@ -123,7 +126,8 @@ export function EventRow({ group, showSubject = true }: { group: EventGroup; sho
   );
 }
 
-function subject(e: VtEvent): [string | undefined, string] {
-  if (e.rule) return e.env ? [e.rule, e.env] : [undefined, e.rule];
-  return [undefined, e.env ?? 'tenant'];
+function subject(e: VtEvent, showTenant?: boolean): [string | undefined, string] {
+  const withTenant = (name: string) => (showTenant && e.tenant ? `${e.tenant} · ${name}` : name);
+  if (e.rule) return e.env ? [withTenant(e.rule), e.env] : [undefined, withTenant(e.rule)];
+  return [undefined, e.env ?? e.tenant ?? 'tenant'];
 }

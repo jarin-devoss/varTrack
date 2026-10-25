@@ -143,7 +143,7 @@ describe('live API mapping', () => {
 
 describe('rule definition', () => {
   it('renders the rule as CUE with only configured fields', () => {
-    const cue = toCue(makeRule({ prune: { enabled: true, last: false, dryRun: false, protection: ['feature_flags.*', 'secrets.*'] } }));
+    const cue = toCue(makeRule({ prune: { enabled: true, dryRun: false, protection: ['feature_flags.*', 'secrets.*'] } }));
     expect(cue).toContain('platform:             "github"');
     expect(cue).toMatch(/branch_map:\s+\{/);
     expect(cue).toContain('main:    "production"');

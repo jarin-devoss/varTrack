@@ -6,6 +6,7 @@ import { Dialog } from '../components/Overlay';
 import { useHotkeys } from '../lib/hotkeys';
 import { usePrefs } from '../lib/prefs';
 import { useQuery } from '../lib/useQuery';
+import { useRules } from '../lib/useRules';
 import { useSectionCountValue } from './page';
 import { QuickSearch } from './QuickSearch';
 import { DOCS_URL, UserMenu } from './UserMenu';
@@ -34,7 +35,7 @@ export function Shell({ children }: { children: ReactNode }) {
   const count = useSectionCountValue();
 
   // Same keys as the pages: one request serves the header and the page.
-  const rules = useQuery('rules', a => a.listRules(), { poll: 10000 });
+  const rules = useRules({ poll: 10000 });
   const health = useQuery('health', a => a.getHealth(), { poll: 15000 });
   const session = useQuery('auth:session', a => a.getSession(), { poll: 60000 });
 

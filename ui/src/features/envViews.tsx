@@ -8,14 +8,14 @@ import { targetNote, targetSync } from '../lib/status';
 import { envHref } from './links';
 import { EnvCompare, TargetPills } from './state';
 
-export function EnvRow({ rule, target: t, onSync, defaultOpen }: { rule: RuleView; target: Target; onSync: () => void; defaultOpen?: boolean }) {
+export function EnvRow({ rule, target: t, onSync, defaultOpen, showTenant }: { rule: RuleView; target: Target; onSync: () => void; defaultOpen?: boolean; showTenant?: boolean }) {
   const at = t.lastSync?.finishedAt ?? t.lastSync?.startedAt;
   return (
     <ExpandRow
       label={`${rule.name} ${t.env}`}
       defaultOpen={defaultOpen}
       icon={<SyncIcon status={targetSync(t)} />}
-      title={<NameLabel prefix={rule.name} name={t.env} to={envHref(rule.name, t.env)} />}
+      title={<NameLabel prefix={showTenant ? `${rule.tenant} · ${rule.name}` : rule.name} name={t.env} to={envHref(rule, t.env)} />}
       status={<TargetPills target={t} />}
       meta={
         <>
@@ -35,10 +35,10 @@ export function EnvRow({ rule, target: t, onSync, defaultOpen }: { rule: RuleVie
             <button className="abtn abtn--blue" onClick={onSync}>
               <Icon name="refresh" size={13} /> Sync {t.env}
             </button>
-            <Link className="abtn" to={envHref(rule.name, t.env, 'diff')}>
+            <Link className="abtn" to={envHref(rule, t.env, 'diff')}>
               <Icon name="diff" size={13} /> Diff
             </Link>
-            <Link className="abtn" to={envHref(rule.name, t.env, 'current')}>
+            <Link className="abtn" to={envHref(rule, t.env, 'current')}>
               <Icon name="key" size={13} /> Current values
             </Link>
           </div>

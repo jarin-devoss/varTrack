@@ -50,7 +50,7 @@ export function draftToRule(d: Draft, bundle?: BundleView): Rule {
   }
   return {
     name: `${d.platform}/${d.datasource}`,
-    tenant: bundle?.tenant ?? 'default',
+    tenant: bundle?.tenants[0] ?? 'default',
     platform: d.platform,
     datasource: d.datasource,
     sinkType: bundle?.datasources.find(x => x.name === d.datasource)?.type ?? 'mongo',
@@ -66,7 +66,7 @@ export function draftToRule(d: Draft, bundle?: BundleView): Rule {
     syncMode: d.syncMode,
     selfHeal: d.selfHeal,
     dryRun: false,
-    prune: { enabled: d.prune, last: false, dryRun: false, protection: list(d.protection) },
+    prune: { enabled: d.prune, dryRun: false, protection: list(d.protection) },
     secretManager: d.secretManager || undefined,
   };
 }

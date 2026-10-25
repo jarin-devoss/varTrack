@@ -76,12 +76,12 @@ export function Stages({ task }: { task: Task }) {
   );
 }
 
-export function TaskRow({ task: t }: { task: Task }) {
+export function TaskRow({ task: t, showTenant }: { task: Task; showTenant?: boolean }) {
   return (
     <ExpandRow
       label={`task ${shortId(t.taskId)}`}
       icon={<TaskIcon state={t.state} />}
-      title={<NameLabel prefix={t.rule ?? t.datasource} name={t.env ?? shortId(t.taskId)} to={taskHref(t.taskId)} />}
+      title={<NameLabel prefix={showTenant && t.tenant ? `${t.tenant} · ${t.rule ?? t.datasource}` : (t.rule ?? t.datasource)} name={t.env ?? shortId(t.taskId)} to={taskHref(t.taskId)} />}
       status={
         <>
           {t.dryRun && <span className="pill pill--purple">Dry run</span>}
@@ -159,7 +159,7 @@ export function TaskInline({ task: t }: { task: Task }) {
           Open task
         </Link>
         {t.rule && (
-          <Link className="abtn" to={ruleHref(t.rule)}>
+          <Link className="abtn" to={ruleHref({ name: t.rule, tenant: t.tenant })}>
             Open rule
           </Link>
         )}

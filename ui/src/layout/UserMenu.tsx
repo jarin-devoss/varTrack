@@ -45,7 +45,7 @@ export function UserMenu({ onShortcuts }: { onShortcuts: () => void }) {
     ? `@${user.login} · ${session.data?.primary ?? ''}`
     : identity
       ? identity.issuer ?? 'signed in'
-      : `tenant ${prefs.connection.tenant || 'default'}`;
+      : 'not signed in';
 
   const signOut = async () => {
     setOpen(false);

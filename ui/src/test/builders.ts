@@ -23,7 +23,7 @@ export function makeRule(overrides: Partial<RuleView> = {}): RuleView {
     syncMode: 'AUTO',
     selfHeal: true,
     dryRun: false,
-    prune: { enabled: false, last: false, dryRun: false, protection: [] },
+    prune: { enabled: false, dryRun: false, protection: [] },
     targets: [],
     ...overrides,
   };

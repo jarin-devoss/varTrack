@@ -59,11 +59,11 @@ export function TaskPage() {
         meta={
           t.rule ? (
             <>
-              <Link to={ruleHref(t.rule)}>{t.rule}</Link>
+              <Link to={ruleHref({ name: t.rule, tenant: t.tenant })}>{t.rule}</Link>
               {t.env && (
                 <>
                   {' · '}
-                  <Link to={envHref(t.rule, t.env)}>{t.env}</Link>
+                  <Link to={envHref({ name: t.rule, tenant: t.tenant }, t.env)}>{t.env}</Link>
                 </>
               )}
             </>

@@ -5,6 +5,7 @@ import type {
   CliSyncRequest,
   EventQuery,
   KeyEntry,
+  RuleList,
   RuleView,
   ServiceHealth,
   SyncRequest,
@@ -18,9 +19,11 @@ import { createLiveApi } from './live';
 import { usePrefs } from '../lib/prefs';
 
 export interface VarTrackApi {
-  listRules(): Promise<RuleView[]>;
-  getRule(name: string): Promise<RuleView>;
-  listKeys(rule: string, env: string): Promise<KeyEntry[]>;
+  /** Every rule the viewer may see, of every tenant, and what a connection would show more. */
+  listRules(): Promise<RuleList>;
+  /** `tenant` is needed only when the rule name exists in several tenants. */
+  getRule(name: string, tenant?: string): Promise<RuleView>;
+  listKeys(rule: string, env: string, tenant?: string): Promise<KeyEntry[]>;
   listEvents(query?: EventQuery): Promise<VtEvent[]>;
   listTasks(query?: TaskQuery): Promise<Task[]>;
   getTask(taskId: string): Promise<Task>;
@@ -42,10 +45,10 @@ const ApiContext = createContext<VarTrackApi | null>(null);
 
 export function ApiProvider({ children }: { children: ReactNode }) {
   const [prefs] = usePrefs();
-  const { gatewayUrl, orchestratorUrl, watcherUrl, token, tenant } = prefs.connection;
+  const { gatewayUrl, orchestratorUrl, watcherUrl, token } = prefs.connection;
   const api = useMemo(
-    () => createLiveApi({ gatewayUrl, orchestratorUrl, watcherUrl, token, tenant }),
-    [gatewayUrl, orchestratorUrl, watcherUrl, token, tenant],
+    () => createLiveApi({ gatewayUrl, orchestratorUrl, watcherUrl, token }),
+    [gatewayUrl, orchestratorUrl, watcherUrl, token],
   );
   return <ApiContext.Provider value={api}>{children}</ApiContext.Provider>;
 }
