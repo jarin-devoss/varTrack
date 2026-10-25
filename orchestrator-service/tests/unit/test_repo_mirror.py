@@ -275,3 +275,38 @@ def test_old_temporary_caches_are_removed_when_stale(tmp_path, monkeypatch):
     assert remove_old_layout() == 1
     assert not old.exists()
     assert fresh.exists() and other.exists()
+
+
+# ── GIT_CACHE_DIR ─────────────────────────────────────────────────────────────
+
+def test_the_root_comes_from_git_cache_dir(tmp_path, monkeypatch):
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "GIT_CACHE_DIR", str(tmp_path / "configured"))
+    monkeypatch.setattr(settings, "GIT_CACHE_MAX_ENTRIES", 7)
+    mirrors = RepoMirrors()
+    assert mirrors.root == tmp_path / "configured" and mirrors.root.is_dir()
+    assert mirrors.max_repos == 7
+
+
+def test_the_default_mirrors_are_made_once_under_git_cache_dir(tmp_path, monkeypatch):
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "GIT_CACHE_DIR", str(tmp_path / "configured"))
+    monkeypatch.setattr(mirror_mod, "_default", None)
+    monkeypatch.setattr(mirror_mod, "remove_old_layout", lambda: 0)
+    first = mirror_mod.get_default_mirrors()
+    assert first is mirror_mod.get_default_mirrors()
+    assert first.root == tmp_path / "configured"
+
+
+def test_another_process_on_the_same_root_reuses_the_mirror(remote, tmp_path):
+    sha = _commit(remote, {"a.txt": "a"})
+    url = str(remote)
+    RepoMirrors(root=tmp_path / "cache").ensure(url, None)       # one worker clones it
+
+    other = RepoMirrors(root=tmp_path / "cache")                 # another process starts later
+    with patch.object(RepoMirrors, "_run", side_effect=AssertionError("cloned again")):
+        other.ensure(url, None)
+    assert other.has_commit(url, sha)
+    assert other.read(url, sha, "a.txt") == b"a"

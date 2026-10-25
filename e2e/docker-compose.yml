@@ -20,6 +20,7 @@ volumes:
   s3-data:
   vault-data:
   schema-cache:
+  git-cache:
 
 # ── Infrastructure ────────────────────────────────────────────────────────────
 
@@ -148,6 +149,7 @@ services:
     volumes:
       - ./config.cue:/app/config.cue:ro
       - schema-cache:/app/schema_registry
+      - git-cache:/app/git_cache
     ports:
       - "8000:8000"
       - "9090:9090"
@@ -186,6 +188,7 @@ services:
     volumes:
       - ./config.cue:/app/config.cue:ro
       - schema-cache:/app/schema_registry
+      - git-cache:/app/git_cache
     depends_on:
       redis:            {condition: service_healthy}
       mongo:            {condition: service_healthy}
