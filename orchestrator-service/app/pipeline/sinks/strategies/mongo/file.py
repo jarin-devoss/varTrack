@@ -60,11 +60,6 @@ class FileStrategy(MongoWriteStrategy):
             return self.upsert(collection, flat_data, doc_filter, commit_sha, file_path, meta, data=data)
         return 0
 
-    def prune(self, collection, flat_data, doc_filter, protection, last) -> int:
-        # File strategy replaces the whole doc on every write — stale keys
-        # never persist, so prune is a no-op.
-        return 0
-
     def read_values(self, collection, keys, doc_filter) -> dict[str, str]:
         # Flat or nested, "data" reads back as the ETL's flat keys.
         wanted = set(keys)

@@ -11,8 +11,8 @@ CUE @secret annotation syntax
 The field name in the CUE file is the flat key as it would appear in flat_data
 after transformer.transform() — e.g. "db.password", "api_key".
 
-Secret manager config (rule_config["secrets"])
-──────────────────────────────────────────────
+Secret manager config (effective_secrets)
+─────────────────────────────────────────
   {
     "default": {
       "type": "vault",
@@ -26,11 +26,26 @@ Secret manager config (rule_config["secrets"])
   }
 
 Vault lookup: vault.get_secret(path_prefix, key=field_name)
+
+Where the secret managers come from (effective_secrets)
+───────────────────────────────────────────────────────
+config.cue's secret_managers, by tag ("other-vault"), by full name
+("vault-other-vault") and as "default": the rule's secret_manager, else the
+one tagged "default", else the only one. Only config.cue declares them; a
+rule's own "secrets" block was removed (renamed_options.REMOVED_OPTIONS).
+
+Where the secret is (per field)
+───────────────────────────────
+A value written as "@secret(mount/path#key)" in the config file names the
+secret: path (the manager's mount point may lead it) and key. Any other
+value is looked up at the manager's path_prefix under the field's name.
 """
 from __future__ import annotations
 
 import logging
 import re
+from typing import Any
+
 from app.utils.vault_client import VaultClient
 from app.utils.secret_masker import register_secret
 from pathlib import Path
@@ -120,7 +135,7 @@ def resolve_secrets(
     secret_fields:
         Output of parse_secret_fields() — {field: ref_or_None}.
     secrets_config:
-        rule_config["secrets"] — named secret manager configs.
+        effective_secrets() — named secret manager configs.
 
     Returns
     -------
@@ -138,11 +153,12 @@ def resolve_secrets(
         sm_name = ref if ref else "default"
         sm_config = secrets_config.get(sm_name)
         if not sm_config:
-            logger.warning("secret_resolver: no secret manager config found — skipping field")
+            logger.warning("secret_resolver: no secret manager %r — skipping field", sm_name)
             continue
 
+        path, key = _secret_location(result[field], field, sm_config)
         try:
-            value = _fetch_from_sm(sm_config, field)
+            value = _fetch_from_sm(sm_config, path, key)
             register_secret(value)
             result[field] = value
             logger.debug("secret_resolver: injected @secret field")
@@ -186,7 +202,81 @@ def mask_secrets(
 
 # ── Internal ──────────────────────────────────────────────────────────────────
 
-def _fetch_from_sm(sm_config: dict, field: str) -> str:
+_VALUE_REF_RE = re.compile(r"^@secret\((?P<path>[^#()]+)#(?P<key>[^#()]+)\)$")
+
+
+def _secret_location(value: Any, field: str, sm_config: dict) -> tuple[str, str]:
+    """(path, key) of a field's secret: from an "@secret(mount/path#key)"
+    value, else the manager's path_prefix and the field's name."""
+    m = _VALUE_REF_RE.match(str(value).strip()) if isinstance(value, str) else None
+    if not m:
+        return sm_config.get("path_prefix", ""), field
+    path = m.group("path").strip().strip("/")
+    mount = str(sm_config.get("mount_point") or "secret").strip("/")
+    if path.startswith(mount + "/"):
+        path = path[len(mount) + 1:]
+    return path, m.group("key").strip()
+
+
+def effective_secrets(rule_config: dict, bundle: dict | None = None) -> dict:
+    """The secret managers @secret() fields of this rule are read from:
+    config.cue's secret_managers, "default" being the rule's secret_manager
+    when it names one."""
+    from app.pipeline.datasource_settings import _bundle
+
+    if bundle is None:
+        bundle = _bundle()
+    bundle = bundle or {}
+    from_cue = secret_managers_from_bundle(bundle)
+    chosen = str(rule_config.get("secret_manager") or "")
+    if chosen:
+        if chosen in from_cue:
+            from_cue["default"] = from_cue[chosen]
+        else:
+            logger.warning("secret_resolver: the rule's secret_manager %r is not in the bundle's secret_managers", chosen)
+    return from_cue
+
+
+def secret_managers_from_bundle(bundle: dict) -> dict:
+    """config.cue's vault secret managers in this module's config form, keyed
+    by tag, by full name ("vault", "vault-{tag}") and as "default"."""
+    from app.ui.sessions import _seconds, _vault_auth
+
+    out: dict[str, dict] = {}
+    entries: list[tuple[str, str, dict]] = []
+    for wrapper in bundle.get("secret_managers") or []:
+        for kind, cfg in (wrapper or {}).items():
+            if kind != "vault" or not isinstance(cfg, dict):
+                continue
+            tag = str(cfg.get("tag") or "")
+            name = f"vault-{tag}" if tag else "vault"
+            try:
+                auth = _vault_auth(cfg, name)
+            except Exception as exc:
+                logger.warning("secret_resolver: secret manager %s left out: %s", name, exc)
+                continue
+            entry = {
+                "type": "vault",
+                "vault_addr": cfg.get("endpoint", ""),
+                "mount_point": cfg.get("mount_point") or "secret",
+                "path_prefix": cfg.get("path_prefix") or "",
+                "kv_version": int(cfg.get("kv_version") or 2),
+                "namespace": cfg.get("namespace") or None,
+                "auth": auth,
+                "verify_ssl": cfg.get("verify_ssl", True) is not False,
+                "ssl_ca": cfg.get("ssl_ca") or None,
+                "timeout": _seconds(cfg.get("timeout"), 10),
+            }
+            entries.append((tag, name, entry))
+            out[name] = entry
+            if tag:
+                out[tag] = entry
+    if "default" not in out and len(entries) == 1:
+        out["default"] = entries[0][2]
+    return out
+
+
+def _fetch_from_sm(sm_config: dict, path: str, key: str) -> str:
     """
     Dispatch to the appropriate secret manager backend.
 
@@ -195,7 +285,7 @@ def _fetch_from_sm(sm_config: dict, field: str) -> str:
     sm_type = sm_config.get("type", "vault").lower()
 
     if sm_type == "vault":
-        return _fetch_from_vault(sm_config, field)
+        return _fetch_from_vault(sm_config, path, key)
 
     raise ValueError(
         f"secret_resolver: unsupported secret manager type {sm_type!r}. "
@@ -203,7 +293,7 @@ def _fetch_from_sm(sm_config: dict, field: str) -> str:
     )
 
 
-def _fetch_from_vault(sm_config: dict, field: str) -> str:
+def _fetch_from_vault(sm_config: dict, path: str, key: str) -> str:
     """
     Fetch a single field value from HashiCorp Vault.
 
@@ -227,5 +317,4 @@ def _fetch_from_vault(sm_config: dict, field: str) -> str:
         timeout=int(sm_config.get("timeout", 10)),
     )
 
-    path_prefix = sm_config.get("path_prefix", "")
-    return client.get_secret(path_prefix, key=field)
+    return client.get_secret(path, key=key)

@@ -512,7 +512,7 @@ def client(cfg, gitea, monkeypatch):
     tasks = [{"taskId": "t1", "rule": "gitea/mongo", "state": "SUCCEEDED", "tenant": "acme"},
              {"taskId": "t2", "rule": "gitea/s3", "state": "SUCCEEDED", "tenant": "acme"}]
     monkeypatch.setattr(ui, "_rules", lambda tenant: RULES)
-    monkeypatch.setattr(ui, "_tenant", lambda request: "acme")
+    monkeypatch.setattr(ui, "_tenants", lambda request, tenant=None: ["acme"])
     monkeypatch.setattr(ledger, "list_targets", lambda tenant: records)
     monkeypatch.setattr(ledger, "list_tasks", lambda tenant, rule=None, limit=100: [t for t in tasks if not rule or t["rule"] == rule])
     monkeypatch.setattr(ledger, "get_task", lambda tid: next((t for t in tasks if t["taskId"] == tid), None))
@@ -548,8 +548,10 @@ class TestApi:
     def test_the_rules_list_shows_only_what_the_user_can_read(self, client, cfg):
         body = _signed_in(client, cfg).get("/v1/ui/rules").json()
         # acme/configs (readable) is named by mongo and matches redis's acme/*; s3's payments/billing is not hers.
-        assert body == {"rules": [{"name": "gitea/mongo", "envs": ["production"], "canSync": False},
-                                  {"name": "gitea/redis", "envs": [], "canSync": False}]}
+        assert body["rules"] == [{"name": "gitea/mongo", "envs": ["production"], "canSync": False},
+                                 {"name": "gitea/redis", "envs": [], "canSync": False}]
+        # github holds one more rule; alice has not connected it. gitea's s3 is hers to read or not, and is not counted.
+        assert body["hidden"] == [{"platform": "github", "rules": 1}]
 
     def test_connecting_a_second_platform_adds_its_rules_to_the_same_session(self, client, github):
         github.access = {"acme/configs": WRITE}
@@ -627,3 +629,143 @@ class TestApi:
         assert sessions.get_session(cfg, sid) is None  # gone server-side, not just from the browser
         c.cookies.set(sessions.SESSION_COOKIE, sid)  # a copied cookie no longer works
         assert c.get("/v1/ui/rules").status_code == 401
+
+
+# ── every tenant at once, as Git allows ───────────────────────────────────────
+
+TENANT_RULES = {
+    "acme": [
+        {"platform": "gitea", "datasource": "mongo", "repositories": ["acme/configs"]},
+        {"platform": "github", "datasource": "zookeeper", "repositories": ["acme/configs"]},
+    ],
+    "corp": [
+        {"platform": "gitea", "datasource": "mongo", "repositories": ["corp/configs"]},  # same name as acme's
+        {"platform": "gitea", "datasource": "s3", "repositories": ["payments/billing"]},
+        {"platform": "github", "datasource": "zookeeper", "repositories": ["corp/configs"]},
+    ],
+}
+
+
+@pytest.fixture
+def tenants(cfg, gitea, github, monkeypatch):
+    """Two tenants, each with a mongo rule on gitea, served through the real HTTP API."""
+    from fastapi.testclient import TestClient
+    from app.api.app import create_app
+    from app.api.routers import ui
+    from app.ui import views
+
+    records = {
+        "acme": [{"tenant": "acme", "datasource": "mongo", "env": "production", "repository": "acme/configs",
+                  "desired": {}, "ref": "main", "repoUrl": "http://git/acme/configs.git"}],
+        "corp": [{"tenant": "corp", "datasource": "mongo", "env": "production", "repository": "corp/configs",
+                  "desired": {}, "ref": "main", "repoUrl": "http://git/corp/configs.git"}],
+    }
+    tasks = {"acme": [{"taskId": "a1", "rule": "gitea/mongo", "state": "SUCCEEDED", "tenant": "acme", "createdAt": "2026-01-02T00:00:00Z"}],
+             "corp": [{"taskId": "c1", "rule": "gitea/mongo", "state": "SUCCEEDED", "tenant": "corp", "createdAt": "2026-01-03T00:00:00Z"}]}
+    events = {"acme": [{"rule": "gitea/mongo", "reason": "SyncSucceeded", "time": "2026-01-02T00:00:00Z"}],
+              "corp": [{"rule": "gitea/mongo", "reason": "SyncSucceeded", "time": "2026-01-03T00:00:00Z"}]}
+    monkeypatch.setattr(ui, "_all_tenants", lambda: ["acme", "corp"])
+    monkeypatch.setattr(ui, "_rules", lambda tenant: TENANT_RULES[tenant])
+    monkeypatch.setattr(ui, "_cue_bundle", lambda: {"platforms": [{"gitea": {"endpoint": "http://git"}}],
+                                                    "datasources": [{"mongo": {"tag": ""}}, {"s3": {"tag": ""}}]})
+    monkeypatch.setattr(ledger, "list_targets", lambda t: records[t])
+    monkeypatch.setattr(ledger, "get_target", lambda t, ds, env: next(
+        (r for r in records[t] if r["datasource"] == ds and r["env"] == env), None))
+    monkeypatch.setattr(ledger, "list_tasks", lambda t, rule=None, limit=100: [x for x in tasks[t] if not rule or x["rule"] == rule])
+    monkeypatch.setattr(ledger, "list_events", lambda t, rule=None, limit=200: [e for e in events[t] if not rule or e["rule"] == rule])
+    monkeypatch.setattr(views, "compare_all", lambda *a: None)
+    monkeypatch.setattr(views, "rule_view", lambda rule, tenant, recs, tks: {"name": views.rule_name(rule), "tenant": tenant})
+    return TestClient(create_app())
+
+
+def _as(client, cfg, token="tok-alice", login="alice", platform="gitea"):
+    sid, _ = _session(cfg, platform, token, login=login)
+    client.cookies.set(sessions.SESSION_COOKIE, sid)
+    return client
+
+
+def _rule_ids(body):
+    return sorted((r["tenant"], r["name"]) for r in body["rules"])
+
+
+class TestTenants:
+    def test_without_sign_in_every_tenants_rules_come_in_one_list(self, tenants, monkeypatch):
+        monkeypatch.setattr(sessions, "config", lambda: None)
+        assert _rule_ids(tenants.get("/v1/ui/rules").json()) == [
+            ("acme", "gitea/mongo"), ("acme", "github/zookeeper"),
+            ("corp", "gitea/mongo"), ("corp", "gitea/s3"), ("corp", "github/zookeeper")]
+
+    def test_a_user_sees_the_tenants_whose_repositories_git_lets_her_read_and_no_others(self, tenants, cfg, gitea):
+        gitea.access = {"acme/configs": READ}
+        c = _as(tenants, cfg)
+        assert _rule_ids(c.get("/v1/ui/rules").json()) == [("acme", "gitea/mongo")]
+        # corp appears nowhere: not in the tasks, the events, nor the tenants the bundle names.
+        assert [t["tenant"] for t in c.get("/v1/ui/tasks").json()["tasks"]] == ["acme"]
+        assert [e["tenant"] for e in c.get("/v1/ui/events").json()["events"]] == ["acme"]
+        assert c.get("/v1/ui/bundle").json()["tenants"] == ["acme"]
+
+    def test_a_user_who_reads_both_sees_both_without_choosing_a_tenant(self, tenants, cfg, gitea):
+        gitea.access = {"acme/configs": READ, "corp/configs": WRITE}
+        body = _as(tenants, cfg).get("/v1/ui/rules").json()
+        assert _rule_ids(body) == [("acme", "gitea/mongo"), ("corp", "gitea/mongo")]
+        assert {(r["tenant"], r["canSync"]) for r in body["rules"]} == {("acme", False), ("corp", True)}
+
+    def test_an_admin_sees_every_tenant(self, tenants, cfg, gitea):
+        gitea.valid_tokens.add("tok-root")
+        body = _as(tenants, cfg, token="tok-root", login="root").get("/v1/ui/rules").json()
+        assert {r["tenant"] for r in body["rules"]} == {"acme", "corp"}
+        assert len(body["rules"]) == 5
+        assert "hidden" not in body  # nothing is hidden from an admin
+
+    def test_asking_for_a_tenant_narrows_the_answer_and_never_widens_it(self, tenants, cfg, gitea):
+        gitea.access = {"acme/configs": READ}
+        c = _as(tenants, cfg)
+        assert _rule_ids(c.get("/v1/ui/rules", params={"tenant": "acme"}).json()) == [("acme", "gitea/mongo")]
+        assert c.get("/v1/ui/rules", headers={"X-Tenant-ID": "acme"}).json()["rules"][0]["tenant"] == "acme"
+        # corp's rule is not hers: naming the tenant does not show it.
+        assert c.get("/v1/ui/rules", params={"tenant": "corp"}).json()["rules"] == []
+
+    def test_a_rule_name_in_two_tenants_needs_the_tenant_to_pick_one(self, tenants, cfg, gitea):
+        gitea.access = {"acme/configs": READ, "corp/configs": READ}
+        c = _as(tenants, cfg)
+        both = c.get("/v1/ui/rules/gitea/mongo")
+        assert both.status_code == 409 and "acme, corp" in both.json()["detail"]
+        assert c.get("/v1/ui/rules/gitea/mongo", params={"tenant": "corp"}).json()["tenant"] == "corp"
+
+    def test_a_rule_name_only_one_visible_tenant_has_needs_no_tenant(self, tenants, cfg, gitea):
+        gitea.access = {"corp/configs": READ}
+        assert _as(tenants, cfg).get("/v1/ui/rules/gitea/mongo").json()["tenant"] == "corp"
+
+    def test_hidden_counts_rules_on_platforms_not_connected_and_nothing_else(self, tenants, cfg, gitea):
+        # alice has gitea only. github holds a rule in each tenant (2); corp's gitea/s3 is gitea's to judge, so it is not counted.
+        gitea.access = {"acme/configs": READ}
+        body = _as(tenants, cfg).get("/v1/ui/rules").json()
+        assert body["hidden"] == [{"platform": "github", "rules": 2}]
+
+    def test_the_session_counts_every_tenants_rules_per_platform(self, tenants, cfg, gitea):
+        gitea.access = {"acme/configs": READ}
+        platforms = {p["platform"]: p["rules"] for p in _as(tenants, cfg).get("/v1/auth/session").json()["platforms"]}
+        assert platforms == {"gitea": 3, "github": 2}
+
+    def test_events_and_tasks_of_all_tenants_merge_newest_first_and_name_their_tenant(self, tenants, cfg, gitea):
+        gitea.access = {"acme/configs": READ, "corp/configs": READ}
+        c = _as(tenants, cfg)
+        assert [(t["taskId"], t["tenant"]) for t in c.get("/v1/ui/tasks").json()["tasks"]] == [("c1", "corp"), ("a1", "acme")]
+        assert [e["tenant"] for e in c.get("/v1/ui/events").json()["events"]] == ["corp", "acme"]
+        assert [t["taskId"] for t in c.get("/v1/ui/tasks", params={"limit": 1}).json()["tasks"]] == ["c1"]
+
+    def test_a_sync_is_queued_for_the_tenant_the_rule_was_resolved_in(self, tenants, cfg, gitea, monkeypatch):
+        from types import SimpleNamespace
+        import app.pipeline.git_extractor as git_extractor
+        import app.tasks.etl as etl
+
+        queued = []
+        monkeypatch.setattr(git_extractor, "GitExtractor",
+                            lambda: SimpleNamespace(get_commit_sha=lambda repo_url, branch, token=None: "abc123"))
+        monkeypatch.setattr(etl.process_webhook_task, "apply_async",
+                            lambda kwargs, queue: queued.append(kwargs) or SimpleNamespace(id="task-1"))
+        gitea.access = {"acme/configs": WRITE, "corp/configs": WRITE}
+        resp = _as(tenants, cfg).post("/v1/ui/rules/gitea/mongo/sync", params={"tenant": "corp"},
+                                      json={"envs": [], "dryRun": False})
+        assert resp.status_code == 200 and resp.json() == {"taskIds": ["task-1"]}
+        assert [(q["tenant_id"], q["datasource"]) for q in queued] == [("corp", "mongo")]

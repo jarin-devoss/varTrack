@@ -86,7 +86,8 @@ def test_an_unknown_update_strategy_is_an_error():
 
 
 @pytest.mark.parametrize("value,strategy", [
-    (None, KeyValueStrategy), ("STRATEGY_KEY_VALUE", KeyValueStrategy),
+    (None, DocumentStrategy), ("", DocumentStrategy), (0, DocumentStrategy),  # unset: one nested document per file
+    ("STRATEGY_KEY_VALUE", KeyValueStrategy),
     ("STRATEGY_DOCUMENT", DocumentStrategy), ("STRATEGY_FILE", FileStrategy), (2, DocumentStrategy),
 ])
 def test_mongo_strategy_follows_update_strategy(value, strategy):

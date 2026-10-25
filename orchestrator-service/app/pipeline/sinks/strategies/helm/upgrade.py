@@ -41,6 +41,10 @@ class UpgradeStrategy(HelmWriteStrategy):
         cleanup_on_fail: bool = False,
         no_hooks: bool = False,
         max_history: int = 10,
+        install: bool = True,
+        reuse_values: bool = False,
+        chart_version: str = "",
+        chart_repo: str = "",
     ) -> None:
         self._helm         = helm_binary or os.getenv("HELM_BINARY", "") or (shutil.which("helm") or "")
         self._values_mode  = values_mode.lower()
@@ -51,6 +55,13 @@ class UpgradeStrategy(HelmWriteStrategy):
         self._cleanup      = cleanup_on_fail
         self._no_hooks     = no_hooks
         self._max_history  = max_history
+        # install: a release that does not exist yet is installed (helm
+        # upgrade --install); without it, upgrading a missing release fails.
+        self._install       = install
+        # reuse_values: keep the release's other values, only set ours.
+        self._reuse_values  = reuse_values
+        self._chart_version = chart_version
+        self._chart_repo    = chart_repo
 
     def apply(
         self,
@@ -106,7 +117,6 @@ class UpgradeStrategy(HelmWriteStrategy):
 
         return {
             "written":     len(data_keys),
-            "pruned":      0,
             "helm_output": result.stdout,
         }
 
@@ -123,13 +133,22 @@ class UpgradeStrategy(HelmWriteStrategy):
         dry_run: bool,
     ) -> tuple[list[str], list[str]]:
         """Return (cmd, tmp_paths) where tmp_paths are temp files to clean up."""
-        cmd = [
-            self._helm, "upgrade", "--install",
+        cmd = [self._helm, "upgrade"]
+        if self._install:
+            cmd.append("--install")
+        cmd += [
             release_name, chart,
             "--namespace", namespace,
-            "--create-namespace",
             "--history-max", str(self._max_history),
         ]
+        if self._install:
+            cmd.append("--create-namespace")
+        if self._reuse_values:
+            cmd.append("--reuse-values")
+        if self._chart_version:
+            cmd += ["--version", self._chart_version]
+        if self._chart_repo:
+            cmd += ["--repo", self._chart_repo]
         if kubeconfig:
             cmd += ["--kubeconfig", kubeconfig]
         if context:

@@ -4,8 +4,8 @@ app/pipeline/sinks/strategies/mongo/__init__.py
 MongoDB write strategies, chosen by the datasource's update_strategy
 (MongoConfig.update_strategy, the proto Strategy enum):
 
-  STRATEGY_KEY_VALUE  — one document per flat key                    (default)
-  STRATEGY_DOCUMENT   — one document per file, always nested
+  STRATEGY_DOCUMENT   — one document per file, always nested         (default)
+  STRATEGY_KEY_VALUE  — one document per flat key
   STRATEGY_FILE       — one document per file, in the shape it parsed to
 """
 from __future__ import annotations
@@ -22,7 +22,7 @@ __all__ = ["MongoWriteStrategy", "KeyValueStrategy", "DocumentStrategy", "FileSt
 
 # By the proto Strategy enum's value names.
 _STRATEGIES: dict[str, Callable[[], MongoWriteStrategy]] = {
-    "STRATEGY_UNSPECIFIED": KeyValueStrategy,
+    "STRATEGY_UNSPECIFIED": DocumentStrategy,
     "STRATEGY_KEY_VALUE":   KeyValueStrategy,
     "STRATEGY_DOCUMENT":    DocumentStrategy,
     "STRATEGY_FILE":        FileStrategy,
@@ -30,7 +30,7 @@ _STRATEGIES: dict[str, Callable[[], MongoWriteStrategy]] = {
 
 
 def get_strategy(value: str | int | None) -> MongoWriteStrategy:
-    """The strategy for a datasource's update_strategy (name or proto number); unset is STRATEGY_KEY_VALUE."""
+    """The strategy for a datasource's update_strategy (name or proto number); unset is STRATEGY_DOCUMENT."""
     try:
         return _STRATEGIES[update_strategy(value)]()
     except ValueError:

@@ -35,6 +35,16 @@ SINK_REGISTRY: dict[str, type[BaseSink]] = {
 }
 
 
+def sink_class(datasource: str) -> type[BaseSink] | None:
+    """The sink class for a datasource name ("mongo", "mongo-primary",
+    "linux_server-web" …), or None when none is registered."""
+    key = datasource.lower().replace("-", "_")
+    # Strip the tag: "mongo_primary" -> "mongo", "linux_server_web" -> "linux_server".
+    kind = next((k for k in sorted(SINK_REGISTRY, key=len, reverse=True)
+                 if key == k or key.startswith(k + "_")), None)
+    return SINK_REGISTRY[kind] if kind else None
+
+
 def create_sink(datasource: str, rule_config: dict, tenant_id: str) -> BaseSink:
     """
     Instantiate the right sink class for the given datasource name.
@@ -69,16 +79,12 @@ def create_sink(datasource: str, rule_config: dict, tenant_id: str) -> BaseSink:
     # Datasource names follow the "type-tag" convention from config.cue:
     #   "mongo-primary" → type="mongo", tag="primary"
     #   "redis-dr"      → type="redis", tag="dr"
-    # First try an exact match, then fall back to the type prefix.
-    key = datasource.lower().replace("-", "_")
-    cls = SINK_REGISTRY.get(key)
-    if cls is None:
-        # Strip tag suffix: "mongo_primary" → "mongo"
-        type_prefix = key.split("_")[0]
-        cls = SINK_REGISTRY.get(type_prefix)
+    cls = sink_class(datasource)
     if cls is None:
         raise ValueError(
             f"No sink registered for datasource {datasource!r}. "
             f"Known datasources: {sorted(SINK_REGISTRY)}"
         )
-    return cls(rule_config=rule_config, tenant_id=tenant_id)
+    # The datasource's own settings in config.cue win over the rule's copies.
+    from app.pipeline.datasource_settings import with_datasource_settings
+    return cls(rule_config=with_datasource_settings(datasource, rule_config), tenant_id=tenant_id)

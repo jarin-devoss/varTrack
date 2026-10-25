@@ -16,6 +16,7 @@ import hashlib
 import logging
 import os
 import shutil
+import stat
 import tempfile
 import threading
 import urllib.parse
@@ -161,20 +162,34 @@ class BranchRepoCache:
             no_checkout=False,
             env=self._GIT_ENV,
         )
-        commit_sha: str = repo.head.commit.hexsha
+        try:
+            commit_sha: str = repo.head.commit.hexsha
+        finally:
+            repo.close()  # its git helper processes keep the checkout's files open
         return dest, commit_sha
 
     def _pull(self, path: Path, ref: str) -> str:
+        """Move the shallow clone to the remote's commit. Fetch and reset, not
+        pull: a depth-1 clone has no history to merge a new commit into, and
+        `git pull --depth=1` ends in "refusing to merge unrelated histories"."""
         repo = git.Repo(str(path))
-        origin = repo.remote("origin")
-        origin.pull(self._refspec_to_branch(ref), depth=1, env=self._GIT_ENV)
-        commit_sha: str = repo.head.commit.hexsha
+        try:
+            branch = self._refspec_to_branch(ref)
+            with repo.git.custom_environment(**self._GIT_ENV):
+                repo.git.fetch("--depth=1", "origin", branch)
+                repo.git.reset("--hard", "FETCH_HEAD")
+            commit_sha: str = repo.head.commit.hexsha
+        finally:
+            repo.close()
         return commit_sha
 
     def _remote_sha(self, path: Path, ref: str) -> str:
         """Non-destructive ls-remote to check remote HEAD without fetching."""
         repo = git.Repo(str(path))
-        results = repo.git.ls_remote("origin", ref)
+        try:
+            results = repo.git.ls_remote("origin", ref)
+        finally:
+            repo.close()
         if not results:
             raise ValueError(f"ref {ref!r} not found on remote")
         return results.split()[0]
@@ -201,8 +216,18 @@ class BranchRepoCache:
 
     @staticmethod
     def _rmtree(path: Path) -> None:
+        """Delete a checkout. Git writes its objects read-only, which on Windows
+        `rmtree` refuses to delete, leaving a directory the next clone cannot
+        use; clear the flag and try again."""
+        def _writable_then_retry(func, failed_path, _exc):
+            try:
+                os.chmod(failed_path, stat.S_IWRITE)
+                func(failed_path)
+            except OSError:
+                pass
+
         try:
-            shutil.rmtree(str(path), ignore_errors=True)
+            shutil.rmtree(str(path), onexc=_writable_then_retry)
         except Exception:
             pass
 

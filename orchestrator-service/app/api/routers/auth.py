@@ -47,13 +47,10 @@ def _login_error(code: str) -> RedirectResponse:
 
 
 def _rules_per_platform(request: Request) -> dict[str, int]:
-    """How many of the tenant's rules each platform holds — for "connect GitHub to see 3 more"."""
+    """How many rules, of every tenant, each platform holds — for "connect GitHub to see 3 more"."""
     try:
-        from app.api.routers.ui import _rules, _tenant
-        counts: dict[str, int] = {}
-        for rule in _rules(_tenant(request)):
-            counts[rule.get("platform", "")] = counts.get(rule.get("platform", ""), 0) + 1
-        return counts
+        from app.api.routers.ui import _rules_per_platform as count, _tenants
+        return count(_tenants(request))
     except Exception:
         logger.debug("ui auth: counting rules failed", exc_info=True)
         return {}

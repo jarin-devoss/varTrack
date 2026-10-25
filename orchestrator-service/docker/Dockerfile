@@ -90,8 +90,7 @@ COPY --from=builder /opt/extra-bin/ /usr/local/bin/
 WORKDIR /app
 COPY --from=builder /app /app
 
-# Non-root user (uid 1001) — mirrors gateway-service :nonroot convention
-# and Argo CD / Flux production container hardening.
+# Non-root user (uid 1001) — mirrors gateway-service :nonroot convention.
 # Create writable runtime dirs BEFORE chown so Docker volume mounts
 # inherit the correct ownership when volumes are initialised from the image.
 RUN useradd --uid 1001 --no-create-home --shell /bin/false vartrack \

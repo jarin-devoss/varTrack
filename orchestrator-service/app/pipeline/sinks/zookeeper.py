@@ -121,10 +121,6 @@ class ZookeeperSink(BaseSink):
         commit_sha: str,
         file_path: str,
         labels: VarTrackLabels,
-        prune: bool,
-        prune_last: bool,
-        prune_protection: list[str],
-        dry_run_prune: bool,
         total_sources: int,
         data: Any = None,
     ) -> dict[str, Any]:
@@ -178,47 +174,32 @@ class ZookeeperSink(BaseSink):
                     self._zk.set(path, encoded)
             written += 1
 
-        pruned = 0
-        if prune and not dry_run_prune:
-            pruned = self._prune(flat_data, root, prune_protection, prune_last)
+        return {"written": written}
 
-        return {"written": written, "pruned": pruned}
+    @classmethod
+    def prunes_keys(cls, rule_config: dict) -> bool:
+        return True
 
-    def _prune(
-        self, flat_data: dict[str, str], root: str,
-        protection: list[str], last: bool,
-    ) -> int:
-        import fnmatch
-        from app.pipeline.sinks.key_formatter import format_keys
-        if not self._zk.exists(root):
-            return 0
+    @classmethod
+    def key_space(cls, rule_config: dict, tenant_id: str, env: str) -> str:
+        return cls._root_of(rule_config, tenant_id, env)
 
-        # Build live top-level segment set from formatted keys.
-        # SLASH:     "db.host" → "/db/host" → first segment after strip = "db"
-        # SLASH_DOT: "db.host" → ".db.host" → first segment after strip = "db"
-        formatted = format_keys(flat_data, self._key_format)
-        live_top: set[str] = set()
-        for fkey in formatted:
-            clean = fkey.lstrip("/.")
-            first = clean.split("/")[0] if "/" in clean else clean.split(".")[0]
-            if first:
-                live_top.add(first)
+    @classmethod
+    def store(cls, rule_config: dict) -> str:
+        return cls._store_of(rule_config.get("zk_hosts"))
 
-        to_delete = []
-        for child in self._zk.get_children(root):
-            if child == _META_ZNODE:
-                continue
-            if child in live_top:
-                continue
-            if any(fnmatch.fnmatch(child, p) for p in protection):
-                continue
-            to_delete.append(child)
-
-        if last:
-            to_delete = to_delete[-1:]
-        for child in to_delete:
-            self._zk.delete(f"{root}/{child}", recursive=True)
-        return len(to_delete)
+    def delete_keys(self, keys: "Collection[str]", *, datasource: str, env: str) -> int:
+        # Only the znodes of the keys themselves — never the subtrees around
+        # them, which may hold nodes other tools put there — and only leaves.
+        root = self._root_path(env)
+        deleted = 0
+        for key in sorted(keys):
+            relative = next(iter(format_keys({key: ""}, self._key_format))).lstrip("/").lstrip(".")
+            path = f"{root}/{relative}"
+            if self._zk.exists(path) and not self._zk.get_children(path):
+                self._zk.delete(path)
+                deleted += 1
+        return deleted
 
     def close(self) -> None:
         try:
@@ -226,6 +207,18 @@ class ZookeeperSink(BaseSink):
             self._zk.close()
         except Exception:
             pass
+
+    @staticmethod
+    def _root_of(rule_config: dict, tenant_id: str, env: str) -> str:
+        # destination_template is the canonical path template ({tenant}, {env}
+        # placeholders); zk_path_template is the ZK-specific fallback.
+        template = (
+            rule_config.get("destination_template")
+            or rule_config.get("zk_path_template")
+            or "/{tenant}/{env}"
+        )
+        base = rule_config.get("zk_base_path", "").rstrip("/")
+        return (base + resolve_destination(template, tenant=tenant_id, env=env)).rstrip("/")
 
     def _root_path(self, env: str) -> str:
         """Compute the ZooKeeper root path for a given env."""
@@ -251,5 +244,7 @@ class ZookeeperSink(BaseSink):
                     data, _ = self._zk.get(path)
                     result[flat_key] = (data or b"").decode("utf-8", errors="replace")
             except Exception as exc:
+                if self.strict_reads:
+                    raise
                 logger.warning("ZookeeperSink.read_values path=%s failed: %s", path, exc)
         return result

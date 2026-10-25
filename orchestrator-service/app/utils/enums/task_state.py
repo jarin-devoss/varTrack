@@ -1,27 +1,20 @@
 """
 app/utils/enums/task_state.py
 ──────────────────────────────
-TaskState represents the lifecycle state of a Celery task as returned
-to gRPC callers.  Values are intentionally aligned with the Celery state
-strings and the proto TaskState mapping in grpc_server/server.py.
+TaskState is the proto enum vartrack.v1.TaskState (enums/task_state.proto):
+the lifecycle state of a Celery task as returned to gRPC callers.
 
-Proto mapping (grpc_server/server.py::_celery_state_to_proto):
-  UNSPECIFIED = 0  →  unknown / initial
-  PENDING     = 1  →  TASK_STATE_PENDING   (Celery: "PENDING")
-  RUNNING     = 2  →  TASK_STATE_RUNNING   (Celery: "STARTED")
-  SUCCEEDED   = 3  →  TASK_STATE_SUCCEEDED (Celery: "SUCCESS")
-  FAILED      = 4  →  TASK_STATE_FAILED    (Celery: "FAILURE" / "REVOKED")
-  RETRYING    = 5  →  TASK_STATE_RETRYING  (Celery: "RETRY")
+  TaskState.UNSPECIFIED  unknown / initial
+  TaskState.PENDING      Celery "PENDING"
+  TaskState.RUNNING      Celery "STARTED"
+  TaskState.SUCCEEDED    Celery "SUCCESS"
+  TaskState.FAILED       Celery "FAILURE" / "REVOKED"
+  TaskState.RETRYING     Celery "RETRY"
 """
 from __future__ import annotations
 
-from enum import IntEnum
+from vartrack.v1.enums import task_state_pb2
 
+from app.utils.enums import proto_enum
 
-class TaskState(IntEnum):
-    UNSPECIFIED = 0
-    PENDING     = 1
-    RUNNING     = 2
-    SUCCEEDED   = 3
-    FAILED      = 4
-    RETRYING    = 5
+TaskState = proto_enum("TaskState", task_state_pb2.TaskState, "TASK_STATE_", __name__)

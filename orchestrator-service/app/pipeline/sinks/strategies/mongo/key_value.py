@@ -27,7 +27,6 @@ db.configs.createIndex(
 """
 from __future__ import annotations
 
-import fnmatch
 import logging
 
 from app.pipeline.sinks.strategies.mongo.base import MongoWriteStrategy
@@ -105,24 +104,3 @@ class KeyValueStrategy(MongoWriteStrategy):
                 collection.update_one(flt, {"$set": doc}, upsert=True)
                 repaired += 1
         return repaired
-
-    def prune(self, collection, flat_data, doc_filter, protection, last) -> int:
-        git_keys  = set(flat_data.keys())
-        all_docs  = collection.find(doc_filter, {"key": 1})
-        to_delete = []
-        for doc in all_docs:
-            key = doc.get("key", "")
-            if key not in git_keys and not any(
-                fnmatch.fnmatch(key, p) for p in protection
-            ):
-                to_delete.append(key)
-
-        if last:
-            to_delete = to_delete[-1:] if to_delete else []
-
-        if to_delete:
-            from pymongo import DeleteOne
-            ops = [DeleteOne({**doc_filter, "key": key}) for key in to_delete]
-            collection.bulk_write(ops, ordered=False)
-            logger.info("KeyValueStrategy pruned %d keys", len(to_delete))
-        return len(to_delete)

@@ -15,6 +15,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
+from app.tasks.payload import extract_prune_config
 from app.ui import ledger
 
 logger = logging.getLogger(__name__)
@@ -68,12 +69,8 @@ def _sync_mode(raw: Any) -> str:
 
 
 def _prune(rule: dict) -> dict:
-    p = rule.get("prune", False)
-    if isinstance(p, dict):
-        enabled, last, dry = True, bool(p.get("last", False)), bool(p.get("dry_run", False))
-    else:
-        enabled, last, dry = bool(p), bool(rule.get("prune_last", False)), bool(rule.get("dry_run_prune", False))
-    return {"enabled": enabled, "last": last, "dryRun": dry, "protection": list(rule.get("prune_protection", []) or [])}
+    p = extract_prune_config(rule)
+    return {"enabled": p.enabled, "dryRun": p.dry_run, "protection": p.protection}
 
 
 def destination(rule: dict, tenant: str, env: str, *, placeholders: bool = False) -> str:
@@ -119,6 +116,26 @@ def destination_template(rule: dict) -> str:
     return destination(rule, "{tenant}", "{env}", placeholders=True)
 
 
+# Rule options (rule.proto) whose key in rule_base's output is not their name
+# in camelCase.
+UI_NAMES: dict[str, str] = {"suspend": "suspended"}
+
+# Rule options the rule view does not show, and why. Every option of rule.proto
+# is in rule_base's output or here, so a new option has to decide whether the
+# page shows it (tests/unit/test_rule_options.py).
+NOT_SHOWN_IN_UI: dict[str, str] = {
+    "root_key": "an ETL detail; the rule page does not list it",
+    "variables_map": "an ETL detail; the rule page does not list it",
+    "overrides": "repository filtering; the page lists the repositories the rule ends up with",
+    "force": "pins applied last; the page shows the rule as built, with them applied",
+    "tenants": "which tenants may layer the rule; the page is already for one tenant",
+    "drift_ignore": "its effect shows as the 'ignored' state of a key, not as a list of patterns",
+    "strict_validation": "an ETL detail; a rejected file shows on its task",
+    "branch": "which branch the periodic heal compares; the page lists the branches of the branch map",
+    "max_changed_files": "an ETL limit; a push cut to it logs a warning",
+}
+
+
 def rule_base(rule: dict, tenant: str) -> dict[str, Any]:
     repos = list(rule.get("repositories") or [])
     if not repos and rule.get("repo_url"):
@@ -142,6 +159,7 @@ def rule_base(rule: dict, tenant: str) -> dict[str, Any]:
         "destinationTemplate": destination_template(rule),
         "syncMode": _sync_mode(rule.get("sync_mode")),
         "selfHeal": bool(rule.get("self_heal", False)),
+        "suspended": bool(rule.get("suspend", False)),
         "dryRun": bool(rule.get("dry_run", False)),
         "prune": _prune(rule),
         **({"secretManager": rule["secret_manager"]} if rule.get("secret_manager") else {}),
@@ -163,6 +181,7 @@ def _read_current(rule: dict, tenant: str, env: str, keys: list[str]) -> tuple[d
     try:
         if type(sink).read_values is BaseSink.read_values:
             return None, f"reading current values from {sink_type(rule)} isn't supported yet"
+        sink.strict_reads = True  # a failed read is "can't tell", not "every key is missing"
         return sink.read_values(keys, datasource, env), None
     except Exception as exc:
         return None, f"read failed: {exc}"
@@ -237,21 +256,26 @@ def _compare_now(rule: dict, tenant: str, record: dict, cache_key: tuple) -> dic
     env = record["env"]
     desired: dict[str, str] = record.get("desired", {})
     digests: dict[str, str] = record.get("secretDigests", {})
+
     current, error = _read_current(rule, tenant, env, list(desired))
     keys: list[dict[str, Any]] = []
     changed = missing = 0
     if current is not None:
         protection = _prune(rule)["protection"]
+        # Keys the application changes itself: shown, never counted as drift.
+        # A sync still writes them.
+        ignore = [str(p) for p in rule.get("drift_ignore") or []]
         for key in sorted(desired):
             secret = key in digests
             live = current.get(key)
-            if live is None:
-                state = "missing"
+            state = ledger.key_state(desired[key], live, digests.get(key))
+            if state == "unreadable":
+                live = None
+            elif any(fnmatch.fnmatch(key, p) for p in ignore):
+                state = "ignored"
+            elif state == "missing":
                 missing += 1
-            elif (ledger.secret_digest(live) == digests[key]) if secret else (live == desired[key]):
-                state = "synced"
-            else:
-                state = "drifted"
+            elif state == "drifted":
                 changed += 1
             keys.append({
                 "key": key,

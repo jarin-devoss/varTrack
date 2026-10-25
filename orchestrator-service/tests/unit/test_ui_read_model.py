@@ -11,6 +11,7 @@ import threading
 
 import pytest
 
+from app.pipeline.models import SyncResult
 from app.ui import ledger, views
 
 
@@ -211,13 +212,13 @@ class TestTargetView:
 
 class TestRuleBase:
     def test_maps_bundle_fields(self):
-        rule = _rule(repo_url="http://gitea:3000/acme/configs.git", sync_mode="SYNC_MODE_FULL", prune={"last": True},
+        rule = _rule(repo_url="http://gitea:3000/acme/configs.git", sync_mode="SYNC_MODE_FULL", prune=True,
                      file_path_map={"production": "configs/prod.yaml"}, self_heal=True)
         base = views.rule_base(rule, "acme")
         assert base["name"] == "github/redis"
         assert base["repositories"] == ["acme/configs"]
         assert base["syncMode"] == "GIT_UPSERT_ALL"
-        assert base["prune"] == {"enabled": True, "last": True, "dryRun": False, "protection": []}
+        assert base["prune"] == {"enabled": True, "dryRun": False, "protection": []}
         assert base["filePathMap"] == {"configs/prod.yaml": "production"}
         assert base["selfHeal"] is True
 
@@ -364,8 +365,7 @@ def test_a_finished_sync_records_what_it_wrote_before_it_says_it_finished(monkey
 
     task = {"taskId": "t1", "rule": "github/redis", "datasource": "redis", "trigger": "webhook", "createdAt": "x",
             "ref": "main", "revision": "abc", "_platform": "github", "_repoUrl": "r", "dryRun": False}
-    result = SimpleNamespace(file_path="app.yaml", env="production", status="ok", sync_mode="", written=1, pruned=0,
-                             root_key=None, error=None)
+    result = SyncResult(file_path="app.yaml", env="production", status="ok", written=1)
     etl = SimpleNamespace(files=[SimpleNamespace(file_path="app.yaml", env="production", flat_data={"a": "1"}, secret_fields=[])])
     recorder.task_finished(task, tenant="acme", etl=etl, results=[result])
     assert calls == [("target", "production"), ("task", "SUCCEEDED")]
@@ -377,7 +377,8 @@ def test_grpc_rule_lookup_loads_tenants_after_a_restart(monkeypatch):
     from app.pipeline import schema_utils
 
     class Entry:
-        def __init__(self, rules):
+        def __init__(self, tenant_id, rules):
+            self.tenant_id = tenant_id
             self.rules = rules
 
     class Manager:
@@ -392,7 +393,7 @@ def test_grpc_rule_lookup_loads_tenants_after_a_restart(monkeypatch):
 
         def get_or_clone(self, tenant):
             self.cloned.append(tenant)
-            self._entries[f"{tenant}:schemas"] = Entry([{"platform": "gitea", "datasource": "mongo", "tenant_id": tenant}])
+            self._entries[f"{tenant}:schemas"] = Entry(tenant, [{"platform": "gitea", "datasource": "mongo", "tenant_id": tenant}])
 
     mgr = Manager()
     monkeypatch.setattr("app.schema_registry.manager.get_schema_manager", lambda: mgr)
@@ -501,8 +502,8 @@ class TestRecorderAfterAFailedFile:
             task = {"taskId": "t1", "rule": f"gitea/{datasource}", "datasource": datasource, "trigger": "webhook",
                     "createdAt": "x", "ref": "main", "revision": "abc", "_platform": "gitea", "_repoUrl": "r",
                     "dryRun": False}
-            res = [SimpleNamespace(file_path=f, env=e, status=s, sync_mode="", written=int(s == "ok"), pruned=0,
-                                   root_key=None, error=None if s == "ok" else "boom") for f, e, s in results]
+            res = [SyncResult(file_path=f, env=e, status=s, written=int(s == "ok"),
+                              error="" if s == "ok" else "boom") for f, e, s in results]
             etl = SimpleNamespace(files=[SimpleNamespace(file_path=f, env=e, flat_data={"a": "1"}, secret_fields=[])
                                          for f, e, _ in results])
             recorder.task_finished(task, tenant="acme", etl=etl, results=res)

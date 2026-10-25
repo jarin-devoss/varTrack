@@ -23,7 +23,7 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 
 
-def _app():
+def _app(rule=None):
     with (
         patch("app.schema_registry.manager.get_schema_manager", return_value=MagicMock()),
         patch("app.monitoring.init"),
@@ -33,7 +33,7 @@ def _app():
         app = create_app()
 
     mgr = MagicMock()
-    mgr.resolve_rule.return_value = {"tenant_id": "acme", "prune": True}
+    mgr.resolve_rule.return_value = rule or {"tenant_id": "acme", "prune": True}
     app.state.schema_manager = mgr
     return app
 
@@ -140,3 +140,28 @@ async def test_dry_run_route_does_not_conflict_with_webhook_route():
     assert normal_resp.status_code == 200
     assert dry_resp.status_code == 200
     assert dry_resp.json().get("dry_run") is True
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("prune,want", [
+    (True, {"enabled": True, "dry_run": True, "protection": []}),
+    (False, {"enabled": False, "dry_run": True, "protection": []}),
+    ({"enabled": True, "protection": ["keep.*"]}, {"enabled": True, "dry_run": True, "protection": ["keep.*"]}),
+    ({"protection": ["keep.*"]}, {"enabled": False, "dry_run": True, "protection": ["keep.*"]}),
+])
+async def test_dry_run_forces_the_prune_dry_run_but_not_prune_on(prune, want):
+    """A dry run never deletes, and a rule that does not prune does not start to."""
+    app = _app({"tenant_id": "acme", "prune": prune})
+    captured: dict = {}
+
+    def _capture(kwargs, **_):
+        captured.update(kwargs)
+        return _mock_task()
+
+    with patch("app.tasks.etl.process_webhook_task") as mock_task_cls:
+        mock_task_cls.apply_async.side_effect = _capture
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as c:
+            await c.post("/v1/webhooks/mongo/dry-run", content=b"{}",
+                         headers={"x-github-event": "push", "x-tenant-id": "acme"})
+
+    assert captured["rule_config"]["prune"] == want

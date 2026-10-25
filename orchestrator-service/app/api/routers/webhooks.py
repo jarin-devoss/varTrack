@@ -86,7 +86,7 @@ async def ingest_webhook(
     rule_config  = rule_config or {}
 
     # Resolve tenant_id: prefer rule_config, then fall back to the repository
-    # owner extracted from the webhook payload (Renovate topLevelOrg pattern).
+    # owner extracted from the webhook payload.
     # e.g. payload repository.full_name = "acme/infra" → tenant_id = "acme"
     tenant_id = rule_config.get("tenant_id")
     if not tenant_id:

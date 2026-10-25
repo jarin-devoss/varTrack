@@ -104,6 +104,11 @@ def _file_result(r: Any, dry_run_file: dict | None = None) -> dict[str, Any]:
         "pruned": r.pruned,
         **({"rootKey": r.root_key} if r.root_key else {}),
         **({"error": r.error} if r.error else {}),
+        # Keys only: prune's values stay in the ledger's target, not in a task.
+        **({"prunePending": r.prune_pending} if r.prune_pending is not None else {}),
+        **({"pruneSkipped": r.prune_skipped} if r.prune_skipped else {}),
+        **({"pruneWouldDelete": r.prune_would_delete} if r.prune_would_delete else {}),
+        **({"pruneError": r.prune_error} if r.prune_error else {}),
     }
 
 
@@ -211,6 +216,8 @@ def _record_envs(task: dict[str, Any], *, tenant: str, envs: list[str], files: l
         # Only what is still in the sink becomes desired state: nothing after a
         # rollback; without one, the files that were written before the failure.
         kept = [] if rolled_back else [f for f in env_files if f["status"] == "ok"]
+        # The keys prune could not delete stay owned, so the next sync retries them.
+        pending_prune = next((f["prunePending"] for f in env_files if f.get("prunePending") is not None), None)
         recorded = False
         for f in kept:
             src = etl_files.get((f["file"], env))
@@ -231,6 +238,7 @@ def _record_envs(task: dict[str, Any], *, tenant: str, envs: list[str], files: l
                 commit_message=task.get("_commitMessage", ""),
                 author=task.get("_author", ""),
                 sync=sync,
+                pending_prune=pending_prune,
             )
 
         if failed:
@@ -251,6 +259,18 @@ def _record_envs(task: dict[str, Any], *, tenant: str, envs: list[str], files: l
         if sync["pruned"]:
             ledger.record_event(tenant=tenant, reason="KeysPruned", rule=rule, env=env, task_id=task["taskId"],
                                 message=f"pruned {sync['pruned']} key{'s' if sync['pruned'] != 1 else ''} no longer in Git")
+        # The writes stand either way: a prune that failed or held back is a warning, not a failed sync.
+        for f in env_files:
+            if f.get("pruneError"):
+                ledger.record_event(tenant=tenant, reason="PruneFailed", warning=True, rule=rule, env=env,
+                                    task_id=task["taskId"], message=f"prune failed, retried next sync: {f['pruneError']}")
+            if f.get("pruneSkipped"):
+                keys = f["pruneSkipped"]
+                ledger.record_event(tenant=tenant, reason="PruneSkipped", warning=True, rule=rule, env=env,
+                                    task_id=task["taskId"],
+                                    message=f"{len(keys)} key{'s' if len(keys) != 1 else ''} no longer in Git "
+                                            f"changed outside varTrack, not deleted: {', '.join(keys[:5])}"
+                                            + (" …" if len(keys) > 5 else ""))
 
 
 def task_errored(task: dict[str, Any] | None, *, tenant: str, error: str) -> None:

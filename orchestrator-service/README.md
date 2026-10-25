@@ -63,7 +63,6 @@ Hot-path operations are implemented in Rust and exposed to Python via PyO3. Pure
 |---|---|
 | `flatten` | Non-recursive BFS / DFS dict flattening |
 | `merge` | Variable map overlay + environment resolution |
-| `prune` | Stale-key detection and deferred deletion |
 | `sync` | BLAKE3 content hash for `GIT_SMART_REPAIR` |
 | `cue` | CUE binary subprocess wrapper |
 
@@ -132,6 +131,8 @@ Priority order when resolving the environment from a webhook event:
 | `POST` | `/v1/webhooks/{datasource}/dry-run` | Simulate ETL without writing anything |
 | `POST` | `/v1/webhooks/schema-registry` | Re-clone schema repo on push |
 | `GET` | `/v1/tasks/{task_id}` | Poll task status |
+| `GET` | `/v1/ui/*` | The web UI's read API: rules, keys, events, tasks, bundle. Covers every tenant the viewer may see; `?tenant=` narrows an answer |
+| `GET` | `/v1/auth/*` | Web UI sign-in with the Git platforms (when `config.cue` has a `ui` block) |
 | `GET` | `/v1/health` | Liveness probe |
 | `GET` | `/metrics` | Prometheus metrics |
 | `GET` | `/docs` | OpenAPI / Swagger UI |
@@ -156,7 +157,10 @@ Priority order when resolving the environment from a webhook event:
 | RPC | Called by | Description |
 |---|---|---|
 | `ProcessWebhook` | gateway-service | Enqueue the ETL pipeline for a webhook |
-| `TriggerSync` | watcher-service | Re-sync a datasource on detected drift |
+| `CLIService.SyncFile`, `ValidateFile`, `ValidateConfig`, `GetTask`, `ListTasks` | gateway-service | The CLI API (`vt`): sync a file, validate it, check a `vartrack.json` or `bundle.json`, read tasks |
+| `ListWatchTargets` | watcher-service | The rules to watch: `self_heal` on and not suspended, of every tenant |
+| `CheckDatasource` | watcher-service | Does a datasource still match Git? The orchestrator reads the sinks and compares them with its sync ledger |
+| `SyncDatasource` | watcher-service | Re-sync a datasource on detected drift (self-heal) |
 
 ### Celery queues
 
@@ -280,12 +284,17 @@ orchestrator-service/
 │   │   └── routers/
 │   │       ├── webhooks.py     # POST /v1/webhooks/{datasource}
 │   │       ├── dry_run.py      # POST /v1/webhooks/{datasource}/dry-run
+│   │       ├── ui.py           # /v1/ui/*: the web UI's read API
+│   │       ├── auth.py         # /v1/auth/*: web UI sign-in
 │   │       ├── tasks.py        # GET /v1/tasks/{task_id}
 │   │       └── schemas.py      # Schema management
-│   ├── grpc_server/            # ProcessWebhook + TriggerSync gRPC handlers
+│   ├── grpc_server/            # ProcessWebhook, CLIService and the watcher's gRPC handlers
 │   ├── pipeline/
 │   │   ├── stage_etl.py        # Stage 2: Extract → Transform → Validate
-│   │   ├── stage_sync.py       # Stage 3: Write + rollback
+│   │   ├── stage_sync.py       # Stage 3: write, then prune once per environment
+│   │   ├── rule_layers.py      # config.cue → bundle.json → vartrack.json → force
+│   │   ├── rule_options.py     # what each rule option is, read from rule.proto
+│   │   ├── presets.py          # `extends` presets
 │   │   ├── transformer.py      # Flatten + variables_map overlay
 │   │   ├── validator.py        # CUE schema validation subprocess
 │   │   ├── git_extractor.py    # Git file fetch with LRU cache
@@ -308,7 +317,6 @@ orchestrator-service/
 │   └── src/
 │       ├── flatten.rs          # BFS / DFS flattening
 │       ├── merge.rs            # Env resolution + overlay
-│       ├── prune.rs            # Stale-key detection
 │       ├── diff.rs             # Added / removed / changed sets
 │       ├── sync.rs             # BLAKE3 content hash
 │       └── cue.rs              # CUE subprocess wrapper

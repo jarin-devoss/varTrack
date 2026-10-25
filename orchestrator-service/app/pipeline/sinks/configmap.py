@@ -54,6 +54,7 @@ _DEFAULT_FORMAT = KeyFormat.FLAT
 
 
 class ConfigmapSink(BaseSink):
+    object_name = "ConfigMap"
 
     def __init__(
         self,
@@ -153,10 +154,6 @@ class ConfigmapSink(BaseSink):
         commit_sha: str,
         file_path: str,
         labels: VarTrackLabels,
-        prune: bool,
-        prune_last: bool,
-        prune_protection: list[str],
-        dry_run_prune: bool,
         total_sources: int,
         data: Any = None,
     ) -> dict[str, Any]:
@@ -204,7 +201,7 @@ class ConfigmapSink(BaseSink):
             else:
                 raise
 
-        return {"written": len(flat_data), "pruned": 0}
+        return {"written": len(flat_data)}
 
     def _ensure_namespace(self, namespace: str) -> None:
         """Create the namespace if env_as_namespace is on and it doesn't exist."""
@@ -248,11 +245,10 @@ class ConfigmapSink(BaseSink):
             data = self._api.read_namespaced_config_map(cm_name, namespace).data or {}
         except ApiException as exc:
             if exc.status != 404:
-                logger.warning("ConfigmapSink.read_values failed: %s", exc)
+                return self._read_failed(exc, "ConfigmapSink.read_values")
             return {}
         except Exception as exc:
-            logger.warning("ConfigmapSink.read_values failed: %s", exc)
-            return {}
+            return self._read_failed(exc, "ConfigmapSink.read_values")
         out: dict[str, str] = {}
         for k in keys:
             # Keys are stored in the sink's key format (FLAT by default: "db_host").

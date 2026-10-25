@@ -62,17 +62,6 @@ class MongoWriteStrategy(ABC):
     ) -> int:
         """Re-write docs that are missing or out of sync. Returns count repaired."""
 
-    @abstractmethod
-    def prune(
-        self,
-        collection,
-        flat_data: dict[str, str],
-        doc_filter: dict,
-        protection: list[str],
-        last: bool,
-    ) -> int:
-        """Delete stale docs no longer in flat_data. Returns count pruned."""
-
     def read_values(self, collection, keys: list[str], doc_filter: dict) -> dict[str, str]:
         """Current values of *keys* (the ETL's flat keys), from one document per key."""
         docs = collection.find({**doc_filter, "key": {"$in": keys}}, {"key": 1, "value": 1, "_id": 0})

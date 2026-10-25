@@ -31,6 +31,7 @@ from __future__ import annotations
 
 import json
 import logging
+import threading
 from collections.abc import Collection
 import mimetypes
 from typing import Any
@@ -48,6 +49,7 @@ _S3_TAG_LIMIT = 10
 
 
 class S3Sink(BaseSink):
+    object_name = "object"
 
     def __init__(
         self,
@@ -77,13 +79,43 @@ class S3Sink(BaseSink):
         # Takes precedence over s3_key_prefix when set.
         self._dest_tpl  = cfg.get("destination_template", "")
 
+        # The single-document object's name; "{env}" is the environment.
+        self._file_pattern    = cfg.get("s3_file_pattern") or "config.json"
+        self._content_type    = cfg.get("s3_content_type") or ""
+        # Server-side encryption on every object written: AES256 or aws:kms.
+        self._put_extra: dict[str, str] = {}
+        if cfg.get("s3_sse"):
+            self._put_extra["ServerSideEncryption"] = cfg["s3_sse"]
+        if cfg.get("s3_kms_key_id"):
+            self._put_extra["SSEKMSKeyId"] = cfg["s3_kms_key_id"]
+
+        client_options: dict[str, Any] = {}
+        timeout = cfg.get("s3_timeout_secs")
+        if cfg.get("s3_force_path_style") or timeout:
+            from botocore.config import Config
+
+            client_options["config"] = Config(
+                s3={"addressing_style": "path"} if cfg.get("s3_force_path_style") else {},
+                **({"connect_timeout": timeout, "read_timeout": timeout} if timeout else {}),
+            )
+        # verify_ssl false skips certificate checks; ssl_ca_cert names a CA bundle.
+        if cfg.get("s3_verify_ssl") is False:
+            client_options["verify"] = False
+        elif cfg.get("s3_ssl_ca_cert"):
+            client_options["verify"] = cfg["s3_ssl_ca_cert"]
+        if cfg.get("s3_session_token"):
+            client_options["aws_session_token"] = cfg["s3_session_token"]
+
         self._s3 = boto3.client(
             "s3",
             region_name=cfg.get("s3_region"),
             aws_access_key_id=cfg.get("s3_access_key_id"),
             aws_secret_access_key=cfg.get("s3_secret_access_key"),
             endpoint_url=cfg.get("s3_endpoint_url"),
+            **client_options,
         )
+        if cfg.get("s3_enable_versioning"):
+            _enable_versioning(self._s3, self._bucket)
 
     def _write(
         self,
@@ -97,10 +129,6 @@ class S3Sink(BaseSink):
         commit_sha: str,
         file_path: str,
         labels: VarTrackLabels,
-        prune: bool,
-        prune_last: bool,
-        prune_protection: list[str],
-        dry_run_prune: bool,
         total_sources: int,
         data: Any = None,
     ) -> dict[str, Any]:
@@ -112,7 +140,7 @@ class S3Sink(BaseSink):
         else:
             written = self._put_single(flat_data, self._document(flat_data, data), env, tagging)
 
-        return {"written": written, "pruned": 0}
+        return {"written": written}
 
     def close(self) -> None:
         pass
@@ -137,15 +165,14 @@ class S3Sink(BaseSink):
                         continue
                     out[k] = obj["Body"].read().decode("utf-8")
                 return out
-            obj = self._s3.get_object(Bucket=self._bucket, Key=f"{prefix}/config.json")
+            obj = self._s3.get_object(Bucket=self._bucket, Key=f"{prefix}/{self._object_name(env)}")
             # Flat or nested, config.json reads back as the ETL's flat keys.
             stored = _flatten(json.loads(obj["Body"].read()))
             return {k: stored[k] for k in keys if k in stored}
         except self._s3.exceptions.NoSuchKey:
             return {}
         except Exception as exc:
-            logger.warning("S3Sink.read_values failed: %s", exc)
-            return {}
+            return self._read_failed(exc, "S3Sink.read_values")
 
     # ── Tag resolution ────────────────────────────────────────────────────────
 
@@ -206,6 +233,9 @@ class S3Sink(BaseSink):
             return data
         return flat_data
 
+    def _object_name(self, env: str) -> str:
+        return self._file_pattern.replace("{env}", env)
+
     def _put_single(
         self,
         flat_data: dict[str, str],
@@ -213,13 +243,14 @@ class S3Sink(BaseSink):
         env: str,
         tagging: str,
     ) -> int:
-        key = f"{self._key_prefix(env)}/config.json"
+        key = f"{self._key_prefix(env)}/{self._object_name(env)}"
         self._s3.put_object(
             Bucket=self._bucket,
             Key=key,
             Body=json.dumps(document, indent=2).encode(),
-            ContentType="application/json",
+            ContentType=self._content_type or "application/json",
             Tagging=tagging,
+            **self._put_extra,
         )
         logger.debug("S3: put s3://%s/%s", self._bucket, key)
         return len(flat_data)
@@ -238,7 +269,26 @@ class S3Sink(BaseSink):
                 Bucket=self._bucket,
                 Key=key,
                 Body=v.encode(),
-                ContentType=ct or "application/octet-stream",
+                ContentType=self._content_type or ct or "application/octet-stream",
                 Tagging=tagging,
+                **self._put_extra,
             )
         return len(flat_data)
+
+
+_versioned: set[str] = set()
+_versioned_lock = threading.Lock()
+
+
+def _enable_versioning(s3: Any, bucket: str) -> None:
+    """Turn on versioning for *bucket*, once per process. Without the
+    permission to, the write goes on and the warning says why."""
+    with _versioned_lock:
+        if bucket in _versioned:
+            return
+        _versioned.add(bucket)
+    try:
+        s3.put_bucket_versioning(Bucket=bucket, VersioningConfiguration={"Status": "Enabled"})
+        logger.info("S3: versioning enabled on bucket %s", bucket)
+    except Exception as exc:
+        logger.warning("S3: cannot enable versioning on bucket %s: %s", bucket, exc)

@@ -18,7 +18,7 @@ import fnmatch
 import logging
 from typing import Any
 
-from app.pipeline.sinks.base import BaseSink
+from app.pipeline.sinks.base import UNREADABLE, BaseSink
 from app.pipeline.sinks.labels import VarTrackLabels
 from app.utils.enums.sync_mode import SyncMode
 
@@ -68,10 +68,6 @@ class VercelSink(BaseSink):
         commit_sha: str,
         file_path: str,
         labels: VarTrackLabels,
-        prune: bool,
-        prune_last: bool,
-        prune_protection: list[str],
-        dry_run_prune: bool,
         total_sources: int,
         data: Any = None,
     ) -> dict[str, Any]:
@@ -108,13 +104,7 @@ class VercelSink(BaseSink):
                     self._create_env_var(key, value, targets, var_type)
                 written += 1
 
-        pruned = 0
-        if prune and not dry_run_prune:
-            # Never prune the VarTrack meta vars
-            protected = list(prune_protection) + ["VARTRACK_MANAGED_BY", "VARTRACK_META"]
-            pruned = self._prune(flat_data, existing, protected, targets, prune_last)
-
-        return {"written": written, "pruned": pruned}
+        return {"written": written}
 
     def close(self) -> None:
         try:
@@ -151,21 +141,65 @@ class VercelSink(BaseSink):
         resp = self._http.delete(self._project_url(f"/{var_id}"), params=self._qs())
         resp.raise_for_status()
 
-    def _prune(
-        self, flat_data: dict, existing: dict,
-        protection: list[str], targets: list[str], last: bool,
-    ) -> int:
-        git_keys   = set(flat_data.keys())
-        to_delete  = [
-            (key, meta) for key, meta in existing.items()
-            if key not in git_keys
-            and not any(fnmatch.fnmatch(key, p) for p in protection)
-        ]
-        if last:
-            to_delete = to_delete[-1:]
-        for key, meta in to_delete:
+    @classmethod
+    def prunes_keys(cls, rule_config: dict) -> bool:
+        return True
+
+    @classmethod
+    def key_space(cls, rule_config: dict, tenant_id: str, env: str) -> str:
+        # The project's variables are read by key alone, and every environment
+        # but production lands on "preview": staging and develop share it.
+        targets = rule_config.get("vercel_targets") or cls._default_targets(env)
+        return f"{rule_config.get('vercel_project_id', '')}:{','.join(sorted(targets))}"
+
+    @classmethod
+    def store(cls, rule_config: dict) -> str:
+        return cls._store_of(rule_config.get("vercel_team_id"))
+
+    def delete_keys(self, keys, *, datasource: str, env: str) -> int:
+        if not keys:
+            return 0
+        targets = set(self._targets or self._default_targets(env))
+        existing = self._fetch_existing()
+        deleted = 0
+        for key in sorted(keys):
+            meta = existing.get(key)
+            if meta is None:
+                continue  # already gone
+            if not set(meta.get("target") or []) <= targets:
+                # The variable also serves a target this environment does not
+                # write: another one still uses it.
+                logger.info("VercelSink: %s also serves %s — not deleted",
+                            key, sorted(set(meta["target"]) - targets))
+                continue
             self._delete_env_var(meta["id"])
-        return len(to_delete)
+            deleted += 1
+        return deleted
+
+    def read_values(self, keys, datasource: str, env: str) -> dict[str, str]:
+        """Current values of *keys* among the project's env vars for *env*'s
+        targets. Vercel never returns a sensitive variable's value: such a key
+        comes back as UNREADABLE."""
+        if not keys:
+            return {}
+        try:
+            resp = self._http.get(self._project_url(), params={**self._qs(), "decrypt": "true"})
+            resp.raise_for_status()
+            envs = resp.json().get("envs", [])
+        except Exception as exc:
+            return self._read_failed(exc, "VercelSink.read_values")
+        wanted = set(keys)
+        targets = set(self._targets or self._default_targets(env))
+        out: dict[str, str] = {}
+        for item in envs:
+            key = item.get("key")
+            if key not in wanted or not targets & set(item.get("target") or []):
+                continue
+            if item.get("type") == "sensitive" or "value" not in item:
+                out[key] = UNREADABLE
+            else:
+                out[key] = str(item["value"])
+        return out
 
     def _is_sensitive(self, key: str) -> bool:
         return any(fnmatch.fnmatch(key, p) for p in self._sensitive)

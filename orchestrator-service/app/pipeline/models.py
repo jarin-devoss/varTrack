@@ -55,3 +55,15 @@ class SyncResult:
     pruned:    int = 0
     error:     str = ""
     root_key:  str = ""
+    # Prune runs once per environment, after all its files are written: its
+    # outcome is on the last file of the environment.
+    #   prune_pending      keys it could not delete (the next sync retries
+    #                      them); None when prune did not run
+    #   prune_skipped      stale keys left alone because something changed them
+    #                      outside varTrack
+    #   prune_would_delete stale keys a prune dry run did not delete
+    #   prune_error        why the delete failed; the writes stand
+    prune_pending:      list[str] | None = None
+    prune_skipped:      list[str] = field(default_factory=list)
+    prune_would_delete: list[str] = field(default_factory=list)
+    prune_error:        str = ""

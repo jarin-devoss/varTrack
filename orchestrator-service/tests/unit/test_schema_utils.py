@@ -1,4 +1,4 @@
-"""CLI sync finds its rule by tenant and datasource alone (no platform in a CLI push)."""
+"""CLI sync finds its rule by tenant, datasource and — when several platforms write to it — platform."""
 import pytest
 
 from app.pipeline import schema_utils
@@ -25,8 +25,20 @@ def test_the_rule_for_the_datasource_is_found(mgr):
     assert schema_utils.rule_config_for_datasource("default", "redis") == {"platform": "github", "datasource": "redis"}
 
 
-def test_with_rules_on_several_platforms_the_first_in_the_bundle_is_used(mgr):
-    assert schema_utils.rule_config_for_datasource("default", "mongo")["file_name"] == "app.yaml"
+def test_with_rules_on_several_platforms_the_platform_picks_the_rule(mgr):
+    assert schema_utils.rule_config_for_datasource("default", "mongo", "github")["file_name"] == "app.yaml"
+    assert schema_utils.rule_config_for_datasource("default", "mongo", "gitea")["file_name"] == "other.yaml"
+    assert schema_utils.rule_config_for_datasource("default", "mongo", "gitlab") is None
+
+
+def test_with_rules_on_several_platforms_and_none_named_nothing_is_guessed(mgr):
+    with pytest.raises(schema_utils.AmbiguousRule, match="github, gitea|gitea, github"):
+        schema_utils.rule_config_for_datasource("default", "mongo")
+
+
+def test_a_platform_is_not_needed_when_one_rule_writes_to_the_datasource(mgr):
+    assert schema_utils.rule_config_for_datasource("default", "redis", "github") == {"platform": "github", "datasource": "redis"}
+    assert schema_utils.rule_config_for_datasource("default", "redis", "gitea") is None
 
 
 def test_an_unknown_datasource_or_tenant_has_no_rule(mgr):

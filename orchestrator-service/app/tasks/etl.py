@@ -73,8 +73,13 @@ def _build_dry_run_report(
     ctx:         PayloadContext,
     etl:         ETLResult,
     received_at: float,
+    datasource:  str = "",
+    tenant_id:   str = "default",
 ) -> dict[str, Any]:
     """Build a dry-run simulation report from Stage 2 output (no writes)."""
+    from app.pipeline.stage_sync import prune_candidates
+
+    would_delete = prune_candidates(etl, datasource, tenant_id, ctx.rule_config, ctx.repo_url) if datasource else {}
     files_report = []
     total_keys   = 0
     for f in etl.files:
@@ -103,6 +108,7 @@ def _build_dry_run_report(
             "total_keys":  total_keys,
         },
         "files": files_report,
+        "prune": {"would_delete": would_delete},
     })
 
 
@@ -175,14 +181,27 @@ def process_webhook_task(
         if not ctx.repo_url or not ctx.ref:
             return fail(task_id, "missing repo_url or ref in rule_config / payload")
 
+        # A suspended rule takes no push and no heal; a sync started by hand
+        # still runs.
+        trigger = trigger_from_headers(headers)
+        if ctx.rule_config.get("suspend") and trigger in ("webhook", "self_heal"):
+            logger.info("process_webhook task=%s: %s/%s is suspended — %s skipped",
+                        task_id, platform, datasource, trigger)
+            return ok(task_id, f"{datasource} is suspended: {trigger} skipped")
+
         logger.info("stage=payload ref=%s branch=%s commit=%s", ctx.ref, ctx.branch, ctx.commit_sha)
 
         # ── Repo-level overrides (vartrack.json) ──────────────────────────────
         # If the repo contains a vartrack.json at its root, its settings
         # override the matching central rule_config keys.  Infrastructure and
         # schema-registry settings are never overridden.
-        from app.pipeline.repo_overrides import apply_repo_overrides
-        ctx = apply_repo_overrides(ctx)
+        from app.pipeline.repo_overrides import RepoConfigError, apply_repo_overrides
+        try:
+            ctx = apply_repo_overrides(ctx)
+        except RepoConfigError as exc:
+            # An invalid vartrack.json: stop, and say why.
+            logger.warning("process_webhook task=%s: %s", task_id, exc)
+            return fail(task_id, str(exc))
 
         # Rule-level dry_run: a rule stored in the schema bundle with
         # dry_run=true acts as a permanent shadow rule — Stage 3 is never
@@ -196,7 +215,7 @@ def process_webhook_task(
             tenant=tenant_id,
             platform=platform,
             datasource=datasource,
-            trigger=trigger_from_headers(headers),
+            trigger=trigger,
             repo_url=ctx.repo_url,
             ref=ctx.branch or ctx.ref,
             revision=ctx.commit_sha,
@@ -233,7 +252,7 @@ def process_webhook_task(
 
         # Dry-run exits after ETL — no writes to any datasource.
         if dry_run:
-            report = _build_dry_run_report(task_id, ctx, etl, received_at)
+            report = _build_dry_run_report(task_id, ctx, etl, received_at, datasource, tenant_id)
             ui_recorder.task_finished(ui_task, tenant=tenant_id, dry_run_files=report.get("files", []))
             return report
 
@@ -369,7 +388,7 @@ def sync_all_task(
     if not rules:
         rules = rules_from_bundle_all(tenant_id)
 
-    heal_rules = [r for r in rules if r.get("self_heal", False)]
+    heal_rules = [r for r in rules if r.get("self_heal", False) and not r.get("suspend")]
     # A heal requested for one datasource (the watcher saw it drift) re-syncs
     # only that datasource's rules; the periodic beat passes neither and heals all.
     if datasource:
@@ -471,9 +490,12 @@ def process_cli_sync_task(
     dry_run:      bool = False,
     label:        str = "",
     submitted_by: str = "unknown",
+    revision:     str = "",
+    platform:     str = "",
 ) -> dict[str, Any]:
     """
-    ETL pipeline driven by a directly supplied file content (CLI / CI push).
+    ETL pipeline driven by a directly supplied file content (CLI / CI push),
+    or by the rule's file at a branch or tag (*revision*).
 
     Skips Stage 1 (no git webhook payload) and goes straight to Stage 2+3
     using a synthetic PayloadContext.
@@ -487,7 +509,9 @@ def process_cli_sync_task(
         env=env, dry_run=dry_run, submitted_by=submitted_by,
     )
 
-    span = start_webhook_span(task_id=task_id, platform="cli", datasource=datasource)
+    # The CLI is a client, not a Git platform: the sync belongs to the rule
+    # for this datasource, and carries that rule's platform once it is known.
+    span = start_webhook_span(task_id=task_id, platform="", datasource=datasource, event_type="cli")
 
     logger.info(
         "cli_sync_start id=%s datasource=%s env=%s file=%s dry_run=%s by=%s",
@@ -499,31 +523,56 @@ def process_cli_sync_task(
 
     try:
         # Resolve rule config for this tenant+datasource from the bundle.
-        from app.pipeline.schema_utils import rule_config_for_datasource
-        rule_config = rule_config_for_datasource(tenant_id, datasource)
+        from app.pipeline.schema_utils import AmbiguousRule, rule_config_for_datasource
+        try:
+            rule_config = rule_config_for_datasource(tenant_id, datasource, platform)
+        except AmbiguousRule as exc:
+            return fail(task_id, str(exc), tenant_id=tenant_id)
         if rule_config is None:
-            return fail(task_id, f"datasource {datasource!r} not found in bundle for tenant {tenant_id!r}")
+            what = f"platform {platform!r} and datasource {datasource!r}" if platform else f"datasource {datasource!r}"
+            return fail(task_id, f"{what} not found in bundle for tenant {tenant_id!r}", tenant_id=tenant_id)
 
         if dry_run:
             rule_config = {**rule_config, "dry_run": True}
 
+        platform = str(rule_config.get("platform", ""))
+
+        if revision:
+            from app.cli_ops import detect_format, file_at_revision
+            try:
+                file_path, content = file_at_revision(rule_config, env, revision)
+            except ValueError as exc:
+                return fail(task_id, str(exc), tenant_id=tenant_id)
+            fmt = detect_format(file_path, None)
+
+        # Write the pushed file as the rule's own file, so the sinks replace
+        # what a Git push of it wrote rather than storing a second copy.
+        from app.cli_ops import rule_file_for
+        target = rule_file_for(rule_config, file_path)
+        if target != file_path:
+            logger.info("cli_sync file=%s is the rule's %s", file_path, target)
+            file_path = target
+        if span:
+            span.set_attr("webhook.platform", platform)
+
+        task_repo_url = rule_config.get("repo_url", "local") if revision else "local"
         ui_task = ui_recorder.task_started(
             task_id,
             tenant=tenant_id,
-            platform=str(rule_config.get("platform", "cli")),
+            platform=platform,
             datasource=datasource,
             trigger="cli",
-            repo_url="local",
-            ref=f"cli/{env}",
-            revision=label or "cli-push",
+            repo_url=task_repo_url,
+            ref=revision or f"cli/{env}",
+            revision=label or revision or "cli-push",
             dry_run=dry_run,
             env=env,
             submitted_by=submitted_by,
         )
 
-        # Synthetic context — no git platform, no commit SHA.
+        # Synthetic context — the rule's platform, but no Git push: no commit SHA.
         ctx = PayloadContext(
-            platform="cli",
+            platform=platform,
             repo_url="local",
             ref=f"refs/heads/cli/{env}",
             branch=f"cli/{env}",
@@ -545,20 +594,23 @@ def process_cli_sync_task(
             content=content,
             fmt=fmt,
             env=env,
+            tenant_id=tenant_id,
         )
         _observe("etl", time.perf_counter() - _t_etl)
 
         if etl.errors:
             ui_recorder.task_errored(ui_task, tenant=tenant_id, error=f"etl errors: {etl.errors}")
-            return fail(task_id, f"etl errors: {etl.errors}")
+            return fail(task_id, f"etl errors: {etl.errors}", tenant_id=tenant_id)
 
         if dry_run:
+            from app.pipeline.stage_sync import prune_candidates
             ui_recorder.task_finished(ui_task, tenant=tenant_id, dry_run_files=[
                 {"file": f.file_path, "env": f.env, "keys": len(f.flat_data), "validation": f.validation}
                 for f in etl.files
             ])
             return ok(
                 task_id=task_id,
+                tenant_id=tenant_id,
                 duration=round(time.perf_counter() - _t0, 3),
                 dry_run=True,
                 files=[
@@ -571,6 +623,7 @@ def process_cli_sync_task(
                     for f in etl.files
                 ],
                 skipped=etl.skipped,
+                prune={"would_delete": prune_candidates(etl, datasource, tenant_id, rule_config, task_repo_url)},
             )
 
         # Stage 3 — Sync.
@@ -584,6 +637,7 @@ def process_cli_sync_task(
             datasource=datasource,
             tenant_id=tenant_id,
             total_sources=1,
+            repo_url=task_repo_url,  # the ledger records the files under the task's
         )
         _observe("sync", time.perf_counter() - _t_sync)
 
@@ -594,6 +648,7 @@ def process_cli_sync_task(
 
         result = ok(
             task_id=task_id,
+                tenant_id=tenant_id,
             duration=round(time.perf_counter() - _t0, 3),
             dry_run=False,
             datasource=datasource,
@@ -609,11 +664,11 @@ def process_cli_sync_task(
     except SoftTimeLimitExceeded:
         logger.error("cli_sync soft time limit exceeded task=%s", task_id)
         ui_recorder.task_errored(ui_task, tenant=tenant_id, error="task exceeded time limit")
-        return fail(task_id, "task exceeded time limit")
+        return fail(task_id, "task exceeded time limit", tenant_id=tenant_id)
     except Exception as exc:
         logger.exception("cli_sync error task=%s", task_id)
         ui_recorder.task_errored(ui_task, tenant=tenant_id, error=str(exc))
-        return fail(task_id, str(exc))
+        return fail(task_id, str(exc), tenant_id=tenant_id)
     finally:
         if span:
             span.end()

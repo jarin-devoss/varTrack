@@ -19,9 +19,10 @@ def ok(task_id: str, message: str = "", **data: Any) -> dict[str, Any]:
     }
 
 
-def fail(task_id: str, message: str = "") -> dict[str, Any]:
+def fail(task_id: str, message: str = "", **data: Any) -> dict[str, Any]:
     return {
         "task_id": task_id,
         "state":   TaskState.FAILED.name,
         "message": message,
+        **data,
     }

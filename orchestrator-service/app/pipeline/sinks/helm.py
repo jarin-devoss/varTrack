@@ -35,6 +35,7 @@ logger = logging.getLogger(__name__)
 
 
 class HelmSink(BaseSink):
+    object_name = "release"
 
     def __init__(
         self,
@@ -71,10 +72,6 @@ class HelmSink(BaseSink):
         commit_sha: str,
         file_path: str,
         labels: VarTrackLabels,
-        prune: bool,
-        prune_last: bool,
-        prune_protection: list[str],
-        dry_run_prune: bool,
         total_sources: int,
         data: Any = None,
     ) -> dict[str, Any]:
@@ -130,8 +127,7 @@ class HelmSink(BaseSink):
         except FileNotFoundError:
             return {}
         except Exception as exc:
-            logger.warning("HelmSink.read_values failed: %s", exc)
-            return {}
+            return self._read_failed(exc, "HelmSink.read_values")
         return {k: flat[k] for k in keys if k in flat}
 
     def _release_values(self, env: str) -> dict:

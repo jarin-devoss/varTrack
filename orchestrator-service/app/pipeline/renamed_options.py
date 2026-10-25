@@ -1,22 +1,29 @@
 """
-Rule and datasource options that were renamed.
+Rule and datasource options that were renamed or removed.
 
 The old names are still read: a bundle.json, vartrack.json or config.cue
 written with them keeps working, and a warning names the new spelling once
-per source.
+per source. Which names changed is stated on the option itself, in the proto
+(vartrack.v1.config old_names), and read from there (rule_options.RENAMED).
+
+A removed option is dropped, with a warning that says what to do instead: a
+config that still sets it is not rejected, but it does not take effect, and
+the warning says so.
 """
 from __future__ import annotations
 
 import logging
 from typing import Any
 
+from app.pipeline.rule_options import RENAMED as RENAMED_OPTIONS  # old name → current, from the protos
+
 logger = logging.getLogger(__name__)
 
-RENAMED_OPTIONS: dict[str, str] = {
-    "env_as_branch": "branch_as_env",
-    "env_as_pr": "pr_as_env",
-    "env_as_tags": "tag_as_env",
-    "env_as_prefix": "prefix_as_env",  # s3
+# Rule options that were removed, and what to do instead.
+REMOVED_OPTIONS: dict[str, str] = {
+    "secrets": "declare the secret manager under secret_managers in config.cue (path_prefix is set there) "
+               "and name it in the rule's secret_manager",
+    "retry_backoff": "nothing read it",
 }
 
 _warned: set[tuple[str, str]] = set()
@@ -28,9 +35,15 @@ def with_current_names(options: Any, source: str = "") -> Any:
     under both names, the current one wins. Anything but a dict is returned
     as is.
     """
-    if not isinstance(options, dict) or not any(old in options for old in RENAMED_OPTIONS):
+    if not isinstance(options, dict) or not any(key in options for key in (*RENAMED_OPTIONS, *REMOVED_OPTIONS)):
         return options
     out = dict(options)
+    for key, instead in REMOVED_OPTIONS.items():
+        if key in out:
+            del out[key]
+            if (source, key) not in _warned:
+                _warned.add((source, key))
+                logger.warning("%s: %s was removed and has no effect; %s", source or "rule", key, instead)
     for old, current in RENAMED_OPTIONS.items():
         if old not in out:
             continue

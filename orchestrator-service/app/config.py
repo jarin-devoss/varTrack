@@ -228,6 +228,7 @@ def _resolve_secret_ref(ref: Any) -> str | None:
 
         token: "ghp_xxx"                     # plain string
         token: {file: "/run/secrets/token"}  # read from file (whitespace stripped)
+        token: {file: "/run/secrets/app.env", key: "TOKEN"}  # one key of that file
         token: {ref: "path#key"}             # Vault ref — resolved at task runtime
 
     Returns None for external refs (resolved later in the ETL pipeline).
@@ -239,9 +240,10 @@ def _resolve_secret_ref(ref: Any) -> str | None:
     if isinstance(ref, dict):
         if "file" in ref:
             path = ref["file"]
+            from app.utils.secret_file import read_secret_file
             try:
-                return open(path).read().strip()  # noqa: WPS515
-            except OSError as exc:
+                return read_secret_file(path, ref.get("key"))
+            except (OSError, ValueError) as exc:
                 raise ValueError(f"SecretRef: cannot read file {path!r}: {exc}") from exc
         # Legacy {value: "..."} form — still accepted
         if "value" in ref:

@@ -39,6 +39,7 @@ import json
 import logging
 import os
 import shutil
+import tempfile
 import threading
 import time
 from dataclasses import dataclass, field
@@ -68,6 +69,9 @@ class _TenantEntry:
     commit_sha: str = ""
     fetched_at: float = field(default_factory=time.time)
     rules: list[dict] = field(default_factory=list)   # parsed from bundle.json
+    # Why bundle.json (or a preset it extends) could not be used; the tenant
+    # then has no rules.
+    bundle_error: str = ""
 
     def is_stale(self) -> bool:
         return (time.time() - self.fetched_at) > settings.SCHEMA_TTL_SECONDS
@@ -88,20 +92,45 @@ class SchemaRegistryManager:
 
     def get_all_rules(self, tenant_id: str = "default") -> list[dict]:
         """
-        Return all rules loaded from bundle.json for *tenant_id*.
+        Return the rules of *tenant_id*: config.cue's rules with the tenant's
+        bundle.json rules laid over them (rule_layers). Tenant "default" also
+        has the config.cue rules it owns that no tenant's bundle.json names.
 
         Called by schema_utils.rules_from_bundle_all() which feeds sync_all_task.
-        Returns an empty list if no schema has been cloned for this tenant.
-
-        This method was previously missing — sync_all_task was silently
-        calling a non-existent method, catching AttributeError, and returning
-        [] every 5 minutes, making the self-healing beat a no-op.
         """
+        from app.pipeline.rule_layers import tenant_rules
+
+        if self.bundle_error(tenant_id):
+            return []
+        own: list[dict] = []
         with self._lock:
             for k, entry in self._entries.items():
                 if k.startswith(f"{tenant_id}:"):
-                    return list(entry.rules)
-        return []
+                    own = list(entry.rules)
+                    break
+        return tenant_rules(own, tenant_id, self.claimed_rules())
+
+    def bundle_error(self, tenant_id: str) -> str:
+        """Why the tenant's bundle.json cannot be used, or ""."""
+        with self._lock:
+            return next((e.bundle_error for e in self._entries.values()
+                         if e.tenant_id == tenant_id and e.bundle_error), "")
+
+    def claimed_rules(self) -> set[tuple]:
+        """The (tenant, platform, datasource) of the tenants' bundle.json rules.
+        A registered tenant not loaded yet is loaded first: until then its
+        rules would count as tenant "default"'s."""
+        with self._lock:
+            loaded = {e.tenant_id for e in self._entries.values()}
+            missing = [t for t in self._tenant_configs if t not in loaded]
+        for tenant_id in missing:
+            try:
+                self.get_or_clone(tenant_id)
+            except Exception:
+                logger.warning("schema repo of tenant %s could not be loaded", tenant_id)
+        with self._lock:
+            return {(e.tenant_id, r.get("platform"), r.get("datasource"))
+                    for e in self._entries.values() for r in e.rules}
 
     def list_tenant_ids(self) -> list[str]:
         """Return all registered tenant IDs (from env-var config or runtime registration)."""
@@ -177,6 +206,8 @@ class SchemaRegistryManager:
                             pass
                 else:
                     entry = existing   # use the version the other thread stored
+            if entry is not new_entry:
+                shutil.rmtree(new_entry.local_path, ignore_errors=True)
 
         elif needs_refresh:
             # Refresh outside the lock — same reasoning as clone.
@@ -268,31 +299,40 @@ class SchemaRegistryManager:
         tenant_id: str = "default",
     ) -> Optional[dict]:
         """
-        Resolve rule_config from the tenant's bundle.json.
+        Resolve rule_config: config.cue's rule with the tenant's bundle.json
+        rule laid over it (rule_layers).
 
-        Uses a Redis read-through cache (TTL=300s) keyed by
-        ``rule:<tenant_id>:<platform>:<datasource>`` so Celery workers on
-        different processes avoid repeatedly deserialising bundle.json.
-        Returns None if no match is found.
+        The bundle.json rule goes through a Redis read-through cache
+        (TTL=300s) keyed by ``rule:<tenant_id>:<platform>:<datasource>`` so
+        Celery workers on different processes avoid repeatedly deserialising
+        bundle.json. Returns None if no match is found.
         """
+        from app.pipeline.rule_layers import rule_for
         from app.utils.redis_cache import get_cache as _get_cache
+        if self.bundle_error(tenant_id):
+            return None
         _rc = _get_cache()
         _cache_key = f"rule:{tenant_id}:{platform}:{datasource}"
         if _rc is not None:
             cached = _rc.get(_cache_key)
             if cached is not None:
                 # may be the sentinel {} meaning "no match"; cached before an upgrade, it may use old names
-                return with_current_names(cached)
+                return rule_for(platform, datasource, with_current_names(cached) or None, tenant_id,
+                                self.claimed_rules())
 
+        found: Optional[dict] = None
         with self._lock:
             for k, entry in self._entries.items():
                 if k.startswith(f"{tenant_id}:"):
                     for rule in entry.rules:
                         if rule.get("platform") == platform and rule.get("datasource") == datasource:
-                            if _rc is not None:
-                                _rc.set(_cache_key, rule, ttl=300)
-                            return rule
-        return None
+                            found = rule
+                            break
+                if found is not None:
+                    break
+        if found is not None and _rc is not None:
+            _rc.set(_cache_key, found, ttl=300)
+        return rule_for(platform, datasource, found, tenant_id, self.claimed_rules())
 
     # ── Internal ──────────────────────────────────────────────────────────────
 
@@ -309,10 +349,11 @@ class SchemaRegistryManager:
             logger.error("GitPython not installed – cannot clone schema repo")
             return self._empty_entry(tenant_id, repo_url, branch)
 
-        local_dir = self._root / tenant_id / _slug(repo_url, branch)
-        if local_dir.exists():
-            shutil.rmtree(local_dir)
-        local_dir.mkdir(parents=True, exist_ok=True)
+        # Each clone gets a directory of its own: the worker processes share
+        # this volume, and two clones into one directory break each other.
+        tenant_dir = self._root / tenant_id
+        tenant_dir.mkdir(parents=True, exist_ok=True)
+        local_dir = Path(tempfile.mkdtemp(prefix=_slug(repo_url, branch) + "-", dir=tenant_dir))
 
         clone_url = _inject_token(repo_url, token)
         # Disable TTY prompts — workers run headless and a prompt would hang
@@ -337,7 +378,7 @@ class SchemaRegistryManager:
             logger.error("schema clone failed: %s", exc)
             return self._empty_entry(tenant_id, repo_url, branch, local_dir)
 
-        rules = _load_bundle(local_dir)
+        rules, bundle_error = _load_bundle_checked(local_dir, repo_url, token)
         return _TenantEntry(
             tenant_id=tenant_id,
             repo_url=repo_url,
@@ -345,6 +386,7 @@ class SchemaRegistryManager:
             local_path=local_dir,
             commit_sha=sha,
             rules=rules,
+            bundle_error=bundle_error,
         )
 
     def _refresh(self, entry: _TenantEntry, token: Optional[str]) -> _TenantEntry:
@@ -365,7 +407,7 @@ class SchemaRegistryManager:
         repo.remote("origin").pull(entry.branch, depth=1, env=_git_env)
         sha = repo.head.commit.hexsha
 
-        rules = _load_bundle(entry.local_path)
+        rules, bundle_error = _load_bundle_checked(entry.local_path, entry.repo_url, token)
         return _TenantEntry(
             tenant_id=entry.tenant_id,
             repo_url=entry.repo_url,
@@ -373,6 +415,7 @@ class SchemaRegistryManager:
             local_path=entry.local_path,
             commit_sha=sha,
             rules=rules,
+            bundle_error=bundle_error,
         )
 
     def _empty_entry(
@@ -515,20 +558,33 @@ def _inject_token(repo_url: str, token: Optional[str]) -> str:
     return "https://oauth2:" + token + "@" + bare
 
 
-def _load_bundle(local_dir: Path) -> list[dict]:
-    """Parse bundle.json (or rules.json) for worker-side rule resolution."""
+def _load_bundle(local_dir: Path, repo_url: str = "", token: Optional[str] = None) -> list[dict]:
+    """The rules of bundle.json (or rules.json); none when it cannot be used."""
+    return _load_bundle_checked(local_dir, repo_url, token)[0]
+
+
+def _load_bundle_checked(local_dir: Path, repo_url: str = "", token: Optional[str] = None) -> tuple[list[dict], str]:
+    """(rules, error): bundle.json (or rules.json) parsed for worker-side rule
+    resolution, with the presets its "extends" name resolved
+    (app.pipeline.presets) — "local>" being the Git server of the schema repo
+    at *repo_url*. A file that does not parse is an error, not an empty
+    bundle: a tenant whose layer is missing must not sync without it."""
+    from app.pipeline.presets import Origin, resolve_bundle_rules
+
+    origin = Origin.of(repo_url, token) if repo_url else None
     for name in ("bundle.json", "rules.json"):
         p = local_dir / name
         if p.exists():
             try:
                 data = json.loads(p.read_text())
-                rules = data if isinstance(data, list) else data.get("rules", [])
-                rules = [with_current_names(r, str(p)) for r in rules]
-                logger.debug("loaded %d rules from %s", len(rules), p)
-                return rules
+                rules = resolve_bundle_rules(data, origin, str(p))
             except Exception as exc:
-                logger.warning("failed to parse %s: %s", p, exc)
-    return []
+                logger.error("%s cannot be used — the tenant has no rules until it is fixed: %s", p, exc)
+                return [], f"{name}: {exc}"
+            rules = [with_current_names(r, str(p)) for r in rules]
+            logger.debug("loaded %d rules from %s", len(rules), p)
+            return rules, ""
+    return [], ""
 
 
 # ── Process-level singleton ───────────────────────────────────────────────────

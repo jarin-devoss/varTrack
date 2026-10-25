@@ -10,17 +10,17 @@ no path conversion is needed or allowed.
 
 The shape follows the datasource's update_strategy (MongoConfig):
 
-  STRATEGY_KEY_VALUE (default) — one document per key:
+  STRATEGY_DOCUMENT (default) — one document per file, always nested:
+    {
+      "_vt_tenant": "acme", "_vt_datasource": "payments", "_vt_env": "pr-42",
+      "data": {"db": {"host": "localhost", "port": 5432}}
+    }
+
+  STRATEGY_KEY_VALUE — one document per key:
     {
       "_vt_tenant": "acme", "_vt_datasource": "payments", "_vt_env": "pr-42",
       "key":   "db.host",
       "value": "localhost"
-    }
-
-  STRATEGY_DOCUMENT — one document per file, always nested:
-    {
-      "_vt_tenant": "acme", "_vt_datasource": "payments", "_vt_env": "pr-42",
-      "data": {"db": {"host": "localhost", "port": 5432}}
     }
 
   STRATEGY_FILE — one document per file, in the shape the file parsed to:
@@ -55,7 +55,7 @@ import os
 from collections.abc import Collection
 from typing import Any
 
-from app.pipeline.sinks.base import BaseSink
+from app.pipeline.sinks.base import BaseSink, update_strategy
 from app.pipeline.sinks.labels import VarTrackLabels
 from app.pipeline.sinks.key_formatter import resolve_destination
 from app.pipeline.sinks.strategies.mongo import get_strategy, MongoWriteStrategy
@@ -68,6 +68,7 @@ _DEFAULT_COLLECTION = "configs"
 
 
 class MongoSink(BaseSink):
+    object_name = "document"
 
     def __init__(
         self,
@@ -111,7 +112,7 @@ class MongoSink(BaseSink):
         # Takes precedence over env_as_collection logic when set.
         self._dest_tpl   = cfg.get("destination_template", "")
 
-        # MongoConfig.update_strategy: STRATEGY_KEY_VALUE (default), STRATEGY_DOCUMENT or STRATEGY_FILE.
+        # MongoConfig.update_strategy: STRATEGY_DOCUMENT (default), STRATEGY_KEY_VALUE or STRATEGY_FILE.
         strategy_name = cfg.get("update_strategy")
         self._strategy: MongoWriteStrategy = get_strategy(strategy_name)
 
@@ -190,10 +191,6 @@ class MongoSink(BaseSink):
         commit_sha: str,
         file_path: str,
         labels: VarTrackLabels,
-        prune: bool,
-        prune_last: bool,
-        prune_protection: list[str],
-        dry_run_prune: bool,
         total_sources: int,
         data: Any = None,
     ) -> dict[str, Any]:
@@ -220,14 +217,35 @@ class MongoSink(BaseSink):
                 collection, flat_data, doc_filter, commit_sha, file_path, meta, data=data
             )
 
-        pruned = 0
-        if prune and not dry_run_prune:
-            pruned = self._strategy.prune(
-                collection, flat_data, doc_filter,
-                protection=prune_protection, last=prune_last,
-            )
+        return {"written": written}
 
-        return {"written": written, "pruned": pruned}
+    # ── Prune ─────────────────────────────────────────────────────────────────
+
+    @classmethod
+    def prunes_keys(cls, rule_config: dict) -> bool:
+        # Only the key-value strategy keeps one document per key, and only when it
+        # is asked for: the default, like the file strategy, replaces the file's
+        # document on every write.
+        try:
+            return update_strategy(rule_config.get("update_strategy")) == "STRATEGY_KEY_VALUE"
+        except ValueError:
+            return False
+
+    @classmethod
+    def key_space(cls, rule_config: dict, tenant_id: str, env: str) -> str:
+        # Documents are filtered by tenant, datasource and env: environments
+        # never share keys, even in one collection.
+        return f"{tenant_id}/{rule_config.get('datasource', '')}/{env}"
+
+    def delete_keys(self, keys: "Collection[str]", *, datasource: str, env: str) -> int:
+        if not keys:
+            return 0
+        from pymongo import DeleteOne
+
+        doc_filter = {"_vt_tenant": self._tenant_id, "_vt_datasource": datasource, "_vt_env": env}
+        result = self._collection_for_env(env).bulk_write(
+            [DeleteOne({**doc_filter, "key": key}) for key in keys], ordered=False)
+        return result.deleted_count
 
     def snapshot_file_data(self, datasource: str, env: str, file_path: str) -> list[dict]:
         """
@@ -328,5 +346,4 @@ class MongoSink(BaseSink):
             # Each strategy stores the keys its own way: one document per key, or one per file.
             return self._strategy.read_values(collection, list(keys), doc_filter)
         except Exception as exc:
-            logger.warning("MongoSink.read_values failed: %s", exc)
-            return {}
+            return self._read_failed(exc, "MongoSink.read_values")

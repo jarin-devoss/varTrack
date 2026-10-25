@@ -113,7 +113,6 @@ module = [
     "app.pipeline.sinks.linux_server",
     "app.pipeline.stage_etl",
     "app.grpc_server.server",
-    "app.api.routers.cli",
     "app.schema_registry.manager",
     "app.pipeline.schema_utils",
     "app.pipeline.validator",
