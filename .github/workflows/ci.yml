@@ -43,6 +43,7 @@ jobs:
         run: |
           if [ -n "$(git status --porcelain -- libs/go/gen)" ]; then
             git status --short -- libs/go/gen
+            git diff --stat -- libs/go/gen
             echo "::error::libs/go/gen is out of date: run buf generate and commit the result"
             exit 1
           fi

@@ -42,9 +42,10 @@ type MongoConfig struct {
 	EnvAsCollection bool     `protobuf:"varint,10,opt,name=env_as_collection,json=envAsCollection,proto3" json:"env_as_collection,omitempty"`
 	Hosts           []string `protobuf:"bytes,11,rep,name=hosts,proto3" json:"hosts,omitempty"`
 	// How the config is stored in the collection:
-	//   STRATEGY_DOCUMENT (default)   one document per file, nested: {data: {db: {host: "x"}}}
-	//   STRATEGY_KEY_VALUE            one document per key: {key: "db.host", value: "x"}
-	//   STRATEGY_FILE                 one document per file, as it parsed: nested, or flat for .env / .properties
+	//
+	//	STRATEGY_DOCUMENT (default)   one document per file, nested: {data: {db: {host: "x"}}}
+	//	STRATEGY_KEY_VALUE            one document per key: {key: "db.host", value: "x"}
+	//	STRATEGY_FILE                 one document per file, as it parsed: nested, or flat for .env / .properties
 	UpdateStrategy              enums.Strategy `protobuf:"varint,12,opt,name=update_strategy,json=updateStrategy,proto3,enum=vartrack.v1.Strategy" json:"update_strategy,omitempty"`
 	AuthSource                  string         `protobuf:"bytes,13,opt,name=auth_source,json=authSource,proto3" json:"auth_source,omitempty"`
 	AuthMechanism               *string        `protobuf:"bytes,14,opt,name=auth_mechanism,json=authMechanism,proto3,oneof" json:"auth_mechanism,omitempty"`

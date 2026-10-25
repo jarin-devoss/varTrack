@@ -60,14 +60,18 @@ type SinkKeyFormat struct {
 	// redis — "dot" for HASH mode (default), "flat" for STRING mode.
 	Redis string `protobuf:"bytes,2,opt,name=redis,proto3" json:"redis,omitempty"` // "dot" | "flat"
 	// zookeeper — "slash" (default) for /path/style keys,
-	//             "slash_dot" for .dot.style keys (legacy setups).
+	//
+	//	"slash_dot" for .dot.style keys (legacy setups).
 	Zookeeper string `protobuf:"bytes,3,opt,name=zookeeper,proto3" json:"zookeeper,omitempty"` // "slash" | "slash_dot"
 	// configmap — "flat" (default, K8s-safe underscore keys),
-	//             "dot"  (dot-notation keys, also valid in ConfigMap data).
+	//
+	//	"dot"  (dot-notation keys, also valid in ConfigMap data).
+	//
 	// "slash" is NOT supported — ConfigMap keys cannot start with "/".
 	Configmap string `protobuf:"bytes,4,opt,name=configmap,proto3" json:"configmap,omitempty"` // "flat" | "dot"
 	// linux_server — "dot" (default, used for .env / .json / .yaml output),
-	//                "flat" (underscore keys, used for .properties / .ini).
+	//
+	//	"flat" (underscore keys, used for .properties / .ini).
 	LinuxServer string `protobuf:"bytes,5,opt,name=linux_server,json=linuxServer,proto3" json:"linux_server,omitempty"` // "dot" | "flat"
 }
 

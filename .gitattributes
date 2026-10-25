@@ -1,3 +1,8 @@
 # Generated code: collapsed in review diffs and left out of language stats.
 libs/go/gen/** linguist-generated=true
 orchestrator-service/app/generated/** linguist-generated=true
+
+# The inputs and outputs of buf generate are LF on every OS: the Go generator
+# formats doc comments differently when lines end in CR.
+*.proto text eol=lf
+libs/go/gen/** text eol=lf

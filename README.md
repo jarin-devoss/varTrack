@@ -181,7 +181,7 @@ cd vartrack
 buf generate
 ```
 
-`buf generate` writes the Go code once, to `libs/go/gen` (the gateway and the watcher both build against that module), and the Python stubs to `orchestrator-service/app/generated`.
+`.gitattributes` keeps the `.proto` files LF on every OS, so `buf generate` gives the same Go code on Windows and Linux (a checkout made before that needs `rm -rf proto && git checkout -- proto`). `buf generate` writes the Go code once, to `libs/go/gen` (the gateway and the watcher both build against that module), and the Python stubs to `orchestrator-service/app/generated`.
 
 #### 2. Write your `config.cue`
 

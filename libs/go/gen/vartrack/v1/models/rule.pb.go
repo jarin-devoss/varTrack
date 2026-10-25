@@ -99,10 +99,13 @@ func (x *RepositoryOverride) GetEnable() bool {
 // something else changed since, is never deleted.
 //
 // dry_run    – simulate the prune step: reads live DB state to compute
-//              candidates but never actually deletes. Always forced to true
-//              when the outer task runs in dry-run mode.
+//
+//	candidates but never actually deletes. Always forced to true
+//	when the outer task runs in dry-run mode.
+//
 // protection – glob patterns for keys that must never be deleted
-//              (e.g. "bootstrap.*", "_schema").
+//
+//	(e.g. "bootstrap.*", "_schema").
 type PruneConfig struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache
@@ -203,16 +206,18 @@ type Rule struct {
 	// Only that subtree is written to the sink.
 	//
 	// Default behaviour (field absent or unset):
-	//   → "vartrack" is used as the key.
-	//   → If the file contains a "vartrack" key, only that section is synced.
-	//   → If "vartrack" is absent, the WHOLE FILE is used (soft fallback).
+	//
+	//	→ "vartrack" is used as the key.
+	//	→ If the file contains a "vartrack" key, only that section is synced.
+	//	→ If "vartrack" is absent, the WHOLE FILE is used (soft fallback).
 	//
 	// Set to "" to always process the entire file regardless of its contents.
 	//
 	// Examples:
-	//   root_key: "properties"  → sync only the "properties" object
-	//   root_key: "vartrack"    → (default) sync "vartrack" section or whole file
-	//   root_key: ""            → always sync whole file
+	//
+	//	root_key: "properties"  → sync only the "properties" object
+	//	root_key: "vartrack"    → (default) sync "vartrack" section or whole file
+	//	root_key: ""            → always sync whole file
 	//
 	// Works the same way for every supported format: JSON, YAML, TOML, XML,
 	// .env, .properties, HCL, INI, JS-module — because lookup happens after

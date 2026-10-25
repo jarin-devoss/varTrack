@@ -34,10 +34,11 @@ type OIDCConfig struct {
 	// The gateway fetches /.well-known/openid-configuration from this URL.
 	//
 	// Examples:
-	//   Google:    https://accounts.google.com
-	//   Azure AD:  https://login.microsoftonline.com/<tenant-id>/v2.0
-	//   Okta:      https://your-org.okta.com
-	//   Keycloak:  https://keycloak.example.com/realms/myrealm
+	//
+	//	Google:    https://accounts.google.com
+	//	Azure AD:  https://login.microsoftonline.com/<tenant-id>/v2.0
+	//	Okta:      https://your-org.okta.com
+	//	Keycloak:  https://keycloak.example.com/realms/myrealm
 	IssuerUrl string `protobuf:"bytes,1,opt,name=issuer_url,json=issuerUrl,proto3" json:"issuer_url,omitempty"`
 	// Client ID registered with the OIDC provider.
 	ClientId string `protobuf:"bytes,2,opt,name=client_id,json=clientId,proto3" json:"client_id,omitempty"`
@@ -204,9 +205,9 @@ func (x *RBACConfig) GetDefaultRole() string {
 // When absent the CLI routes are disabled entirely.
 //
 // Evaluation order for every CLI request:
-//   1. JWT (OIDC)   — validates the Bearer token and extracts user identity
-//   2. Casbin RBAC  — checks role permissions on the resource/action type
-//   3. OPA          — evaluates contextual policy (env, path, time, etc.)
+//  1. JWT (OIDC)   — validates the Bearer token and extracts user identity
+//  2. Casbin RBAC  — checks role permissions on the resource/action type
+//  3. OPA          — evaluates contextual policy (env, path, time, etc.)
 //
 // All three layers must approve a request for it to proceed.
 type AuthConfig struct {

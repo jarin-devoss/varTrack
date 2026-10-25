@@ -25,17 +25,17 @@ const (
 
 // UIConfig configures the web UI the orchestrator serves (/v1/ui and /v1/auth).
 //
-//   ui: {
-//     public_url: "https://vartrack.example.com"
-//     auth: {
-//       providers: [
-//         {platform: "github", client_id: "Iv1.8a61f9b3a7aba766", client_secret: {file: "/run/secrets/github-oauth"}},
-//         {platform: "gitea",  client_id: "c2f3…", client_secret: {ref: {path: "ui/gitea", key: "secret"}}},
-//       ]
-//       admins: ["github:octo-admin"]
-//       secret_manager: "vault"   // where {ref: …} values come from; default: the only one
-//     }
-//   }
+//	ui: {
+//	  public_url: "https://vartrack.example.com"
+//	  auth: {
+//	    providers: [
+//	      {platform: "github", client_id: "Iv1.8a61f9b3a7aba766", client_secret: {file: "/run/secrets/github-oauth"}},
+//	      {platform: "gitea",  client_id: "c2f3…", client_secret: {ref: {path: "ui/gitea", key: "secret"}}},
+//	    ]
+//	    admins: ["github:octo-admin"]
+//	    secret_manager: "vault"   // where {ref: …} values come from; default: the only one
+//	  }
+//	}
 type UIConfig struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache

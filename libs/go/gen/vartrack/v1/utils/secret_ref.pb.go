@@ -25,10 +25,10 @@ const (
 //
 // Three forms are accepted in CUE bundles:
 //
-//   token: "ghp_abc123"                  // inline plain string
-//   token: {file: "/run/secrets/token"}  // read from file at startup (trimmed)
-//   token: {file: "/run/secrets/db.env", key: "PASSWORD"}  // one key of that file
-//   token: {ref: {path: "ci/github", key: "token"}}  // external Vault ref
+//	token: "ghp_abc123"                  // inline plain string
+//	token: {file: "/run/secrets/token"}  // read from file at startup (trimmed)
+//	token: {file: "/run/secrets/db.env", key: "PASSWORD"}  // one key of that file
+//	token: {ref: {path: "ci/github", key: "token"}}  // external Vault ref
 type SecretRef struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache

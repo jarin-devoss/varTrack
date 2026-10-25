@@ -34,21 +34,23 @@ const (
 //
 // OPA policy receives the following input document:
 //
-//   input = {
-//     "user":       { "sub": "...", "email": "...",
-//                     "groups": [...],     // from the token's groups claim
-//                     "roles":  [...] },   // from RBAC, e.g. "role:admin"
-//     "action":     "sync",
-//     "resource":   "datasource",
-//     "datasource": "mongo-primary",
-//     "env":        "production",
-//     "file_path":  "configs/app.yaml",
-//     "tenant_id":  "myapp",
-//     "dry_run":    false
-//   }
+//	input = {
+//	  "user":       { "sub": "...", "email": "...",
+//	                  "groups": [...],     // from the token's groups claim
+//	                  "roles":  [...] },   // from RBAC, e.g. "role:admin"
+//	  "action":     "sync",
+//	  "resource":   "datasource",
+//	  "datasource": "mongo-primary",
+//	  "env":        "production",
+//	  "file_path":  "configs/app.yaml",
+//	  "tenant_id":  "myapp",
+//	  "dry_run":    false
+//	}
 //
 // The policy must define:
-//   allow = true   (default deny — requests are blocked when allow is not true)
+//
+//	allow = true   (default deny — requests are blocked when allow is not true)
+//
 // OPA is embedded in the gateway process using the OPA Go SDK.
 // The Rego policy is compiled once at startup (PrepareForEval) and
 // reused for every request — evaluation latency is ~50µs in-process.
@@ -137,12 +139,13 @@ type OPAConfig_InlinePolicy struct {
 	// Recommended for most deployments — no extra process or file needed.
 	//
 	// Example (Rego v0 syntax; start with `import rego.v1` for v1 syntax):
-	//   package vartrack.authz
-	//   default allow = false
-	//   allow { input.action != "sync" }
-	//   allow { input.action == "sync"; input.env != "production" }
-	//   allow { input.action == "sync"; input.env == "production"
-	//           input.user.roles[_] == "role:admin" }
+	//
+	//	package vartrack.authz
+	//	default allow = false
+	//	allow { input.action != "sync" }
+	//	allow { input.action == "sync"; input.env != "production" }
+	//	allow { input.action == "sync"; input.env == "production"
+	//	        input.user.roles[_] == "role:admin" }
 	InlinePolicy string `protobuf:"bytes,1,opt,name=inline_policy,json=inlinePolicy,proto3,oneof"`
 }
 
