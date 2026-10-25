@@ -66,15 +66,25 @@ bundle: {
 			platform:   "github"
 			datasource: "mongo"
 			self_heal:  true
+		},
+	]
 
-			// Vault integration — resolver is applied to @secret() annotations.
+	// Vault: @secret() fields of the CUE schema are read from it (tag
+	// "default"; @secret(ref="…") names another tag), and so are credentials
+	// written as {ref: {path, key}} in this bundle.
+	secret_managers: [
+		{
 			vault: {
-				address:    "http://vault.internal:8200"
-				token:      "s.xxxxxxxxxxxxxxxxxxxxxxxx"
-				// Or use AppRole auth:
-				// auth_method: "approle"
-				// role_id:     "my-role-id"
-				// secret_id:   "my-secret-id"
+				tag:         "default"
+				endpoint:    "http://vault.internal:8200"
+				mount_point: "secret"
+				kv_version:  2
+				// Where an @secret() field the file leaves as a plain value is read,
+				// under the field's own name. Optional; "@secret(path#field)" needs none.
+				// path_prefix: "myapp/prod"
+				token_auth: {token: "s.xxxxxxxxxxxxxxxxxxxxxxxx"}
+				// Or use AppRole auth instead of token_auth:
+				// app_role_auth: {role_id: "my-role-id", secret_id: "my-secret-id"}
 			}
 		},
 	]

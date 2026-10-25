@@ -12,11 +12,12 @@ import (
 	"time"
 
 	"gateway-service/internal"
+	"gateway-service/internal/auth"
 	"gateway-service/internal/config"
 	"gateway-service/internal/middlewares"
 	"gateway-service/internal/secrets"
 
-	pb "gateway-service/internal/gen/proto/go/vartrack/v1/services"
+	pb "vartrack/libs/gen/vartrack/v1/services"
 
 	mon "gateway-service/internal/monitoring"
 
@@ -39,7 +40,7 @@ func main() {
 				"panic", fmt.Sprint(r),
 				"stack", string(debug.Stack()),
 			)
-				panic(r)
+			panic(r)
 		}
 	}()
 
@@ -153,9 +154,30 @@ func run() error {
 			slog.Info("gateway: distributed Redis nonce store enabled")
 		}
 	}
+	// The CLI API (/v1/cli/*): callers show their own Git token, and the
+	// rule's Git platform says what they may do; config.cue's
+	// ui.auth.admins may do anything. auth.opa, when set, decides further.
+	{
+		bundle := bundleService.GetBundle()
+		authCfg := bundle.GetAuth()
+		// Refuse rather than ignore: a policy that silently stopped counting
+		// would leave its deny lines unenforced.
+		if authCfg.GetOidc() != nil || authCfg.GetRbac() != nil {
+			return fmt.Errorf("auth.oidc and auth.rbac are no longer supported — remove them: the CLI API " +
+				"authorizes with the caller's Git token and the Git platform's permissions (see docs/configuration/auth.md)")
+		}
+		opa, opaErr := auth.NewOPAFromConfig(authCfg.GetOpa())
+		if opaErr != nil {
+			return fmt.Errorf("load auth config: %w", opaErr)
+		}
+		authz := auth.NewGitAuthorizer(bundleService, bundle.GetUi().GetAuth().GetAdmins())
+		routerOpts = append(routerOpts, internal.WithCLIAuth(pb.NewCLIServiceClient(conn), authz, opa))
+		slog.Info("gateway: CLI API enabled — Git permissions", "opa", opa != nil,
+			"admins", len(bundle.GetUi().GetAuth().GetAdmins()))
+	}
 	r := internal.NewRouter(bundleService, grpcClient, conn, routerOpts...)
 
-	// 4b. Start OPA policy reloader when an embedded evaluator is configured.
+	// 4b. Start OPA policy reloader when the policy comes from a file.
 	// Interval is controlled by OPA_RELOAD_INTERVAL (e.g. "5m", "30m").
 	// Defaults to 30 minutes when unset or unparseable.
 	opaReloadInterval := 30 * time.Minute
@@ -174,6 +196,7 @@ func run() error {
 		Addr:           adminAddr,
 		EnablePprof:    !env.IsProduction(),
 		MetricsHandler: mon.DefaultMetrics().Handler(),
+		OPAReload:      r.OPAReloader(),
 	}, r.HealthHandler())
 
 	go func() {

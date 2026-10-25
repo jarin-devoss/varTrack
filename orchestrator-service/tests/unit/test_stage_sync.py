@@ -17,6 +17,8 @@ from __future__ import annotations
 
 import sys
 import unittest
+
+import pytest
 from unittest.mock import MagicMock, patch
 
 for _m in ("vartrack_core", "pymongo", "git", "gitpython"):
@@ -29,7 +31,7 @@ from app.tasks.payload import PruneConfig
 
 
 def _prune_cfg() -> PruneConfig:
-    return PruneConfig(enabled=False, last=False, dry_run=False)
+    return PruneConfig(enabled=False, dry_run=False)
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -89,6 +91,10 @@ class TestRunStageSync(unittest.TestCase):
         self.assertEqual(len(results), 1)
         self.assertEqual(results[0].status, "ok")
         self.assertEqual(results[0].file_path, "cfg.yaml")
+
+    def test_the_sink_is_told_the_tenant(self):
+        _, sink = self._run(_etl(_file("cfg.yaml")))
+        self.assertEqual(sink.write.call_args.kwargs["tenant_id"], "acme")
 
     def test_multiple_files_all_written(self):
         etl = _etl(_file("a.yaml"), _file("b.yaml"), _file("c.yaml"))
@@ -167,3 +173,27 @@ class TestRunStageSync(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+@pytest.mark.parametrize("value,want", [
+    (2, "GIT_SMART_REPAIR"), ("3", "LIVE_STATE"),
+    ("AUTO", "AUTO"), ("SYNC_MODE_AUTO", "AUTO"),
+    ("GIT_SMART_REPAIR", "GIT_SMART_REPAIR"), ("sync_mode_git_upsert_all", "GIT_UPSERT_ALL"),
+    ("FULL", "GIT_UPSERT_ALL"), ("SYNC_MODE_FULL", "GIT_UPSERT_ALL"),
+    ("nonsense", "UNSPECIFIED"), (None, "UNSPECIFIED"), (99, "UNSPECIFIED"), (True, "UNSPECIFIED"),
+])
+def test_sync_mode_reads_every_documented_spelling(value, want):
+    from app.utils.enums.sync_mode import parse_sync_mode
+    assert parse_sync_mode(value).name == want
+
+
+@pytest.mark.parametrize("module,cls,proto_module,prefix", [
+    ("sync_mode", "SyncMode", "sync_mode_pb2", "SYNC_MODE_"),
+    ("task_state", "TaskState", "task_state_pb2", "TASK_STATE_"),
+    ("file_status", "FileStatus", "file_status_pb2", "FILE_STATUS_"),
+])
+def test_python_enums_are_the_proto_enums(module, cls, proto_module, prefix):
+    import importlib
+    ours = getattr(importlib.import_module(f"app.utils.enums.{module}"), cls)
+    proto = getattr(importlib.import_module(f"vartrack.v1.enums.{proto_module}"), cls)
+    assert {prefix + m.name: m.value for m in ours} == dict(proto.items())

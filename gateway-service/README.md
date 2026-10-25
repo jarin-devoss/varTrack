@@ -31,6 +31,16 @@ POST /webhooks/zookeeper   → routes to rules with datasource: "zookeeper"
 
 The gateway reads the `config.cue` bundle to know which platforms, datasources, and rules are active. No code changes needed to add a new datasource — just update the bundle.
 
+A rule is identified by its platform and datasource, and a bundle with two rules for the same pair is refused at startup. Rules on **different** platforms may write to one datasource: the webhook says which sent it by its event header (`X-Gitea-Event`, `X-GitHub-Event`; Gitea also sends GitHub's, so the more specific one wins). Two platforms of the **same** type are told apart by the webhook secret that signed the body, so give each its own `secret`.
+
+### CLI API
+
+`POST /v1/cli/sync`, `/v1/cli/validate` and `/v1/cli/validate-config`, and `GET /v1/cli/tasks[/{id}]`, serve `vt` and the web UI's Playground. The caller sends their own Git token; the gateway asks the rule's Git platform who they are and what they may do (push access syncs, read access validates, dry-runs and reads tasks), and an optional OPA policy then decides with the whole request. See [Authentication & Authorization](../docs/configuration/auth.md).
+
+### Shared Go module
+
+The generated protobuf code and the `config.cue` loader live in `libs/go`, shared with the watcher. `go build` in this directory finds it through the `replace` in `go.mod`; the Docker image builds from the repository root for the same reason.
+
 ---
 
 ## Configuration
@@ -183,8 +193,8 @@ End-to-end scenarios covered: push events, ignored event types, unknown datasour
 ## Docker
 
 ```bash
-# Build
-docker build -t vartrack/gateway-service:latest .
+# Build — from the repository root: the gateway builds against the shared libs/go
+docker build -f gateway-service/Dockerfile -t vartrack/gateway-service:latest .
 
 # Run
 docker run \
@@ -235,7 +245,7 @@ internal/
     platform.go         # Platform interface + registry
     datasource.go       # Datasource naming helpers
 
-  gen/proto/go/         # Generated protobuf / gRPC code
+  (the generated protobuf / gRPC code is the shared module ../libs/go/gen)
 
 e2e/
   e2e_test.go                  # Core end-to-end suite

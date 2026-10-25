@@ -6,7 +6,7 @@ varTrack is built around a simple idea: your Git repository is the source of tru
 
 ## The pipeline
 
-Every sync — whether triggered by a webhook or the CLI — runs through the same three-stage pipeline:
+Every sync — whether triggered by a webhook or the CLI — runs through the same pipeline. A CLI sync brings the file itself, so it skips fetching from Git: it starts at the rule for its datasource and goes straight to parsing.
 
 ```
 PAYLOAD       →   ETL             →   SYNC
@@ -22,14 +22,14 @@ match platform    parse file          write to sinks
 When a webhook arrives at the gateway-service, varTrack resolves:
 
 - Which **platform** sent the event (GitHub, GitLab, ...)
-- Which **rule** matches (based on `datasource`, `repositories`, and `file_name`)
+- Which **rule** applies: the one for the platform that sent the event and the datasource in the webhook URL (a rule is identified by that pair). Its `repositories` and `exclude_repositories` decide whether the pushed repository is synced, and `file_name` or `file_path_map` which files
 - Which **environment** to target (from branch name, PR number, tag, or explicit `branch_map`)
 
 ### Stage 2 — ETL
 
 The orchestrator-service:
 
-1. Clones or fetches the pushed Git ref (LRU cache, max 20 repos)
+1. Reads the files at the pushed commit, from a bare mirror of the repository kept under `GIT_CACHE_DIR` (at most 20 repos, least recently used removed first)
 2. Parses the file (YAML / JSON / TOML / .env / HCL / XML / INI)
 3. Extracts the subtree under the `vartrack` root key (if present)
 4. Detects the environment key pattern (branch-keyed or flat)
@@ -43,7 +43,7 @@ Writes the validated flat map to every configured sink:
 
 - Picks the sync strategy (`AUTO`, `GIT_UPSERT_ALL`, `GIT_SMART_REPAIR`, or `LIVE_STATE`)
 - Runs writes to all matching sinks in parallel
-- Prunes stale keys if `prune: true` is set on the rule
+- Prunes stale keys once per environment, after all its files are written, if `prune` is enabled on the rule
 - Rolls back (deletes written data) if a write fails partway through
 
 ---
@@ -74,7 +74,7 @@ Writes the validated flat map to every configured sink:
                     ┌────────────────▼─────────────────────┐
                     │        orchestrator-service           │
                     │  ┌────────────────────────────────┐  │
-                    │  │  fetch Git ref (LRU cache)      │  │
+                    │  │  read files at pushed commit    │  │
                     │  │  parse + flatten (Rust)         │  │
                     │  │  validate CUE schema            │  │
                     │  │  write to sinks                 │──┼──► MongoDB
@@ -83,9 +83,10 @@ Writes the validated flat map to every configured sink:
                                                                ──► S3 / ...
                     ┌──────────────────────────────────────┐
                     │          watcher-service              │
-                    │  polls datasources every 60 s        │
-                    │  compares live state vs Git baseline  │
-                    │  drift detected → TriggerSync (gRPC) │
+                    │  every 60 s, per self_heal rule:     │
+                    │  CheckDatasource (gRPC) — the        │
+                    │  orchestrator compares sink vs Git   │
+                    │  drifted → SyncDatasource (gRPC)     │
                     └──────────────────────────────────────┘
 ```
 
@@ -99,7 +100,6 @@ Hot-path operations (flattening, merging, diffing, hashing) are implemented in R
 |---|---|
 | `flatten` | BFS / DFS nested dict → flat `key.subkey` map |
 | `merge` | Variable map overlay + environment resolution |
-| `prune` | Stale-key detection and deferred deletion |
 | `sync` | BLAKE3 content hash for `GIT_SMART_REPAIR` |
 
 ---

@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { useApi } from '../api';
 import { isNotAvailable } from '../api/http';
-import type { RuleView } from '../api/types';
+import type { RuleList, RuleView } from '../api/types';
 import { EmptyState, ErrorState, LoadingRows, Notice, Segmented, Timestamp } from '../components/common';
 import { Hero, type HeroColor } from '../components/Hero';
 import { Icon, SINK_LABEL } from '../components/Icon';
@@ -10,7 +10,7 @@ import { Panel, UTabs } from '../components/Panel';
 import { Star } from '../components/Row';
 import { DriftPill, driftIcon, OpPill, SyncPill } from '../components/Status';
 import { asGroups, EventRow } from '../features/events';
-import { taskHref } from '../features/links';
+import { ruleHref, taskHref } from '../features/links';
 import { DefinitionTab } from '../features/rule/DefinitionTab';
 import { DiffOptions, EnvDiff } from '../features/rule/DiffView';
 import { HistoryTimeline } from '../features/rule/HistoryTimeline';
@@ -21,6 +21,8 @@ import { EnvBox, EnvPanel, ENV_VIEWS, type EnvView } from '../features/state';
 import { SyncPanel } from '../features/SyncPanel';
 import { usePageTitle } from '../layout/page';
 import { usePinned } from '../lib/prefs';
+import { isPinned } from '../lib/rules';
+import { useRules } from '../lib/useRules';
 import { DRIFT_SEVERITY, ruleDrift, ruleSync, TRIGGER, targetSync, type SyncStatus } from '../lib/status';
 import { peekQuery, useQuery } from '../lib/useQuery';
 
@@ -31,13 +33,15 @@ const KEY_FILTERS: KeyFilter[] = ['all', 'changed', 'secrets', 'protected'];
 const SYNC_RANK: Record<SyncStatus, number> = { OutOfSync: 0, Unknown: 1, Synced: 2 };
 
 export function RulePage() {
-  const { platform = '', datasource = '' } = useParams();
+  // The tenant is in the path; a link without one still opens the rule when one tenant has it.
+  const { tenant, platform = '', datasource = '' } = useParams();
   const name = `${platform}/${datasource}`;
   usePageTitle(name);
   const api = useApi();
+  const all = useRules();
   // Opened from a list: show the rule the list already has while it loads.
-  const rule = useQuery(`rule:${name}`, a => a.getRule(name), {
-    placeholder: () => peekQuery<RuleView[]>(api, 'rules')?.find(r => r.name === name),
+  const rule = useQuery(`rule:${tenant ?? ''}:${name}`, a => a.getRule(name, tenant), {
+    placeholder: () => peekQuery<RuleList>(api, 'rules')?.rules.find(r => r.name === name && (!tenant || r.tenant === tenant)),
   });
   const [params, setParams] = useSearchParams();
   const [pinned, togglePin] = usePinned();
@@ -52,10 +56,22 @@ export function RulePage() {
   };
 
   if (rule.error && !rule.data) {
-    const missing = !isNotAvailable(rule.error) && (rule.error as { status?: number }).status === 404;
+    const status = isNotAvailable(rule.error) ? undefined : (rule.error as { status?: number }).status;
+    const missing = status === 404;
+    const sameName = (all.data ?? []).filter(r => r.name === name);
     return (
       <div className="card">
-        {missing ? (
+        {status === 409 && sameName.length > 1 ? (
+          <EmptyState icon="rules" title={`${name} exists in several tenants`} action={<Link className="btn btn--sm" to="/rules">All rules</Link>}>
+            Choose one:{' '}
+            {sameName.map((r, i) => (
+              <span key={r.tenant}>
+                {i > 0 && ', '}
+                <Link to={ruleHref(r)}>{r.tenant}</Link>
+              </span>
+            ))}
+          </EmptyState>
+        ) : missing ? (
           <EmptyState icon="rules" title={`No rule named ${name}`} action={<Link className="btn btn--sm" to="/rules">All rules</Link>}>
             It may have been removed from the bundle.
           </EmptyState>
@@ -86,7 +102,7 @@ export function RulePage() {
         spin={ruleDrift(r) === 'healing'}
         kind={`Rule · ${SINK_LABEL[r.sinkType]}`}
         name={r.name}
-        titleAction={<Star active={pinned.includes(r.name)} onToggle={() => togglePin(r.name)} label={r.name} />}
+        titleAction={<Star active={isPinned(pinned, r)} onToggle={() => togglePin(r)} label={r.name} />}
         meta={
           <>
             Tenant: {r.tenant} · {repoSummary(r)}
@@ -188,6 +204,7 @@ export function RulePage() {
 
 function healText(r: RuleView): React.ReactNode {
   const envs = (d: string) => r.targets.filter(t => t.drift === d).map(t => t.env).join(', ');
+  if (r.suspended) return 'Suspended: pushes and self-heal skip this rule. A sync you start still runs.';
   if (!r.selfHeal) return "The watcher doesn't compare this rule with Git. Sync to restore Git values.";
   switch (ruleDrift(r)) {
     case 'heal_failed':
@@ -232,7 +249,9 @@ function RuleStatus({ rule: r, onRetry }: { rule: RuleView; onRetry: (envs: stri
       <section className="card stat">
         <div className="stat__label">Self-heal</div>
         <div className="stat__value">
-          {!r.selfHeal ? (
+          {r.suspended ? (
+            <span className="pill pill--gray pill--lg">Suspended</span>
+          ) : !r.selfHeal ? (
             <span className="pill pill--gray pill--lg">Off</span>
           ) : drift === 'in_sync' ? (
             <span className="pill pill--green pill--lg">
@@ -338,7 +357,7 @@ function RuleOverview({ rule: r }: { rule: RuleView }) {
 }
 
 function RuleHistory({ rule }: { rule: RuleView }) {
-  const tasks = useQuery(`tasks:${rule.name}`, api => api.listTasks({ rule: rule.name, limit: 100 }));
+  const tasks = useQuery(`tasks:${rule.tenant}:${rule.name}`, api => api.listTasks({ rule: rule.name, tenant: rule.tenant, limit: 100 }));
   const [env, setEnv] = useState('all');
   if (tasks.error && !tasks.data) return <ErrorState compact error={tasks.error} what="sync history" onRetry={tasks.reload} />;
   if (!tasks.data) return <LoadingRows rows={3} height={60} />;
@@ -354,7 +373,7 @@ function RuleHistory({ rule }: { rule: RuleView }) {
 }
 
 function RuleEvents({ rule }: { rule: RuleView }) {
-  const events = useQuery(`events:${rule.name}`, api => api.listEvents({ rule: rule.name, limit: 200 }));
+  const events = useQuery(`events:${rule.tenant}:${rule.name}`, api => api.listEvents({ rule: rule.name, tenant: rule.tenant, limit: 200 }));
   if (events.error && !events.data) return <ErrorState compact error={events.error} what="events" onRetry={events.reload} />;
   if (!events.data) return <LoadingRows rows={4} height={30} />;
   if (events.data.length === 0) return <EmptyState compact icon="activity" title="No events for this rule" />;
@@ -376,7 +395,7 @@ function RuleDiff({ rule }: { rule: RuleView }) {
             <span className="section-label">{t.env}</span>
             <SyncPill status={targetSync(t)} />
           </span>
-          <EnvDiff rule={rule.name} env={t.env} destination={t.destination} />
+          <EnvDiff rule={rule.name} tenant={rule.tenant} env={t.env} destination={t.destination} />
         </section>
       ))}
     </div>

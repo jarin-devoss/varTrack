@@ -29,7 +29,7 @@ export function ProfilePage() {
         icon="user"
         kind="Profile"
         name={user?.name ?? identity?.name ?? (signedIn ? 'Signed in' : 'Not signed in')}
-        meta={user ? `@${user.login} on ${primary ? platformLabel(primary) : sso?.primary}` : identity?.email ?? (signedIn ? 'Token without readable claims' : `Tenant ${prefs.connection.tenant || 'default'}`)}
+        meta={user ? `@${user.login} on ${primary ? platformLabel(primary) : sso?.primary}` : identity?.email ?? (signedIn ? 'Token without readable claims' : 'Not signed in')}
       />
 
       {user && sso && (

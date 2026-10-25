@@ -1,0 +1,11 @@
+{
+  "description": "Team-owned tenants on their own Git servers: keep the team's ledger keys",
+  "extends": [
+    "local>vartrack-demo/presets"
+  ],
+  "prune": {
+    "protection": [
+      "ledger.*"
+    ]
+  }
+}

@@ -12,6 +12,8 @@ import { taskHref } from '../features/links';
 import { usePageTitle, useSectionCount } from '../layout/page';
 import { TASK, TRIGGER } from '../lib/status';
 import { useQuery } from '../lib/useQuery';
+import { useTenants } from '../lib/useRules';
+import { TenantFilter } from '../components/TenantFilter';
 
 const STATES: TaskState[] = ['FAILED', 'RETRYING', 'RUNNING', 'PENDING', 'SUCCEEDED'];
 
@@ -25,6 +27,8 @@ export function TasksPage() {
   const q = params.get('q') ?? '';
   const state = params.get('state') ?? '';
   const trigger = params.get('trigger') ?? '';
+  const tenant = params.get('tenant') ?? '';
+  const tenants = useTenants();
   const set = (key: string, value: string) => {
     const p = new URLSearchParams(params);
     value ? p.set(key, value) : p.delete(key);
@@ -38,9 +42,10 @@ export function TasksPage() {
       t =>
         (!state || t.state === state) &&
         (!trigger || t.trigger === trigger) &&
+        (!tenant || t.tenant === tenant) &&
         (!needle || `${t.taskId} ${t.rule ?? ''} ${t.datasource} ${t.env ?? ''} ${t.submittedBy ?? ''}`.toLowerCase().includes(needle)),
     );
-  }, [all, q, state, trigger]);
+  }, [all, q, state, trigger, tenant]);
   const { visible, more } = useShowMore(shown);
   useSectionCount('/tasks', tasks.data ? shown.length : undefined, 'tasks', tasks.loading);
 
@@ -64,6 +69,7 @@ export function TasksPage() {
         }
       >
         <SearchBox value={q} onChange={v => set('q', v)} placeholder="Search task ID, rule, environment, user…" />
+        <TenantFilter tenants={tenants} value={tenant} onChange={v => set('tenant', v)} />
         <select className="ffield" aria-label="State" value={state} onChange={e => set('state', e.target.value)}>
           <option value="">All states</option>
           {STATES.map(s => <option key={s} value={s}>{TASK[s].label}</option>)}
@@ -99,7 +105,7 @@ export function TasksPage() {
       ) : (
         <div className="card card--flush rows">
           {visible.map(t => (
-            <TaskRow key={t.taskId} task={t} />
+            <TaskRow key={t.taskId} task={t} showTenant={tenants.length > 1} />
           ))}
           {more}
         </div>

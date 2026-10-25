@@ -11,7 +11,9 @@ import { EnvRow } from '../features/envViews';
 import { SyncPanel } from '../features/SyncPanel';
 import { usePageTitle, useSectionCount } from '../layout/page';
 import { DRIFT_SEVERITY, SYNC, targetSync, type SyncStatus } from '../lib/status';
-import { useQuery } from '../lib/useQuery';
+import { tenantsOf } from '../lib/rules';
+import { useRules } from '../lib/useRules';
+import { TenantFilter } from '../components/TenantFilter';
 
 const STATUS_ORDER: SyncStatus[] = ['OutOfSync', 'Synced', 'Unknown'];
 const SYNC_RANK: Record<SyncStatus, number> = { OutOfSync: 0, Unknown: 1, Synced: 2 };
@@ -19,7 +21,7 @@ const SYNC_RANK: Record<SyncStatus, number> = { OutOfSync: 0, Unknown: 1, Synced
 /** Every environment of every rule, one row each. */
 export function EnvironmentsPage() {
   usePageTitle('Environments');
-  const rules = useQuery('rules', api => api.listRules());
+  const rules = useRules();
   const [params, setParams] = useSearchParams();
   const [syncing, setSyncing] = useState<{ rule: RuleView; env: string } | null>(null);
 
@@ -27,6 +29,7 @@ export function EnvironmentsPage() {
   const status = params.get('status') ?? '';
   const sink = params.get('sink') ?? '';
   const env = params.get('env') ?? '';
+  const tenant = params.get('tenant') ?? '';
   const set = (key: string, value: string) => {
     const p = new URLSearchParams(params);
     value ? p.set(key, value) : p.delete(key);
@@ -42,6 +45,7 @@ export function EnvironmentsPage() {
           (!status || targetSync(target) === status) &&
           (!sink || rule.sinkType === sink) &&
           (!env || target.env === env) &&
+          (!tenant || rule.tenant === tenant) &&
           (!needle || `${rule.name} ${target.env} ${target.destination} ${target.repository}`.toLowerCase().includes(needle)),
       )
       .sort(
@@ -50,13 +54,14 @@ export function EnvironmentsPage() {
           DRIFT_SEVERITY.indexOf(a.target.drift) - DRIFT_SEVERITY.indexOf(b.target.drift) ||
           a.rule.name.localeCompare(b.rule.name),
       );
-  }, [rules.data, q, status, sink, env]);
+  }, [rules.data, q, status, sink, env, tenant]);
   const { visible, more } = useShowMore(rows);
   useSectionCount('/environments', rules.data ? rows.length : undefined, 'environments', rules.loading);
 
   const all = rules.data ?? [];
   const envs = [...new Set(all.flatMap(r => r.targets.map(t => t.env)))].sort();
   const sinks = [...new Set(all.map(r => r.sinkType))].sort();
+  const tenants = tenantsOf(all);
 
   return (
     <div className="stack" style={{ gap: 12 }}>
@@ -85,6 +90,7 @@ export function EnvironmentsPage() {
           <option value="">All environments</option>
           {envs.map(e => <option key={e}>{e}</option>)}
         </select>
+        <TenantFilter tenants={tenants} value={tenant} onChange={v => set('tenant', v)} />
         <button type="button" className="icon-btn icon-btn--plain" onClick={() => setParams({}, { replace: true })} aria-label="Clear filters" title="Clear filters">
           <Icon name="x" size={16} />
         </button>
@@ -106,7 +112,7 @@ export function EnvironmentsPage() {
       ) : (
         <div className="card card--flush rows">
           {visible.map(({ rule, target }) => (
-            <EnvRow key={`${rule.name}|${target.env}`} rule={rule} target={target} onSync={() => setSyncing({ rule, env: target.env })} />
+            <EnvRow key={`${rule.tenant}|${rule.name}|${target.env}`} rule={rule} target={target} showTenant={tenants.length > 1} onSync={() => setSyncing({ rule, env: target.env })} />
           ))}
           {more}
         </div>

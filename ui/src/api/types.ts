@@ -26,7 +26,6 @@ export type TaskTrigger = 'webhook' | 'cli' | 'self_heal' | 'ui';
 
 export interface PruneConfig {
   enabled: boolean;
-  last: boolean;
   dryRun: boolean;
   protection: string[];
 }
@@ -50,6 +49,8 @@ export interface Rule {
   destinationTemplate: string;
   syncMode: SyncMode;
   selfHeal: boolean;
+  /** Pushes and self-heal skip the rule; syncs started by hand still run. */
+  suspended?: boolean;
   dryRun: boolean;
   prune: PruneConfig;
   secretManager?: string;
@@ -112,6 +113,8 @@ export interface FileResult {
 
 export interface Task {
   taskId: string;
+  /** The tenant the task ran for; every tenant's tasks come in one list. */
+  tenant?: string;
   state: TaskState;
   message: string;
   trigger: TaskTrigger;
@@ -139,6 +142,10 @@ export type EventReason =
   | 'SyncFailed'
   | 'ValidationFailed'
   | 'KeysPruned'
+  | 'PruneFailed'
+  | 'PruneSkipped'
+  | 'ShapeChanged'
+  | 'SharedKeySpace'
   | 'DriftDetected'
   | 'HealSucceeded'
   | 'HealFailed'
@@ -146,6 +153,8 @@ export type EventReason =
 
 export interface VtEvent {
   id: string;
+  /** The tenant the event belongs to; every tenant's events come in one list. */
+  tenant?: string;
   time: string;
   type: EventType;
   reason: EventReason;
@@ -155,7 +164,8 @@ export interface VtEvent {
   message: string;
 }
 
-export type KeyState = 'synced' | 'drifted' | 'missing' | 'unmanaged';
+/** unreadable: write-only in the sink (a Vercel sensitive variable); ignored: matches the rule's drift_ignore. */
+export type KeyState = 'synced' | 'drifted' | 'missing' | 'unmanaged' | 'unreadable' | 'ignored';
 
 /** One flattened key of a target, Git value next to the live sink value. */
 export interface KeyEntry {
@@ -179,12 +189,19 @@ export interface ServiceHealth {
   error?: string;
 }
 
+/** A rule is identified by its tenant, platform and datasource. */
+export interface RuleRef {
+  tenant: string;
+  /** `platform/datasource`. */
+  name: string;
+}
+
 export interface DatasourceView {
   name: string;
   type: SinkType;
   endpoint: string;
   detail: Record<string, string>;
-  rules: string[];
+  rules: RuleRef[];
 }
 
 export interface PlatformView {
@@ -194,8 +211,21 @@ export interface PlatformView {
   prEvent: string;
 }
 
+/** Rules the signed-in user cannot see for want of a connection: a count per platform, nothing more. */
+export interface HiddenRules {
+  platform: string;
+  rules: number;
+}
+
+/** Every rule the viewer may see, of every tenant, and how many more a connection would show. */
+export interface RuleList {
+  rules: RuleView[];
+  hidden: HiddenRules[];
+}
+
 export interface BundleView {
-  tenant: string;
+  /** The tenants the viewer can see rules of. */
+  tenants: string[];
   platforms: PlatformView[];
   datasources: DatasourceView[];
   secretManagers: { name: string; type: string; endpoint: string }[];
@@ -204,6 +234,8 @@ export interface BundleView {
 
 export interface SyncRequest {
   rule: string;
+  /** Needed only when the rule name exists in several tenants. */
+  tenant?: string;
   envs: string[];
   dryRun: boolean;
   prune: boolean;
@@ -213,6 +245,10 @@ export interface ValidateRequest {
   filePath: string;
   content: string;
   datasource?: string;
+  /** The tenant whose schema registry checks the file. */
+  tenant?: string;
+  /** Needed only when rules on several platforms write to the datasource. */
+  platform?: string;
 }
 
 export interface ValidateResult {
@@ -223,20 +259,28 @@ export interface ValidateResult {
 
 export interface CliSyncRequest {
   datasource: string;
+  /** The tenant the sync is for. */
+  tenant?: string;
   env: string;
   filePath: string;
   content: string;
   dryRun: boolean;
   label?: string;
+  /** Needed only when rules on several platforms write to the datasource. */
+  platform?: string;
 }
 
 export interface EventQuery {
   rule?: string;
+  /** Narrows to one tenant; the rule name alone can exist in several. */
+  tenant?: string;
   limit?: number;
 }
 
 export interface TaskQuery {
   rule?: string;
+  /** Narrows to one tenant; the rule name alone can exist in several. */
+  tenant?: string;
   limit?: number;
 }
 
@@ -260,7 +304,7 @@ export interface AuthPlatform {
   /** This session has an account on it. */
   connected?: boolean;
   user?: SessionUser;
-  /** Rules of the tenant on this platform (visible ones and not). */
+  /** Rules of every tenant on this platform (visible ones and not). */
   rules?: number;
 }
 

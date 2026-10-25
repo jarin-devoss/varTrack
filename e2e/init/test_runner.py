@@ -151,6 +151,13 @@ class GiteaClient:
             return r.json()[0]["object"]["sha"]
         return "0" * 40
 
+    def ensure_branch(self, repo: str, branch: str, from_branch: str = "main") -> None:
+        """Create *branch* in the config repo from *from_branch*; fine if it is there already."""
+        resp = self._api("POST", f"/repos/{GITEA_ORG}/{repo}/branches",
+                         json={"new_branch_name": branch, "old_branch_name": from_branch})
+        if resp.status_code not in (201, 409):
+            raise RuntimeError(f"could not create branch {branch}: {resp.status_code} {resp.text[:120]}")
+
     def push_bundle(self, rules: list[dict]) -> None:
         content = json.dumps(rules, indent=2).encode()
         self.push_file(SCHEMA_REPO, "bundle.json", content, "Update bundle.json for test suite")
@@ -266,6 +273,47 @@ def verify_mongo(rule: dict, result: SuiteResult) -> None:
         result.add_check("MongoDB connection", False, _exc_type(exc))
 
 
+def verify_mongo_per_file(rule: dict, result: SuiteResult) -> None:
+    """A Mongo datasource on STRATEGY_DOCUMENT or STRATEGY_FILE: one document per
+    synced file, the file under "data" - and no document per key, which is what
+    STRATEGY_KEY_VALUE writes. (A datasource's update_strategy is set in
+    config.cue only: a rule asking for another one is ignored, so these suites
+    name datasources of their own.)"""
+    if not HAS_MONGO:
+        result.add_check("pymongo available", False, "not installed")
+        return
+    uri = rule.get("mongo_uri", "mongodb://mongo:27017")
+    db_name = rule.get("database", "vartrack")
+    tenant = rule.get("tenant_id", GITEA_ORG)
+    env = rule.get("branch", "main").replace("/", "_")
+    col_name = rule["destination_template"].format(tenant=tenant, env=env)
+    strategy = rule.get("update_strategy", "")
+    try:
+        client = MongoClient(uri, serverSelectionTimeoutMS=5000)
+        col = client[db_name][col_name]
+        exists = col_name in client[db_name].list_collection_names()
+        result.add_check(f"MongoDB collection '{col_name}' exists", exists)
+        docs = list(col.find({}, {"_id": 0})) if exists else []
+        result.add_check(f"{strategy}: one document for the one synced file (count={len(docs)})",
+                         len(docs) == 1, f"count={len(docs)}")
+        result.add_check(f"{strategy}: no document per key",
+                         not any("key" in d for d in docs), "found a per-key document" if any("key" in d for d in docs) else "")
+        if len(docs) == 1:
+            doc = docs[0]
+            data = doc.get("data")
+            result.add_check("document names the file it holds", doc.get("_vt_file") == CONFIG_FILE,
+                             str(doc.get("_vt_file")))
+            result.add_check("document belongs to the datasource", doc.get("_vt_datasource") == rule["datasource"],
+                             str(doc.get("_vt_datasource")))
+            result.add_check('"data" is the file as a tree (database.pool_size is nested)',
+                             isinstance(data, dict) and isinstance(data.get("database"), dict)
+                             and data["database"].get("pool_size") == "10",
+                             str(list(data)[:4]) if isinstance(data, dict) else type(data).__name__)
+        client.close()
+    except Exception as exc:
+        result.add_check("MongoDB connection", False, _exc_type(exc))
+
+
 def verify_zookeeper(rule: dict, result: SuiteResult) -> None:
     if not HAS_ZK:
         result.add_check("kazoo available", False, "not installed")
@@ -357,7 +405,9 @@ def verify_linux_server(rule: dict, result: SuiteResult) -> None:
         finally:
             _transport.close()
         ssh = paramiko.SSHClient()
-        ssh.get_host_keys().add(host, _host_key.get_name(), _host_key)
+        # paramiko looks a host up as "[host]:port" unless the port is 22.
+        known_as = host if port == 22 else f"[{host}]:{port}"
+        ssh.get_host_keys().add(known_as, _host_key.get_name(), _host_key)
         ssh.set_missing_host_key_policy(paramiko.RejectPolicy())
         ssh.connect(host, port=port, username=user, password=password, timeout=10)
         result.add_check("SSH connection established", True)
@@ -458,8 +508,12 @@ def verify_vault(rule: dict, result: SuiteResult) -> None:
 
 SINK_VERIFIERS = {
     "mongo":        verify_mongo,
+    "mongo-document": verify_mongo_per_file,
+    "mongo-file":   verify_mongo_per_file,
     "zookeeper":    verify_zookeeper,
     "redis":        verify_redis,
+    "redis-hash":   verify_redis,
+    "redis-string": verify_redis,
     "linux_server": verify_linux_server,
     "s3":           verify_s3,
 }
@@ -656,9 +710,9 @@ def _default_etl_check(result, rule, orchestrator, gitea_url, commit_sha, tenant
 # ─────────────────────────────────────────────────────────────────────────────
 
 def suite_01_mongo_doc_basic(orchestrator, gitea, gitea_url, rules):
-    """MongoDB document write — basic STRATEGY_KEY_VALUE."""
-    return run_suite(1, "MongoDB document write (STRATEGY_KEY_VALUE)",
-                     "01_mongo_document.json", rules, orchestrator, gitea, gitea_url)
+    """MongoDB STRATEGY_DOCUMENT: the file as one nested document."""
+    return run_suite(1, "MongoDB document write (STRATEGY_DOCUMENT)",
+                     "12_mongo_document_strategy.json", rules, orchestrator, gitea, gitea_url)
 
 
 def suite_02_mongo_doc_prune(orchestrator, gitea, gitea_url, rules):
@@ -678,7 +732,7 @@ def suite_02_mongo_doc_prune(orchestrator, gitea, gitea_url, rules):
 
 
 def suite_03_mongo_file_strategy(orchestrator, gitea, gitea_url, rules):
-    """MongoDB STRATEGY_FILE stores whole file document."""
+    """MongoDB STRATEGY_FILE stores whole file document, not a document per key."""
     return run_suite(3, "MongoDB STRATEGY_FILE snapshot",
                      "02_mongo_file.json", rules, orchestrator, gitea, gitea_url)
 
@@ -745,7 +799,7 @@ def suite_11_multi_sink_parallel(orchestrator, gitea, gitea_url,
         time.sleep(2)
         commit_sha = gitea.get_head_sha(CONFIG_REPO)
 
-        for ds, rules in [("mongo", mongo_rules), ("zookeeper", zk_rules), ("redis", redis_rules)]:
+        for ds, rules in [("mongo", mongo_rules), ("zookeeper", zk_rules), (redis_rules[0]["datasource"], redis_rules)]:
             tenant = rules[0].get("tenant_id", GITEA_ORG)
             tid = trigger_webhook(orchestrator, ds, tenant, commit_sha, gitea_url)
             result.add_check(f"Webhook sent to {ds}", tid is not None, str(tid))
@@ -1139,28 +1193,33 @@ def suite_20_branch_map(orchestrator, gitea, gitea_url, rules):
         except Exception as exc:
             result.add_check("MongoDB staging check", False, _exc_type(exc))
 
+    # The develop branch has to exist for the orchestrator to clone it, and the
+    # rule has to map it to staging.
+    gitea.ensure_branch(CONFIG_REPO, "develop")
+    mapped = json.loads(json.dumps(rules))
+    mapped[0]["branch_map"] = {"develop": "staging"}
     return run_suite(20, "branch_map: develop → staging collection",
-                     "01_mongo_document.json", rules, orchestrator, gitea, gitea_url, extra_fn=_fn)
+                     "01_mongo_document.json", mapped, orchestrator, gitea, gitea_url, extra_fn=_fn)
 
 
 def suite_21_structured_prune(orchestrator, gitea, gitea_url, rules):
-    """Structured prune config: prune: {last: true, dry_run: false}."""
+    """Structured prune config: prune: {enabled: true, dry_run: false}."""
     # Inject structured prune config into the rules copy.
     modified = json.loads(json.dumps(rules))
-    modified[0]["prune"] = {"enabled": True, "last": True, "dry_run": False}
+    modified[0]["prune"] = {"enabled": True, "dry_run": False}
 
     def _fn(result, rule, orchestrator, gitea_url, commit_sha, tenant, datasource):
         # First write.
         _default_etl_check(result, rule, orchestrator, gitea_url, commit_sha, tenant, datasource)
 
-        # Second write — confirms prune.last doesn't corrupt existing data.
+        # Second write — confirms prune doesn't corrupt existing data.
         sha2 = gitea.get_head_sha(CONFIG_REPO)
         tid2 = trigger_webhook(orchestrator, datasource, tenant, sha2, gitea_url)
-        result.add_check("Second webhook (prune.last) accepted", tid2 is not None, str(tid2))
+        result.add_check("Second webhook (structured prune) accepted", tid2 is not None, str(tid2))
         time.sleep(WAIT_AFTER_WEBHOOK)
         verify_mongo(rule, result)
 
-    return run_suite(21, "Structured prune config (last=true)",
+    return run_suite(21, "Structured prune config",
                      "01_mongo_document.json", modified, orchestrator, gitea, gitea_url, extra_fn=_fn)
 
 
@@ -1238,6 +1297,7 @@ def main() -> None:
     s = settings
     mongo_doc   = s.get("01_mongo_document.json",  [{}])
     mongo_file  = s.get("02_mongo_file.json",       [{}])
+    mongo_docs  = s.get("12_mongo_document_strategy.json", [{}])
     zk_slash    = s.get("03_zk_slash.json",         [{}])
     redis_hash  = s.get("05_redis_hash.json",       [{}])
     redis_str   = s.get("06_redis_string.json",     [{}])
@@ -1268,7 +1328,7 @@ def main() -> None:
     results: list[SuiteResult] = []
 
     # ── MongoDB suites (1–4) ──────────────────────────────────────────────────
-    results.append(suite_01_mongo_doc_basic(args.orchestrator, gitea, args.gitea, mongo_doc))
+    results.append(suite_01_mongo_doc_basic(args.orchestrator, gitea, args.gitea, mongo_docs))
     results.append(suite_02_mongo_doc_prune(args.orchestrator, gitea, args.gitea, mongo_doc))
     results.append(suite_03_mongo_file_strategy(args.orchestrator, gitea, args.gitea, mongo_file))
     results.append(suite_04_mongo_dry_run(args.orchestrator, gitea, args.gitea, mongo_doc))

@@ -1,4 +1,19 @@
-# ─── Stage 0: Build CUE from source ─────────────────────────────────────────
+# The build context is the repository root: the Python gRPC stubs are generated
+# below from proto/ and the buf files, which live there.
+#   docker build -f orchestrator-service/docker/Dockerfile .
+
+# ─── Stage 0a: Python stubs from the protos ──────────────────────────────────
+# orchestrator-service/app/generated is not in Git. The stubs are generated
+# here with the same buf.gen.yaml CI and developers use, so an image never
+# depends on what a checkout happens to hold. (buf generate also writes the Go
+# code under libs/go/gen in this stage; it is discarded with the stage.)
+FROM bufbuild/buf:1.50.0@sha256:c34c81ac26044490a10fb5009eb618640834b9048f38d4717538421c6a25e4d7 AS proto
+WORKDIR /src
+COPY buf.yaml buf.lock buf.gen.yaml ./
+COPY proto proto
+RUN buf generate
+
+# ─── Stage 0b: Build CUE from source ─────────────────────────────────────────
 # Build the CUE binary with a current Go toolchain so the embedded stdlib
 # is up to date. Avoids shipping a pre-built binary whose Go version may lag.
 FROM golang:1.27-alpine@sha256:f92b6ef800e499660581efdabdf25d9d817a9d124eaf900924f0504e7e27e12d AS cue-builder
@@ -26,7 +41,7 @@ COPY --from=ghcr.io/astral-sh/uv:0.6.17@sha256:4a6c9444b126bd325fba904bff796bf91
 
 WORKDIR /app
 
-COPY requirements.txt .
+COPY orchestrator-service/requirements.txt .
 RUN /uv pip install --system --no-cache --require-hashes -r requirements.txt
 
 # Optional Kubernetes support for the ConfigMap and Helm sinks — off by default.
@@ -48,7 +63,8 @@ RUN mkdir -p /opt/extra-bin \
       && rm -rf "/tmp/${archive}" "/tmp/linux-${TARGETARCH}"; \
     fi
 
-COPY . .
+COPY orchestrator-service/ .
+COPY --from=proto /src/orchestrator-service/app/generated app/generated
 
 # ─── Stage 2: Runtime ────────────────────────────────────────────────────────
 FROM python:3.14-slim@sha256:a2b82f3c48559aa0a8446d9af49826b6e2b2016f4cd2afabfe6013ec53729170 AS runtime
@@ -90,8 +106,7 @@ COPY --from=builder /opt/extra-bin/ /usr/local/bin/
 WORKDIR /app
 COPY --from=builder /app /app
 
-# Non-root user (uid 1001) — mirrors gateway-service :nonroot convention
-# and Argo CD / Flux production container hardening.
+# Non-root user (uid 1001) — mirrors gateway-service :nonroot convention.
 # Create writable runtime dirs BEFORE chown so Docker volume mounts
 # inherit the correct ownership when volumes are initialised from the image.
 RUN useradd --uid 1001 --no-create-home --shell /bin/false vartrack \

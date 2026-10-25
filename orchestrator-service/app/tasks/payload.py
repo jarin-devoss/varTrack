@@ -18,6 +18,18 @@ def extract_ref(payload: dict, platform: str) -> str:
     return payload.get("ref", "")
 
 
+def extract_repo_url(payload: dict) -> str:
+    """The clone URL of the pushed repository: repository.clone_url (GitHub,
+    Gitea), else project.git_http_url (GitLab)."""
+    repo = payload.get("repository")
+    if isinstance(repo, dict) and repo.get("clone_url"):
+        return str(repo["clone_url"])
+    project = payload.get("project")
+    if isinstance(project, dict) and project.get("git_http_url"):
+        return str(project["git_http_url"])
+    return ""
+
+
 def extract_branch(payload: dict, platform: str) -> str:
     return extract_ref(payload, platform).removeprefix("refs/heads/")
 
@@ -60,50 +72,59 @@ class PruneConfig:
     """
     Parsed representation of the rule_config ``prune`` block.
 
-    All four valid forms::
+    All valid forms::
 
-        prune: true                              # enabled, last=false, dry_run=false
+        prune: true                              # enabled, dry_run=false
         prune: false                             # disabled
-        prune: { last: true,  dry_run: false }   # enabled, defer deletion
-        prune: { last: false, dry_run: false }   # enabled, immediate deletion
+        prune: { dry_run: true }                 # enabled, deletes only simulated
 
-    The structured form may also carry an explicit ``enabled`` key::
+    The structured form may also carry an explicit ``enabled`` key, and the
+    glob patterns of keys never to delete (the proto's PruneConfig)::
 
-        prune: { enabled: false, last: false, dry_run: false }  # disabled
+        prune: { enabled: false, dry_run: false }  # disabled
+        prune: { enabled: true, protection: ["SYSTEM_*"] }
+        prune: { protection: ["SYSTEM_*"] }      # disabled: protection only
+
+    Prune runs once per environment, after all its files are written, so the
+    former ``last`` key has nothing left to do. It is not read, and it does
+    not enable prune: ``prune: { last: true }`` is a disabled block.
     """
 
-    __slots__ = ("enabled", "last", "dry_run")
+    __slots__ = ("enabled", "dry_run", "protection")
 
-    def __init__(self, enabled: bool, last: bool, dry_run: bool) -> None:
-        self.enabled = enabled
-        self.last    = last
-        self.dry_run = dry_run
+    def __init__(self, enabled: bool, dry_run: bool, protection: list[str] | None = None) -> None:
+        self.enabled    = enabled
+        self.dry_run    = dry_run
+        self.protection = list(protection or [])
 
     def __repr__(self) -> str:
-        return (
-            f"PruneConfig(enabled={self.enabled}, "
-            f"last={self.last}, dry_run={self.dry_run})"
-        )
+        return f"PruneConfig(enabled={self.enabled}, dry_run={self.dry_run}, protection={self.protection})"
 
     def with_dry_run(self) -> "PruneConfig":
         """Return a copy with dry_run forced to True (used by the dry-run route)."""
-        return PruneConfig(enabled=self.enabled, last=self.last, dry_run=True)
+        return PruneConfig(enabled=self.enabled, dry_run=True, protection=self.protection)
 
 
 def extract_prune_config(rule_config: dict) -> PruneConfig:
     """
     Parse ``rule_config["prune"]`` into a :class:`PruneConfig`.
 
-    Supports both the new structured form and the legacy boolean form.
+    Supports both the structured form and the legacy boolean form. The flat
+    keys dry_run_prune and prune_protection (the proto's former fields, still
+    found in bundle.json files) fill what the structured form leaves out.
     """
     raw = rule_config.get("prune", False)
+    dry_run = bool(rule_config.get("dry_run_prune", False))
+    protection = list(rule_config.get("prune_protection") or [])
 
     if isinstance(raw, dict):
         return PruneConfig(
-            enabled=bool(raw.get("enabled", True)),  # structured form defaults to enabled
-            last=bool(raw.get("last", False)),
-            dry_run=bool(raw.get("dry_run", False)),
+            # A block that sets dry_run means enabled; one that only lists
+            # protection (a preset's) does not.
+            enabled=bool(raw.get("enabled", "dry_run" in raw)),
+            dry_run=bool(raw.get("dry_run", dry_run)),
+            protection=list(raw.get("protection") or protection),
         )
 
     # Legacy boolean: prune: true / false
-    return PruneConfig(enabled=bool(raw), last=False, dry_run=False)
+    return PruneConfig(enabled=bool(raw), dry_run=dry_run, protection=protection)

@@ -5,9 +5,10 @@ Strategy factory for Helm write modes.
 
   "values_file"        — write YAML values file, no helm CLI  (default)
   "upgrade"            — helm upgrade --install
-  "install_or_upgrade" — alias for upgrade
-  "full_upgrade"       — alias for upgrade
-  "values_only"        — alias for values_file  (matches proto enum name)
+  "install_or_upgrade" — alias for upgrade  (proto INSTALL_OR_UPGRADE)
+  "full_upgrade"       — helm upgrade, no --install: the release must exist
+  "values_only"        — helm upgrade --reuse-values, no --install: set our
+                         values on the existing release, keep the rest
 """
 from __future__ import annotations
 
@@ -18,10 +19,15 @@ from app.pipeline.sinks.strategies.helm.upgrade import UpgradeStrategy
 __all__ = ["HelmWriteStrategy", "ValuesFileStrategy", "UpgradeStrategy", "get_strategy"]
 
 _ALIASES: dict[str, str] = {
-    "values_only":        "values_file",
-    "full_upgrade":       "upgrade",
     "install_or_upgrade": "upgrade",
     "install":            "upgrade",
+}
+
+# Upgrade modes: (install a missing release, keep the release's other values)
+_UPGRADE_MODES: dict[str, tuple[bool, bool]] = {
+    "upgrade":      (True, False),
+    "full_upgrade": (False, False),
+    "values_only":  (False, True),
 }
 
 
@@ -34,8 +40,13 @@ def get_strategy(name: str, rule_config: dict) -> HelmWriteStrategy:
             values_prefix=rule_config.get("helm_values_prefix", ""),
         )
 
-    if key == "upgrade":
+    if key in _UPGRADE_MODES:
+        install, reuse_values = _UPGRADE_MODES[key]
         return UpgradeStrategy(
+            install=install,
+            reuse_values=reuse_values,
+            chart_version=str(rule_config.get("helm_chart_version") or ""),
+            chart_repo=str(rule_config.get("helm_repo") or ""),
             helm_binary=rule_config.get("helm_binary", ""),
             values_mode=rule_config.get("helm_values_mode", "set"),
             wait=bool(rule_config.get("helm_wait", False)),
@@ -49,5 +60,5 @@ def get_strategy(name: str, rule_config: dict) -> HelmWriteStrategy:
 
     raise ValueError(
         f"Unknown helm_upgrade_strategy '{name}'. "
-        f"Available: values_file, upgrade (aliases: values_only, full_upgrade, install_or_upgrade)"
+        f"Available: values_file, upgrade (or install_or_upgrade), full_upgrade, values_only"
     )

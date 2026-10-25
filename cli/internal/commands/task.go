@@ -45,11 +45,27 @@ func newTaskGetCmd() *cobra.Command {
 			fmt.Printf("Datasource: %s\n", task.Datasource)
 			fmt.Printf("Env:        %s\n", task.Env)
 			fmt.Printf("File:       %s\n", task.FilePath)
-			fmt.Printf("Tenant:     %s\n", task.TenantID)
+			if task.TenantID != "" {
+				fmt.Printf("Tenant:     %s\n", task.TenantID)
+			}
+			if task.DryRun {
+				fmt.Printf("Dry run:    yes — nothing was written\n")
+			}
+			if task.Label != "" {
+				fmt.Printf("Label:      %s\n", task.Label)
+			}
 			fmt.Printf("Written:    %d\n", task.Written)
 			fmt.Printf("Pruned:     %d\n", task.Pruned)
+			if task.CreatedAt != "" {
+				fmt.Printf("Started:    %s\n", task.CreatedAt)
+			}
+			if task.FinishedAt != "" {
+				fmt.Printf("Finished:   %s\n", task.FinishedAt)
+			}
 			if task.Error != "" {
 				fmt.Printf("Error:      %s\n", task.Error)
+			} else if task.Message != "" {
+				fmt.Printf("Message:    %s\n", task.Message)
 			}
 			return nil
 		},

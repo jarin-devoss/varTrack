@@ -64,8 +64,8 @@ lint: vet ## Lint all sources (go vet + staticcheck if available)
 # ─── Docker ──────────────────────────────────────────────────────────────────
 
 .PHONY: docker-build
-docker-build: ## Build Docker image
-	docker build -t $(DOCKER_IMG):$(DOCKER_TAG) .
+docker-build: ## Build Docker image (the context is the repo root: the gateway builds against libs/go)
+	docker build -f Dockerfile -t $(DOCKER_IMG):$(DOCKER_TAG) ..
 
 .PHONY: docker-run
 docker-run: ## Run Docker container (requires config.cue in cwd)

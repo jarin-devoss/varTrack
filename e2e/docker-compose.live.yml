@@ -19,8 +19,16 @@
 # payments repository). Sign in with either and connect the other:
 #   gitea       demo-admin   sees and syncs the demo rules
 #               demo-viewer  sees them, dry runs only
-#   gitea-team  team-admin   sees and syncs the payments rule
+#   gitea-team  team-admin   sees and syncs the payments rule (tenant
+#                            "payments": set it under Settings → Connection)
 #               demo-viewer  is not in the payments team: the rule stays hidden
+#
+# Rule settings come in layers: the rules in
+# live/config.cue, then the tenant's bundle.json (vartrack-demo/schemas for
+# tenant default, payments/schemas on gitea-team for tenant payments), then
+# each config repo's vartrack.json (a different one on main and develop;
+# .gitea/vartrack.json in payments-config). Both bundle.json files and the
+# vartrack.json files extend presets in vartrack-demo/presets.
 # Every password is VarTrack123. To (re)register the UI with both on its own:
 #   docker compose -f docker-compose.yml -f docker-compose.live.yml run --rm --no-deps live-seed ui-sign-in
 
@@ -38,6 +46,9 @@ x-orchestrator-live: &orchestrator-live
   environment:
     SCHEMA_TENANT_DEFAULT_REPO: http://gitea:3000/vartrack-demo/schemas.git
     SCHEMA_TENANT_DEFAULT_BRANCH: main
+    # The payments team's tenant: its own schema repo on gitea-team.
+    SCHEMA_TENANT_PAYMENTS_REPO: http://gitea-team:3000/payments/schemas.git
+    SCHEMA_TENANT_PAYMENTS_BRANCH: main
     UI_DEFAULT_TENANT: default
     # Web UI sign-in is set in live/config.cue (bundle.ui).
     # The payments repository on gitea-team is private: varTrack reads it as
@@ -139,13 +150,12 @@ services:
     <<: *orchestrator-live
 
   watcher:
+    # Asks the orchestrator about each self_heal rule every poll; it reads no
+    # sink itself, so it needs no kubeconfig or sink credentials.
     environment:
       POLL_INTERVAL: ${WATCHER_POLL_INTERVAL:-20s}
     volumes:
       - ./live/config.cue:/app/config.cue:ro
-      - live-state:/live-state:ro
-    depends_on:
-      k3s-kubeconfig: {condition: service_completed_successfully}
 
   live-seed:
     build:

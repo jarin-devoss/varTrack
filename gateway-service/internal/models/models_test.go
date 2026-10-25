@@ -3,10 +3,10 @@ package models_test
 import (
 	"testing"
 
-	pb "gateway-service/internal/gen/proto/go/vartrack/v1/models"
-	pb_ds "gateway-service/internal/gen/proto/go/vartrack/v1/models/datasources"
-	pb_gh "gateway-service/internal/gen/proto/go/vartrack/v1/models/platforms"
-	pb_sm "gateway-service/internal/gen/proto/go/vartrack/v1/models/secret_managers"
+	pb "vartrack/libs/gen/vartrack/v1/models"
+	pb_ds "vartrack/libs/gen/vartrack/v1/models/datasources"
+	pb_gh "vartrack/libs/gen/vartrack/v1/models/platforms"
+	pb_sm "vartrack/libs/gen/vartrack/v1/models/secret_managers"
 	"gateway-service/internal/models"
 )
 

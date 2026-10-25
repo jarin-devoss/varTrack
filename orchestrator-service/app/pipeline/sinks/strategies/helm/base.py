@@ -28,5 +28,5 @@ class HelmWriteStrategy(ABC):
     ) -> dict[str, Any]:
         """
         Apply flat_data to the Helm target.
-        Returns dict with at least {"written": int, "pruned": int}.
+        Returns dict with at least {"written": int}.
         """

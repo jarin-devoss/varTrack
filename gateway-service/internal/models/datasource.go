@@ -3,7 +3,7 @@ package models
 import (
 	"gateway-service/internal/driver"
 
-	pb_models "gateway-service/internal/gen/proto/go/vartrack/v1/models"
+	pb_models "vartrack/libs/gen/vartrack/v1/models"
 )
 
 // DataSourceName returns the resolved name for a datasource.

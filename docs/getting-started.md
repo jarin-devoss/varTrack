@@ -44,8 +44,17 @@ Open the UI at http://localhost:5173. Two Git servers feed the demo, so sign-in 
 
 | Sign in to gitea as… | then connect gitea-team as… | you see |
 |---|---|---|
-| `demo-admin` | `team-admin` | all 8 rules, and can sync them |
-| `demo-viewer` | `demo-viewer` | the 7 demo rules, dry runs only; the payments rule stays hidden — not in that team |
+| `demo-admin` | `team-admin` | all 7 rules on one page, and can sync them: the 6 demo rules of tenant `default` and the payments rule of tenant `payments`, with no tenant to switch to |
+| `demo-viewer` | `demo-viewer` | the 6 demo rules, dry runs only; the payments rule stays hidden — not in that team |
+
+The demo's rule settings come in layers ([how a rule is built](configuration/schema-registry.md#how-a-rule-is-built)):
+
+| Layer | In the demo |
+|---|---|
+| `config.cue` | `e2e/live/config.cue`: every rule, the datasources' connections, Vault |
+| a tenant's `bundle.json` | tenant `default`: `vartrack-demo/schemas` on gitea, `extends` the `production` preset · tenant `payments`: `payments/schemas` on gitea-team, `extends` the `team` preset on gitea |
+| a repo's `vartrack.json` | `demo-configs` has one on `main` and a different one on `develop`; `payments-config` has `.gitea/vartrack.json`, extending a preset in the payments team's own schema repo |
+| presets | `vartrack-demo/presets` (`e2e/live/presets`): each layer adds `prune.protection` patterns |
 
 Every environment shows its desired state in Git next to the current state in its sink. See [Web UI sign-in](configuration/auth.md#web-ui-sign-in-with-your-git-platform) to turn sign-in off or set it up for your own platforms.
 
@@ -133,7 +142,7 @@ CONFIG_PATH=config.cue \
 go run ./watcher-service/cmd
 ```
 
-Polls configured datasources every 60 seconds by default.
+Every 60 seconds by default, asks the orchestrator whether each `self_heal` rule's datasource still matches Git.
 
 ### 6. Register a webhook in GitHub
 
@@ -171,12 +180,24 @@ cd cli
 go build -o vt ./cmd
 mv vt /usr/local/bin/vt
 
-# Authenticate
-vt login --server http://localhost:5657 --token eyJ...
+# Authenticate with your Git token (GitHub or Gitea)
+vt login --server http://localhost:5657 --token <your Git token>
 
 # Push a file manually
 vt sync --file configs/app.yaml --datasource mongo --env staging --wait
 ```
+
+What `vt` may do is what your Git token may do in the rule's repositories: push access syncs, read access validates and dry-runs — see [Authentication & Authorization](configuration/auth.md). In the live demo, make a Gitea token and use it:
+
+```bash
+TOKEN=$(curl -s -u demo-admin:VarTrack123 -X POST -H "Content-Type: application/json" \
+  -d '{"name":"vt","scopes":["read:user","read:repository"]}' \
+  http://localhost:3000/api/v1/users/demo-admin/tokens | python3 -c "import sys,json;print(json.load(sys.stdin)['sha1'])")
+vt login --server http://localhost:5657 --token "$TOKEN"
+vt sync --file app-settings.yaml --datasource mongo-primary --env staging --wait   # the live demo's rule tracks app-settings.yaml
+```
+
+`demo-admin` administers the demo repositories, so it can sync anywhere; `demo-viewer` can only read them, so it can validate and dry-run but not sync ([the example OPA policy](https://github.com/jarin-devoss/varTrack/blob/main/examples/policies/vartrack_authz.rego) adds: writers never sync production or `configs/secrets/*`). The same token, pasted under *API token for the Playground* on the UI's sign-in page, drives the Playground.
 
 [:octicons-arrow-right-24: Full CLI reference](cli/index.md)
 

@@ -6,9 +6,13 @@
 // vartrack-demo/demo-configs, feeds every sink: pushes to `main` land in
 // production, pushes to `develop` land in staging.
 //
-// bundle.json in vartrack-demo/schemas carries the same rules for the
-// orchestrator workers (with sink connection settings inline); keep the two
-// in sync.
+// The rules here are the first layer. A tenant's bundle.json lays its rules
+// over them — vartrack-demo/schemas for tenant "default", payments/schemas on
+// gitea-team for tenant "payments" (the redis-team rule) — and a config
+// repo's vartrack.json goes over both. bundle.json only holds what it adds
+// (key_format, helm_values_mode, ...); connection settings and secrets come
+// from this file only. Both "extends" presets from vartrack-demo/presets (see
+// e2e/live/presets).
 bundle: {
 	platforms: [
 		{
@@ -89,11 +93,12 @@ bundle: {
 		},
 		{
 			helm: {
-				tag:             "checkout"
-				kubeconfig_path: "/live-state/kubeconfig"
-				namespace:       "default"
-				release_name:    "checkout-api"
-				chart_name:      "/charts/checkout-api"
+				tag:              "checkout"
+				kubeconfig_path:  "/live-state/kubeconfig"
+				namespace:        "default"
+				release_name:     "checkout-api"
+				chart_name:       "/charts/checkout-api"
+				upgrade_strategy: "INSTALL_OR_UPGRADE"
 			}
 		},
 		{
@@ -186,6 +191,8 @@ bundle: {
 		{
 			platform:   "gitea-team"
 			datasource: "redis-team"
+			// Only the payments tenant's bundle.json may layer this rule.
+			tenants: ["payments"]
 			file_name:  "app-settings.yaml"
 			repositories: ["payments/payments-config"]
 			branch_map: {main: "production"}
@@ -247,10 +254,19 @@ bundle: {
 	celery_broker_datasource:  "redis-broker"
 	celery_backend_datasource: "redis-results"
 	gateway_nonce_datasource:  "redis-broker"
-	watcher_state_datasource:  "redis-broker"
 
 	global_tags: {
 		team:        "platform"
 		environment: "demo"
+	}
+
+	// CLI API (vt, the web UI's Playground): callers use their own Gitea
+	// token, and may do what it may do in the rule's repositories; the
+	// example OPA policy adds: writers never sync production or
+	// configs/secrets/*.
+	auth: {
+		opa: {
+			policy_file: "/app/policies/vartrack_authz.rego"
+		}
 	}
 }

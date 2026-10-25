@@ -7,13 +7,20 @@ ARG BUILD_DATE=unknown
 
 RUN apk add --no-cache ca-certificates tzdata
 
+# The build context is the repository root: the gateway builds against the
+# shared module in libs/go (its go.mod replaces vartrack/libs with ../libs/go).
 WORKDIR /src
 
 # Cache dependency downloads separately from source code.
-COPY go.mod go.sum ./
+COPY libs/go/go.mod libs/go/go.sum libs/go/
+COPY gateway-service/go.mod gateway-service/go.sum gateway-service/
+WORKDIR /src/gateway-service
 RUN go mod download
 
-COPY . .
+WORKDIR /src
+COPY libs/go libs/go
+COPY gateway-service gateway-service
+WORKDIR /src/gateway-service
 
 # Build a statically-linked binary with all debugging symbols stripped.
 # Version metadata is embedded via ldflags for runtime inspection.

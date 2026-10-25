@@ -41,9 +41,18 @@ from __future__ import annotations
 
 import json
 import logging
+import os
+import posixpath
+import re
+import shlex
+import shutil
+import subprocess
+import time
+import uuid
 from collections.abc import Collection
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol
 
 from app.pipeline.sinks.base import BaseSink
 from app.pipeline.sinks.labels import VarTrackLabels
@@ -61,6 +70,7 @@ _DEFAULT_FORMAT = KeyFormat.DOT
 
 
 class LinuxServerSink(BaseSink):
+    object_name = "file"
 
     def __init__(
         self,
@@ -85,9 +95,11 @@ class LinuxServerSink(BaseSink):
         self._key_format = key_format_from_str(fmt_name)
         validate_sink_format(_SINK_KIND, self._key_format)
 
-        # Optional SSH transport
+        # Where the file goes: a server over SSH, or this machine's disk.
         ssh_host = cfg.get("ssh_host")
         self._ssh = _SshTransport(cfg) if ssh_host else None
+        self._fs: _Fs = self._ssh if self._ssh else _LocalFs()
+        self._write_opts = _WriteOptions.from_config(cfg)
 
         logger.debug(
             "LinuxServerSink ready path=%s fmt=%s ssh=%s",
@@ -136,10 +148,6 @@ class LinuxServerSink(BaseSink):
         commit_sha: str,
         file_path: str,
         labels: VarTrackLabels,
-        prune: bool,
-        prune_last: bool,
-        prune_protection: list[str],
-        dry_run_prune: bool,
         total_sources: int,
         data: Any = None,
     ) -> dict[str, Any]:
@@ -147,18 +155,8 @@ class LinuxServerSink(BaseSink):
         formatted = format_keys(flat_data, self._key_format)
         content   = _render(formatted, self._file_format, labels, env)
 
-        if self._ssh:
-            self._ssh.write(str(target), content)
-            logger.info("LinuxServerSink: SSH wrote %s env=%s", target, env)
-        else:
-            # Auto-provision: create parent directories if they don't exist.
-            target.parent.mkdir(parents=True, exist_ok=True)
-            is_new = not target.exists()
-            target.write_text(content, encoding="utf-8")
-            if is_new:
-                logger.info("LinuxServerSink: created new file %s for env=%s", target, env)
-            else:
-                logger.debug("LinuxServerSink: updated %s env=%s", target, env)
+        _write_file(self._fs, target.as_posix(), content, self._write_opts)
+        logger.info("LinuxServerSink: wrote %s env=%s%s", target.as_posix(), env, " over SSH" if self._ssh else "")
 
         return {"written": len(flat_data), "path": str(target)}
 
@@ -182,13 +180,12 @@ class LinuxServerSink(BaseSink):
             return {}
         try:
             target = self._resolve_path(env)
-            content = self._ssh.read(str(target)) if self._ssh else target.read_text(encoding="utf-8")
+            content = self._fs.read(target.as_posix())
             values = _parse(content, self._file_format)
         except FileNotFoundError:
             return {}
         except Exception as exc:
-            logger.warning("LinuxServerSink.read_values failed: %s", exc)
-            return {}
+            return self._read_failed(exc, "LinuxServerSink.read_values")
         out: dict[str, str] = {}
         for k in keys:
             # Keys are stored in the sink's key format (e.g. FLAT: "db_host").
@@ -278,71 +275,351 @@ def _safe_filename(env: str) -> str:
     return re.sub(r"[^\w.\-]", "_", env)
 
 
-def _sftp_makedirs(sftp: Any, remote_dir: str) -> None:
+# ── Writing the file ─────────────────────────────────────────────────────────
+
+@dataclass
+class _WriteOptions:
+    """What happens around the write — the datasource's linux_server settings."""
+
+    create_directories: bool = True
+    file_mode: str = ""                       # "0640"
+    file_owner: str = ""                      # "app" or "app:app"
+    backup: bool = False
+    backup_suffix: str = ".bak"
+    validation_command: str = ""              # "{file}" is the written file
+    rollback_on_validation_fail: bool = False
+    post_write_commands: list[str] = field(default_factory=list)
+    continue_on_command_error: bool = False
+
+    @classmethod
+    def from_config(cls, cfg: dict) -> "_WriteOptions":
+        mode = str(cfg.get("file_mode") or "")
+        if mode and not re.fullmatch(r"0?[0-7]{3}", mode):
+            raise ValueError(f"file_mode {mode!r} is not an octal mode like 0640")
+        return cls(
+            create_directories=cfg.get("create_directories", True) is not False,
+            file_mode=mode,
+            file_owner=str(cfg.get("file_owner") or ""),
+            backup=bool(cfg.get("backup_before_write", False)),
+            backup_suffix=str(cfg.get("backup_suffix") or ".bak"),
+            validation_command=str(cfg.get("validation_command") or ""),
+            rollback_on_validation_fail=bool(cfg.get("rollback_on_validation_fail", False)),
+            post_write_commands=[str(c) for c in cfg.get("post_write_commands") or []],
+            continue_on_command_error=bool(cfg.get("continue_on_command_error", False)),
+        )
+
+
+class _Fs(Protocol):
+    def exists(self, path: str) -> bool: ...
+    def mkdirs(self, path: str) -> None: ...
+    def read(self, path: str) -> str: ...
+    def put(self, path: str, content: str) -> None: ...
+    def copy(self, src: str, dst: str) -> None: ...
+    def remove(self, path: str) -> None: ...
+    def chmod(self, path: str, mode: str) -> None: ...
+    def chown(self, path: str, owner: str) -> None: ...
+    def run(self, command: str) -> tuple[int, str]: ...
+
+
+def _with_file(command: str, path: str) -> str:
+    return command.replace("{file}", shlex.quote(path))
+
+
+def _write_file(fs: _Fs, path: str, content: str, opts: _WriteOptions) -> None:
+    """Write *content* to *path* with the datasource's options, in order:
+    directories, backup, write, mode and owner, validation (rolling back to
+    the previous file when it fails and rollback is on), post-write commands.
     """
-    Recursively create remote directories via SFTP (no shell, no injection risk).
+    directory = posixpath.dirname(path) or "/"
+    if not fs.exists(directory):
+        if not opts.create_directories:
+            raise RuntimeError(f"{directory} does not exist and create_directories is off")
+        fs.mkdirs(directory)
 
-    Equivalent to `mkdir -p` but uses the SFTP protocol directly.
-    Works by attempting to stat each path component and creating missing ones.
+    # A backup is kept when asked for, and taken anyway when a failed
+    # validation must be able to restore the previous file.
+    rollback = bool(opts.validation_command and opts.rollback_on_validation_fail)
+    backup = path + opts.backup_suffix if (opts.backup or rollback) and fs.exists(path) else ""
+    if backup:
+        fs.copy(path, backup)
+
+    try:
+        fs.put(path, content)
+        if opts.file_mode:
+            fs.chmod(path, opts.file_mode)
+        if opts.file_owner:
+            fs.chown(path, opts.file_owner)
+
+        if opts.validation_command:
+            rc, out = fs.run(_with_file(opts.validation_command, path))
+            if rc != 0:
+                restored = ""
+                if rollback and backup:
+                    fs.copy(backup, path)
+                    restored = "; the previous file was restored"
+                raise RuntimeError(f"validation_command failed (exit {rc}): {out.strip()[:500]}{restored}")
+    finally:
+        # A copy taken only to roll back with is not left behind.
+        if backup and not opts.backup:
+            fs.remove(backup)
+
+    for command in opts.post_write_commands:
+        rc, out = fs.run(_with_file(command, path))
+        if rc != 0:
+            message = f"post_write_command {command!r} failed (exit {rc}): {out.strip()[:500]}"
+            if not opts.continue_on_command_error:
+                raise RuntimeError(message)
+            logger.warning("LinuxServerSink: %s — continuing", message)
+
+
+class _LocalFs:
+    """This machine's filesystem; commands run through the shell."""
+
+    def exists(self, path: str) -> bool:
+        return os.path.exists(path)
+
+    def mkdirs(self, path: str) -> None:
+        os.makedirs(path, exist_ok=True)
+
+    def read(self, path: str) -> str:
+        with open(path, encoding="utf-8") as fh:
+            return fh.read()
+
+    def put(self, path: str, content: str) -> None:
+        with open(path, "w", encoding="utf-8") as fh:
+            fh.write(content)
+
+    def copy(self, src: str, dst: str) -> None:
+        shutil.copy2(src, dst)
+
+    def remove(self, path: str) -> None:
+        os.remove(path)
+
+    def chmod(self, path: str, mode: str) -> None:
+        os.chmod(path, int(mode, 8))
+
+    def chown(self, path: str, owner: str) -> None:
+        user, _, group = owner.partition(":")
+        shutil.chown(path, user=user or None, group=group or None)
+
+    def run(self, command: str) -> tuple[int, str]:
+        # The bundle's own command, as on a remote server.
+        result = subprocess.run(command, shell=True, capture_output=True, text=True, timeout=300)  # noqa: S602
+        return result.returncode, result.stdout + result.stderr
+
+
+# ── SSH transport ────────────────────────────────────────────────────────────
+
+def _host_key_policy(paramiko: Any, verification: str, known_hosts: str | None) -> Any:
+    """What paramiko does with a host whose key is not known yet.
+
+    strict      refuse it
+    accept-new  trust it and write its key to *known_hosts* at once, before the
+                session starts, so the next connection checks it; a known host
+                with another key never reaches the policy (paramiko raises
+                BadHostKeyException first)
+    off         trust it and write nothing down: nothing protects the connection
+                from a man in the middle, and every connection says so in the log
     """
-    parts = remote_dir.split("/")
-    current = ""
-    for part in parts:
-        if not part:
-            current = "/"
-            continue
-        current = f"{current}/{part}" if current and current != "/" else f"/{part}"
-        try:
-            sftp.stat(current)
-        except FileNotFoundError:
-            try:
-                sftp.mkdir(current)
-            except OSError:
-                pass  # may have been created by a concurrent process
+    if verification == "strict":
+        return paramiko.RejectPolicy()
 
+    class _TrustNewHostKey(paramiko.MissingHostKeyPolicy):
+        def missing_host_key(self, client: Any, hostname: str, key: Any) -> None:
+            fingerprint = key.get_fingerprint().hex()
+            if verification == "off":
+                logger.warning("LinuxServerSink: host key of %s (%s %s) is not verified: "
+                               "a man in the middle would not be detected",
+                               hostname, key.get_name(), fingerprint)
+                return
+            client.get_host_keys().add(hostname, key.get_name(), key)
+            if known_hosts:
+                os.makedirs(os.path.dirname(os.path.abspath(known_hosts)), exist_ok=True)
+                client.save_host_keys(known_hosts)
+            logger.info("LinuxServerSink: new host %s, %s key %s recorded",
+                        hostname, key.get_name(), fingerprint)
 
-# ── SSH transport (optional) ──────────────────────────────────────────────────
+    return _TrustNewHostKey()
+
 
 class _SshTransport:
+    """A server reached over SSH.
+
+    Files move over SFTP; with use_sftp off, or with use_sudo, they move
+    through shell commands instead (cat, mkdir, cp, install) — with sudo the
+    file is uploaded to a temporary path first and installed from there, so
+    sudo's password and the file's content never share stdin.
+
+    host_key_verification: "strict" (default) refuses a host whose key is not
+    known; "accept-new" accepts a host seen for the first time and records its
+    key in known_hosts_file (required), but refuses a changed key; "off" accepts
+    any key and logs a warning on every connection.
+    """
+
     def __init__(self, cfg: dict) -> None:
         try:
             import paramiko
         except ImportError as exc:
             raise RuntimeError("paramiko is required for SSH sink: pip install paramiko") from exc
-        self._client = paramiko.SSHClient()
+        self._paramiko = paramiko
+        self._host = cfg["ssh_host"]
+        self._command_timeout = float(cfg.get("ssh_command_timeout_secs") or 60)
+        self._sudo = bool(cfg.get("ssh_use_sudo", False))
+        self._sudo_password = str(cfg.get("ssh_sudo_password") or "")
+        self._client = self._connect(cfg)
+        use_sftp = cfg.get("ssh_use_sftp", True) is not False
+        self._sftp = self._client.open_sftp() if use_sftp and not self._sudo else None
+
+    def _connect(self, cfg: dict) -> Any:
+        paramiko = self._paramiko
+        verification = str(cfg.get("ssh_host_key_verification") or "strict").lower()
+        if verification not in ("strict", "accept-new", "off"):
+            raise ValueError(f"host_key_verification {verification!r}: use strict, accept-new or off")
         known_hosts = cfg.get("ssh_known_hosts_file")
-        if known_hosts:
-            self._client.load_host_keys(known_hosts)
-        else:
-            self._client.load_system_host_keys()
-        self._client.set_missing_host_key_policy(paramiko.RejectPolicy())
-        self._client.connect(
-            hostname=cfg["ssh_host"],
-            port=int(cfg.get("ssh_port", 22)),
-            username=cfg.get("ssh_user", "root"),
-            password=cfg.get("ssh_password"),
-            key_filename=cfg.get("ssh_key_path"),
-        )
-        self._sftp = self._client.open_sftp()
+        if verification == "accept-new" and not known_hosts:
+            raise ValueError("host_key_verification accept-new needs known_hosts_file: "
+                             "with nowhere to record a new key it would verify nothing")
+        timeout = float(cfg.get("ssh_connect_timeout_secs") or 30)
+        attempts = 1 + max(0, int(cfg.get("ssh_max_retries") or 0))
+        backoff = float(cfg.get("ssh_retry_backoff_secs") or 2)
 
-    def write(self, remote_path: str, content: str) -> None:
-        # Auto-provision: ensure remote directory exists via SFTP mkdir
-        remote_dir = str(Path(remote_path).parent)
+        for attempt in range(1, attempts + 1):
+            client = paramiko.SSHClient()
+            if verification != "off":
+                if known_hosts:
+                    if os.path.exists(known_hosts):
+                        client.load_host_keys(known_hosts)
+                    elif verification == "strict":
+                        raise RuntimeError(f"known_hosts_file {known_hosts} does not exist")
+                else:
+                    client.load_system_host_keys()
+            client.set_missing_host_key_policy(_host_key_policy(paramiko, verification, known_hosts))
+            try:
+                client.connect(
+                    hostname=self._host,
+                    port=int(cfg.get("ssh_port", 22)),
+                    username=cfg.get("ssh_user", "root"),
+                    password=cfg.get("ssh_password"),
+                    key_filename=cfg.get("ssh_key_path"),
+                    timeout=timeout,
+                    banner_timeout=timeout,
+                    auth_timeout=timeout,
+                    compress=bool(cfg.get("ssh_compression", False)),
+                )
+            except paramiko.BadHostKeyException:
+                raise  # a changed host key is never retried
+            except (paramiko.SSHException, OSError) as exc:
+                client.close()
+                if attempt == attempts:
+                    raise
+                logger.warning("LinuxServerSink: SSH to %s failed (%s); retry %d of %d in %.0fs",
+                               self._host, exc, attempt, attempts - 1, backoff)
+                time.sleep(backoff)
+                continue
+            return client
+        raise RuntimeError(f"cannot connect to {self._host}")
+
+    # ── commands ──
+
+    def run(self, command: str, stdin: bytes = b"", sudo: bool | None = None) -> tuple[int, str]:
+        """Run *command*; with sudo it runs as root, the password read from stdin."""
+        if self._sudo if sudo is None else sudo:
+            command = f"sudo -S -p '' sh -c {shlex.quote(command)}"
+            if self._sudo_password:
+                stdin = (self._sudo_password + "\n").encode() + stdin
+        chan_in, chan_out, chan_err = self._client.exec_command(command, timeout=self._command_timeout)
+        if stdin:
+            chan_in.write(stdin)
+        chan_in.channel.shutdown_write()
+        out = chan_out.read().decode("utf-8", "replace") + chan_err.read().decode("utf-8", "replace")
+        return chan_out.channel.recv_exit_status(), out
+
+    def _check(self, command: str, stdin: bytes = b"", sudo: bool | None = None) -> str:
+        rc, out = self.run(command, stdin, sudo)
+        if rc != 0:
+            raise RuntimeError(f"{command.split()[0]} on {self._host} failed (exit {rc}): {out.strip()[:300]}")
+        return out
+
+    # ── files ──
+
+    def exists(self, path: str) -> bool:
+        if self._sftp:
+            try:
+                self._sftp.stat(path)
+                return True
+            except FileNotFoundError:
+                return False
+        return self.run(f"test -e {shlex.quote(path)}")[0] == 0
+
+    def mkdirs(self, path: str) -> None:
+        if self._sftp:
+            current = ""
+            for part in path.split("/"):
+                if not part:
+                    current = "/"
+                    continue
+                current = f"{current.rstrip('/')}/{part}"
+                try:
+                    self._sftp.stat(current)
+                except FileNotFoundError:
+                    try:
+                        self._sftp.mkdir(current)
+                    except OSError:
+                        pass  # created meanwhile
+            return
+        self._check(f"mkdir -p {shlex.quote(path)}")
+
+    def read(self, path: str) -> str:
+        if self._sftp:
+            with self._sftp.file(path, "rb") as fh:
+                return fh.read().decode("utf-8")
+        rc, out = self.run(f"cat {shlex.quote(path)}")
+        if rc != 0:
+            raise FileNotFoundError(path)
+        return out
+
+    def put(self, path: str, content: str) -> None:
+        data = content.encode("utf-8")
+        if self._sftp:
+            with self._sftp.file(path, "wb") as fh:
+                fh.write(data)
+            return
+        if not self._sudo:
+            self._check(f"cat > {shlex.quote(path)}", stdin=data)
+            return
+        tmp = f"/tmp/.vartrack-{uuid.uuid4().hex}"
+        self._check(f"cat > {shlex.quote(tmp)}", stdin=data, sudo=False)
         try:
-            self._sftp.stat(remote_dir)
-        except FileNotFoundError:
-            _sftp_makedirs(self._sftp, remote_dir)
+            self._check(f"install -m 0644 {shlex.quote(tmp)} {shlex.quote(path)}")
+        finally:
+            self.run(f"rm -f {shlex.quote(tmp)}", sudo=False)
 
-        with self._sftp.file(remote_path, "wb") as fh:
-            fh.write(content.encode("utf-8"))
+    def copy(self, src: str, dst: str) -> None:
+        if self._sftp:
+            with self._sftp.file(src, "rb") as fin, self._sftp.file(dst, "wb") as fout:
+                fout.write(fin.read())
+            return
+        self._check(f"cp -p {shlex.quote(src)} {shlex.quote(dst)}")
 
-    def read(self, remote_path: str) -> str:
-        with self._sftp.file(remote_path, "rb") as fh:
-            return fh.read().decode("utf-8")
+    def remove(self, path: str) -> None:
+        if self._sftp:
+            self._sftp.remove(path)
+            return
+        self._check(f"rm -f {shlex.quote(path)}")
+
+    def chmod(self, path: str, mode: str) -> None:
+        if self._sftp:
+            self._sftp.chmod(path, int(mode, 8))
+            return
+        self._check(f"chmod {mode} {shlex.quote(path)}")
+
+    def chown(self, path: str, owner: str) -> None:
+        self._check(f"chown {shlex.quote(owner)} {shlex.quote(path)}")
 
     def close(self) -> None:
         try:
-            self._sftp.close()
+            if self._sftp:
+                self._sftp.close()
             self._client.close()
         except Exception:
             pass

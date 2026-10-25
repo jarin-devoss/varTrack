@@ -23,8 +23,8 @@ bundle: {
 				region: "us-east-1"
 
 				// Credentials — leave empty to use EC2 instance role or ECS task role.
-				access_key: "AKIAIOSFODNN7EXAMPLE"
-				secret_key: "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
+				access_key_id:     "AKIAIOSFODNN7EXAMPLE"
+				secret_access_key: "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
 
 				// Optional: custom endpoint for MinIO / on-prem S3.
 				// endpoint: "http://minio:9002"

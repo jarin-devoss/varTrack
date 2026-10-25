@@ -68,8 +68,7 @@ func (r *RedisNonceStore) CheckAndSet(nonce string, window time.Duration) bool {
 	//   - Returns true (was set = new nonce) or false (already exists = replay)
 	ok, err := r.client.SetNX(ctx, key, 1, window).Result()
 	if err != nil {
-		slog.Warn("gateway: Redis nonce store error — allowing request",
-			"nonce", nonce, "error", err)
+		slog.Warn("gateway: Redis nonce store error — allowing request", "error", err)
 		return true // fail-open to avoid blocking all traffic
 	}
 	return ok

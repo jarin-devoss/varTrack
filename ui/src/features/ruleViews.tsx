@@ -42,7 +42,7 @@ export function ruleMessage(rule: RuleView): string {
 const ENV_LIMIT = 5;
 
 /** A rule as a box: overall sync status, desired vs current, and one line per environment. */
-export function RuleCard({ rule, pinned, onTogglePin, onSync }: { rule: RuleView; pinned: boolean; onTogglePin: () => void; onSync: () => void }) {
+export function RuleCard({ rule, pinned, onTogglePin, onSync, showTenant }: { rule: RuleView; pinned: boolean; onTogglePin: () => void; onSync: () => void; showTenant?: boolean }) {
   const sync = ruleSync(rule);
   const last = latestSync(rule.targets);
   const op = ruleSyncState(rule);
@@ -54,11 +54,12 @@ export function RuleCard({ rule, pinned, onTogglePin, onSync }: { rule: RuleView
         <span className="rcard__kind">
           <Icon name={SINK_ICON[rule.sinkType]} size={14} />
           {SINK_LABEL[rule.sinkType]}
+          {showTenant && <span className="tag" title="Tenant">{rule.tenant}</span>}
         </span>
         <Star active={pinned} onToggle={onTogglePin} label={rule.name} />
       </header>
       <h3 className="rcard__name">
-        <NameLabel prefix={rule.platform} name={rule.datasource} to={ruleHref(rule.name)} />
+        <NameLabel prefix={rule.platform} name={rule.datasource} to={ruleHref(rule)} />
       </h3>
       <div className="rcard__pills">
         <SyncPill status={sync} />
@@ -99,7 +100,7 @@ export function RuleCard({ rule, pinned, onTogglePin, onSync }: { rule: RuleView
       <ul className="rcard__envs" aria-label="Environments">
         {envs.map(t => (
           <li key={t.env}>
-            <Link to={envHref(rule.name, t.env)} className="rcard__env">
+            <Link to={envHref(rule, t.env)} className="rcard__env">
               <SyncIcon status={targetSync(t)} size={14} />
               <span className="rcard__env-name">{t.env}</span>
               <span className={`rcard__env-note${targetSync(t) === 'OutOfSync' || t.lastSync?.state === 'FAILED' ? ' rcard__env-note--warn' : ''}`}>{targetNote(t)}</span>
@@ -108,7 +109,7 @@ export function RuleCard({ rule, pinned, onTogglePin, onSync }: { rule: RuleView
         ))}
         {rule.targets.length > ENV_LIMIT && (
           <li>
-            <Link to={ruleHref(rule.name)} className="rcard__env rcard__more">
+            <Link to={ruleHref(rule)} className="rcard__env rcard__more">
               +{rule.targets.length - ENV_LIMIT} more
             </Link>
           </li>
@@ -119,11 +120,11 @@ export function RuleCard({ rule, pinned, onTogglePin, onSync }: { rule: RuleView
           <Icon name="refresh" size={13} /> Sync
         </button>
         {sync === 'OutOfSync' && (
-          <Link className="abtn" to={ruleHref(rule.name, '?tab=diff')}>
+          <Link className="abtn" to={ruleHref(rule, '?tab=diff')}>
             <Icon name="diff" size={13} /> Diff
           </Link>
         )}
-        <Link className="abtn rcard__open" to={ruleHref(rule.name)}>
+        <Link className="abtn rcard__open" to={ruleHref(rule)}>
           Details <Icon name="arrowRight" size={13} />
         </Link>
       </footer>

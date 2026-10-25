@@ -8,7 +8,7 @@ database:
   pool_size: "50"
   max_connections: "500"
   connect_timeout_ms: "3000"
-  password: "resolved-from-vault"
+  password: "@secret(secret/vartrack/configs#database.password)"
 
 cache:
   ttl_seconds: "600"
@@ -18,7 +18,7 @@ api:
   rate_limit: "5000"
   timeout_ms: "15000"
   version: v2
-  secret_key: "resolved-from-vault"
+  secret_key: "@secret(secret/vartrack/configs#api.secret_key)"
 
 features:
   dark_mode: "true"

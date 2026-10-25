@@ -11,6 +11,7 @@ import { useToast } from '../components/Toasts';
 import { isProductionLike } from '../features/SyncPanel';
 import { shortId } from '../features/tasks';
 import { detectFormat, flattenConfig, plaintextSecrets } from '../lib/parse';
+import { ruleKey } from '../lib/rules';
 import { isActive } from '../lib/status';
 import { useQuery } from '../lib/useQuery';
 
@@ -46,6 +47,7 @@ export function PlaygroundPage() {
 
   const [filePath, setFilePath] = useState('configs/app.yaml');
   const [datasource, setDatasource] = useState('');
+  const [ruleChoice, setRuleChoice] = useState('');
   const [env, setEnv] = useState('staging');
   const [content, setContent] = useState(SAMPLE);
   const [busy, setBusy] = useState<'validate' | 'dry' | 'sync' | null>(null);
@@ -56,6 +58,12 @@ export function PlaygroundPage() {
 
   const datasources = bundle.data?.datasources ?? [];
   const ds = datasource || datasources[0]?.name || '';
+  // Several rules, of one or more tenants, may write to one datasource: the request then names the rule's
+  // tenant, and its platform when platforms differ.
+  const dsRules = useMemo(() => datasources.find(d => d.name === ds)?.rules ?? [], [datasources, ds]);
+  const chosen = dsRules.find(r => ruleKey(r) === ruleChoice) ?? dsRules[0];
+  const chosenTenant = chosen?.tenant;
+  const chosenPlatform = chosen && new Set(dsRules.map(r => r.name.split('/')[0])).size > 1 ? chosen.name.split('/')[0] : undefined;
   const format = detectFormat(filePath);
   const preview = useMemo(() => {
     try {
@@ -72,9 +80,9 @@ export function PlaygroundPage() {
     setError(null);
     try {
       if (kind === 'validate') {
-        setValidation(await api.validate({ filePath, content, datasource: ds || undefined }));
+        setValidation(await api.validate({ filePath, content, datasource: ds || undefined, platform: chosenPlatform, tenant: chosenTenant }));
       } else {
-        const { taskId: id } = await api.cliSync({ datasource: ds, env, filePath, content, dryRun: kind === 'dry', label: 'ui-playground' });
+        const { taskId: id } = await api.cliSync({ datasource: ds, platform: chosenPlatform, tenant: chosenTenant, env, filePath, content, dryRun: kind === 'dry', label: 'ui-playground' });
         setTaskId(id);
         notify({ tone: 'progress', title: kind === 'dry' ? 'Dry run started' : `Sync to ${env} started`, body: <Link to={`/tasks/${id}`}>Follow the task</Link> });
       }
@@ -87,7 +95,7 @@ export function PlaygroundPage() {
   };
 
   const canRun = !!ds && !!env.trim() && !!content.trim() && !!filePath.trim();
-  const cli = `vt sync --file ${filePath} --datasource ${ds || '<datasource>'} --env ${env || '<env>'} --dry-run --wait`;
+  const cli = `vt sync --file ${filePath} --datasource ${ds || '<datasource>'}${chosenPlatform ? ` --platform ${chosenPlatform}` : ''}${chosenTenant && chosenTenant !== 'default' ? ` --tenant ${chosenTenant}` : ''} --env ${env || '<env>'} --dry-run --wait`;
 
   return (
     <div className="page-stack">
@@ -127,6 +135,19 @@ export function PlaygroundPage() {
                 )}
                 <span className="field__hint">Picks the CUE schema and the sink.</span>
               </label>
+              {dsRules.length > 1 && chosen && (
+                <label className="field">
+                  <span className="field__label">Rule</span>
+                  <select className="select" value={ruleKey(chosen)} onChange={e => setRuleChoice(e.target.value)}>
+                    {dsRules.map(r => (
+                      <option key={ruleKey(r)} value={ruleKey(r)}>
+                        {r.tenant} · {r.name}
+                      </option>
+                    ))}
+                  </select>
+                  <span className="field__hint">{dsRules.length} rules write to {ds}: pick the one to use.</span>
+                </label>
+              )}
               <label className="field">
                 <span className="field__label">Environment</span>
                 <input className="input mono" value={env} onChange={e => setEnv(e.target.value)} />

@@ -10,6 +10,8 @@ import { StatusChart } from '../components/StatusChart';
 import { asGroups, EventRow, groupEvents, REASON } from '../features/events';
 import { usePageTitle, useSectionCount } from '../layout/page';
 import { useQuery } from '../lib/useQuery';
+import { useTenants } from '../lib/useRules';
+import { TenantFilter } from '../components/TenantFilter';
 
 export function EventsPage() {
   usePageTitle('Events');
@@ -20,6 +22,8 @@ export function EventsPage() {
   const type = params.get('type') ?? '';
   const reason = (params.get('reason') ?? '') as EventReason | '';
   const rule = params.get('rule') ?? '';
+  const tenant = params.get('tenant') ?? '';
+  const tenants = useTenants();
   const grouped = params.get('group') !== 'off';
   const set = (key: string, value: string) => {
     const p = new URLSearchParams(params);
@@ -36,9 +40,10 @@ export function EventsPage() {
         (!type || e.type === type) &&
         (!reason || e.reason === reason) &&
         (!rule || e.rule === rule) &&
+        (!tenant || e.tenant === tenant) &&
         (!needle || `${e.message} ${e.rule ?? ''} ${e.env ?? ''} ${REASON[e.reason].label}`.toLowerCase().includes(needle)),
     );
-  }, [all, q, type, reason, rule]);
+  }, [all, q, type, reason, rule, tenant]);
   const groups = useMemo(() => (grouped ? groupEvents(shown) : asGroups(shown)), [grouped, shown]);
   const { visible, more } = useShowMore(groups);
   useSectionCount('/events', events.data ? shown.length : undefined, 'events', events.loading);
@@ -70,6 +75,7 @@ export function EventsPage() {
           <option value="">Any reason</option>
           {(Object.keys(REASON) as EventReason[]).map(r => <option key={r} value={r}>{REASON[r].label}</option>)}
         </select>
+        <TenantFilter tenants={tenants} value={tenant} onChange={v => set('tenant', v)} />
         <select className="ffield" aria-label="Rule" value={rule} onChange={e => set('rule', e.target.value)}>
           <option value="">Any rule</option>
           {rules.map(r => <option key={r}>{r}</option>)}
@@ -101,7 +107,7 @@ export function EventsPage() {
       ) : (
         <div className="card card--flush rows">
           {visible.map(g => (
-            <EventRow key={g.event.id} group={g} />
+            <EventRow key={g.event.id} group={g} showTenant={tenants.length > 1} />
           ))}
           {more}
         </div>

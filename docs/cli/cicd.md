@@ -46,7 +46,9 @@ jobs:
         env:
           VARTRACK_SERVER: ${{ vars.VARTRACK_SERVER }}
           VARTRACK_TOKEN:  ${{ secrets.VARTRACK_TOKEN }}
-        run: vt validate --file configs/app.yaml --datasource mongo
+        run: |
+          vt validate --file configs/app.yaml --datasource mongo
+          vt validate-config
 
   sync:
     name: Sync to production
@@ -148,10 +150,11 @@ Add a dry-run step to every PR to see exactly what would be written:
       --datasource  mongo \
       --env         production \
       --dry-run \
+      --wait \
       --json
 ```
 
-The JSON output shows the exact keys that would be written, changed, and deleted — making the diff visible in the PR.
+Nothing is written. The task's `message` says how many keys each file would write and how its schema validation went — `dry run — would write configs/app.yaml: 19 keys, validation ok` — and the step fails when the task fails.
 
 ---
 
@@ -162,5 +165,5 @@ No `vt login` needed in CI/CD — just set the environment variables:
 | Variable | Where to store |
 |---|---|
 | `VARTRACK_SERVER` | Repository variable (`vars.VARTRACK_SERVER`) |
-| `VARTRACK_TOKEN` | Repository secret (`secrets.VARTRACK_TOKEN`) |
+| `VARTRACK_TOKEN` | Repository secret (`secrets.VARTRACK_TOKEN`) — a Git personal access token of a user or bot with push access to the rule's repositories (GitHub's built-in `GITHUB_TOKEN` cannot be used: it cannot read `/user`) |
 | `VARTRACK_TENANT` | Repository variable or hardcoded in the workflow |

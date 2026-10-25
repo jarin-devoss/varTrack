@@ -4,54 +4,20 @@ import (
 	"net/http"
 	"strings"
 
-	"gateway-service/internal/auth"
 	"gateway-service/internal/handlers"
 	"gateway-service/internal/middlewares"
 )
 
 // CLIRoutes returns an HTTP handler for all /cli/* endpoints.
-// Every route requires a valid Bearer JWT (JWTAuth) and passes through
-// the RBAC enforcer for per-operation access control.
-func CLIRoutes(
-	h        *handlers.CLIHandler,
-	jwtAuth  func(http.Handler) http.Handler,
-	enforcer *auth.Enforcer,
-) http.Handler {
+// Every route needs the caller's Git token (middlewares.GitToken); the
+// handlers ask the rule's Git platform what that caller may do.
+func CLIRoutes(h *handlers.CLIHandler) http.Handler {
 	mux := http.NewServeMux()
-
-	// POST /sync — requires datasource:sync
-	mux.Handle("/sync",
-		jwtAuth(
-			middlewares.RBACCheck(enforcer, "datasource", "sync")(
-				http.HandlerFunc(h.HandleSync),
-			),
-		),
-	)
-
-	// POST /validate — requires datasource:validate
-	mux.Handle("/validate",
-		jwtAuth(
-			middlewares.RBACCheck(enforcer, "datasource", "validate")(
-				http.HandlerFunc(h.HandleValidate),
-			),
-		),
-	)
-
-	// GET /tasks/{id} and GET /tasks — requires task:get / task:list
-	mux.Handle("/tasks/",
-		jwtAuth(
-			middlewares.RBACCheck(enforcer, "task", "get")(
-				http.HandlerFunc(h.HandleGetTask),
-			),
-		),
-	)
-	mux.Handle("/tasks",
-		jwtAuth(
-			middlewares.RBACCheck(enforcer, "task", "list")(
-				http.HandlerFunc(taskListStub),
-			),
-		),
-	)
+	mux.Handle("/sync", middlewares.GitToken(http.HandlerFunc(h.HandleSync)))
+	mux.Handle("/validate", middlewares.GitToken(http.HandlerFunc(h.HandleValidate)))
+	mux.Handle("/validate-config", middlewares.GitToken(http.HandlerFunc(h.HandleValidateConfig)))
+	mux.Handle("/tasks/", middlewares.GitToken(http.HandlerFunc(h.HandleGetTask)))
+	mux.Handle("/tasks", middlewares.GitToken(http.HandlerFunc(h.HandleListTasks)))
 
 	// Enforce HTTP method on each route.
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -60,6 +26,7 @@ func CLIRoutes(
 		switch {
 		case path == "/sync" && r.Method != http.MethodPost,
 			path == "/validate" && r.Method != http.MethodPost,
+			path == "/validate-config" && r.Method != http.MethodPost,
 			strings.HasPrefix(path, "/tasks") && r.Method != http.MethodGet:
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 			return
@@ -67,10 +34,4 @@ func CLIRoutes(
 
 		mux.ServeHTTP(w, r)
 	})
-}
-
-func taskListStub(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusNotImplemented)
-	_, _ = w.Write([]byte(`{"detail":"task list not yet implemented"}`))
 }

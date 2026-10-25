@@ -107,7 +107,7 @@ datasources: [{
 
 ## Drift detection
 
-The watcher recursively lists all znodes under the configured path and compares their data (bytes) against the Git baseline. It also registers a ZooKeeper session watcher for near-real-time detection in addition to the periodic poll.
+The watcher asks the orchestrator each poll; the orchestrator reads the znodes varTrack wrote and compares them with what it last synced from Git — a changed or missing key is drift ([Drift Detection](../concepts/drift-detection.md)).
 
 ```cue
 rules: [{

@@ -16,9 +16,9 @@ import (
 	"gateway-service/internal/models"
 	"gateway-service/internal/protoutil"
 
-	pb_enums "gateway-service/internal/gen/proto/go/vartrack/v1/enums"
-	pb_models "gateway-service/internal/gen/proto/go/vartrack/v1/models"
-	pb_vault "gateway-service/internal/gen/proto/go/vartrack/v1/models/secret_managers"
+	pb_enums "vartrack/libs/gen/vartrack/v1/enums"
+	pb_models "vartrack/libs/gen/vartrack/v1/models"
+	pb_vault "vartrack/libs/gen/vartrack/v1/models/secret_managers"
 
 	vault "github.com/hashicorp/vault/api"
 	"github.com/hashicorp/vault/api/auth/approle"

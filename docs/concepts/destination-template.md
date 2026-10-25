@@ -9,7 +9,7 @@
 | Placeholder | Resolved from |
 |---|---|
 | `{env}` | Resolved environment (e.g. `production`, `staging`, `pr-42`) |
-| `{tenant}` | Tenant ID from the `X-Tenant-ID` request header |
+| `{tenant}` | The tenant the rule belongs to: the tenant whose `bundle.json` layers it, or the repository owner when the rule names none |
 
 ---
 

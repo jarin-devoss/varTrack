@@ -43,7 +43,6 @@ from pathlib import Path
 
 from app.pipeline.models import PayloadContext, ETLResult, ETLFile
 from app.tasks.file_collector import collect as collect_files
-from app.utils.enums.apply_strategy import ApplyStrategy
 
 logger = logging.getLogger(__name__)
 
@@ -63,21 +62,11 @@ def _record_metric(outcome: str, key_count: int = 0) -> None:
         pass
 
 
-def _resolve_apply_strategy(rule_config: dict) -> ApplyStrategy:
-    raw = rule_config.get("apply_strategy", ApplyStrategy.CLIENT_SIDE)
-    try:
-        return ApplyStrategy(int(raw))
-    except (ValueError, TypeError, KeyError):
-        pass
-    name = str(raw).upper().removeprefix("APPLY_STRATEGY_")
-    return ApplyStrategy[name] if name in ApplyStrategy.__members__ else ApplyStrategy.CLIENT_SIDE
-
-
 def run_stage_etl(ctx: PayloadContext, datasource: str, tenant_id: str) -> ETLResult:
     from app.pipeline import env_resolver, transformer
     from app.pipeline.env_slice import resolve_env_slice, detect_pattern
     from app.pipeline.validator import Validator, CUEValidationError
-    from app.pipeline.secret_resolver import parse_secret_fields, resolve_secrets, mask_secrets
+    from app.pipeline.secret_resolver import effective_secrets, parse_secret_fields, resolve_secrets, mask_secrets
     from app.pipeline.change_logger import parse_logger_fields
     from app.schema_registry.manager import get_schema_manager
     from app.parsers.loader import load as parse_file
@@ -87,16 +76,13 @@ def run_stage_etl(ctx: PayloadContext, datasource: str, tenant_id: str) -> ETLRe
     variables_map   = rule_config.get("variables_map", {})
     strict_validate = rule_config.get("strict_validation", False)
 
-    apply_strategy = _resolve_apply_strategy(rule_config)
-    if apply_strategy != ApplyStrategy.CLIENT_SIDE:
-        logger.warning("apply_strategy=%s not supported; falling back to CLIENT_SIDE", apply_strategy.name)
-
     raw_files: list[tuple[str, str]] = collect_files(
         payload=ctx.parsed_payload,
         platform=ctx.platform,
         rule_config=rule_config,
         repo_url=ctx.repo_url,
         ref=ctx.ref,
+        revision=ctx.commit_sha,
     )
 
     schema_dir = get_schema_manager().tenant_schema_root(tenant_id)
@@ -198,10 +184,9 @@ def run_stage_etl(ctx: PayloadContext, datasource: str, tenant_id: str) -> ETLRe
             if _schema_path is not None:
                 _secret_fields = parse_secret_fields(_schema_path)
                 _logger_fields = parse_logger_fields(_schema_path)
-            if rule_config.get("secrets") and _secret_fields:
-                flat_data = resolve_secrets(
-                    flat_data, _secret_fields, rule_config["secrets"]
-                )
+            _secrets_cfg = effective_secrets(rule_config) if _secret_fields else {}
+            if _secrets_cfg:
+                flat_data = resolve_secrets(flat_data, _secret_fields, _secrets_cfg)
                 if rule_config.get("dry_run"):
                     flat_data = mask_secrets(flat_data, _secret_fields)
 
@@ -253,6 +238,7 @@ def run_stage_etl_content(
     content:   str,
     fmt:       str,
     env:       str,
+    tenant_id: str,
 ) -> ETLResult:
     """
     ETL Stage 2 variant for CLI sync.
@@ -264,22 +250,23 @@ def run_stage_etl_content(
     from app.pipeline import transformer
     from app.pipeline.env_slice import resolve_env_slice, detect_pattern
     from app.pipeline.validator import Validator, CUEValidationError
-    from app.pipeline.secret_resolver import parse_secret_fields, resolve_secrets, mask_secrets
+    from app.pipeline.secret_resolver import effective_secrets, parse_secret_fields, resolve_secrets, mask_secrets
     from app.pipeline.change_logger import parse_logger_fields
     from app.schema_registry.manager import get_schema_manager
-    from app.parsers.dispatcher import dispatch_parse
+    from app.parsers.loader import load_as
 
     rule_config     = ctx.rule_config
     root_key        = rule_config.get("root_key", _DEFAULT_ROOT_KEY)
     variables_map   = rule_config.get("variables_map", {})
     strict_validate = rule_config.get("strict_validation", False)
 
-    schema_dir = get_schema_manager().tenant_schema_root("cli")
+    # The tenant's schemas, as for a webhook sync — a CLI push is validated too.
+    schema_dir = get_schema_manager().tenant_schema_root(tenant_id)
     validator  = Validator(schema_dir=schema_dir if schema_dir and schema_dir.exists() else None)
     result     = ETLResult()
 
     try:
-        parsed = dispatch_parse(content, fmt, file_path)
+        parsed = load_as(content, file_path, fmt)
 
         if root_key and isinstance(parsed, dict):
             if root_key in parsed:
@@ -324,22 +311,25 @@ def run_stage_etl_content(
             _secret_fields = parse_secret_fields(_schema_path)
             _logger_fields = parse_logger_fields(_schema_path)
 
-        if rule_config.get("secrets") and _secret_fields:
-            flat_data = resolve_secrets(flat_data, _secret_fields, rule_config["secrets"])
+        _secrets_cfg = effective_secrets(rule_config) if _secret_fields else {}
+        if _secrets_cfg:
+            flat_data = resolve_secrets(flat_data, _secret_fields, _secrets_cfg)
             if rule_config.get("dry_run"):
                 flat_data = mask_secrets(flat_data, _secret_fields)
 
+        # Validated strictly so a failure is seen: with strict_validation the
+        # file is not written, without it the sync goes on and reports "warn".
         validation_status = "ok"
         validation_error  = ""
-        if _schema_path is not None:
-            try:
-                validator.validate_flat(flat_data, _schema_path, strict=strict_validate)
-            except CUEValidationError as exc:
-                validation_status = "failed" if strict_validate else "warn"
-                validation_error  = str(exc)
-                if strict_validate:
-                    result.skipped.append(file_path)
-                    return result
+        try:
+            validator.validate(flat_data=flat_data, file_name=Path(file_path).name, strict=True)
+        except CUEValidationError as exc:
+            validation_status = "failed" if strict_validate else "warn"
+            validation_error  = str(exc)
+            logger.warning("validation failed file=%s: %s", file_path, exc)
+            if strict_validate:
+                result.skipped.append(file_path)
+                return result
 
         result.files.append(ETLFile(
             file_path=file_path,

@@ -35,6 +35,12 @@ message VaultConfig {
     (google.api.field_behavior) = REQUIRED
   ];
 
+  // Where a plain @secret() field is read from: the secret at this path (under
+  // the mount point), by the field's own name. A field written as
+  // "@secret(mount/path#key)" names its own path and does not use it. The
+  // orchestrator reads it; a {ref: {path, key}} always names its path.
+  optional string path_prefix = 17 [(google.api.field_behavior) = OPTIONAL];
+
   // --- Authentication ---
   oneof auth {
     option (buf.validate.oneof).required = true;

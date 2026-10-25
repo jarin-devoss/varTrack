@@ -39,7 +39,8 @@ The format is `@secret(mount/path#field)` — mount path + `#` + field name insi
 1. Parse schema → find @secret-annotated fields
 2. For each field present in flat_data:
    a. Determine secret manager: ref= or "default"
-   b. Fetch value from Vault: mount/path → field
+   b. Fetch value from Vault: the path and field from "@secret(mount/path#field)"
+      (the manager's mount point may lead the path)
    c. Replace flat_data[field] with the real value
 3. Write to sink — Vault value arrives, not the path string
 ```
@@ -76,6 +77,8 @@ bundle: {
   ]
 }
 ```
+
+`@secret()` without `ref=` uses the rule's `secret_manager` when it names one, else the entry tagged `default`, else the bundle's only one. Secret managers are declared in `config.cue`'s [`secret_managers`](bundle.md#secret_managers) only; a rule's own `secrets` block was removed. A field whose value is not in the `@secret(path#field)` form is read at the manager's `path_prefix`, under the field's own name.
 
 ---
 

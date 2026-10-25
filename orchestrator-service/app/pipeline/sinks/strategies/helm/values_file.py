@@ -73,14 +73,14 @@ class ValuesFileStrategy(HelmWriteStrategy):
         if dry_run:
             logger.info("ValuesFileStrategy dry_run: would write %d keys to %s",
                         len(data_keys), self._path)
-            return {"written": len(data_keys), "pruned": 0, "dry_run": True}
+            return {"written": len(data_keys), "dry_run": True}
 
         os.makedirs(os.path.dirname(os.path.abspath(self._path)), exist_ok=True)
         with open(self._path, "w", encoding="utf-8") as fh:
             fh.write(content)
 
         logger.info("ValuesFileStrategy: wrote %d keys to %s", len(data_keys), self._path)
-        return {"written": len(data_keys), "pruned": 0}
+        return {"written": len(data_keys)}
 
 
 def _to_yaml(data: dict) -> str:

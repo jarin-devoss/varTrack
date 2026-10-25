@@ -13,8 +13,12 @@ Read API for the web UI, mounted under /v1/ui.
   GET  /ui/tasks/{task_id}
   GET  /ui/bundle                                     platforms, datasources (no credentials)
 
-The tenant comes from the X-Tenant-ID header, then UI_DEFAULT_TENANT, then
-the first registered tenant.
+Every tenant is covered at once; the tenant is shown on each rule, event and
+task, not chosen. ?tenant=
+(or the X-Tenant-ID header) narrows an answer to one tenant — a filter, never a
+grant. A rule is identified by its tenant, platform and datasource; a rule
+endpoint without ?tenant= takes the only visible tenant that has the rule and
+answers 409 when several do.
 
 With single sign-on on (UI_AUTH_PLATFORM, see app/ui/sessions.py) every
 endpoint needs a session, and answers only with what the Git platform lets
@@ -29,6 +33,7 @@ import os
 import re
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
@@ -47,21 +52,24 @@ class SyncRequest(BaseModel):
     prune: bool = False
 
 
-def _tenant(request: Request) -> str:
-    hdr = request.headers.get("x-tenant-id")
-    if hdr:
-        return hdr
-    env_default = os.getenv("UI_DEFAULT_TENANT")
-    if env_default:
-        return env_default
+def _all_tenants() -> list[str]:
+    """Every registered tenant; UI_DEFAULT_TENANT (else "default") when none is."""
     try:
         from app.schema_registry.manager import get_schema_manager
         ids = get_schema_manager().list_tenant_ids()
         if ids:
-            return sorted(ids)[0]
+            return sorted(ids)
     except Exception:
         pass
-    return "default"
+    return [os.getenv("UI_DEFAULT_TENANT") or "default"]
+
+
+def _tenants(request: Request, tenant: str | None = None) -> list[str]:
+    """The tenants an answer covers: the one asked for (?tenant= or the
+    X-Tenant-ID header), else every registered tenant. A filter, never a grant:
+    what the viewer may see is decided per rule (app/ui/access.py)."""
+    asked = tenant or request.headers.get("x-tenant-id")
+    return [asked] if asked else _all_tenants()
 
 
 SCHEMA_CHECK_SECONDS = 30.0
@@ -151,31 +159,97 @@ def _visible_names(viewer: access.Viewer, tenant: str) -> set[str] | None:
     return {views.rule_name(rule) for rule, _ in _visible(viewer, tenant)[0]}
 
 
+def _visible_everywhere(viewer: access.Viewer, tenants: list[str]) -> list[tuple[str, list[tuple[dict, scm.Permission]], list[dict]]]:
+    """Per tenant: the rules the viewer can see (with what they may do) and the
+    environments they can see. A tenant with no rule the viewer can see is left
+    out, so it does not appear anywhere in what they are shown."""
+    def one(tenant: str):
+        visible, records = _visible(viewer, tenant)
+        return tenant, visible, records
+
+    if len(tenants) > 1:
+        with ThreadPoolExecutor(max_workers=min(8, len(tenants)), thread_name_prefix="ui_tenant") as pool:
+            found = list(pool.map(one, tenants))
+    else:
+        found = [one(t) for t in tenants]
+    return [f for f in found if f[1]]
+
+
+def _resolve_rule(request: Request, viewer: access.Viewer, platform: str, datasource: str, tenant: str | None,
+                  ) -> tuple[str, dict, scm.Permission, list[dict]]:
+    """The visible rule for platform/datasource: in the tenant asked for, else in
+    the only visible tenant that has it — (tenant, rule, permission, the tenant's
+    environments). 404 when none does (a rule the viewer cannot see answers like
+    one that does not exist); 409 when several do, naming the tenants."""
+    found = []
+    for t in _tenants(request, tenant):
+        records = ledger.list_targets(t)
+        try:
+            rule, perm = _visible_rule(viewer, t, platform, datasource, records)
+        except HTTPException as exc:
+            if exc.status_code != 404:
+                raise
+            continue
+        found.append((t, rule, perm, records))
+    if not found:
+        raise HTTPException(status_code=404, detail=f"no rule {platform}/{datasource}")
+    if len(found) > 1:
+        names = ", ".join(t for t, *_ in found)
+        raise HTTPException(status_code=409, detail=f"rule {platform}/{datasource} exists in tenants {names}: say which with ?tenant=")
+    return found[0]
+
+
+def _rules_per_platform(tenants: list[str]) -> dict[str, int]:
+    """How many rules of *tenants* each platform holds — for "connect GitHub to see 3 more"."""
+    counts: dict[str, int] = {}
+    for tenant in tenants:
+        for rule in _rules(tenant):
+            platform = rule.get("platform", "")
+            counts[platform] = counts.get(platform, 0) + 1
+    return counts
+
+
+def _hidden(viewer: access.Viewer, tenants: list[str]) -> list[dict]:
+    """Rules the viewer cannot see for want of a connection: those on a platform
+    that sign-in covers and this session has not connected, counted per platform.
+    Only counts, no names or tenants (what /auth/session already says). Rules on
+    a connected platform the viewer cannot read are not counted: that would show
+    that a private repository's rules exist."""
+    if not viewer.authenticated or getattr(viewer, "is_admin", False):
+        return []
+    cfg = sessions.config()
+    if cfg is None:
+        return []
+    connected = set(getattr(viewer, "identities", {}))
+    return [{"platform": p, "rules": n} for p, n in sorted(_rules_per_platform(tenants).items())
+            if p in cfg.platforms and p not in connected]
+
+
 @router.get("/rules")
-def list_rules(request: Request, viewer: access.Viewer = Depends(_viewer)) -> dict[str, Any]:
-    tenant = _tenant(request)
-    visible, records = _visible(viewer, tenant)
-    tasks = ledger.list_tasks(tenant, limit=200)
-    views.compare_all([rule for rule, _ in visible], tenant, records)
-    return {"rules": [{**views.rule_view(rule, tenant, records, tasks), "canSync": perm.write}
-                      for rule, perm in visible]}
+def list_rules(request: Request, tenant: str | None = Query(None),
+               viewer: access.Viewer = Depends(_viewer)) -> dict[str, Any]:
+    tenants = _tenants(request, tenant)
+    rules: list[dict] = []
+    for t, visible, records in _visible_everywhere(viewer, tenants):
+        tasks = ledger.list_tasks(t, limit=200)
+        views.compare_all([rule for rule, _ in visible], t, records)
+        rules += [{**views.rule_view(rule, t, records, tasks), "canSync": perm.write} for rule, perm in visible]
+    hidden = _hidden(viewer, tenants)
+    return {"rules": rules, **({"hidden": hidden} if hidden else {})}
 
 
 @router.get("/rules/{platform}/{datasource}")
-def get_rule(request: Request, platform: str, datasource: str,
+def get_rule(request: Request, platform: str, datasource: str, tenant: str | None = Query(None),
              viewer: access.Viewer = Depends(_viewer)) -> dict[str, Any]:
-    tenant = _tenant(request)
-    records = ledger.list_targets(tenant)
-    rule, perm = _visible_rule(viewer, tenant, platform, datasource, records)
+    tenant, rule, perm, records = _resolve_rule(request, viewer, platform, datasource, tenant)
     records = [r for r in records if r.get("datasource") == datasource and viewer.can_see_target(rule, r)]
     return {**views.rule_view(rule, tenant, records, ledger.list_tasks(tenant, limit=200)), "canSync": perm.write}
 
 
 @router.get("/rules/{platform}/{datasource}/targets/{env}/keys")
-def list_keys(request: Request, platform: str, datasource: str, env: str,
+def list_keys(request: Request, platform: str, datasource: str, env: str, tenant: str | None = Query(None),
               viewer: access.Viewer = Depends(_viewer)) -> dict[str, Any]:
-    tenant = _tenant(request)
-    rule, _ = _visible_rule(viewer, tenant, platform, datasource, ledger.list_targets(tenant))
+    tenant, rule, _, _ = _resolve_rule(request, viewer, platform, datasource, tenant)
     record = ledger.get_target(tenant, datasource, env)
     if record is None or not viewer.can_see_target(rule, record):
         raise HTTPException(status_code=404, detail=f"{env} has not been synced yet")
@@ -200,15 +274,13 @@ def _branch_for(rule: dict, env: str, record: dict | None) -> str | None:
 
 
 @router.post("/rules/{platform}/{datasource}/sync")
-def sync_rule(request: Request, platform: str, datasource: str, body: SyncRequest,
+def sync_rule(request: Request, platform: str, datasource: str, body: SyncRequest, tenant: str | None = Query(None),
               viewer: access.Viewer = Depends(_viewer)) -> dict[str, Any]:
     """Re-read the rule's file from Git at the branch head and write it to each environment."""
     from app.pipeline.git_extractor import GitExtractor
     from app.tasks.etl import process_webhook_task
 
-    tenant = _tenant(request)
-    records = ledger.list_targets(tenant)
-    rule, perm = _visible_rule(viewer, tenant, platform, datasource, records)
+    tenant, rule, perm, records = _resolve_rule(request, viewer, platform, datasource, tenant)
     # A dry run writes nothing; a sync writes to the sinks and needs write access in Git.
     if not body.dryRun and not perm.write:
         raise HTTPException(status_code=403, detail="syncing needs write access to the rule's repository")
@@ -263,24 +335,26 @@ def sync_rule(request: Request, platform: str, datasource: str, body: SyncReques
 
 @router.get("/events")
 def list_events(request: Request, rule: str | None = None, limit: int = Query(200, ge=1, le=1000),
-                viewer: access.Viewer = Depends(_viewer)) -> dict[str, Any]:
-    tenant = _tenant(request)
-    names = _visible_names(viewer, tenant)
-    if names is None:
-        return {"events": ledger.list_events(tenant, rule=rule, limit=limit)}
-    events = [e for e in ledger.list_events(tenant, rule=rule, limit=ledger.MAX_EVENTS) if e.get("rule") in names]
+                tenant: str | None = Query(None), viewer: access.Viewer = Depends(_viewer)) -> dict[str, Any]:
+    events: list[dict] = []
+    for t in _tenants(request, tenant):
+        names = _visible_names(viewer, t)
+        found = ledger.list_events(t, rule=rule, limit=limit if names is None else ledger.MAX_EVENTS)
+        events += [{**e, "tenant": t} for e in found if names is None or e.get("rule") in names]
+    events.sort(key=lambda e: e.get("time") or "", reverse=True)
     return {"events": events[:limit]}
 
 
 @router.get("/tasks")
 def list_tasks(request: Request, rule: str | None = None, limit: int = Query(100, ge=1, le=500),
-               viewer: access.Viewer = Depends(_viewer)) -> dict[str, Any]:
-    tenant = _tenant(request)
-    names = _visible_names(viewer, tenant)
-    if names is None:
-        return {"tasks": [views.public_task(t) for t in ledger.list_tasks(tenant, rule=rule, limit=limit)]}
-    tasks = [t for t in ledger.list_tasks(tenant, rule=rule, limit=ledger.MAX_TASKS) if t.get("rule") in names]
-    return {"tasks": [views.public_task(t) for t in tasks[:limit]]}
+               tenant: str | None = Query(None), viewer: access.Viewer = Depends(_viewer)) -> dict[str, Any]:
+    tasks: list[dict] = []
+    for t in _tenants(request, tenant):
+        names = _visible_names(viewer, t)
+        found = ledger.list_tasks(t, rule=rule, limit=limit if names is None else ledger.MAX_TASKS)
+        tasks += [{**views.public_task(task), "tenant": t} for task in found if names is None or task.get("rule") in names]
+    tasks.sort(key=lambda task: task.get("createdAt") or "", reverse=True)
+    return {"tasks": tasks[:limit]}
 
 
 @router.get("/tasks/{task_id}")
@@ -292,7 +366,7 @@ def get_task(task_id: str, viewer: access.Viewer = Depends(_viewer)) -> dict[str
         names = _visible_names(viewer, task.get("tenant") or "default")
         if task.get("rule") not in (names or set()):
             raise HTTPException(status_code=404, detail="no such task")
-    return views.public_task(task)
+    return {**views.public_task(task), "tenant": task.get("tenant") or "default"}
 
 
 # ── Bundle ────────────────────────────────────────────────────────────────────
@@ -344,10 +418,12 @@ def _endpoint(cfg: dict) -> str:
 
 
 @router.get("/bundle")
-def get_bundle(request: Request, viewer: access.Viewer = Depends(_viewer)) -> dict[str, Any]:
-    tenant = _tenant(request)
+def get_bundle(request: Request, tenant: str | None = Query(None),
+               viewer: access.Viewer = Depends(_viewer)) -> dict[str, Any]:
     bundle = _cue_bundle()
-    rules = [rule for rule, _ in _visible(viewer, tenant)[0]]
+    seen_in = _visible_everywhere(viewer, _tenants(request, tenant))
+    # (tenant, rule) of every rule the viewer can see.
+    rules = [(t, rule) for t, visible, _ in seen_in for rule, _ in visible]
 
     platforms = []
     for wrapper in bundle.get("platforms", []):
@@ -360,9 +436,9 @@ def get_bundle(request: Request, viewer: access.Viewer = Depends(_viewer)) -> di
                 "prEvent": cfg.get("pr_event_name", "pull_request"),
             })
 
-    used_by: dict[str, list[str]] = {}
-    for rule in rules:
-        used_by.setdefault(rule.get("datasource", ""), []).append(views.rule_name(rule))
+    used_by: dict[str, list[dict[str, str]]] = {}
+    for t, rule in rules:
+        used_by.setdefault(rule.get("datasource", ""), []).append({"tenant": t, "name": views.rule_name(rule)})
 
     datasources = []
     seen: set[str] = set()
@@ -377,12 +453,12 @@ def get_bundle(request: Request, viewer: access.Viewer = Depends(_viewer)) -> di
                 "detail": _public_detail(cfg), "rules": used_by.get(name, []),
             })
     # Sinks configured only inline in bundle.json rules.
-    for rule in rules:
+    for rule_tenant, rule in rules:
         name = rule.get("datasource", "")
         if name in seen:
             continue
         seen.add(name)
-        inline = {k: v for k, v in rule.items() if k not in views.rule_base(rule, tenant) and not k.startswith("_")}
+        inline = {k: v for k, v in rule.items() if k not in views.rule_base(rule, rule_tenant) and not k.startswith("_")}
         datasources.append({
             "name": name, "type": views.sink_type(rule), "endpoint": _endpoint({
                 "endpoint": inline.get("mongo_uri") or inline.get("s3_endpoint_url"),
@@ -393,7 +469,7 @@ def get_bundle(request: Request, viewer: access.Viewer = Depends(_viewer)) -> di
             "detail": _public_detail({k: v for k, v in inline.items() if k not in (
                 "repo_url", "file_name", "repositories", "branch", "branch_map", "tenant_id", "branch_as_env",
                 "pr_as_env", "tag_as_env", "self_heal", "prune", "prune_last", "sync_mode", "destination_template",
-                "root_key", "platform", "datasource")}),
+                "root_key", "platform", "datasource", "force", "tenants", "suspend", "drift_ignore")}),
             "rules": used_by.get(name, []),
         })
 
@@ -404,7 +480,7 @@ def get_bundle(request: Request, viewer: access.Viewer = Depends(_viewer)) -> di
 
     schema = bundle.get("schema_registry") or bundle.get("schemaRegistry")
     view: dict[str, Any] = {
-        "tenant": tenant,
+        "tenants": sorted({t for t, _ in rules}),
         "platforms": platforms,
         "datasources": datasources,
         "secretManagers": secret_managers,

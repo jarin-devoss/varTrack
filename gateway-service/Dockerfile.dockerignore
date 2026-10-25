@@ -1,0 +1,21 @@
+# The build context is the repository root. Only the gateway and the shared
+# Go module it builds against go into the build; read by BuildKit instead of
+# a .dockerignore next to the context.
+*
+!libs/go
+!gateway-service
+
+# Not part of the image
+**/*_test.go
+**/.git
+**/.idea
+**/.vscode
+**/*.swp
+**/*.exe
+**/*.env
+**/.env*
+**/README.md
+libs/go/gen/**/*_test.go
+gateway-service/e2e
+gateway-service/config.cue
+gateway-service/bin

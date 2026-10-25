@@ -14,6 +14,7 @@ func newValidateCmd() *cobra.Command {
 	var (
 		filePath   string
 		datasource string
+		platform   string
 		tenantID   string
 		format     string
 		jsonOut    bool
@@ -54,6 +55,7 @@ Examples:
 				Content:    string(content),
 				Format:     format,
 				Datasource: datasource,
+				Platform:   platform,
 				TenantID:   tenantID,
 			})
 			if err != nil {
@@ -84,6 +86,7 @@ Examples:
 
 	cmd.Flags().StringVar(&filePath, "file", "", "Path to the config file")
 	cmd.Flags().StringVar(&datasource, "datasource", "", "Datasource name (used to select the schema)")
+	cmd.Flags().StringVar(&platform, "platform", "", "Platform of the rule — needed only when rules on several platforms write to the datasource")
 	cmd.Flags().StringVar(&tenantID, "tenant", os.Getenv("VARTRACK_TENANT"), "Tenant ID")
 	cmd.Flags().StringVar(&format, "format", "", "File format (auto-detected from extension)")
 	cmd.Flags().BoolVar(&jsonOut, "json", false, "Output results as JSON")

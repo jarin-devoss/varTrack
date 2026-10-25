@@ -25,6 +25,7 @@ def collect(
     rule_config: dict,
     repo_url: str,
     ref: str,
+    revision: str = "",
 ) -> list[tuple[str, str]]:
     """
     Return a list of (file_path, content) pairs to process.
@@ -35,15 +36,20 @@ def collect(
     platform:     "github" | "gitlab" | "bitbucket"
     rule_config:  VarTrack rule dict
     repo_url:     target repository URL
-    ref:          git ref to check out (e.g. "refs/heads/main")
+    ref:          git ref the push was made to (e.g. "refs/heads/main")
+    revision:     the commit that was pushed; files are read at it, not at
+                  whatever the ref points to by now
     """
     extractor = GitExtractor()
     token     = rule_config.get("token")
+    commit    = revision or None
 
     # Strategy 1 – single tracked file
     file_name = rule_config.get("file_name")
     if file_name:
-        content = extractor.extract_file(repo_url, ref, file_name, token=token)
+        content = extractor.extract_file(
+            repo_url, ref, file_name, token=token, revision=commit
+        )
         if content is None:
             logger.warning("file_name=%s not found in %s@%s", file_name, repo_url, ref)
             return []
@@ -54,7 +60,9 @@ def collect(
     if file_path_map:
         results = []
         for fp in sorted(set(file_path_map.values())):
-            content = extractor.extract_file(repo_url, ref, fp, token=token)
+            content = extractor.extract_file(
+                repo_url, ref, fp, token=token, revision=commit
+            )
             if content is not None:
                 results.append((fp, content))
             else:
@@ -79,7 +87,9 @@ def collect(
         changed_names = changed_names[:max_files]
 
     results = []
-    for fc in extractor.extract_changed_files(repo_url, ref, changed_names, token=token):
+    for fc in extractor.extract_changed_files(
+        repo_url, ref, changed_names, token=token, revision=commit
+    ):
         if fc.content:
             results.append((fc.path, fc.content))
     return results

@@ -4,9 +4,9 @@ import (
 	"context"
 	"testing"
 
-	pb_models "gateway-service/internal/gen/proto/go/vartrack/v1/models"
-	pb_gt "gateway-service/internal/gen/proto/go/vartrack/v1/models/platforms"
-	pb_utils "gateway-service/internal/gen/proto/go/vartrack/v1/utils"
+	pb_models "vartrack/libs/gen/vartrack/v1/models"
+	pb_gt "vartrack/libs/gen/vartrack/v1/models/platforms"
+	pb_utils "vartrack/libs/gen/vartrack/v1/utils"
 	"gateway-service/internal/models"
 )
 

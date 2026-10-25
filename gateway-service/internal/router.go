@@ -13,7 +13,7 @@ import (
 	"gateway-service/internal/models"
 	"gateway-service/internal/routes"
 
-	pb "gateway-service/internal/gen/proto/go/vartrack/v1/services"
+	pb "vartrack/libs/gen/vartrack/v1/services"
 )
 
 // Router wires together the HTTP mux, middleware stack, health handler,
@@ -30,9 +30,9 @@ type Router struct {
 	healthHandler *handlers.HealthHandler
 	handler       http.Handler
 
-	// CLI auth — nil when OIDC is not configured in the bundle.
-	jwtValidator *auth.JWTValidator
-	rbacEnforcer *auth.Enforcer
+	// CLI API — the routes exist only when cliClient and gitAuthz are set.
+	cliClient    pb.CLIServiceClient
+	gitAuthz     *auth.GitAuthorizer
 	opaEvaluator *auth.OPAEvaluator // nil when OPA is not configured
 
 	isProduction bool
@@ -80,12 +80,14 @@ func WithProduction(isProduction bool) RouterOption {
 	}
 }
 
-// WithCLIAuth enables the /v1/cli/* routes with JWT validation and RBAC
-// enforcement.  When this option is not provided the CLI routes are disabled.
-func WithCLIAuth(jwtValidator *auth.JWTValidator, rbacEnforcer *auth.Enforcer, opa *auth.OPAEvaluator) RouterOption {
+// WithCLIAuth enables the /v1/cli/* routes — authorized by Git permission
+// (authz) and, when opa is non-nil, OPA — served by the orchestrator's
+// CLIService through cli. When this option is not provided the CLI routes
+// are disabled.
+func WithCLIAuth(cli pb.CLIServiceClient, authz *auth.GitAuthorizer, opa *auth.OPAEvaluator) RouterOption {
 	return func(r *Router) {
-		r.jwtValidator = jwtValidator
-		r.rbacEnforcer = rbacEnforcer
+		r.cliClient = cli
+		r.gitAuthz = authz
 		r.opaEvaluator = opa
 	}
 }
@@ -156,13 +158,9 @@ func (r *Router) setupRoutes() {
 		),
 	))
 
-	// CLI routes are only registered when OIDC auth is configured in the bundle.
-	if r.jwtValidator != nil && r.rbacEnforcer != nil {
-		cliHandler := handlers.NewCLIHandler(r.grpcClient, r.opaEvaluator)
-		jwtMiddleware := middlewares.JWTAuth(r.jwtValidator)
-		r.mux.Handle("/v1/cli/", http.StripPrefix("/v1/cli",
-			routes.CLIRoutes(cliHandler, jwtMiddleware, r.rbacEnforcer),
-		))
+	if r.cliClient != nil && r.gitAuthz != nil {
+		cliHandler := handlers.NewCLIHandler(r.cliClient, r.gitAuthz, r.opaEvaluator)
+		r.mux.Handle("/v1/cli/", http.StripPrefix("/v1/cli", routes.CLIRoutes(cliHandler)))
 	}
 }
 
@@ -182,12 +180,13 @@ func (r *Router) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	r.handler.ServeHTTP(w, req)
 }
 
-// StartOPAReloader launches a background goroutine that calls Reload on the
-// embedded OPA evaluator at the given interval. It returns immediately when
-// no embedded evaluator is configured (server mode or OPA disabled).
+// StartOPAReloader launches a background goroutine that re-reads the OPA
+// policy file at the given interval. It returns immediately unless the
+// policy comes from auth.opa.policy_file — an inline policy cannot change
+// and a server-mode policy is reloaded by the OPA server itself.
 // The goroutine stops when ctx is cancelled.
 func (r *Router) StartOPAReloader(ctx context.Context, interval time.Duration) {
-	if r.opaEvaluator == nil {
+	if !r.opaEvaluator.ReadsFile() {
 		return
 	}
 	go func() {
@@ -206,6 +205,15 @@ func (r *Router) StartOPAReloader(ctx context.Context, interval time.Duration) {
 			}
 		}
 	}()
+}
+
+// OPAReloader returns the function behind the admin server's
+// POST /admin/opa/reload, or nil when no OPA policy is configured.
+func (r *Router) OPAReloader() func(context.Context) error {
+	if r.opaEvaluator == nil {
+		return nil
+	}
+	return r.opaEvaluator.Reload
 }
 
 // lazySecretManagerPinger implements handlers.SecretManagerPinger by

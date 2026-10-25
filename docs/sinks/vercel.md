@@ -82,7 +82,7 @@ datasources: [{
 
 ## Drift detection
 
-The watcher reads Vercel environment variables and compares against the Git baseline.
+The watcher asks the orchestrator each poll; the orchestrator reads the project's environment variables and compares them with what it last synced from Git — a changed or missing key is drift ([Drift Detection](../concepts/drift-detection.md)). A `sensitive` variable cannot be read back, so it is never counted as drift.
 
 ```cue
 rules: [{

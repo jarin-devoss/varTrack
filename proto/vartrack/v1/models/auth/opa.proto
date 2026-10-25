@@ -18,7 +18,9 @@ import "google/api/field_behavior.proto";
 // OPA policy receives the following input document:
 //
 //   input = {
-//     "user":       { "sub": "...", "email": "...", "groups": [...] },
+//     "user":       { "sub": "...", "email": "...",
+//                     "groups": [...],     // from the token's groups claim
+//                     "roles":  [...] },   // from RBAC, e.g. "role:admin"
 //     "action":     "sync",
 //     "resource":   "datasource",
 //     "datasource": "mongo-primary",
@@ -41,18 +43,19 @@ message OPAConfig {
     // The policy is compiled in-process at gateway startup.
     // Recommended for most deployments — no extra process or file needed.
     //
-    // Example:
+    // Example (Rego v0 syntax; start with `import rego.v1` for v1 syntax):
     //   package vartrack.authz
     //   default allow = false
     //   allow { input.action != "sync" }
     //   allow { input.action == "sync"; input.env != "production" }
     //   allow { input.action == "sync"; input.env == "production"
-    //           "role:admin" == input.user.groups[_] }
+    //           input.user.roles[_] == "role:admin" }
     string inline_policy = 1;
 
     // policy_file is the path to a .rego file on the gateway's filesystem.
-    // The file is compiled in-process at startup; call the gateway's
-    // /admin/opa/reload endpoint to recompile without restart.
+    // The file is compiled in-process at startup and re-read every
+    // OPA_RELOAD_INTERVAL; POST /admin/opa/reload on the gateway's admin
+    // port recompiles it at once.
     string policy_file = 2;
 
     // server_url delegates evaluation to a remote OPA REST server.

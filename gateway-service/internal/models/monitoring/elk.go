@@ -11,7 +11,7 @@ import (
 	"sync"
 	"time"
 
-	monpb "gateway-service/internal/gen/proto/go/vartrack/v1/models/monitoring"
+	monpb "vartrack/libs/gen/vartrack/v1/models/monitoring"
 
 	"gateway-service/internal/protoutil"
 )

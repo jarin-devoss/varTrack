@@ -77,7 +77,7 @@ bundle: {
 			repositories:         ["vartrack-demo/demo-configs"]
 			branch_as_env:        true
 			sync_mode:            "SYNC_MODE_GIT_SMART_REPAIR"
-			prune:                {last: true}
+			prune:                {enabled: true}
 			self_heal:            true
 			destination_template: "{env}-config"
 			branch_map: {
@@ -93,7 +93,7 @@ bundle: {
 			repositories:         ["vartrack-demo/demo-configs"]
 			branch_as_env:        true
 			sync_mode:            "SYNC_MODE_FULL"
-			prune:                {last: true}
+			prune:                {enabled: true}
 			self_heal:            false
 			destination_template: "{env}-snapshots"
 			branch_map: {

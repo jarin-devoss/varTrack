@@ -43,6 +43,7 @@ _META_KEY   = "__vartrack__"
 
 
 class RedisSink(BaseSink):
+    object_name = "JSON value"
 
     def __init__(
         self,
@@ -114,10 +115,6 @@ class RedisSink(BaseSink):
         commit_sha: str,
         file_path: str,
         labels: VarTrackLabels,
-        prune: bool,
-        prune_last: bool,
-        prune_protection: list[str],
-        dry_run_prune: bool,
         total_sources: int,
         data: Any = None,
     ) -> dict[str, Any]:
@@ -134,11 +131,7 @@ class RedisSink(BaseSink):
         # Stamp meta hash with VarTrack labels
         self._redis.hset(f"{prefix}:{_META_KEY}", mapping=labels.as_redis_meta())
 
-        pruned = 0
-        if prune and not dry_run_prune:
-            pruned = self._prune(flat_data, prefix, prune_protection, prune_last)
-
-        return {"written": written, "pruned": pruned}
+        return {"written": written}
 
     def _write_hash(self, data: dict[str, str], prefix: str) -> int:
         if data:
@@ -160,40 +153,30 @@ class RedisSink(BaseSink):
         pipe.execute()
         return len(data)
 
-    def _prune(
-        self, flat_data: dict[str, str], prefix: str,
-        protection: list[str], last: bool,
-    ) -> int:
-        import fnmatch
-        from app.pipeline.sinks.key_formatter import format_keys
-        formatted_keys = set(format_keys(flat_data, self._key_format).keys())
+    @classmethod
+    def prunes_keys(cls, rule_config: dict) -> bool:
+        # The JSON structure is one string holding everything: written whole.
+        return str(rule_config.get("redis_data_structure", "HASH")).upper() != "JSON"
 
+    @classmethod
+    def key_space(cls, rule_config: dict, tenant_id: str, env: str) -> str:
+        prefix = cls._prefix_of(rule_config, tenant_id, rule_config.get("datasource", ""), env)
+        if str(rule_config.get("redis_data_structure", "HASH")).upper() == "HASH":
+            return f"{prefix}:{rule_config.get('redis_hash_key', 'vartrack')}"
+        return prefix
+
+    @classmethod
+    def store(cls, rule_config: dict) -> str:
+        return cls._store_of(rule_config.get("redis_hosts"), rule_config.get("redis_db"))
+
+    def delete_keys(self, keys: "Collection[str]", *, datasource: str, env: str) -> int:
+        if not keys:
+            return 0
+        prefix = self._key_prefix(datasource, env)
+        formatted = list(format_keys(dict.fromkeys(keys, ""), self._key_format))
         if self._structure == "HASH":
-            hk        = f"{prefix}:{self._hash_key}"
-            live      = set(self._redis.hkeys(hk))
-            to_delete = [
-                k for k in live
-                if k not in formatted_keys
-                and not any(fnmatch.fnmatch(k, p) for p in protection)
-            ]
-            if last:
-                to_delete = to_delete[-1:]
-            if to_delete:
-                self._redis.hdel(hk, *to_delete)
-            return len(to_delete)
-
-        live = set(self._redis.scan_iter(f"{prefix}:*"))
-        to_delete = [
-            rk for rk in live
-            if not rk.endswith(_META_KEY)
-            and rk[len(prefix) + 1:] not in formatted_keys
-            and not any(fnmatch.fnmatch(rk[len(prefix) + 1:], p) for p in protection)
-        ]
-        if last:
-            to_delete = to_delete[-1:]
-        if to_delete:
-            self._redis.delete(*to_delete)
-        return len(to_delete)
+            return int(self._redis.hdel(f"{prefix}:{self._hash_key}", *formatted))
+        return int(self._redis.delete(*[f"{prefix}:{k}" for k in formatted]))
 
     def close(self) -> None:
         try:
@@ -201,11 +184,20 @@ class RedisSink(BaseSink):
         except Exception:
             pass
 
+    @staticmethod
+    def _prefix_of(rule_config: dict, tenant_id: str, datasource: str, env: str) -> str:
+        # destination_template takes precedence over redis_key_prefix.
+        tpl = rule_config.get("destination_template", "")
+        if tpl:
+            return resolve_destination(tpl, tenant=tenant_id, env=env)
+        return rule_config.get("redis_key_prefix", "") or f"{tenant_id}:{datasource}:{env}"
+
     def _key_prefix(self, datasource: str, env: str) -> str:
         """Compute the Redis key prefix for a given datasource/env."""
-        if self._dest_tpl:
-            return resolve_destination(self._dest_tpl, tenant=self._tenant_id, env=env)
-        return self._prefix or f"{self._tenant_id}:{datasource}:{env}"
+        return self._prefix_of(
+            {"destination_template": self._dest_tpl, "redis_key_prefix": self._prefix},
+            self._tenant_id, datasource, env,
+        )
 
     def read_values(
         self,
@@ -229,5 +221,4 @@ class RedisSink(BaseSink):
                 vals = self._redis.mget(rkeys)
                 return {orig: v for orig, v in zip(key_list, vals) if v is not None}
         except Exception as exc:
-            logger.warning("RedisSink.read_values failed: %s", exc)
-            return {}
+            return self._read_failed(exc, "RedisSink.read_values")

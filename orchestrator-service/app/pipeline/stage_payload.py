@@ -4,7 +4,7 @@ import json
 from app.pipeline.models import PayloadContext
 from app.tasks.payload import (
     extract_ref, extract_branch, extract_commit,
-    extract_tag, extract_pr_number
+    extract_tag, extract_pr_number, extract_repo_url
 )
 from app.pipeline.schema_utils import rule_from_bundle
 
@@ -30,7 +30,9 @@ def run_stage_payload(
     if not rule_config:
         return None
 
-    repo_url   = rule_config.get("repo_url", "")
+    # A rule covering several repositories (or a wildcard) has no repo_url
+    # of its own: the pushed repository is the one to read.
+    repo_url   = rule_config.get("repo_url") or extract_repo_url(payload)
     ref        = extract_ref(payload, platform)
     branch     = extract_branch(payload, platform)
     commit_sha = extract_commit(payload, platform)

@@ -1,0 +1,14 @@
+{
+  "extends": [
+    "gitea>vartrack-demo/presets:team"
+  ],
+  "rules": [
+    {
+      "platform": "gitea-team",
+      "datasource": "redis-team",
+      "tenant_id": "payments",
+      "branch": "main",
+      "prune": true
+    }
+  ]
+}

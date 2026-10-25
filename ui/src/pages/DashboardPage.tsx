@@ -11,6 +11,8 @@ import { SyncPanel } from '../features/SyncPanel';
 import { usePageTitle } from '../layout/page';
 import { needsAttention } from '../lib/status';
 import { useQuery } from '../lib/useQuery';
+import { tenantsOf } from '../lib/rules';
+import { useRules } from '../lib/useRules';
 
 interface Overall {
   color: HeroColor;
@@ -38,7 +40,7 @@ export function overallStatus(rules: RuleView[]): Overall {
 
 export function DashboardPage() {
   usePageTitle('Home');
-  const rules = useQuery('rules', api => api.listRules());
+  const rules = useRules();
   const bundle = useQuery('bundle', api => api.getBundle(), { poll: false });
   const health = useQuery('health', api => api.getHealth(), { poll: 15000 });
   const events = useQuery('events:recent', api => api.listEvents({ limit: 8 }));
@@ -90,7 +92,7 @@ export function DashboardPage() {
       >
         {events.data ? (
           events.data.length ? (
-            <div>{asGroups(events.data).map(g => <EventRow key={g.event.id} group={g} />)}</div>
+            <div>{asGroups(events.data).map(g => <EventRow key={g.event.id} group={g} showTenant={tenantsOf(rules.data ?? []).length > 1} />)}</div>
           ) : (
             <EmptyState compact icon="activity" title="No events yet" />
           )
@@ -139,8 +141,8 @@ function TenantFacts({ bundle, rules, error }: { bundle?: BundleView; rules: Rul
   return (
     <dl className="facts">
       <div>
-        <dt>Tenant</dt>
-        <dd className="mono">{bundle.tenant}</dd>
+        <dt>{bundle.tenants.length === 1 ? 'Tenant' : 'Tenants'}</dt>
+        <dd className="mono">{bundle.tenants.join(', ') || '—'}</dd>
       </div>
       <div>
         <dt>Platforms</dt>

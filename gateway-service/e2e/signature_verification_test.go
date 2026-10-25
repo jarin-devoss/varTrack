@@ -31,11 +31,11 @@ import (
 	// confirm that our HMAC-SHA256 signing is byte-for-byte compatible with the library.
 	gh_webhooks "github.com/go-playground/webhooks/v6/github"
 
-	pb_models "gateway-service/internal/gen/proto/go/vartrack/v1/models"
-	pb_ds "gateway-service/internal/gen/proto/go/vartrack/v1/models/datasources"
-	pb_gh "gateway-service/internal/gen/proto/go/vartrack/v1/models/platforms"
-	pb_utils "gateway-service/internal/gen/proto/go/vartrack/v1/utils"
-	pb "gateway-service/internal/gen/proto/go/vartrack/v1/services"
+	pb_models "vartrack/libs/gen/vartrack/v1/models"
+	pb_ds "vartrack/libs/gen/vartrack/v1/models/datasources"
+	pb_gh "vartrack/libs/gen/vartrack/v1/models/platforms"
+	pb_utils "vartrack/libs/gen/vartrack/v1/utils"
+	pb "vartrack/libs/gen/vartrack/v1/services"
 	"gateway-service/internal"
 	"gateway-service/internal/middlewares"
 	"gateway-service/internal/models"

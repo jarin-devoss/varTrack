@@ -1,6 +1,19 @@
 # Per-Repo Overrides (`vartrack.json`)
 
-Individual repositories can override a subset of their central rule configuration without touching `config.cue`. Place a `vartrack.json` file at the root of the repository and varTrack will apply its settings on top of the matching rule whenever a webhook is received.
+Individual repositories can override a subset of their central rule configuration without touching `config.cue`. Place a `vartrack.json` file at the root of the repository and varTrack will apply its settings on top of the matching rule whenever a webhook is received — the third of the [layers a rule is built from](schema-registry.md#how-a-rule-is-built).
+
+---
+
+## Where the file lives
+
+varTrack reads the first of these it finds at the pushed ref:
+
+1. `vartrack.json`
+2. `.github/vartrack.json`
+3. `.gitea/vartrack.json`
+4. `.gitlab/vartrack.json`
+
+The file is read at the pushed commit, so each branch can carry its own — `main` and `develop` can override differently.
 
 ---
 
@@ -8,12 +21,13 @@ Individual repositories can override a subset of their central rule configuratio
 
 When a push webhook arrives, the ETL pipeline:
 
-1. Resolves the central rule from `config.cue` (Stage 1 — Payload)
-2. Fetches `vartrack.json` from the repository at the pushed commit ref
-3. Merges the overridable keys from `vartrack.json` into the active rule config
-4. Runs ETL and Sync with the merged settings (Stages 2 and 3)
+1. Resolves the rule: the one in `config.cue`, with the tenant's `bundle.json` rule laid over it (Stage 1 — Payload)
+2. Fetches `vartrack.json` from the repository at the pushed commit ref, and resolves the [presets](schema-registry.md#presets-extends) it `extends`
+3. Merges the overridable keys from `vartrack.json` into the rule: `branch_map`, `file_path_map`, `variables_map` and `prune` key by key, the others replaced
+4. Applies the `config.cue` rule's `force` keys, which win over `vartrack.json`
+5. Runs ETL and Sync with the merged settings (Stages 2 and 3)
 
-If `vartrack.json` is absent, malformed, or empty, the central rule is used unchanged. The schema registry is never affected by per-repo overrides.
+If `vartrack.json` is absent or empty, the central rule is used unchanged. If it is there but cannot be used — not valid JSON, not a JSON object, or extending a preset that cannot be read — the sync fails with that error: it does not go ahead without settings the repository asked for, such as a `dry_run`. The schema registry is never affected by per-repo overrides.
 
 ---
 
@@ -29,6 +43,15 @@ If `vartrack.json` is absent, malformed, or empty, the central rule is used unch
   },
   "prune": true,
   "sync_mode": "GIT_UPSERT_ALL"
+}
+```
+
+Shared settings can come from presets — here a preset in the org's presets repository, then a key of the repository's own:
+
+```json
+{
+  "extends": ["local>my-org/presets//repos/checkout"],
+  "prune": {"protection": ["experiments.*"]}
 }
 ```
 
@@ -51,16 +74,15 @@ These keys can be set in `vartrack.json` to override the central rule:
 |---|---|---|
 | `root_key` | `string` | Subtree to extract before flattening. `""` processes the whole file. |
 | `file_name` | `string` | Config file path to watch instead of the centrally configured one. |
-| `file_path_map` | `object` | Map of `env → file_path` for per-environment file selection. |
-| `branch_map` | `object` | Map of `branch → env` label. Overrides the central branch mapping. |
+| `file_path_map` | `object` | Map of `env → file_path` for per-environment file selection. Merged like `branch_map`. |
+| `branch_map` | `object` | Map of `branch → env` label. Merged into the central branch mapping; a branch set here wins. |
 | `branch_as_env` | `bool` | Use branch name as the environment label. |
 | `pr_as_env` | `bool` | Use `pr-{number}` as the environment label. |
 | `tag_as_env` | `bool` | Use tag name as the environment label. |
 | `sync_mode` | `string` | `AUTO`, `GIT_UPSERT_ALL`, `GIT_SMART_REPAIR`, or `LIVE_STATE`. |
-| `prune` | `bool` | Delete keys from the datasource that are no longer present in Git. |
+| `prune` | `bool` or `object` | Delete keys from the datasource that are no longer present in Git. An object (`{enabled, last, dry_run, protection}`) is merged with the rule's; its `protection` patterns are added to the rule's, never replace them. |
 | `strict_validation` | `bool` | Fail the sync if CUE schema validation fails (instead of warn). |
-| `variables_map` | `object` | Key-value pairs injected or overridden after ETL transform. |
-| `apply_strategy` | `int` | Internal apply strategy (advanced). |
+| `variables_map` | `object` | Key-value pairs injected or overridden after ETL transform. Merged like `branch_map`. |
 | `dry_run` | `bool` | Permanently shadow this repo — Stage 3 never writes anything. |
 
 ---
@@ -70,11 +92,13 @@ These keys can be set in `vartrack.json` to override the central rule:
 Infrastructure and security-critical keys are **always** taken from the central bundle and cannot be changed by the repository:
 
 - `platform`, `datasource`, `repo_url`, `tenant_id`
-- `token`, `secrets`, `secret_managers`
+- `token`, `secret_manager`, `secret_managers`
 - `repositories`, `exclude_repositories`
 - `self_heal` and all Celery wiring keys
 
 Any key in `vartrack.json` that is not in the overridable list above is silently ignored and logged at `INFO` level.
+
+A key the `config.cue` rule lists under `force` cannot be overridden either: `force` is applied after `vartrack.json`. For example, `force: {prune: {enabled: false}}` keeps a production rule from pruning whatever a repository asks for.
 
 ---
 
@@ -98,8 +122,13 @@ repo_overrides: ignoring non-overridable keys ['platform', ...] repo=...
 ```
 Those keys are infrastructure-level and cannot be overridden from the repo.
 
-**Invalid JSON** — A parse error produces:
+**Preset not found** — A preset in `extends` that cannot be read fails the sync with:
 ```
-repo_overrides: invalid JSON in vartrack.json repo=... ref=...
+vartrack.json in https://...: preset local>my-org/presets:nope: no nope.json at main in my-org/presets
 ```
-The central rule is used unchanged.
+
+**Invalid JSON** — A parse error fails the sync with:
+```
+vartrack.json in https://... is not valid JSON: Expecting ',' delimiter: line 3 column 5 (char 41)
+```
+Fix the file and push again; the sync runs with it.

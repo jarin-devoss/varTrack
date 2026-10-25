@@ -1,18 +1,20 @@
 // watcher-service — VarTrack drift watcher with self-heal.
 //
-// Watches ZooKeeper, MongoDB, and S3 for VarTrack-managed config records.
-// When drift is detected and self_heal is enabled in the CUE rule, the
-// watcher calls the orchestrator to re-sync from git and restore the
-// correct state.
+// It asks the orchestrator which rules to watch (ListWatchTargets: those with
+// self_heal enabled that are not suspended), whether the datasource of each
+// still matches Git (CheckDatasource), and asks it to re-sync the ones that
+// drifted (SyncDatasource). The orchestrator layers the rules and reads the
+// sinks; the watcher reads no rule and holds no sink credentials. It reads
+// config.cue only for leader election.
 //
 // Startup sequence (mirrors gateway-service/cmd/main.go):
 //
 //  1. Load and validate environment variables.
-//  2. Read rules from the CUE config bundle.
-//  3. For each rule with self_heal=true, build the appropriate watcher.
-//  4. Start the admin HTTP server (health + /metrics).
-//  5. Run the watcher manager until SIGINT/SIGTERM.
-//  6. Graceful shutdown.
+//  2. Read the leader-election setting from the CUE config bundle.
+//  3. Start the admin HTTP server (health + /metrics).
+//  4. Run the watcher manager until SIGINT/SIGTERM; it asks the orchestrator
+//     for its rules, and again on every poll.
+//  5. Graceful shutdown.
 package main
 
 import (
@@ -34,7 +36,6 @@ import (
 	"watcher-service/internal/config"
 	"watcher-service/internal/election"
 	"watcher-service/internal/healer"
-	models "watcher-service/internal/gen/proto/go/vartrack/v1/models"
 	mon "watcher-service/internal/monitoring"
 	"watcher-service/internal/watcher"
 )
@@ -104,27 +105,7 @@ func run() error {
 	metrics := mon.DefaultMetrics()
 	metrics.SetBuildInfo(version, commit, runtime.Version())
 
-	// ── 3. State store ────────────────────────────────────────────────────────
-	// Prefer Redis when REDIS_URL is set (shared state across replicas).
-	// Fall back to the local filesystem state store otherwise.
-	var store watcher.StateBackend
-	if env.RedisURL != "" {
-		rs, rsErr := watcher.NewRedisStateStore(env.RedisURL)
-		if rsErr != nil {
-			slog.Warn("watcher: Redis state store unavailable — falling back to disk",
-				"error", rsErr)
-			store, err = watcher.NewStateStore(env.StateDir)
-		} else {
-			store = rs
-		}
-	} else {
-		store, err = watcher.NewStateStore(env.StateDir)
-	}
-	if err != nil {
-		return fmt.Errorf("state store: %w", err)
-	}
-
-	// ── 4. Healer ─────────────────────────────────────────────────────────────
+	// ── 3. Healer ─────────────────────────────────────────────────────────────
 	h := healer.NewHealer(env.OrchestratorAddr, env.HealTimeout, env)
 
 	pingCtx, pingCancel := context.WithTimeout(ctx, 5*time.Second)
@@ -136,37 +117,16 @@ func run() error {
 	}
 	pingCancel()
 
-	// ── 5. CUE bundle ─────────────────────────────────────────────────────────
-	bundle, err := config.LoadBundle(env.ConfigPath)
+	// ── 4. Leader election ────────────────────────────────────────────────────
+	// The only part of config.cue the watcher reads. The rules it watches come
+	// from the orchestrator, which the manager asks on every poll.
+	elCfg, err := config.LeaderElection(env.ConfigPath)
 	if err != nil {
-		return fmt.Errorf("load bundle %s: %w", env.ConfigPath, err)
+		return fmt.Errorf("leader election: %w", err)
 	}
+	manager := watcher.NewManager(h, env.PollInterval, metrics)
 
-	selfHealRules := config.SelfHealRules(bundle)
-	slog.Info("watcher: loaded bundle",
-		"total_rules", len(bundle.GetRules()),
-		"self_heal_rules", len(selfHealRules),
-	)
-	if len(selfHealRules) == 0 {
-		slog.Warn("watcher: no rules with self_heal=true — watcher has nothing to do")
-	}
-
-	// ── 6. Build watchers ─────────────────────────────────────────────────────
-	manager := watcher.NewManager(store, env.PollInterval, metrics)
-	defer manager.Close()
-
-	for _, rule := range selfHealRules {
-		w, wErr := buildWatcher(ctx, bundle, rule, h)
-		if wErr != nil {
-			slog.Error("watcher: failed to build watcher for rule, skipping",
-				"rule", config.RuleName(rule), "error", wErr)
-			continue
-		}
-		manager.Add(w)
-		slog.Info("watcher: registered", "watcher", w.Name(), "rule", config.RuleName(rule))
-	}
-
-	// ── 7. Admin HTTP server ──────────────────────────────────────────────────
+	// ── 5. Admin HTTP server ──────────────────────────────────────────────────
 	var unavailable atomic.Bool
 	adminSrv := newAdminServer(env.AdminAddr, metrics, manager, &unavailable)
 	go func() {
@@ -176,13 +136,12 @@ func run() error {
 		}
 	}()
 
-	// ── 8. Signal handling + graceful shutdown ────────────────────────────────
+	// ── 6. Signal handling + graceful shutdown ────────────────────────────────
 	stopCh := make(chan os.Signal, 1)
 	signal.Notify(stopCh, os.Interrupt, syscall.SIGTERM)
 
 	managerDone := make(chan error, 1)
 
-	elCfg := config.LeaderElectionFromBundle(env.ConfigPath)
 	switch {
 	case elCfg != nil && len(elCfg.ZKHosts) > 0:
 		elector, elErr := election.New(elCfg.ZKHosts, elCfg.ZKPath)
@@ -245,54 +204,6 @@ func run() error {
 
 	slog.Info("watcher: shutdown complete")
 	return nil
-}
-
-// buildWatcher instantiates the correct watcher based on the datasource type.
-//
-// Mongo is the only sink with a typed proto datasource block in the bundle;
-// all other sink types (redis, zookeeper, s3, vercel, configmap, linux_server)
-// store their connection params as rule-level fields in RuleConfig.
-func buildWatcher(
-	ctx context.Context,
-	bundle *models.Bundle,
-	rule *models.Rule,
-	h *healer.Healer,
-) (watcher.Watcher, error) {
-	// All datasource types are in bundle.datasources[] with typed configs.
-	ds, ok := config.FindDatasource(bundle, rule.GetDatasource())
-	if !ok {
-		return nil, fmt.Errorf("datasource %q not found in bundle for rule %s",
-			rule.GetDatasource(), config.RuleName(rule))
-	}
-
-	switch {
-	case ds.GetMongo() != nil:
-		return watcher.NewMongoWatcher(ctx, ds.GetMongo(), rule, h)
-
-	case ds.GetRedis() != nil:
-		return watcher.NewRedisWatcher(ctx, ds.GetRedis(), rule, h)
-
-	case ds.GetZookeeper() != nil:
-		return watcher.NewZKWatcher(ctx, ds.GetZookeeper(), rule, h)
-
-	case ds.GetS3() != nil:
-		return watcher.NewS3Watcher(ctx, ds.GetS3(), rule, h)
-
-	case ds.GetConfigmap() != nil:
-		return watcher.NewConfigMapWatcher(ctx, ds.GetConfigmap(), rule, h)
-
-	case ds.GetHelm() != nil:
-		return watcher.NewHelmWatcher(ctx, ds.GetHelm(), rule, h)
-
-	case ds.GetLinuxServer() != nil:
-		return watcher.NewLinuxServerWatcher(ctx, ds.GetLinuxServer(), rule, h)
-
-	case ds.GetVercel() != nil:
-		return watcher.NewVercelWatcher(ctx, ds.GetVercel(), rule, h)
-
-	default:
-		return nil, fmt.Errorf("unsupported datasource type for rule %s", config.RuleName(rule))
-	}
 }
 
 // ── Admin HTTP server ─────────────────────────────────────────────────────────
@@ -369,4 +280,3 @@ func getEnv(key, fallback string) string {
 	}
 	return fallback
 }
-

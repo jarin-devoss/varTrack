@@ -3,10 +3,16 @@ app/pipeline/repo_overrides.py
 ──────────────────────────────
 Fetch and apply per-repo overrides from a vartrack.json file in the repository.
 
-When a repository contains a vartrack.json file at its root, its settings
-override matching keys from the central CUE bundle rule_config.  This lets
-individual repos customise ETL behaviour (file paths, branch maps, sync mode,
-etc.) without requiring central config changes.
+When a repository contains a vartrack.json file — at its root, or under
+.github/, .gitea/ or .gitlab/: the first of VARTRACK_JSON_NAMES found at the
+pushed ref — its settings override matching keys of the rule — config.cue's
+rule with the tenant's bundle.json rule over it (rule_layers.py). branch_map,
+file_path_map, variables_map and prune are merged key by key; the rule's
+`force` keys in config.cue are applied after vartrack.json, so they win.
+This lets individual repos customise ETL behaviour (file paths, branch maps,
+sync mode, etc.) without requiring central config changes. A vartrack.json
+can "extends" presets (app.pipeline.presets); "local>" is the repo's own Git
+server.
 
 Security model
 ──────────────
@@ -28,6 +34,7 @@ from dataclasses import replace
 from typing import TYPE_CHECKING
 
 from app.pipeline.renamed_options import with_current_names
+from app.pipeline.rule_options import REPO_OVERRIDABLE
 
 if TYPE_CHECKING:
     from app.pipeline.models import PayloadContext
@@ -36,23 +43,25 @@ logger = logging.getLogger(__name__)
 
 VARTRACK_JSON = "vartrack.json"
 
-# Keys that a repo is allowed to override via vartrack.json.
-# Infrastructure and security-critical keys are intentionally excluded.
-_OVERRIDABLE_KEYS: frozenset[str] = frozenset({
-    "apply_strategy",
-    "branch_map",
-    "dry_run",
-    "branch_as_env",
-    "pr_as_env",
-    "tag_as_env",
-    "file_name",
-    "file_path_map",
-    "prune",
-    "root_key",
-    "strict_validation",
-    "sync_mode",
-    "variables_map",
-})
+# Where a repository's overrides may live, looked up in this order — the
+# first one found is used.
+VARTRACK_JSON_NAMES: tuple[str, ...] = (
+    VARTRACK_JSON,
+    ".github/vartrack.json",
+    ".gitea/vartrack.json",
+    ".gitlab/vartrack.json",
+)
+
+# Keys that a repo is allowed to override via vartrack.json: the options
+# rule.proto marks repo_overridable. Infrastructure and security-critical keys
+# are intentionally not marked.
+_OVERRIDABLE_KEYS: frozenset[str] = REPO_OVERRIDABLE
+
+
+class RepoConfigError(ValueError):
+    """A vartrack.json that is there but cannot be used: not JSON, not an
+    object, or naming a preset that cannot be read. The sync stops — it does
+    not go ahead without settings the repository asked for (a dry_run, say)."""
 
 
 def apply_repo_overrides(ctx: "PayloadContext") -> "PayloadContext":
@@ -61,26 +70,29 @@ def apply_repo_overrides(ctx: "PayloadContext") -> "PayloadContext":
     ctx.rule_config, returning an updated PayloadContext.
 
     Returns the original ctx unchanged if:
-    - vartrack.json does not exist in the repo at the current ref
-    - vartrack.json cannot be parsed as a JSON object
+    - vartrack.json does not exist in the repo at the current ref, or
+      cannot be fetched
     - vartrack.json contains no overridable keys
 
-    Never raises — all errors are logged and the original ctx is returned.
+    Raises RepoConfigError when vartrack.json is not a JSON object, or a
+    preset it extends cannot be resolved.
     """
     from app.pipeline.git_extractor import GitExtractor
 
     token = ctx.rule_config.get("token")
+    content, name = None, VARTRACK_JSON
     try:
-        content = GitExtractor().extract_file(
-            ctx.repo_url,
-            ctx.ref,
-            VARTRACK_JSON,
-            token=token,
-        )
+        extractor = GitExtractor()
+        for name in VARTRACK_JSON_NAMES:
+            content = extractor.extract_file(
+                ctx.repo_url, ctx.ref, name, token=token, revision=ctx.commit_sha,
+            )
+            if content is not None:
+                break
     except Exception:
         logger.warning(
             "repo_overrides: failed to fetch %s repo=%s ref=%s",
-            VARTRACK_JSON, ctx.repo_url, ctx.ref,
+            name, ctx.repo_url, ctx.ref,
         )
         return ctx
 
@@ -93,21 +105,23 @@ def apply_repo_overrides(ctx: "PayloadContext") -> "PayloadContext":
 
     try:
         overrides = json.loads(content)
-    except json.JSONDecodeError:
-        logger.warning(
-            "repo_overrides: invalid JSON in %s repo=%s ref=%s",
-            VARTRACK_JSON, ctx.repo_url, ctx.ref,
-        )
-        return ctx
+    except json.JSONDecodeError as exc:
+        raise RepoConfigError(f"{name} in {ctx.repo_url} is not valid JSON: {exc}") from exc
 
     if not isinstance(overrides, dict):
-        logger.warning(
-            "repo_overrides: %s must be a JSON object, got %s repo=%s",
-            VARTRACK_JSON, type(overrides).__name__, ctx.repo_url,
+        raise RepoConfigError(
+            f"{name} in {ctx.repo_url} must be a JSON object, not {type(overrides).__name__}"
         )
-        return ctx
 
-    overrides = with_current_names(overrides, f"{VARTRACK_JSON} in {ctx.repo_url}")
+    if overrides.get("extends"):
+        # Presets: "local>" is the repo's own Git server.
+        from app.pipeline.presets import Origin, PresetError, Resolver
+        try:
+            overrides = Resolver(Origin.of(ctx.repo_url, token)).resolve(overrides)
+        except PresetError as exc:
+            raise RepoConfigError(f"{name} in {ctx.repo_url}: {exc}") from exc
+
+    overrides = with_current_names(overrides, f"{name} in {ctx.repo_url}")
     applicable = {k: v for k, v in overrides.items() if k in _OVERRIDABLE_KEYS}
     blocked    = set(overrides) - _OVERRIDABLE_KEYS
     if blocked:
@@ -121,6 +135,7 @@ def apply_repo_overrides(ctx: "PayloadContext") -> "PayloadContext":
 
     logger.info(
         "repo_overrides: applying %s from %s repo=%s ref=%s",
-        sorted(applicable), VARTRACK_JSON, ctx.repo_url, ctx.ref,
+        sorted(applicable), name, ctx.repo_url, ctx.ref,
     )
-    return replace(ctx, rule_config={**ctx.rule_config, **applicable})
+    from app.pipeline.rule_layers import apply_force, merge_child
+    return replace(ctx, rule_config=apply_force(merge_child(ctx.rule_config, applicable)))

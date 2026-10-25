@@ -16,10 +16,10 @@ import (
 	"gateway-service/internal/middlewares"
 	"gateway-service/internal/models"
 
-	pb_models "gateway-service/internal/gen/proto/go/vartrack/v1/models"
-	pb_ds "gateway-service/internal/gen/proto/go/vartrack/v1/models/datasources"
-	pb_gh "gateway-service/internal/gen/proto/go/vartrack/v1/models/platforms"
-	pb "gateway-service/internal/gen/proto/go/vartrack/v1/services"
+	pb_models "vartrack/libs/gen/vartrack/v1/models"
+	pb_ds "vartrack/libs/gen/vartrack/v1/models/datasources"
+	pb_gh "vartrack/libs/gen/vartrack/v1/models/platforms"
+	pb "vartrack/libs/gen/vartrack/v1/services"
 
 	// Register drivers.
 	_ "gateway-service/internal/models/platforms"

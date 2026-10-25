@@ -1,8 +1,10 @@
 import { useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
+import { useApi } from '../api';
 import type { RuleView, TaskState } from '../api/types';
 import { EmptyState, ErrorState, LoadingRows } from '../components/common';
 import { FilterBar } from '../components/FilterBar';
+import { TenantFilter } from '../components/TenantFilter';
 import { Icon, SINK_LABEL } from '../components/Icon';
 import { useShowMore } from '../components/Row';
 import { SearchBox } from '../components/SearchBox';
@@ -13,8 +15,10 @@ import { SyncPanel } from '../features/SyncPanel';
 import { usePageTitle, useSectionCount } from '../layout/page';
 import { EMPTY_FACETS, facetsFromParams, filterRules, writeFacets, type FacetKey } from '../lib/filters';
 import { usePinned } from '../lib/prefs';
+import { isPinned, ruleKey, tenantsOf } from '../lib/rules';
 import { DRIFT, DRIFT_SEVERITY, latestSync, ruleDrift, SYNC, TASK, targetSync, type SyncStatus } from '../lib/status';
 import { useQuery } from '../lib/useQuery';
+import { useRules } from '../lib/useRules';
 
 type Sort = 'attention' | 'name' | 'recent';
 
@@ -39,7 +43,8 @@ const STATUS_ORDER: SyncStatus[] = ['OutOfSync', 'Synced', 'Unknown'];
 
 export function RulesPage() {
   usePageTitle('Rules');
-  const rules = useQuery('rules', api => api.listRules());
+  const api = useApi();
+  const rules = useRules();
   const bundle = useQuery('bundle', api => api.getBundle(), { poll: false });
   const [params, setParams] = useSearchParams();
   const [pinned, togglePin] = usePinned();
@@ -67,6 +72,7 @@ export function RulesPage() {
 
   const envs = [...new Set(all.flatMap(r => r.targets.map(t => t.env)))].sort();
   const sinks = [...new Set(all.map(r => r.sinkType))].sort();
+  const tenants = tenantsOf(all);
   const targets = filtered.flatMap(r => r.targets);
   const active = Object.values(facets).some(v => v.length) || !!search;
 
@@ -97,6 +103,7 @@ export function RulesPage() {
           <option value="">All environments</option>
           {envs.map(e => <option key={e}>{e}</option>)}
         </select>
+        <TenantFilter tenants={tenants} value={facets.tenant[0] ?? ''} onChange={v => set({ facet: ['tenant', v] })} />
         <select className="ffield" aria-label="Last sync" value={facets.sync[0] ?? ''} onChange={e => set({ facet: ['sync', e.target.value] })}>
           <option value="">Any last sync</option>
           {SYNC_STATES.map(s => <option key={s} value={s}>{s === 'never' ? 'Never synced' : TASK[s].label}</option>)}
@@ -127,6 +134,25 @@ export function RulesPage() {
         </div>
       ) : !rules.data ? (
         <LoadingRows rows={4} height={160} />
+      ) : all.length === 0 && rules.hidden.length > 0 ? (
+        <div className="card">
+          <EmptyState
+            icon="rules"
+            title="No rules you can see yet"
+            action={
+              <span className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
+                {rules.hidden.map(h => (
+                  <a key={h.platform} className="btn btn--primary btn--sm" href={api.loginUrl(h.platform, '/rules')}>
+                    Connect {h.platform}
+                  </a>
+                ))}
+              </span>
+            }
+          >
+            {rules.hidden.map(h => `${h.rules} rule${h.rules === 1 ? '' : 's'} on ${h.platform}`).join(' and ')} {rules.hidden.reduce((n, h) => n + h.rules, 0) === 1 ? 'is' : 'are'} hidden
+            because you are not connected there. What you see follows what Git lets your account read.
+          </EmptyState>
+        </div>
       ) : all.length === 0 ? (
         <div className="card">
           <EmptyState icon="rules" title="No rules in the bundle" action={<button className="btn btn--primary btn--sm" onClick={() => setCreating(true)}>New rule</button>}>
@@ -144,7 +170,7 @@ export function RulesPage() {
         <>
           <div className="rcard-grid">
             {visible.map(r => (
-              <RuleCard key={r.name} rule={r} pinned={pinned.includes(r.name)} onTogglePin={() => togglePin(r.name)} onSync={() => setSyncing({ rule: r })} />
+              <RuleCard key={ruleKey(r)} rule={r} pinned={isPinned(pinned, r)} onTogglePin={() => togglePin(r)} onSync={() => setSyncing({ rule: r })} showTenant={tenants.length > 1} />
             ))}
           </div>
           {more}

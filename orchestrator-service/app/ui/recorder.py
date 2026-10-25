@@ -103,7 +103,15 @@ def _file_result(r: Any, dry_run_file: dict | None = None) -> dict[str, Any]:
         "written": r.written,
         "pruned": r.pruned,
         **({"rootKey": r.root_key} if r.root_key else {}),
+        **({"replaced": r.replaced, "replacedBy": r.replaced_by} if r.replaced else {}),
+        "keySpace": r.key_space,
+        **({"sharedWith": r.shared_with} if r.shared_with is not None else {}),
         **({"error": r.error} if r.error else {}),
+        # Keys only: prune's values stay in the ledger's target, not in a task.
+        **({"prunePending": r.prune_pending} if r.prune_pending is not None else {}),
+        **({"pruneSkipped": r.prune_skipped} if r.prune_skipped else {}),
+        **({"pruneWouldDelete": r.prune_would_delete} if r.prune_would_delete else {}),
+        **({"pruneError": r.prune_error} if r.prune_error else {}),
     }
 
 
@@ -211,6 +219,8 @@ def _record_envs(task: dict[str, Any], *, tenant: str, envs: list[str], files: l
         # Only what is still in the sink becomes desired state: nothing after a
         # rollback; without one, the files that were written before the failure.
         kept = [] if rolled_back else [f for f in env_files if f["status"] == "ok"]
+        # The keys prune could not delete stay owned, so the next sync retries them.
+        pending_prune = next((f["prunePending"] for f in env_files if f.get("prunePending") is not None), None)
         recorded = False
         for f in kept:
             src = etl_files.get((f["file"], env))
@@ -231,6 +241,8 @@ def _record_envs(task: dict[str, Any], *, tenant: str, envs: list[str], files: l
                 commit_message=task.get("_commitMessage", ""),
                 author=task.get("_author", ""),
                 sync=sync,
+                pending_prune=pending_prune,
+                key_space=f.get("keySpace", ""),
             )
 
         if failed:
@@ -248,9 +260,57 @@ def _record_envs(task: dict[str, Any], *, tenant: str, envs: list[str], files: l
             rule=rule, env=env, task_id=task["taskId"],
             message=f"wrote {sync['written']} key{'s' if sync['written'] != 1 else ''} to {datasource}",
         )
+        _shared_key_space(tenant, rule, env, task["taskId"], env_files, datasource)
+        for f in env_files:
+            if f.get("replaced"):
+                ledger.record_event(tenant=tenant, reason="ShapeChanged", rule=rule, env=env,
+                                    task_id=task["taskId"], message=_shape_changed(f))
         if sync["pruned"]:
             ledger.record_event(tenant=tenant, reason="KeysPruned", rule=rule, env=env, task_id=task["taskId"],
                                 message=f"pruned {sync['pruned']} key{'s' if sync['pruned'] != 1 else ''} no longer in Git")
+        # The writes stand either way: a prune that failed or held back is a warning, not a failed sync.
+        for f in env_files:
+            if f.get("pruneError"):
+                ledger.record_event(tenant=tenant, reason="PruneFailed", warning=True, rule=rule, env=env,
+                                    task_id=task["taskId"], message=f"prune failed, retried next sync: {f['pruneError']}")
+            if f.get("pruneSkipped"):
+                keys = f["pruneSkipped"]
+                ledger.record_event(tenant=tenant, reason="PruneSkipped", warning=True, rule=rule, env=env,
+                                    task_id=task["taskId"],
+                                    message=f"{len(keys)} key{'s' if len(keys) != 1 else ''} no longer in Git "
+                                            f"changed outside varTrack, not deleted: {', '.join(keys[:5])}"
+                                            + (" …" if len(keys) > 5 else ""))
+
+
+def _shared_key_space(tenant: str, rule: str, env: str, task_id: str, env_files: list[dict], datasource: str) -> None:
+    """One SharedKeySpace warning when the environment's prune found other
+    targets holding keys in the same key space; the next sync that finds none
+    clears it, so a new episode warns again. Skipped when prune did not look."""
+    found = next((f["sharedWith"] for f in env_files if f.get("sharedWith") is not None), None)
+    if found is None:
+        return
+    try:
+        r = ledger._redis()
+        marker = f"vt:ui:shared-key-space:{tenant}:{datasource}:{env}"
+        if not found:
+            r.delete(marker)
+        elif r.set(marker, ledger.now_iso(), nx=True):
+            ledger.record_event(
+                tenant=tenant, reason="SharedKeySpace", warning=True, rule=rule, env=env, task_id=task_id,
+                message=f"{datasource}/{env} shares its key space with {', '.join(found)}: "
+                        "their keys are never pruned from here",
+            )
+    except Exception:
+        logger.warning("ui recorder: shared key space marker failed", exc_info=True)
+
+
+def _shape_changed(f: dict[str, Any]) -> str:
+    n, strategy = f["replaced"], f.get("replacedBy", "")
+    if strategy == "STRATEGY_KEY_VALUE":
+        what = f"replaced the document of {f['file']} with one document per key"
+    else:
+        what = f"replaced {n} per-key document{'s' if n != 1 else ''} of {f['file']} with one document"
+    return f"{what} (update_strategy {strategy})" if strategy else what
 
 
 def task_errored(task: dict[str, Any] | None, *, tenant: str, error: str) -> None:

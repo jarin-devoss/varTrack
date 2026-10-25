@@ -79,11 +79,13 @@ rules: [{
 
 Or let `AUTO` decide — just omit `sync_mode` or set it to `"AUTO"`.
 
+Each mode can be written short (`"AUTO"`, `"GIT_SMART_REPAIR"`) or as its full proto name (`"SYNC_MODE_AUTO"`, `"SYNC_MODE_GIT_SMART_REPAIR"`); both load.
+
 ---
 
 ## Stale key pruning
 
-When keys are removed from your Git config file, varTrack can automatically delete them from the datasource:
+When keys are removed from your Git config file, varTrack can delete them from the datasource:
 
 ```cue
 rules: [{
@@ -95,29 +97,40 @@ rules: [{
 ```
 
 !!! warning
-    `prune: true` permanently deletes keys from the datasource that are no longer in Git. Use `prune_dry_run` or the full dry-run first to verify what would be removed.
+    `prune: true` permanently deletes keys from the datasource that are no longer in Git. Use `prune: {enabled: true, dry_run: true}` or the full dry-run first to verify what would be removed.
 
-### `prune_last`
+### What prune deletes
 
-When multiple files map to the same datasource, deletions are deferred until all files have been written. This prevents a key from being pruned because it was removed from one file but still exists in another:
+Prune runs **once per environment, after all of its files are written**, and only if none of them failed. So a key that moved from one file to another is never deleted, and there is nothing to configure for multi-file rules.
+
+A key is stale when varTrack wrote it before and no file of the environment holds it any more. Prune deletes nothing else:
+
+- A key somebody else put in the datasource is never deleted, with or without `protection`.
+- A stale key that was **changed outside varTrack** since varTrack wrote it is kept, and reported with a `PruneSkipped` event.
+- Environments that write to the same place keep each other's keys: Vercel's `staging` and `develop` both write to `preview`, and a Redis `key_prefix` or a ZooKeeper path without `{env}` is shared by every environment.
+- **So do datasources and tenants.** A datasource's name says nothing about where it writes. Two datasources on the same Redis database (same servers and `db`) with the same `key_prefix` and hash, the same ZooKeeper servers and root path, or the same Vercel team, project and targets write the same keys, and one never prunes a key the other still holds. A datasource on another server, or with another prefix, is not compared. MongoDB filters its documents by tenant, datasource and environment, so its datasources never share keys.
+  Who holds a key is recorded with each sync, as the key space the sync wrote to, so another tenant counts even when its schema repository cannot be read right now. A target last written by an older version has no such record and is placed by the rules until it is written again. When a prune finds another target holding keys in the same key space, the UI shows one **Shared key space** warning event for the environment (again after the sharing has ended and begun anew).
+- If the rules of the tenants cannot be listed when prune runs, nothing is pruned, as when the ledger cannot be read.
+- If the delete fails, the sync still succeeds. The keys stay on the list and the next sync retries them (a `PruneFailed` event).
+
+Prune applies to sinks that keep each key separately: Redis (hash or strings), Vercel, ZooKeeper and MongoDB with `update_strategy: "STRATEGY_KEY_VALUE"`. A sink that replaces a whole object on every write — ConfigMap, S3, Linux server, Helm, MongoDB with its default `STRATEGY_DOCUMENT` (or `STRATEGY_FILE`), Redis with the JSON structure — has no stale key to delete. Setting `prune` on one has no effect.
+
+`prune.last` was removed: the delete is always last now. A `prune` block that only had `last` is a disabled block; write `prune: true` or `prune: {enabled: true}`.
+
+### `prune.protection`
+
+Glob patterns for keys that must **never** be deleted, even if they're absent from Git. A pattern is matched against the flat key, like `db.host`, before the sink formats it for its own layout:
 
 ```cue
 rules: [{
-  prune:      true
-  prune_last: true   // safe for multi-file rules
+  prune: {
+    enabled:    true
+    protection: ["SYSTEM_*", "_vt_*", "readonly.*"]
+  }
 }]
 ```
 
-### `prune_protection`
-
-Glob patterns for keys that must **never** be deleted, even if they're absent from Git:
-
-```cue
-rules: [{
-  prune:            true
-  prune_protection: ["SYSTEM_*", "_vt_*", "readonly.*"]
-}]
-```
+`prune_protection`, the former flat name, is still read from `bundle.json` and `vartrack.json`; `config.cue` only takes the `prune` block.
 
 ---
 
@@ -125,7 +138,7 @@ rules: [{
 
 ### Full dry-run — simulate the entire sync
 
-No writes, no deletes. Returns a full report of what would be written, changed, and deleted — including which keys would be pruned.
+No writes, no deletes. Returns a full report of what would be written, changed, and deleted. The keys prune would see as stale are listed per environment under `prune.would_delete`; whether something changed one outside varTrack is only known when a real sync reads it.
 
 ```bash
 # Via CLI
@@ -147,9 +160,11 @@ Test the prune step independently without touching any writes. Enabled per rule:
 
 ```cue
 rules: [{
-  prune:         true
-  dry_run_prune: true   // always simulate deletes — never actually remove keys
+  prune: {
+    enabled: true
+    dry_run: true   // always simulate deletes — never actually remove keys
+  }
 }]
 ```
 
-With `dry_run_prune: true`, every sync runs normally (writes go through) but the delete step is always simulated and logged, never executed. Useful for auditing which stale keys would be removed before committing to live pruning.
+With `prune.dry_run`, every sync runs normally (writes go through) but the delete step is always simulated, never executed. The task reports the stale keys, and they stay on the list: turn `dry_run` off and the next sync deletes them.

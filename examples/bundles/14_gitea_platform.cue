@@ -69,7 +69,7 @@ bundle: {
 				develop: "staging"
 			}
 			prune: {
-				last:    true
+				enabled: true
 				dry_run: false
 			}
 		},

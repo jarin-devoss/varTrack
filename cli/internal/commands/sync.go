@@ -23,6 +23,8 @@ func newSyncCmd() *cobra.Command {
 		dryRun     bool
 		wait       bool
 		label      string
+		revision   string
+		platform   string
 		timeout    time.Duration
 		jsonOut    bool
 	)
@@ -45,10 +47,13 @@ Examples:
 
   # CI/CD pipeline (token from env, wait for completion)
   vt sync --file settings.json --datasource redis --env pr-$PR_NUMBER \
-             --label "pr-$PR_NUMBER" --wait --timeout 3m`,
+             --label "pr-$PR_NUMBER" --wait --timeout 3m
+
+  # Roll production back to the rule's file as it is at tag v1.4.0
+  vt sync --revision v1.4.0 --datasource redis --env production`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if filePath == "" {
-				return fmt.Errorf("--file is required")
+			if (filePath == "") == (revision == "") {
+				return fmt.Errorf("give --file or --revision")
 			}
 			if datasource == "" {
 				return fmt.Errorf("--datasource is required")
@@ -57,13 +62,15 @@ Examples:
 				return fmt.Errorf("--env is required")
 			}
 
-			content, err := os.ReadFile(filePath)
-			if err != nil {
-				return fmt.Errorf("read file %s: %w", filePath, err)
-			}
-
-			if format == "" {
-				format = detectFormat(filePath)
+			var content []byte
+			if filePath != "" {
+				var err error
+				if content, err = os.ReadFile(filePath); err != nil {
+					return fmt.Errorf("read file %s: %w", filePath, err)
+				}
+				if format == "" {
+					format = detectFormat(filePath)
+				}
 			}
 
 			gw, err := buildClient()
@@ -83,6 +90,8 @@ Examples:
 				TenantID:   tenantID,
 				DryRun:     dryRun,
 				Label:      label,
+				Revision:   revision,
+				Platform:   platform,
 			}
 
 			resp, err := gw.Sync(ctx, req)
@@ -110,12 +119,14 @@ Examples:
 
 	cmd.Flags().StringVar(&filePath, "file", "", "Path to the config file")
 	cmd.Flags().StringVar(&datasource, "datasource", "", "Target datasource name from the CUE bundle")
+	cmd.Flags().StringVar(&platform, "platform", "", "Platform of the rule (e.g. github, gitea-internal) — needed only when rules on several platforms write to the datasource")
 	cmd.Flags().StringVar(&env, "env", "", "Target environment (e.g. production, staging, pr-42)")
 	cmd.Flags().StringVar(&tenantID, "tenant", os.Getenv("VARTRACK_TENANT"), "Tenant ID")
 	cmd.Flags().StringVar(&format, "format", "", "File format (yaml/json/toml/env/ini/hcl — auto-detected)")
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "Parse and validate without writing to the sink")
 	cmd.Flags().BoolVar(&wait, "wait", false, "Wait for the task to complete before exiting")
 	cmd.Flags().StringVar(&label, "label", "", "Optional label attached to this push (e.g. git SHA)")
+	cmd.Flags().StringVar(&revision, "revision", "", "Sync the rule's file as it is in Git at this branch or tag, instead of --file")
 	cmd.Flags().DurationVar(&timeout, "timeout", 5*time.Minute, "Maximum time to wait")
 	cmd.Flags().BoolVar(&jsonOut, "json", false, "Output results as JSON")
 
@@ -148,6 +159,10 @@ func pollTask(ctx context.Context, gw *client.Client, taskID string, jsonOut boo
 					return printJSON(task)
 				}
 				fmt.Printf("✓ Task %s completed\n", taskID)
+				if task.DryRun && task.Message != "" {
+					fmt.Printf("  %s\n", task.Message)
+					return nil
+				}
 				fmt.Printf("  written=%d  pruned=%d\n", task.Written, task.Pruned)
 				return nil
 

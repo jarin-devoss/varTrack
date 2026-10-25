@@ -9,12 +9,15 @@ to construct them itself.
 """
 from __future__ import annotations
 
+import logging
 from abc import ABC, abstractmethod
 from collections.abc import Collection
 from typing import Any
 
 from app.utils.factory import IFactory
 from app.pipeline.sinks.labels import VarTrackLabels
+
+logger = logging.getLogger(__name__)
 
 
 def update_strategy(value: str | int | None) -> str:
@@ -31,6 +34,15 @@ def update_strategy(value: str | int | None) -> str:
         return Strategy.Name(value)
     Strategy.Value(str(value).upper())  # ValueError when it is not a Strategy
     return str(value).upper()
+
+
+class Unreadable(str):
+    """A value the sink holds but never gives back — a Vercel sensitive
+    variable. read_values returns UNREADABLE for such a key, so a comparison
+    does not take it for missing."""
+
+
+UNREADABLE = Unreadable("")
 
 
 class BaseSink(IFactory, ABC):
@@ -55,10 +67,6 @@ class BaseSink(IFactory, ABC):
         commit_sha: str,
         file_path: str,
         tenant_id: str = "default",
-        prune: bool = False,
-        prune_last: bool = False,
-        prune_protection: list[str] | None = None,
-        dry_run_prune: bool = False,
         total_sources: int = 1,
         data: Any = None,
     ) -> dict[str, Any]:
@@ -90,10 +98,6 @@ class BaseSink(IFactory, ABC):
             commit_sha=commit_sha,
             file_path=file_path,
             labels=labels,
-            prune=prune,
-            prune_last=prune_last,
-            prune_protection=prune_protection or [],
-            dry_run_prune=dry_run_prune,
             total_sources=total_sources,
             data=data,
         )
@@ -113,14 +117,12 @@ class BaseSink(IFactory, ABC):
         commit_sha: str,
         file_path: str,
         labels: VarTrackLabels,
-        prune: bool,
-        prune_last: bool,
-        prune_protection: list[str],
-        dry_run_prune: bool,
         total_sources: int,
         data: Any = None,
     ) -> dict[str, Any]:
-        """Perform the actual write. Returns ``{"written": int, "pruned": int}``."""
+        """Perform the actual write. Returns ``{"written": int}``. Deleting
+        stale keys is not a write's job: stage_sync does it once per
+        environment, through delete_keys."""
 
     @abstractmethod
     def close(self) -> None:
@@ -147,6 +149,70 @@ class BaseSink(IFactory, ABC):
             type(self).__name__, datasource, env, file_path,
         )
         return 0
+
+    # Set by the drift check (app.ui.views): a read that fails raises instead of
+    # coming back empty, which would read as "every key is missing".
+    strict_reads: bool = False
+
+    # ── Pruning ───────────────────────────────────────────────────────────────
+    # stage_sync decides what is stale (the keys varTrack wrote before that no
+    # file holds any more — an inventory diff) and when to delete it (once
+    # per environment, after all its files are written). A sink only says
+    # whether it can delete single keys, and how.
+
+    # What a sink that does not prune single keys replaces on every write (for
+    # the config validator's "prune has no effect" message).
+    object_name: str = "object"
+
+    @classmethod
+    def prunes_keys(cls, rule_config: dict) -> bool:
+        """True when this rule's sink keeps each key as its own entry (Redis
+        hash or strings, Vercel, ZooKeeper, Mongo key-value): stale keys are
+        deleted one by one. A sink that replaces a whole object on every
+        write (a ConfigMap, a file, an S3 object, a Mongo document) owns that
+        object and has nothing to prune. Reads the rule only — no connection."""
+        return False
+
+    @classmethod
+    def key_space(cls, rule_config: dict, tenant_id: str, env: str) -> str:
+        """Which key space env's keys land in, within the sink's store. Two
+        environments with the same key space in the same store share their
+        keys, so one's stale key may be the other's live one. Only sinks whose
+        prunes_keys is True define it; it reads the rule only — no connection."""
+        raise NotImplementedError(f"{cls.__name__} does not prune single keys")
+
+    @classmethod
+    def store(cls, rule_config: dict) -> str:
+        """Which store the rule's datasource writes to (its servers, database,
+        project): two datasources with the same store and key space write the
+        same keys, however they are named. "" when the key space already says
+        it all. Reads the rule only — no connection."""
+        return ""
+
+    @staticmethod
+    def _store_of(*parts: Any) -> str:
+        """A store's identity from the settings that locate it: lists are
+        order-free and hosts case-free, so the same servers written two ways
+        are the same store."""
+        return "|".join(
+            ",".join(sorted(str(p).strip().lower() for p in part)) if isinstance(part, (list, tuple, set))
+            else str(part or "").strip().lower()
+            for part in parts)
+
+    def delete_keys(self, keys: "Collection[str]", *, datasource: str, env: str) -> int:
+        """Delete *keys* (flat keys, as in flat_data) from env's target.
+        Only called with keys varTrack wrote before. Returns how many were
+        deleted; a key already gone is not an error."""
+        return 0
+
+    def _read_failed(self, exc: Exception, what: str) -> "dict[str, str]":
+        """What read_values returns when the sink cannot be read: {} — the
+        change-log before a write must not fail — or, with strict_reads, the
+        error."""
+        if self.strict_reads:
+            raise exc
+        logger.warning("%s failed: %s", what, exc)
+        return {}
 
     def read_values(
         self,

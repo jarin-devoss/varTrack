@@ -1,202 +1,57 @@
-// Package watcher defines the Watcher interface and shared helpers.
+// Package watcher runs the self-heal loop: every poll it asks the orchestrator
+// whether each self_heal rule's datasource still matches Git, and asks it to
+// re-sync the ones that drifted.
 //
-// Each watcher implementation (mongo, zookeeper, s3) polls a datasource for
-// VarTrack-managed records, computes a fingerprint of the live state, and
-// compares it against the last-known-good fingerprint.  Drift triggers a
-// call to the Healer which asks the orchestrator to re-sync from git.
-//
-// The fingerprint is only a change detector: it moves on every write,
-// including the ones varTrack makes when a push is synced.  So when it moves,
-// the manager asks the orchestrator (GitChecker) whether the datasource still
-// matches the desired state in Git, key by key; only a mismatch is drift.
+// The watcher reads no sink and holds no sink credentials, and it reads no
+// rule either. The orchestrator — which writes the sinks and is the one
+// service that layers config.cue, the tenants' bundle.json and the
+// repositories' vartrack.json into rules — says which rules to watch
+// (Watcher.ListWatchTargets), reads the sinks and compares them, key by key,
+// with the state it last synced from Git (Watcher.CheckDatasource). The
+// watcher holds no sink connections and no copy of the rules: it asks for the
+// work instead of reading it from configuration.
 package watcher
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
-	"encoding/json"
-	"fmt"
-	"log/slog"
-	"os"
-	"path/filepath"
-	"sort"
-	"time"
 
 	"watcher-service/internal/healer"
 )
 
-// Watcher polls a single datasource and reports drift.
-type Watcher interface {
-	// Name is the human-readable identifier, e.g. "mongo/acme-payments".
-	Name() string
-
-	// Snapshot computes a fingerprint (SHA-256 hex) of all VarTrack-managed
-	// records currently in the datasource.
-	Snapshot(ctx context.Context) (fingerprint string, err error)
-
-	// Restore triggers the orchestrator to re-apply the desired state.
-	// The Watcher implementation calls the Healer; the method is here so
-	// that manager can orchestrate retries uniformly.
-	Restore(ctx context.Context) error
-
-	// Close releases all connections held by the watcher.
-	Close() error
+// Orchestrator is what the watcher asks: which rules to watch (ListTargets),
+// is this datasource still in sync with Git (Check), and if not, sync it
+// again (Heal). *healer.Healer is one.
+type Orchestrator interface {
+	ListTargets(ctx context.Context) ([]healer.WatchTarget, error)
+	Check(ctx context.Context, req healer.HealRequest) (healer.GitState, string, error)
+	Heal(ctx context.Context, req healer.HealRequest) error
 }
 
-// GitChecker is implemented by watchers that can ask the orchestrator whether
-// the live state they see matches the desired state in Git.  The manager asks
-// before healing, so a write made by a varTrack sync is not taken for drift.
-type GitChecker interface {
-	CheckGit(ctx context.Context) (healer.GitState, string, error)
+// Target is one self_heal rule of one tenant the watcher keeps in sync.
+type Target struct {
+	// Name is the rule, "{platform}/{datasource}".
+	Name string
+	// Tenant is the tenant whose rule it is.
+	Tenant string
+	// Request names the datasource in Check and Heal.
+	Request healer.HealRequest
 }
 
-// DriftRecord is emitted when a watcher detects that live state no longer
-// matches the last-known-good fingerprint.
-type DriftRecord struct {
-	WatcherName string
-	Datasource  string
-	Tenant      string
-	Env         string
-	OldHash     string
-	NewHash     string
-	DetectedAt  time.Time
-}
-
-// StateBackend is the persistence interface for watcher baselines.
-// Implemented by *StateStore (disk) and *RedisStateStore (Redis).
-type StateBackend interface {
-	Load(key string) string
-	Save(key, fingerprint string) error
-}
-
-// StateStore persists fingerprints between poll cycles so the watcher
-// survives restarts without losing its baseline.
-type StateStore struct {
-	dir string
-}
-
-// NewStateStore creates a StateStore rooted at dir.
-// The directory is created if it does not exist.
-func NewStateStore(dir string) (*StateStore, error) {
-	if err := os.MkdirAll(dir, 0o750); err != nil {
-		return nil, fmt.Errorf("state store: mkdir %s: %w", dir, err)
+// NewTarget is the Target for a rule the orchestrator listed.
+func NewTarget(t healer.WatchTarget) Target {
+	return Target{
+		Name:   t.Platform + "/" + t.Datasource,
+		Tenant: t.Tenant,
+		Request: healer.HealRequest{
+			Datasource: t.Datasource,
+			Platform:   t.Platform,
+			Tenant:     t.Tenant,
+		},
 	}
-	return &StateStore{dir: dir}, nil
 }
 
-type stateFile struct {
-	Fingerprint string    `json:"fingerprint"`
-	UpdatedAt   time.Time `json:"updated_at"`
-}
-
-// Load returns the persisted fingerprint for key, or "" if not found.
-func (s *StateStore) Load(key string) string {
-	data, err := os.ReadFile(s.path(key))
-	if err != nil {
-		return ""
-	}
-	var f stateFile
-	if err := json.Unmarshal(data, &f); err != nil {
-		return ""
-	}
-	return f.Fingerprint
-}
-
-// Save persists a fingerprint for key.
-func (s *StateStore) Save(key, fingerprint string) error {
-	f := stateFile{Fingerprint: fingerprint, UpdatedAt: time.Now().UTC()}
-	data, _ := json.MarshalIndent(f, "", "  ")
-	return os.WriteFile(s.path(key), data, 0o640)
-}
-
-func (s *StateStore) path(key string) string {
-	// Sanitise key to make it filename-safe.
-	safe := ""
-	for _, c := range key {
-		if (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
-			(c >= '0' && c <= '9') || c == '-' || c == '_' {
-			safe += string(c)
-		} else {
-			safe += "_"
-		}
-	}
-	return filepath.Join(s.dir, safe+".json")
-}
-
-// ─── Fingerprint helpers ─────────────────────────────────────────────────────
-
-// FingerprintRecords produces a SHA-256 hex digest of the given records.
-//
-// Records are sorted by key so the hash is deterministic regardless of
-// the order the datasource returns them.
-func FingerprintRecords(records map[string]string) string {
-	keys := make([]string, 0, len(records))
-	for k := range records {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-
-	h := sha256.New()
-	for _, k := range keys {
-		h.Write([]byte(k))
-		h.Write([]byte("="))
-		h.Write([]byte(records[k]))
-		h.Write([]byte("\n"))
-	}
-	return hex.EncodeToString(h.Sum(nil))
-}
-
-// ─── VarTrack metadata constants ─────────────────────────────────────────────
-//
-// These match the labels written by orchestrator-service/app/pipeline/sinks/labels.py
-// for each storage backend.
-
-const (
-	// MongoDB _vt_* meta fields
-	VTManagedByField  = "_vt_managed_by"
-	VTTenantField     = "_vt_tenant"
-	VTDatasourceField = "_vt_datasource"
-	VTEnvField        = "_vt_env"
-	VTCommitField     = "_vt_commit"
-	VTFileField       = "_vt_file"
-	VTBranchField     = "_vt_branch"
-	VTRepoField       = "_vt_repo"
-
-	// The fixed value stored in all _vt_managed_by / managed-by fields.
-	ManagedByValue = "vartrack"
-
-	// ZooKeeper metadata znode name
-	ZKMetaZnode = "__vartrack__"
-
-	// ZooKeeper watcher state znode
-	ZKStateZnode = "__watcher_state__"
-
-	// S3 tag key for managed-by
-	S3ManagedByTag = "app.kubernetes.io%2Fmanaged-by"
-
-	// S3 object name for watcher state
-	S3StateObject = "__vartrack__/watcher_state.json"
-)
-
-// ─── Logging helpers ─────────────────────────────────────────────────────────
-
-// logDrift logs a drift event at WARN level.
-func LogDrift(dr DriftRecord) {
-	oldHash, newHash := dr.OldHash, dr.NewHash
-	if len(oldHash) > 8 {
-		oldHash = oldHash[:8]
-	}
-	if len(newHash) > 8 {
-		newHash = newHash[:8]
-	}
-	slog.Warn("watcher: drift detected",
-		"watcher", dr.WatcherName,
-		"datasource", dr.Datasource,
-		"tenant", dr.Tenant,
-		"env", dr.Env,
-		"old_hash", oldHash,
-		"new_hash", newHash,
-		"detected_at", dr.DetectedAt.UTC().Format(time.RFC3339),
-	)
+// Key identifies the target: two tenants may have a rule for the same
+// platform and datasource.
+func (t Target) Key() string {
+	return t.Tenant + "|" + t.Name
 }

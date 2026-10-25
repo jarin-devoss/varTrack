@@ -1,0 +1,8 @@
+{
+  "description": "payments-config (.gitea/vartrack.json): keep refund settings support edits in Redis",
+  "prune": {
+    "protection": [
+      "refunds.*"
+    ]
+  }
+}

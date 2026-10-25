@@ -14,7 +14,6 @@ asynchronous (task_id for polling via GET /v1/tasks/{task_id}).
 
 Prune flags in rule_config are honoured:
   prune: true          → compute deletion candidates
-  prune_last: true     → show which keys would be deferred until last source
   dry_run_prune: true  → always implied in dry-run mode (never actually deletes)
 """
 from __future__ import annotations
@@ -96,8 +95,11 @@ async def dry_run_webhook(
     - No data is written to MongoDB (or any sink).
     - Values for fields annotated ``@secret`` in the CUE schema are replaced
       with ``"***"`` in the report.
-    - Prune candidates are listed under ``prune.would_delete`` /
-      ``prune.deferred_until_last`` without any deletions occurring.
+    - Prune candidates, per environment, are listed under
+      ``prune.would_delete`` without any deletions occurring. They are the
+      keys varTrack wrote before that no file holds any more; whether
+      something changed one outside varTrack is only known when it is read,
+      which a real sync does.
     - The full cost-model breakdown is included for each file.
 
     Set ``wait=false`` to get back a ``task_id`` immediately and poll via
@@ -138,12 +140,11 @@ async def dry_run_webhook(
         except Exception:
             pass
 
-    # Force dry-run flags — merge into the structured prune block regardless of form
-    raw_prune = rule_config.get("prune", {})
-    if isinstance(raw_prune, bool):
-        forced_prune = {"dry_run": True} if raw_prune else {"dry_run": True}
-    else:
-        forced_prune = {**raw_prune, "dry_run": True}
+    # Force dry-run flags — the structured prune block, whatever form the rule wrote it in;
+    # a rule that does not prune still does not.
+    from app.tasks.payload import extract_prune_config
+    current = extract_prune_config(rule_config)
+    forced_prune = {"enabled": current.enabled, "dry_run": True, "protection": current.protection}
     rule_config = {**rule_config, "prune": forced_prune, "dry_run": True}
 
     # ── Circuit breaker: fail-fast when Celery broker is down ────────────────

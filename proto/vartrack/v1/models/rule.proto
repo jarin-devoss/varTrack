@@ -3,9 +3,10 @@ syntax = "proto3";
 package vartrack.v1;
 
 import "vartrack/v1/enums/sync_mode.proto";
+import "vartrack/v1/options.proto";
 import "buf/validate/validate.proto";
 import "google/api/field_behavior.proto";
-import "google/protobuf/duration.proto";
+import "google/protobuf/struct.proto";
 import "google/protobuf/timestamp.proto";
 
 // RepositoryOverride lets a single rule enable/disable itself for a subset
@@ -18,23 +19,37 @@ message RepositoryOverride {
 
 // PruneConfig controls how stale keys are removed from the sink.
 //
-// last       – defer deletion until ALL sources for a given env have been
-//              processed (safe for multi-file rules that share one env).
+// Prune runs once per environment, after all its files are written and only
+// when none failed. A stale key is one varTrack wrote before that no file of
+// the environment holds any more; a key varTrack did not write, or one that
+// something else changed since, is never deleted.
+//
 // dry_run    – simulate the prune step: reads live DB state to compute
 //              candidates but never actually deletes. Always forced to true
 //              when the outer task runs in dry-run mode.
 // protection – glob patterns for keys that must never be deleted
 //              (e.g. "bootstrap.*", "_schema").
 message PruneConfig {
+  // Field 1 was `last` (defer deletion until all files were written). Prune
+  // now always runs after all of an environment's files, so it has no effect.
+  reserved 1;
+  reserved "last";
+
   // enabled = true  → prune is active (equivalent to legacy prune: true)
   // enabled = false → prune is disabled (equivalent to legacy prune: false)
-  // When using the structured form (prune: { last: … }) enabled is always true.
+  // A structured block that sets dry_run is enabled unless it says otherwise;
+  // one that only lists protection is not.
   bool            enabled    = 4 [(google.api.field_behavior) = OPTIONAL];
-  bool            last       = 1 [(google.api.field_behavior) = OPTIONAL];
   bool            dry_run    = 2 [(google.api.field_behavior) = OPTIONAL];
   repeated string protection = 3 [(google.api.field_behavior) = OPTIONAL];
 }
 
+// Rule maps a platform and datasource to what is synced and how.
+//
+// Each option's (vartrack.v1.config) annotation says how it behaves across the
+// layers a rule is built from (see options.proto): the orchestrator and the
+// gateway derive what merges, what only config.cue sets and what a
+// vartrack.json may set from it, so a new option states it here and nowhere else.
 message Rule {
   // ── Required ────────────────────────────────────────────────────────────────
 
@@ -50,18 +65,39 @@ message Rule {
 
   repeated string repositories = 5 [
     (buf.validate.field).repeated.min_items = 1,
-    (google.api.field_behavior) = REQUIRED
+    (google.api.field_behavior) = REQUIRED,
+    (vartrack.v1.config) = {admin_only: true}
   ];
 
   // ── Source selection ─────────────────────────────────────────────────────────
 
   // Explicit single file to track in every repository.
   // Mutually exclusive with file_path_map (validated below).
-  optional string file_name = 4 [(google.api.field_behavior) = OPTIONAL];
+  optional string file_name = 4 [
+    (google.api.field_behavior) = OPTIONAL,
+    (vartrack.v1.config) = {repo_overridable: true}
+  ];
 
   // Maps environment label → file path for per-env config files.
   // e.g. { "production": "config/prod.json", "staging": "config/staging.json" }
-  map<string, string> file_path_map = 11 [(google.api.field_behavior) = OPTIONAL];
+  map<string, string> file_path_map = 11 [
+    (google.api.field_behavior) = OPTIONAL,
+    (vartrack.v1.config) = {mergeable: true, repo_overridable: true}
+  ];
+
+  // The branch the periodic self-heal compares when the rule has no
+  // branch_map; with a branch_map, every branch in it is healed. "main" when
+  // unset.
+  optional string branch = 31 [
+    (google.api.field_behavior) = OPTIONAL
+  ];
+
+  // The most files one push syncs; a push that changed more is cut to the
+  // first of them, with a warning. 500 when unset.
+  optional int32 max_changed_files = 32 [
+    (buf.validate.field).int32.gt = 0,
+    (google.api.field_behavior) = OPTIONAL
+  ];
 
   // ── root_key ─────────────────────────────────────────────────────────────────
   //
@@ -83,23 +119,45 @@ message Rule {
   // Works the same way for every supported format: JSON, YAML, TOML, XML,
   // .env, .properties, HCL, INI, JS-module — because lookup happens after
   // parsing, against a plain Python/Rust dict.
-  optional string root_key = 24 [(google.api.field_behavior) = OPTIONAL];
+  optional string root_key = 24 [
+    (google.api.field_behavior) = OPTIONAL,
+    (vartrack.v1.config) = {repo_overridable: true}
+  ];
 
   // ── Environment resolution ───────────────────────────────────────────────────
 
   // The branch name is the environment. Formerly env_as_branch.
-  bool branch_as_env = 7  [(google.api.field_behavior) = OPTIONAL];
+  bool branch_as_env = 7  [
+    (google.api.field_behavior) = OPTIONAL,
+    (vartrack.v1.config) = {repo_overridable: true, old_names: ["env_as_branch"]}
+  ];
   // "pr-{number}" is the environment. Formerly env_as_pr.
-  bool pr_as_env     = 8  [(google.api.field_behavior) = OPTIONAL];
+  bool pr_as_env     = 8  [
+    (google.api.field_behavior) = OPTIONAL,
+    (vartrack.v1.config) = {repo_overridable: true, old_names: ["env_as_pr"]}
+  ];
   // The tag name is the environment. Formerly env_as_tags.
   // The former names are still read from bundles and vartrack.json.
-  bool tag_as_env    = 9  [(google.api.field_behavior) = OPTIONAL];
+  bool tag_as_env    = 9  [
+    (google.api.field_behavior) = OPTIONAL,
+    (vartrack.v1.config) = {repo_overridable: true, old_names: ["env_as_tags"]}
+  ];
 
-  map<string, string> branch_map = 10 [(google.api.field_behavior) = OPTIONAL];
+  map<string, string> branch_map = 10 [
+    (google.api.field_behavior) = OPTIONAL,
+    (vartrack.v1.config) = {mergeable: true, repo_overridable: true}
+  ];
 
   // ── Sink / merge options ─────────────────────────────────────────────────────
 
-  optional string secret_manager  = 3  [(google.api.field_behavior) = OPTIONAL];
+  // The secret manager (a secret_managers entry: "vault" or "vault-{tag}")
+  // that {ref: …} credentials of this rule's platform and datasource, and its
+  // @secret() fields, are read from. Unset: the entry tagged "default", else
+  // the bundle's only one.
+  optional string secret_manager  = 3  [
+    (google.api.field_behavior) = OPTIONAL,
+    (vartrack.v1.config) = {admin_only: true}
+  ];
   // Universal storage path / key / name template for the sink.
   // Supported placeholders: {tenant}, {env}
   //
@@ -115,8 +173,14 @@ message Rule {
   //
   // When not set each sink falls back to its own sink-specific config key.
   string destination_template     = 12 [(google.api.field_behavior) = OPTIONAL];
-  map<string, string> variables_map = 13 [(google.api.field_behavior) = OPTIONAL];
-  SyncMode sync_mode              = 14 [(google.api.field_behavior) = OPTIONAL];
+  map<string, string> variables_map = 13 [
+    (google.api.field_behavior) = OPTIONAL,
+    (vartrack.v1.config) = {mergeable: true, repo_overridable: true}
+  ];
+  SyncMode sync_mode              = 14 [
+    (google.api.field_behavior) = OPTIONAL,
+    (vartrack.v1.config) = {repo_overridable: true}
+  ];
 
   // Field 21 was: apply_strategy (ApplyStrategy). Always CLIENT_SIDE — removed.
   reserved 21;
@@ -124,16 +188,24 @@ message Rule {
 
   // ── Repository filtering ─────────────────────────────────────────────────────
 
-  repeated string exclude_repositories  = 6  [(google.api.field_behavior) = OPTIONAL];
-  repeated RepositoryOverride overrides = 15 [(google.api.field_behavior) = OPTIONAL];
+  repeated string exclude_repositories  = 6  [
+    (google.api.field_behavior) = OPTIONAL,
+    (vartrack.v1.config) = {admin_only: true}
+  ];
+  repeated RepositoryOverride overrides = 15 [
+    (google.api.field_behavior) = OPTIONAL,
+    (vartrack.v1.config) = {admin_only: true}
+  ];
 
   // ── Pruning ──────────────────────────────────────────────────────────────────
   // Structured prune config — replaces the old flat bool fields.
-  // prune.last       → defer deletion until all sources are processed
   // prune.dry_run    → simulate only; always forced true when task dry_run=true
   // prune.protection → glob patterns that are never pruned
 
-  PruneConfig prune = 16 [(google.api.field_behavior) = OPTIONAL];
+  PruneConfig prune = 16 [
+    (google.api.field_behavior) = OPTIONAL,
+    (vartrack.v1.config) = {mergeable: true, repo_overridable: true}
+  ];
 
   // Field numbers 17–19 were: prune_last, prune_protection, dry_run_prune.
   // They are now encoded inside PruneConfig (field 16). Reserved for wire safety.
@@ -152,12 +224,64 @@ message Rule {
   //
   // This flag is always forced to true by the /dry-run API endpoint even if
   // the rule itself has dry_run = false.
-  bool dry_run = 25 [(google.api.field_behavior) = OPTIONAL];
+  bool dry_run = 25 [
+    (google.api.field_behavior) = OPTIONAL,
+    (vartrack.v1.config) = {repo_overridable: true}
+  ];
 
   // ── Self-heal / scheduling ───────────────────────────────────────────────────
 
-  bool self_heal = 20 [(google.api.field_behavior) = OPTIONAL];
-  google.protobuf.Duration retry_backoff = 22 [(google.api.field_behavior) = OPTIONAL];
+  bool self_heal = 20 [
+    (google.api.field_behavior) = OPTIONAL,
+    (vartrack.v1.config) = {admin_only: true}
+  ];
+
+  // Field 22 was retry_backoff, which nothing read; the retry_backoff settings
+  // that exist belong to the Linux server and the Vault configs.
+  reserved 22;
+  reserved "retry_backoff";
+
+  // ── Layering ─────────────────────────────────────────────────────────────────
+
+  // Rule keys pinned by this bundle. The orchestrator builds the rule it syncs
+  // with in layers, each overriding the one before: this rule, the schema
+  // repo's bundle.json rule for the same platform and datasource, the repo's
+  // vartrack.json, and last these keys, e.g. force: {prune: {enabled: false}}.
+  // Keys only the bundle sets (connection settings, secrets, repositories,
+  // self_heal, ...) are not needed here and are ignored.
+  google.protobuf.Struct force = 26 [
+    (google.api.field_behavior) = OPTIONAL,
+    (vartrack.v1.config) = {admin_only: true}
+  ];
+
+  // ── Ownership, pausing, drift ────────────────────────────────────────────────
+
+  // The tenants whose bundle.json may layer this rule: any tenant when empty.
+  // When no tenant's bundle.json names the rule, the first one owns it
+  // ("default" when empty).
+  repeated string tenants = 27 [
+    (google.api.field_behavior) = OPTIONAL,
+    (vartrack.v1.config) = {admin_only: true}
+  ];
+
+  // Pauses automatic syncs: pushes and self-heal skip the rule, while syncs
+  // started by hand (web UI, vt) still run, so a pause does not block a
+  // deliberate sync.
+  bool suspend = 28 [(google.api.field_behavior) = OPTIONAL];
+
+  // Keys (glob patterns) a drift check does not compare: keys the
+  // application changes itself.
+  repeated string drift_ignore = 29 [(google.api.field_behavior) = OPTIONAL];
+
+  // ── Validation ───────────────────────────────────────────────────────────────
+
+  // A file the CUE schema rejects fails the sync instead of being written with
+  // a warning. Without it a failed validation is logged and the file is still
+  // synced.
+  bool strict_validation = 30 [
+    (google.api.field_behavior) = OPTIONAL,
+    (vartrack.v1.config) = {repo_overridable: true}
+  ];
 
   // ── Metadata (output only) ───────────────────────────────────────────────────
 

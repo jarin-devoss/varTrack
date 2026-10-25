@@ -1,6 +1,6 @@
 package models
 
-import pb "gateway-service/internal/gen/proto/go/vartrack/v1/models"
+import pb "vartrack/libs/gen/vartrack/v1/models"
 
 // Rule wraps a protobuf Rule with convenience methods for
 // resolving combined inclusion/exclusion repository patterns.

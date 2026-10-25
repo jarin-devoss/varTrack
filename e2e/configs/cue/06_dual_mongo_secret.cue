@@ -62,6 +62,21 @@ bundle: {
 		},
 	]
 
+	// Vault, for the @secret() fields of the CUE schema (database.password and
+	// api.secret_key). A field the config file leaves as a plain value is read at
+	// path_prefix, under the field's own name. Rules name no Vault of their own.
+	secret_managers: [
+		{
+			vault: {
+				endpoint:    "http://vault:8200"
+				mount_point: "secret"
+				kv_version:  2
+				path_prefix: "vartrack/configs"
+				token_auth: {token: "root"}
+			}
+		},
+	]
+
 	rules: [
 		{
 			platform:             "github"
@@ -70,19 +85,9 @@ bundle: {
 			repositories:         ["vartrack-demo/demo-configs"]
 			branch_as_env:        false
 			sync_mode:            "SYNC_MODE_FULL"
-			prune:                {last: false}
+			prune:                {enabled: true}
 			self_heal:            false
 			destination_template: "primary-{env}"
-			secrets: {
-				default: {
-					type:         "vault"
-					vault_addr:   "http://vault:8200"
-					auth: {type: "token", token: "root"}
-					mount_point:  "secret"
-					path_prefix:  "vartrack/configs"
-					kv_version:   2
-				}
-			}
 		},
 		{
 			platform:             "github"
@@ -91,19 +96,9 @@ bundle: {
 			repositories:         ["vartrack-demo/demo-configs"]
 			branch_as_env:        false
 			sync_mode:            "SYNC_MODE_FULL"
-			prune:                {last: false}
+			prune:                {enabled: true}
 			self_heal:            false
 			destination_template: "dr-{env}"
-			secrets: {
-				default: {
-					type:         "vault"
-					vault_addr:   "http://vault:8200"
-					auth: {type: "token", token: "root"}
-					mount_point:  "secret"
-					path_prefix:  "vartrack/configs"
-					kv_version:   2
-				}
-			}
 		},
 	]
 

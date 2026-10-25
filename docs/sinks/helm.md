@@ -45,47 +45,28 @@ rules: [{
 ```cue
 datasources: [{
   helm: {
-    upgrade_strategy: "VALUES_ONLY"   // default
+    release_name:     "myapp"
+    chart_name:       "./charts/myapp"
+    upgrade_strategy: "INSTALL_OR_UPGRADE"
   }
 }]
 ```
 
-| Strategy | What it does |
+| Strategy | What it runs |
 |---|---|
-| `VALUES_ONLY` | Inject new values into the existing release; chart version unchanged |
-| `FULL_UPGRADE` | Run a full `helm upgrade` — chart + values |
-| `INSTALL_OR_UPGRADE` | Install the release if it doesn't exist, upgrade otherwise |
+| `INSTALL_OR_UPGRADE` | `helm upgrade --install --create-namespace RELEASE CHART --set …` — installs the release the first time, upgrades it after |
+| `FULL_UPGRADE` | `helm upgrade RELEASE CHART --set …` — chart and values; the release must already exist |
+| `VALUES_ONLY` | `helm upgrade RELEASE CHART --reuse-values --set …` — sets varTrack's values on the existing release and keeps its other values; the release must already exist |
+| unset | No Helm command: the values are written to a values file (`helm_values_file_path` in the rule, default `values.yaml`) for other tooling to apply |
 
-### `VALUES_ONLY` (default)
-
-Writes a `values.yaml` and applies it without changing the chart:
-
-```yaml
-# Generated values.yaml
-database:
-  host: mongo.prod.internal
-maxConnections: 50
-featureFlags:
-  darkMode: true
-```
-
-### `FULL_UPGRADE`
-
-Runs a full Helm upgrade with the new values:
+`chart_version` adds `--version` and `chart_repo` adds `--repo`. Values go in as `--set` flags; `helm_values_mode: "file"` in the rule passes them as a values file instead.
 
 ```bash
-helm upgrade myapp-production ./chart \
+# INSTALL_OR_UPGRADE, release myapp-production
+helm upgrade --install --create-namespace myapp-production ./charts/myapp \
+  --namespace default --history-max 10 \
   --set database.host=mongo.prod.internal \
   --set maxConnections=50
-```
-
-### `INSTALL_OR_UPGRADE`
-
-Equivalent to `helm upgrade --install` — safe for first-time deployments:
-
-```bash
-helm upgrade --install myapp-production ./chart \
-  -f generated-values.yaml
 ```
 
 ---
@@ -124,7 +105,7 @@ datasources: [{
 
 ## Drift detection
 
-The watcher reads the current Helm release values and compares against the Git baseline.
+The watcher asks the orchestrator each poll; the orchestrator reads the release's current values and compares them with what it last synced from Git — a changed or missing key is drift ([Drift Detection](../concepts/drift-detection.md)).
 
 ```cue
 rules: [{

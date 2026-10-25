@@ -31,25 +31,25 @@ varTrack treats your Git repository as the single authority for configuration da
 
 ---
 
-## How it compares to ArgoCD and FluxCD
+## What varTrack syncs
 
-ArgoCD and FluxCD are the dominant GitOps tools for Kubernetes. They are excellent at what they do: reconciling **Kubernetes manifests** from a Git repo into a cluster. varTrack solves a different problem.
+varTrack syncs **configuration data**, not Kubernetes resources.
 
-| | ArgoCD / FluxCD | varTrack |
-|---|---|---|
-| **What it syncs** | Kubernetes resources (Deployments, Services, CRDs…) | Configuration data: MongoDB, Redis, ZooKeeper, S3, ConfigMap, Helm values, Vercel env vars, Linux files |
-| **Where config lives** | Kubernetes etcd | The application's own datastore |
-| **Drift detection** | Kubernetes state only | Any datasource — MongoDB, Redis, ZooKeeper, S3 |
-| **Secret management** | External Secrets Operator / Sealed Secrets | HashiCorp Vault with `@secret()` annotations |
-| **Schema validation** | None | CUE schema per tenant, enforced before every write |
-| **Non-K8s targets** | ✗ | ✓ Redis, MongoDB, ZooKeeper, S3, Linux SSH, Vercel |
-| **Multi-sink fan-out** | ✗ | ✓ One push → multiple sinks in parallel |
+| | varTrack |
+|---|---|
+| **What it syncs** | Configuration data: MongoDB, Redis, ZooKeeper, S3, ConfigMap, Helm values, Vercel env vars, Linux files |
+| **Where config lives** | The application's own datastore |
+| **Drift detection** | Any datasource — MongoDB, Redis, ZooKeeper, S3 |
+| **Secret management** | HashiCorp Vault with `@secret()` annotations |
+| **Schema validation** | CUE schema per tenant, enforced before every write |
+| **Targets** | Redis, MongoDB, ZooKeeper, S3, Linux SSH, Vercel, ConfigMap, Helm |
+| **Multi-sink fan-out** | One push → multiple sinks in parallel |
 
-**They are complementary, not competing.** A typical setup:
+It works alongside whatever deploys your services. A typical setup:
 
 ```
 Git push
-  ├── ArgoCD → reconciles your Kubernetes Deployment
+  ├── your deployment pipeline → deploys your services
   └── varTrack → syncs runtime config into MongoDB + Redis + ConfigMap
 ```
 
@@ -89,7 +89,7 @@ varTrack's Helm sink triggers `helm upgrade` on push and the watcher can detect 
 
 ## When varTrack is NOT the right fit
 
-❌ You only need to sync Kubernetes manifests — ArgoCD or FluxCD is the better tool
+❌ You only need to sync Kubernetes manifests — a deployment tool is the better fit
 
 ❌ You want a general-purpose feature flag service (LaunchDarkly, Unleash) with gradual rollouts and targeting rules
 

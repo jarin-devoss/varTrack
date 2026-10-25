@@ -20,7 +20,7 @@ CUE bundle configs — the live configuration loaded by all VarTrack services.
 | `10_gitlab_platform.cue` | GitLab (self-hosted) as the Git platform |
 | `11_destination_template.cue` | `{env}` interpolation: one rule fans out to per-env destinations |
 | `12_production_full.cue` | Full production bundle: multi-platform, multi-sink, Vault |
-| `13_auth_oidc_rbac_opa.cue` | OIDC login, RBAC roles, OPA policy for CLI access control |
+| `13_cli_auth_opa.cue` | CLI access by Git permissions, with an OPA policy |
 | `14_gitea_platform.cue` | Gitea (self-hosted) as the Git platform |
 | `15_web_ui_sign_in.cue` | Web UI sign-in with GitHub and Gitea: each user sees the rules their accounts can read |
 

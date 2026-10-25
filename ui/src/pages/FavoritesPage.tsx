@@ -9,16 +9,18 @@ import { SyncPanel } from '../features/SyncPanel';
 import { usePageTitle, useSectionCount } from '../layout/page';
 import { matchesSearch } from '../lib/filters';
 import { usePinned } from '../lib/prefs';
-import { useQuery } from '../lib/useQuery';
+import { isPinned, ruleKey, tenantsOf } from '../lib/rules';
+import { useRules } from '../lib/useRules';
 
 export function FavoritesPage() {
   usePageTitle('Favorites');
-  const rules = useQuery('rules', api => api.listRules());
+  const rules = useRules();
   const [pinned, togglePin] = usePinned();
   const [search, setSearch] = useState('');
   const [syncing, setSyncing] = useState<RuleView | null>(null);
 
-  const favorites = (rules.data ?? []).filter(r => pinned.includes(r.name));
+  const favorites = (rules.data ?? []).filter(r => isPinned(pinned, r));
+  const tenants = tenantsOf(rules.data ?? []);
   const shown = favorites.filter(r => matchesSearch(r, search));
   useSectionCount('/favorites', rules.data ? favorites.length : undefined, 'favorites', rules.loading);
 
@@ -50,7 +52,7 @@ export function FavoritesPage() {
       )}
       <div className="rcard-grid">
         {shown.map(r => (
-          <RuleCard key={r.name} rule={r} pinned onTogglePin={() => togglePin(r.name)} onSync={() => setSyncing(r)} />
+          <RuleCard key={ruleKey(r)} rule={r} pinned onTogglePin={() => togglePin(r)} onSync={() => setSyncing(r)} showTenant={tenants.length > 1} />
         ))}
       </div>
       <SyncPanel open={!!syncing} rule={syncing} onClose={() => setSyncing(null)} onStarted={rules.reload} />

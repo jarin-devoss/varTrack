@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -59,7 +60,12 @@ class FakeCollection:
             self.docs.append(dict(doc))
 
     def delete_many(self, flt):
+        before = len(self.docs)
         self.docs = [d for d in self.docs if not self._matches(d, flt)]
+        return SimpleNamespace(deleted_count=before - len(self.docs))
+
+    def bulk_write(self, ops, ordered=True):
+        self.bulk_ops = len(ops)
 
 
 SCOPE = {"_vt_tenant": "acme", "_vt_datasource": "mongo", "_vt_env": "production"}
@@ -86,7 +92,8 @@ def test_an_unknown_update_strategy_is_an_error():
 
 
 @pytest.mark.parametrize("value,strategy", [
-    (None, KeyValueStrategy), ("STRATEGY_KEY_VALUE", KeyValueStrategy),
+    (None, DocumentStrategy), ("", DocumentStrategy), (0, DocumentStrategy),  # unset: one nested document per file
+    ("STRATEGY_KEY_VALUE", KeyValueStrategy),
     ("STRATEGY_DOCUMENT", DocumentStrategy), ("STRATEGY_FILE", FileStrategy), (2, DocumentStrategy),
 ])
 def test_mongo_strategy_follows_update_strategy(value, strategy):
@@ -192,6 +199,59 @@ def test_a_rewrite_drops_keys_removed_from_git_and_the_per_key_documents_before_
     assert sorted((d["_vt_file"], d.get("data")) for d in col.docs) == [
         ("app.yaml", {"debug": False}), ("other.yaml", None),  # another file's documents are left alone
     ]
+
+
+# ── a change of update_strategy replaces the other shape, and says how much ───
+
+def _per_key(file, n):
+    return [{**SCOPE, "_vt_file": file, "key": f"k{i}", "value": "1"} for i in range(n)]
+
+
+@pytest.mark.parametrize("strategy", [DocumentStrategy, FileStrategy])
+def test_a_document_write_over_per_key_documents_counts_what_it_removed(strategy):
+    col = FakeCollection(_per_key("app.yaml", 19) + _per_key("other.yaml", 3))
+    result = strategy().upsert(col, TREE_FLAT, SCOPE, "abc", "app.yaml", {}, data=TREE)
+    assert (result.written, result.replaced) == (len(TREE_FLAT), 19)
+    assert sum(1 for d in col.docs if d["_vt_file"] == "other.yaml") == 3
+
+
+def test_a_key_value_write_over_a_file_document_removes_it_and_counts_one():
+    col = FakeCollection([{**SCOPE, "_vt_file": "app.yaml", "data": TREE},
+                          {**SCOPE, "_vt_file": "other.yaml", "data": TREE}])
+    result = KeyValueStrategy().upsert(col, PROPERTIES, SCOPE, "abc", "app.yaml", {})
+    assert (result.written, result.replaced) == (len(PROPERTIES), 1)
+    assert [d["_vt_file"] for d in col.docs] == ["other.yaml"]
+
+
+def test_a_repair_over_the_other_shape_counts_it_too():
+    col = FakeCollection([{**SCOPE, "_vt_file": "app.yaml", "data": TREE}])
+    assert KeyValueStrategy().repair(col, PROPERTIES, SCOPE, "abc", "app.yaml", {}).replaced == 1
+    col = FakeCollection(_per_key("app.yaml", 2))
+    assert FileStrategy().repair(col, TREE_FLAT, SCOPE, "abc", "app.yaml", {}, data=TREE).replaced == 2
+
+
+@pytest.mark.parametrize("strategy", [DocumentStrategy, FileStrategy, KeyValueStrategy])
+def test_a_write_with_nothing_to_replace_counts_zero(strategy):
+    col = FakeCollection()
+    assert strategy().upsert(col, PROPERTIES, SCOPE, "abc", "app.yaml", {}, data=PROPERTIES).replaced == 0
+    assert strategy().upsert(col, PROPERTIES, SCOPE, "def", "app.yaml", {}, data=PROPERTIES).replaced == 0
+
+
+def test_the_mongo_sink_logs_a_change_of_shape_and_returns_the_count(caplog):
+    from app.pipeline.sinks.mongo import MongoSink
+    from app.utils.enums.sync_mode import SyncMode
+
+    col = FakeCollection(_per_key("app.yaml", 4))
+    sink = MongoSink.__new__(MongoSink)
+    sink._strategy, sink._strategy_name, sink._tenant_id = DocumentStrategy(), "STRATEGY_DOCUMENT", "acme"
+    sink._collection_for_env = lambda env: SimpleNamespace(name="configs", **{
+        n: getattr(col, n) for n in ("replace_one", "delete_many", "find", "find_one")})
+    with caplog.at_level("WARNING"):
+        out = sink._write(flat_data=TREE_FLAT, sync_mode=SyncMode.GIT_SMART_REPAIR, datasource="mongo", env="production",
+                         repo="r", branch="main", commit_sha="abc", file_path="app.yaml",
+                         labels=MagicMock(as_mongo_meta=lambda: {}), total_sources=1, data=TREE)
+    assert out == {"written": len(TREE_FLAT), "replaced": 4, "strategy": "STRATEGY_DOCUMENT"}
+    assert "replaced 4 documents" in caplog.text and "file=app.yaml" in caplog.text
 
 
 def test_key_value_reads_one_document_per_key():

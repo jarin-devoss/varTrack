@@ -96,7 +96,7 @@ async def test_webhook_missing_tenant_id_returns_400():
 async def test_webhook_tenant_derived_from_repo_owner():
     """
     When rule_config has no tenant_id, derive it from repository.full_name
-    in the webhook payload (topLevelOrg pattern).
+    in the webhook payload.
     """
     app = _app_with_tenant(tenant_id=None)
     with patch("app.tasks.etl.process_webhook_task") as mock_task_cls:

@@ -144,7 +144,7 @@ datasources: [{
 
 ## Drift detection
 
-The watcher reads all keys/fields from the configured prefix and compares against the Git baseline. Any changed or missing field triggers a drift event.
+The watcher asks the orchestrator each poll; the orchestrator reads the fields or keys varTrack wrote and compares them with what it last synced from Git — a changed or missing key is drift ([Drift Detection](../concepts/drift-detection.md)).
 
 ```cue
 rules: [{

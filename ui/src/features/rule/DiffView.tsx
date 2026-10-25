@@ -33,8 +33,8 @@ export function DiffSummary({ changes }: { changes: KeyChange[] }) {
 }
 
 /** Current state (sink) against desired state (Git) for one environment. */
-export function EnvDiff({ rule, env, destination }: { rule: string; env: string; destination: string }) {
-  const keys = useQuery(`keys:${rule}:${env}`, api => api.listKeys(rule, env));
+export function EnvDiff({ rule, tenant, env, destination }: { rule: string; tenant?: string; env: string; destination: string }) {
+  const keys = useQuery(`keys:${tenant}:${rule}:${env}`, api => api.listKeys(rule, env, tenant));
   const [prefs] = usePrefs();
 
   if (keys.error && !keys.data) return <ErrorState compact error={keys.error} what="key values" onRetry={keys.reload} />;

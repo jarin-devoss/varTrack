@@ -3,6 +3,8 @@ package secrets_test
 import (
 	"context"
 	"errors"
+	"os"
+	"path/filepath"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -10,7 +12,7 @@ import (
 
 	"gateway-service/internal/secrets"
 
-	pb_utils "gateway-service/internal/gen/proto/go/vartrack/v1/utils"
+	pb_utils "vartrack/libs/gen/vartrack/v1/utils"
 )
 
 // stubFetcher is a minimal Fetcher for tests.
@@ -84,16 +86,36 @@ func TestRefResolver_ExternalRef(t *testing.T) {
 	}
 }
 
-func TestRefResolver_NoManagerName(t *testing.T) {
-	r := newResolver(&stubFetcher{})
-	ref := &pb_utils.SecretRef{
-		Source: &pb_utils.SecretRef_Ref{
-			Ref: &pb_utils.ExternalRef{Path: "p", Key: "k"},
-		},
+func TestRefResolver_EmptyManagerNameAsksForTheDefault(t *testing.T) {
+	// A rule without secret_manager: the bundle picks the default manager
+	// (tagged "default", else the only one) when asked for "".
+	var asked []string
+	r := secrets.NewRefResolver(func(_ context.Context, name string) (secrets.Fetcher, error) {
+		asked = append(asked, name)
+		return &stubFetcher{values: map[string]string{"p/k": "v"}}, nil
+	})
+	ref := &pb_utils.SecretRef{Source: &pb_utils.SecretRef_Ref{Ref: &pb_utils.ExternalRef{Path: "p", Key: "k"}}}
+	got, err := r.Resolve(context.Background(), ref, "")
+	if err != nil || got != "v" || len(asked) != 1 || asked[0] != "" {
+		t.Fatalf("Resolve = %q, %v (asked %q)", got, err, asked)
 	}
-	_, err := r.Resolve(context.Background(), ref, "")
-	if err == nil {
-		t.Fatal("expected error when manager name is empty")
+}
+
+func TestRefResolver_File(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "webhook-secret")
+	if err := os.WriteFile(path, []byte("  s3cret\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	ref := &pb_utils.SecretRef{Source: &pb_utils.SecretRef_File{File: path}}
+	for _, r := range []secrets.Resolver{newResolver(&stubFetcher{}), secrets.NewCachingRefResolver(newResolver(&stubFetcher{}), secrets.DefaultCacheConfig())} {
+		got, err := r.Resolve(context.Background(), ref, "")
+		if err != nil || got != "s3cret" {
+			t.Fatalf("Resolve(file) = %q, %v — want the whole file, trimmed", got, err)
+		}
+	}
+	missing := &pb_utils.SecretRef{Source: &pb_utils.SecretRef_File{File: filepath.Join(t.TempDir(), "nope")}}
+	if _, err := newResolver(&stubFetcher{}).Resolve(context.Background(), missing, ""); err == nil {
+		t.Error("a missing file should be an error")
 	}
 }
 

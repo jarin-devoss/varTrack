@@ -10,7 +10,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	pb "gateway-service/internal/gen/proto/go/vartrack/v1/services"
+	pb "vartrack/libs/gen/vartrack/v1/services"
 
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc/connectivity"

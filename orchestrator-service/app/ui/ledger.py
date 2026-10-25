@@ -11,6 +11,8 @@ fails a sync.
 Keys
 ────
   vt:ui:target:{tenant}:{datasource}:{env}   JSON  last desired state + last sync
+                                             (desiredByFile is keyed "{repo}:{file}": the inventory
+                                             prune diffs; pendingPrune holds keys still to delete)
   vt:ui:targets:{tenant}                     SET   "{datasource}|{env}"
   vt:ui:task:{task_id}                       JSON  task summary (7 days)
   vt:ui:tasks:{tenant}                       LIST  task ids, newest first
@@ -80,6 +82,42 @@ def repo_name(repo_url: str) -> str:
     return url
 
 
+def inventory_key(repo_url: str, file_path: str) -> str:
+    """The key of one file in a target's desiredByFile: its repository and
+    path, since two repositories may both feed an environment a file of the
+    same name."""
+    return f"{repo_name(repo_url)}:{file_path}"
+
+
+def key_state(desired_value: str, live: Any, digest: str | None = None) -> str:
+    """'unreadable' | 'missing' | 'synced' | 'drifted' — one key, as the sink
+    holds it (*live*) against what varTrack wrote. A secret is compared by
+    *digest*, since its value is not stored. The drift view and prune both
+    decide a key's state here."""
+    from app.pipeline.sinks.base import Unreadable
+
+    if isinstance(live, Unreadable):
+        return "unreadable"  # write-only in the sink: not comparable
+    if live is None:
+        return "missing"
+    same = secret_digest(live) == digest if digest is not None else live == desired_value
+    return "synced" if same else "drifted"
+
+
+def entries_of(target: dict[str, Any] | None) -> dict[str, dict]:
+    """A target's desiredByFile entries; a target recorded before per-file
+    tracking is one entry."""
+    if not target:
+        return {}
+    by_file = target.get("desiredByFile")
+    if by_file is not None:
+        return by_file
+    if target.get("desired"):
+        return {",".join(target.get("files") or []): {
+            "desired": target["desired"], "secretDigests": target.get("secretDigests", {})}}
+    return {}
+
+
 def is_active(task: dict[str, Any], now: float | None = None) -> bool:
     """Still running — not finished, and not abandoned by a worker that died."""
     if task.get("state") not in ACTIVE_STATES:
@@ -115,8 +153,21 @@ def record_target(
     commit_message: str,
     author: str,
     sync: dict[str, Any],
+    pending_prune: Iterable[str] | None = None,
+    key_space: str | None = None,
 ) -> None:
-    """Remember the desired state just written for one environment."""
+    """Remember the desired state just written for one environment.
+
+    *key_space* is where the sync put its keys (stage_sync.key_space_id; empty
+    for a sink that does not delete single keys). It is stored as keySpace so
+    a later prune of another target can tell whose keys share its key space;
+    None keeps what the target already holds, a target recorded before this
+    has no keySpace at all.
+
+    *pending_prune* is the keys the sync wanted to delete and could not (the
+    next sync retries them); an empty list clears them, None keeps what the
+    target already holds. Each is stored with the value (or secret digest)
+    last written, so a retry can tell whether something else changed it."""
     try:
         r = _redis()
         key = _key("target", tenant, datasource, env)
@@ -128,13 +179,12 @@ def record_target(
         # touched, and the environment's other files still say what it holds.
         prev_raw = r.get(key)
         prev = json.loads(prev_raw) if prev_raw else {}
-        by_file: dict[str, dict] | None = prev.get("desiredByFile")
-        if by_file is None:
-            # Recorded before per-file tracking: keep it as one entry until each file is synced again.
-            by_file = {",".join(prev["files"]): {"desired": prev["desired"], "secretDigests": prev.get("secretDigests", {})}} \
-                if prev.get("desired") and prev.get("files") else {}
+        by_file = dict(entries_of(prev))
+        entry_key = inventory_key(repo_url, file_path)
+        # Entries recorded before the key carried the repository: this file's.
         by_file.pop(file_path, None)
-        by_file[file_path] = {"desired": desired, "secretDigests": digests}  # last written last
+        by_file.pop(entry_key, None)
+        by_file[entry_key] = {"file": file_path, "desired": desired, "secretDigests": digests}  # last written last
 
         # A key in two files holds whatever was written last.
         desired, digests = {}, {}
@@ -145,7 +195,23 @@ def record_target(
                     digests[k] = entry["secretDigests"][k]
                 else:
                     digests.pop(k, None)
-        files = sorted({name for names in by_file for name in names.split(",") if name})
+        names: set[str] = set()
+        for name, entry in by_file.items():
+            if entry.get("file"):
+                names.add(entry["file"])
+            else:  # recorded before entries named their file: the key is the path(s)
+                names.update(n for n in name.split(",") if n)
+        files = sorted(names)
+        prev_pending: dict[str, dict] = prev.get("pendingPrune") or {}
+        wanted = prev_pending if pending_prune is None else pending_prune
+        pending = {}
+        for k in sorted(set(wanted)):
+            if k in desired:
+                continue  # written again: no longer stale
+            if k in prev_pending:
+                pending[k] = prev_pending[k]
+            elif k in (prev.get("desired") or {}):
+                pending[k] = {"value": prev["desired"][k], "digest": (prev.get("secretDigests") or {}).get(k)}
 
         doc = {
             "tenant": tenant,
@@ -162,8 +228,12 @@ def record_target(
             "desired": desired,
             "secretDigests": digests,
             "desiredByFile": by_file,
+            "pendingPrune": pending,
             "lastSync": sync,
         }
+        space = key_space if key_space is not None else prev.get("keySpace")
+        if space is not None:
+            doc["keySpace"] = space
         r.set(key, json.dumps(doc))
         r.sadd(_key("targets", tenant), f"{datasource}|{env}")
     except Exception:
@@ -238,6 +308,12 @@ def list_targets(tenant: str) -> list[dict[str, Any]]:
         return []
     keys = [_key("target", tenant, *m.split("|", 1)) for m in members]
     return [json.loads(raw) for raw in r.mget(keys) if raw]
+
+
+def list_envs(tenant: str, datasource: str) -> list[str]:
+    """The environments a datasource has been synced to."""
+    members = _redis().smembers(_key("targets", tenant))
+    return sorted(m.split("|", 1)[1] for m in members if m.split("|", 1)[0] == datasource)
 
 
 def get_target(tenant: str, datasource: str, env: str) -> dict[str, Any] | None:

@@ -82,10 +82,10 @@ message Bundle {
     (google.api.field_behavior) = OPTIONAL
   ];
 
-  // Name of the Redis datasource used by the watcher for shared-state baseline.
-  string watcher_state_datasource = 13 [
-    (google.api.field_behavior) = OPTIONAL
-  ];
+  // Field 13 was watcher_state_datasource. The watcher keeps no state between
+  // polls (the orchestrator compares with its sync ledger), so nothing read it.
+  reserved 13;
+  reserved "watcher_state_datasource";
 
   // Name of the datasource used for watcher leader election.
   // Only Redis and ZooKeeper are supported.

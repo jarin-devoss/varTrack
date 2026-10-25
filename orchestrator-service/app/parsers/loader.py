@@ -128,3 +128,20 @@ def _sniff(content: str, file_path: str) -> Any:
     # kv_parser always returns something (even if empty)
     from app.parsers import kv_parser
     return kv_parser.parse(content, file_path)
+
+
+# Format names a caller may give (vt sync --format) → the parser that reads them.
+_FORMAT_ALIASES = {"yml": "yaml", "env": "kv", "dotenv": "kv", "properties": "kv"}
+
+
+def load_as(content: str, file_path: str, fmt: str | None = None) -> Any:
+    """Parse *content* as *fmt* when given, else as *file_path*'s extension says.
+
+    The CLI passes the file's content and, optionally, an explicit format
+    (yaml, json, toml, env, ini, hcl, xml, properties).
+    """
+    if fmt:
+        name = _FORMAT_ALIASES.get(fmt.lower(), fmt.lower())
+        if name in ("json", "yaml", "toml", "xml", "ini", "kv", "hcl"):
+            return _parse_with(name, content, file_path)
+    return load(content, file_path)

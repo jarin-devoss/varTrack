@@ -1,14 +1,12 @@
 // vartrack_core/src/lib.rs
 //
 // Rust ETL core exposed to Python via PyO3.
-// Three main capabilities:
+// Main capabilities:
 //   1. BFS flattening of nested CUE-parsed JSON → flat key/value pairs
 //   2. Variable map merging (env resolution: branchMap → filePathMap)
-//   3. Prune / prune-last diffing against live DB state
 
 pub mod flatten;
 pub mod merge;
-pub mod prune;
 pub mod sync;
 pub mod cue;
 pub mod diff;
@@ -25,10 +23,6 @@ fn vartrack_core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     // ── Merge ────────────────────────────────────────────────────────────────
     m.add_function(wrap_pyfunction!(merge::py_merge_variables, m)?)?;
     m.add_function(wrap_pyfunction!(merge::py_resolve_env, m)?)?;
-
-    // ── Prune ────────────────────────────────────────────────────────────────
-    m.add_function(wrap_pyfunction!(prune::py_diff_keys, m)?)?;
-    m.add_function(wrap_pyfunction!(prune::py_prune_last, m)?)?;
 
     // ── Sync helpers ─────────────────────────────────────────────────────────
     m.add_function(wrap_pyfunction!(sync::py_content_hash, m)?)?;

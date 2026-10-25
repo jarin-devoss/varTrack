@@ -217,7 +217,7 @@ export function EnvPanel({
                 Left is the current state in {SINK_LABEL[rule.sinkType]}, right is the desired state in Git. A sync writes the right side.
               </p>
               <DiffOptions />
-              <EnvDiff rule={rule.name} env={t.env} destination={t.destination} />
+              <EnvDiff rule={rule.name} tenant={rule.tenant} env={t.env} destination={t.destination} />
             </div>
           )}
           {view === 'current' && <StateValues rule={rule} target={t} side="live" />}
@@ -295,7 +295,7 @@ function EnvSummary({ rule, target: t }: { rule: RuleView; target: Target }) {
 
 /** Every key of one side, as `key = value` lines; keys that differ from the other side are marked. */
 function StateValues({ rule, target: t, side }: { rule: RuleView; target: Target; side: 'live' | 'git' }) {
-  const keys = useQuery(`keys:${rule.name}:${t.env}`, api => api.listKeys(rule.name, t.env));
+  const keys = useQuery(`keys:${rule.tenant}:${rule.name}:${t.env}`, api => api.listKeys(rule.name, t.env, rule.tenant));
   if (keys.error && !keys.data) return <ErrorState compact error={keys.error} what="key values" onRetry={keys.reload} />;
   if (!keys.data) return <LoadingRows rows={6} height={20} />;
 
@@ -359,7 +359,7 @@ function StateValues({ rule, target: t, side }: { rule: RuleView; target: Target
 }
 
 function EnvHistory({ rule, env }: { rule: RuleView; env: string }) {
-  const tasks = useQuery(`tasks:${rule.name}`, api => api.listTasks({ rule: rule.name, limit: 100 }));
+  const tasks = useQuery(`tasks:${rule.tenant}:${rule.name}`, api => api.listTasks({ rule: rule.name, tenant: rule.tenant, limit: 100 }));
   if (tasks.error && !tasks.data) return <ErrorState compact error={tasks.error} what="sync history" onRetry={tasks.reload} />;
   if (!tasks.data) return <LoadingRows rows={3} height={60} />;
   const shown = tasks.data.filter(t => t.env === env);

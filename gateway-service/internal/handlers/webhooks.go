@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"hash"
 	"io"
@@ -13,7 +14,7 @@ import (
 	"sync"
 	"time"
 
-	pb "gateway-service/internal/gen/proto/go/vartrack/v1/services"
+	pb "vartrack/libs/gen/vartrack/v1/services"
 	"gateway-service/internal/middlewares"
 	"gateway-service/internal/models"
 	mon "gateway-service/internal/monitoring"
@@ -132,14 +133,33 @@ func (h *WebhookHandler) Handle(w http.ResponseWriter, r *http.Request) {
 	var webhookErr error
 	defer func() { webhookSpan.End(webhookErr) }()
 
-	platform, platformName, err := h.bundleService.GetPlatformForDatasource(ctx, datasourceName)
+	platform, platformName, err := h.bundleService.PlatformForWebhook(ctx, datasourceName, r.Header.Get)
+	var ambiguous *models.AmbiguousPlatformError
+	if errors.As(err, &ambiguous) {
+		// Platforms of one type fit the headers equally; the secret that signed
+		// the body says which of them sent it.
+		platform, platformName, err = h.platformBySignature(w, r, ambiguous)
+	}
 	if err != nil {
 		slog.Warn("no platform for datasource",
 			"datasource", datasourceName, "error", err,
 			"correlation_id", cid, "request_id", rid)
-		writeErrorJSON(w, http.StatusNotFound,
-			ErrCodeDatasourceNotFound,
-			fmt.Sprintf("no configuration found for datasource %q", datasourceName))
+		var mismatch *models.PlatformMismatchError
+		var tooLarge *http.MaxBytesError
+		switch {
+		case errors.As(err, &mismatch), errors.As(err, &ambiguous):
+			// Rules on several platforms write to this datasource, and the request
+			// does not say which sent it.
+			writeErrorJSON(w, http.StatusBadRequest, ErrCodePlatformMismatch, err.Error())
+		case errors.Is(err, errSignatureFitsNoPlatform):
+			writeErrorJSON(w, http.StatusUnauthorized, ErrCodeSignatureInvalid, "invalid signature")
+		case errors.As(err, &tooLarge):
+			writeErrorJSON(w, http.StatusRequestEntityTooLarge, ErrCodeBodyReadFailed, "failed to read request body")
+		default:
+			writeErrorJSON(w, http.StatusNotFound,
+				ErrCodeDatasourceNotFound,
+				fmt.Sprintf("no configuration found for datasource %q", datasourceName))
+		}
 		webhookErr = err
 		return
 	}
@@ -154,7 +174,7 @@ func (h *WebhookHandler) Handle(w http.ResponseWriter, r *http.Request) {
 
 	if !platform.IsPushEvent(eventType) && !platform.IsPREvent(eventType) {
 		slog.Info("ignoring unhandled event type",
-			"event_type", eventType, "datasource", datasourceName,
+			"event_type", knownEventType(platform, eventType), "datasource", datasourceName,
 			"correlation_id", cid, "request_id", rid)
 		writeJSON(w, http.StatusOK, jsonResponse{Message: "event ignored"})
 		return
@@ -199,6 +219,48 @@ func (h *WebhookHandler) Handle(w http.ResponseWriter, r *http.Request) {
 	grpcSpan.SetAttr("task_id", resp.GetTaskId())
 	webhookSpan.SetAttr("task_id", resp.GetTaskId())
 	writeJSON(w, http.StatusAccepted, jsonResponse{TaskID: resp.GetTaskId(), Message: resp.GetMessage()})
+}
+
+// errSignatureFitsNoPlatform: several platforms of one type fit a webhook's
+// headers, and none of their secrets signed its body.
+var errSignatureFitsNoPlatform = errors.New("the signature fits none of the platforms")
+
+// platformBySignature picks the sender of a webhook that fits several
+// platforms of one type, by the secret that signed its body. It reads the body
+// (bounded as verifyWebhook bounds it) and leaves it readable for
+// verifyWebhook. Where signatures are not checked (non-production), or the
+// platforms have no secret, nothing tells them apart and the webhook stays
+// ambiguous; if the body is signed by none of them it is refused as unsigned.
+func (h *WebhookHandler) platformBySignature(w http.ResponseWriter, r *http.Request, ambiguous *models.AmbiguousPlatformError) (models.Platform, string, error) {
+	if h.skipValidation {
+		return nil, "", ambiguous
+	}
+	secured := false
+	for _, c := range ambiguous.Candidates {
+		if c.Platform.Secret() != "" {
+			secured = true
+		}
+	}
+	if !secured {
+		return nil, "", ambiguous
+	}
+
+	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, h.bundleService.WebhookBodyLimit()))
+	if err != nil {
+		return nil, "", err
+	}
+	r.Body = io.NopCloser(bytes.NewReader(body))
+
+	picked, ok := ambiguous.BySignature(body, r.Header.Get)
+	if !ok {
+		for _, c := range ambiguous.Candidates {
+			if c.Signed(body, r.Header.Get) {
+				return nil, "", ambiguous // signed by several: the same secret on more than one platform
+			}
+		}
+		return nil, "", errSignatureFitsNoPlatform
+	}
+	return picked.Platform, picked.Name, nil
 }
 
 // HandleSchemaRegistry processes schema registry webhooks.
@@ -251,7 +313,7 @@ func (h *WebhookHandler) HandleSchemaRegistry(w http.ResponseWriter, r *http.Req
 
 	if !platform.IsPushEvent(eventType) {
 		slog.Info("schema registry: ignoring non-push event",
-			"event_type", eventType,
+			"event_type", knownEventType(platform, eventType),
 			"correlation_id", cid, "request_id", rid)
 		writeJSON(w, http.StatusOK, jsonResponse{Message: "event ignored"})
 		return
@@ -353,7 +415,7 @@ func (h *WebhookHandler) verifyWebhook(
 
 	if err := validateWebhookStream(platformName, eventType, hr); err != nil {
 		slog.Warn("webhook payload failed structural validation",
-			"platform", platformName, "event_type", eventType,
+			"platform", platformName, "event_type", knownEventType(platform, eventType),
 			"error", err,
 			"correlation_id", correlationID, "request_id", requestID)
 
@@ -417,7 +479,6 @@ func (h *WebhookHandler) verifyWebhook(
 			if !h.replayProtector.CheckNonce(deliveryID) {
 				slog.Warn("replay detected: duplicate delivery ID",
 					"platform", platformName,
-					"delivery_id", deliveryID,
 					"correlation_id", correlationID, "request_id", requestID)
 				writeErrorJSON(w, http.StatusUnauthorized,
 					ErrCodeReplayDetected, "duplicate delivery: request already processed")
@@ -437,6 +498,20 @@ func resolveTimestampExtractor(platformName string) middlewares.TimestampExtract
 		return middlewares.ExtractStripeTimestamp
 	default:
 		return middlewares.ExtractGitHubTimestamp
+	}
+}
+
+// knownEventType names an event for the log: "push", "pull_request", or "other".
+// The event type header is the sender's to set, so its value is never logged
+// as it came; the name returned is one of these constants, not the request's.
+func knownEventType(platform models.Platform, eventType string) string {
+	switch {
+	case platform.IsPushEvent(eventType):
+		return "push"
+	case platform.IsPREvent(eventType):
+		return "pull_request"
+	default:
+		return "other"
 	}
 }
 
@@ -461,29 +536,29 @@ func validateWebhookStream(platformName, eventType string, r io.Reader) error {
 		switch eventType {
 		case "push":
 			if payload.Ref == nil || payload.Repository == nil {
-				return fmt.Errorf("missing required field 'ref' or 'repository' for %s/%s event", platformName, eventType)
+				return fmt.Errorf("missing required field 'ref' or 'repository' for %s/push event", platformName)
 			}
 		case "pull_request":
 			if payload.Action == nil || payload.PullRequest == nil || payload.Repository == nil {
-				return fmt.Errorf("missing required field 'action', 'pull_request', or 'repository' for %s/%s event", platformName, eventType)
+				return fmt.Errorf("missing required field 'action', 'pull_request', or 'repository' for %s/pull_request event", platformName)
 			}
 		}
 	case "gitlab":
 		switch eventType {
 		case "Push Hook", "Tag Push Hook":
 			if payload.Ref == nil || payload.Project == nil {
-				return fmt.Errorf("missing required field 'ref' or 'project' for %s/%s event", platformName, eventType)
+				return fmt.Errorf("missing required field 'ref' or 'project' for %s/Push Hook event", platformName)
 			}
 		case "Merge Request Hook":
 			if payload.ObjectAttr == nil || payload.Project == nil {
-				return fmt.Errorf("missing required field 'object_attributes' or 'project' for %s/%s event", platformName, eventType)
+				return fmt.Errorf("missing required field 'object_attributes' or 'project' for %s/Merge Request Hook event", platformName)
 			}
 		}
 	case "bitbucket":
 		switch eventType {
 		case "repo:push":
 			if payload.Push == nil || payload.Repository == nil {
-				return fmt.Errorf("missing required field 'push' or 'repository' for %s/%s event", platformName, eventType)
+				return fmt.Errorf("missing required field 'push' or 'repository' for %s/repo:push event", platformName)
 			}
 		}
 	case "slack":

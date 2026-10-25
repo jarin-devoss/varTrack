@@ -3,6 +3,7 @@ syntax = "proto3";
 package vartrack.v1;
 
 import "vartrack/v1/enums/strategy.proto";
+import "vartrack/v1/options.proto";
 import "vartrack/v1/utils/secret_ref.proto";
 import "buf/validate/validate.proto";
 import "google/api/field_behavior.proto";
@@ -25,7 +26,10 @@ message S3Config {
   optional SecretRef session_token = 8 [(google.api.field_behavior) = OPTIONAL];
   bool use_iam_role = 9 [(google.api.field_behavior) = OPTIONAL];
   // The key prefix is the environment. Formerly env_as_prefix, which is still read.
-  bool prefix_as_env = 10 [(google.api.field_behavior) = OPTIONAL];
+  bool prefix_as_env = 10 [
+    (google.api.field_behavior) = OPTIONAL,
+    (vartrack.v1.config) = {old_names: ["env_as_prefix"]}
+  ];
   // How the config is stored under the prefix:
   //   STRATEGY_KEY_VALUE  one object per key
   //   STRATEGY_DOCUMENT   config.json, nested

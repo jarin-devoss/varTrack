@@ -3,7 +3,7 @@ package platforms
 import (
 	"testing"
 
-	pb_gh "gateway-service/internal/gen/proto/go/vartrack/v1/models/platforms"
+	pb_gh "vartrack/libs/gen/vartrack/v1/models/platforms"
 )
 
 func TestAPIAddressesComeFromTheProtos(t *testing.T) {

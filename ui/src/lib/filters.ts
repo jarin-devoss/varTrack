@@ -1,11 +1,11 @@
 import type { RuleView } from '../api/types';
 import { targetSync } from './status';
 
-export const FACET_KEYS = ['status', 'drift', 'sync', 'sink', 'env', 'platform', 'selfHeal'] as const;
+export const FACET_KEYS = ['status', 'drift', 'sync', 'sink', 'env', 'platform', 'selfHeal', 'tenant'] as const;
 export type FacetKey = (typeof FACET_KEYS)[number];
 export type Facets = Record<FacetKey, string[]>;
 
-export const EMPTY_FACETS: Facets = { status: [], drift: [], sync: [], sink: [], env: [], platform: [], selfHeal: [] };
+export const EMPTY_FACETS: Facets = { status: [], drift: [], sync: [], sink: [], env: [], platform: [], selfHeal: [], tenant: [] };
 
 // Sync status, drift and last sync match per environment: "OutOfSync" finds
 // every rule with at least one environment out of sync, which is what the
@@ -18,6 +18,7 @@ const VALUES: Record<FacetKey, (r: RuleView) => string[]> = {
   env: r => r.targets.map(t => t.env),
   platform: r => [r.platform],
   selfHeal: r => [r.selfHeal ? 'on' : 'off'],
+  tenant: r => [r.tenant],
 };
 
 export function facetValues(rule: RuleView, key: FacetKey): string[] {
@@ -29,6 +30,7 @@ export function matchesSearch(rule: RuleView, search: string): boolean {
   if (!q) return true;
   const haystack = [
     rule.name,
+    rule.tenant,
     rule.fileName ?? '',
     rule.destinationTemplate,
     ...rule.repositories,

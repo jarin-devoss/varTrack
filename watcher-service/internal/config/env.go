@@ -18,20 +18,13 @@ import (
 
 // Env holds all environment variables consumed by the watcher-service.
 type Env struct {
-	AppEnv       string // APP_ENV
-	LogLevel     string // LOG_LEVEL
-	AdminAddr    string // ADMIN_ADDR — health/metrics HTTP server
-	ConfigPath   string // CONFIG_PATH — path to the CUE config bundle
+	AppEnv           string        // APP_ENV
+	LogLevel         string        // LOG_LEVEL
+	AdminAddr        string        // ADMIN_ADDR — health/metrics HTTP server
+	ConfigPath       string        // CONFIG_PATH — path to the CUE config bundle
 	OrchestratorAddr string        // ORCHESTRATOR_ADDR — orchestrator gRPC address (host:port)
 	HealTimeout      time.Duration // HEAL_TIMEOUT (default 30s)
-	PollInterval time.Duration // POLL_INTERVAL (default 60s)
-	StateDir     string        // STATE_DIR — directory for local state snapshots
-
-	// RedisURL is optional.  When set, watcher baselines are persisted to Redis
-	// instead of the local filesystem.  Useful when running multiple watcher
-	// replicas so they share the same baseline.
-	// Resolved from the CUE bundle datasource tagged by global_tags.watcher_state_redis.
-	RedisURL string
+	PollInterval     time.Duration // POLL_INTERVAL (default 60s)
 
 	// TLS for outbound HTTP calls to the orchestrator.
 	// Empty strings → plain HTTP (safe for local dev and tests).
@@ -48,15 +41,14 @@ func LoadEnv() (*Env, error) {
 	loadDotEnv()
 
 	env := &Env{
-		AppEnv:       EnvOr("APP_ENV", "development"),
-		LogLevel:     strings.ToUpper(EnvOr("LOG_LEVEL", "INFO")),
-		AdminAddr:    EnvOr("ADMIN_ADDR", ":9091"),
-		ConfigPath:   EnvOr("CONFIG_PATH", "config.cue"),
+		AppEnv:           EnvOr("APP_ENV", "development"),
+		LogLevel:         strings.ToUpper(EnvOr("LOG_LEVEL", "INFO")),
+		AdminAddr:        EnvOr("ADMIN_ADDR", ":9091"),
+		ConfigPath:       EnvOr("CONFIG_PATH", "config.cue"),
 		OrchestratorAddr: EnvOr("ORCHESTRATOR_ADDR", "localhost:50051"),
-		StateDir:     EnvOr("STATE_DIR", "/tmp/watcher-state"),
-		TLSCAFile:    EnvOr("TLS_CA_FILE", ""),
-		TLSCertFile:  EnvOr("TLS_CERT_FILE", ""),
-		TLSKeyFile:   EnvOr("TLS_KEY_FILE", ""),
+		TLSCAFile:        EnvOr("TLS_CA_FILE", ""),
+		TLSCertFile:      EnvOr("TLS_CERT_FILE", ""),
+		TLSKeyFile:       EnvOr("TLS_KEY_FILE", ""),
 	}
 
 	var err error
@@ -69,9 +61,6 @@ func LoadEnv() (*Env, error) {
 	if env.ConfigPath == "" {
 		return nil, fmt.Errorf("CONFIG_PATH must not be empty")
 	}
-
-	// Resolve Redis URL from the CUE bundle datasource (no REDIS_URL env var).
-	env.RedisURL = RedisURLFromBundle(env.ConfigPath)
 
 	// Production requires mTLS to the orchestrator.
 	if env.IsProduction() {
@@ -181,8 +170,6 @@ func (e *Env) LogValue() slog.Value {
 		slog.String("orchestrator_addr", e.OrchestratorAddr),
 		slog.Duration("heal_timeout", e.HealTimeout),
 		slog.Duration("poll_interval", e.PollInterval),
-		slog.String("state_dir", e.StateDir),
-		slog.Bool("redis_state", e.RedisURL != ""),
 		slog.Bool("tls_ca_set", e.TLSCAFile != ""),
 		slog.Bool("tls_cert_set", e.TLSCertFile != ""),
 	)

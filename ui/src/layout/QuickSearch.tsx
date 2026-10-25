@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import type { RuleView } from '../api/types';
 import { Icon, SINK_ICON, type IconName } from '../components/Icon';
+import { ruleHref } from '../features/links';
 import { DriftIcon } from '../components/Status';
 import { useHotkeys } from '../lib/hotkeys';
 
@@ -27,7 +28,7 @@ const PAGES: Result[] = [
   { group: 'Pages', label: 'Profile', to: '/profile', icon: 'user' },
 ];
 
-const ruleHrefOf = (name: string, query = '') => `/rules/${name.split('/').map(encodeURIComponent).join('/')}${query}`;
+const ruleHrefOf = ruleHref;
 
 /** "Search" button that opens an inline search over rules, environments and pages. */
 export function QuickSearch({ rules, open, onOpenChange }: { rules: RuleView[]; open: boolean; onOpenChange: (open: boolean) => void }) {
@@ -69,11 +70,11 @@ export function QuickSearch({ rules, open, onOpenChange }: { rules: RuleView[]; 
     const match = (s: string) => !needle || s.toLowerCase().includes(needle);
     const ruleResults: Result[] = rules
       .filter(r => match(`${r.name} ${r.repositories.join(' ')} ${r.fileName ?? ''}`))
-      .map(r => ({ group: 'Rules', label: r.name, hint: r.repositories.join(', '), to: ruleHrefOf(r.name), icon: 'drift', rule: r }));
+      .map(r => ({ group: 'Rules', label: r.name, hint: r.repositories.join(', '), to: ruleHrefOf(r), icon: 'drift', rule: r }));
     const envResults: Result[] = rules.flatMap(r =>
       r.targets
         .filter(t => needle && match(`${r.name} ${t.env} ${t.destination}`))
-        .map(t => ({ group: 'Environments' as const, label: `${r.name} · ${t.env}`, hint: t.destination, to: ruleHrefOf(r.name, `?env=${encodeURIComponent(t.env)}`), icon: 'drift' as const, rule: r, env: t.env })),
+        .map(t => ({ group: 'Environments' as const, label: `${r.name} · ${t.env}`, hint: t.destination, to: ruleHrefOf(r, `?env=${encodeURIComponent(t.env)}`), icon: 'drift' as const, rule: r, env: t.env })),
     );
     const pageResults = PAGES.filter(p => needle && match(p.label));
     return [...ruleResults.slice(0, 8), ...envResults.slice(0, 8), ...pageResults];

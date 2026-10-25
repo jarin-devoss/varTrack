@@ -1,7 +1,8 @@
 """
 app/grpc_server/server.py
 
-gRPC server that implements the vartrack.v1.Orchestrator service.
+gRPC server that implements the vartrack.v1.Orchestrator service, plus the
+Watcher service and the CLI service (app.grpc_server.cli_servicer).
 
 Receives webhooks from the Go gateway, dispatches Celery ETL tasks,
 and returns task IDs.  Task status is retrievable via GetWebhookTask.
@@ -230,6 +231,30 @@ class OrchestratorServicer:
         return _check_response(status, drifted, message)
 
     # ------------------------------------------------------------------
+    # ListWatchTargets  (called by watcher-service on every poll)
+    # ------------------------------------------------------------------
+
+    def ListWatchTargets(self, request, context: "ServicerContext"):
+        """
+        The rules the watcher keeps in sync: self_heal on and not suspended.
+        The watcher does not read config.cue, bundle.json or vartrack.json;
+        this is the one place those are layered, so it asks here, every poll.
+        """
+        from vartrack.v1.services import watcher_pb2  # type: ignore
+        from app.ui.drift import watch_targets
+
+        targets = watch_targets()
+        logger.debug("ListWatchTargets: %d target(s)", len(targets))
+        return watcher_pb2.ListWatchTargetsResponse(targets=[
+            watcher_pb2.WatchTarget(
+                platform=str(rule.get("platform", "")),
+                datasource=str(rule.get("datasource", "")),
+                tenant_id=tid,
+            )
+            for tid, rule in targets
+        ])
+
+    # ------------------------------------------------------------------
     # Helpers
     # ------------------------------------------------------------------
 
@@ -295,7 +320,15 @@ def create_server(
             OrchestratorServicer(rule_registry), server
         )
     except ImportError:
-        logger.warning("watcher proto stubs not found — SyncDatasource RPC unavailable; run: buf generate --template buf.gen.watcher.yaml && pip install -e .")
+        logger.warning("watcher proto stubs not found — SyncDatasource RPC unavailable; run: buf generate && pip install -e .")
+
+    # Register the CLI service (gateway → orchestrator for vt / the UI Playground).
+    from app.grpc_server.cli_servicer import CLI_PROTO_AVAILABLE, CLIServicer
+    if CLI_PROTO_AVAILABLE:
+        from vartrack.v1.services import cli_pb2_grpc  # type: ignore
+        cli_pb2_grpc.add_CLIServiceServicer_to_server(CLIServicer(), server)
+    else:
+        logger.warning("cli proto stubs not found — CLIService unavailable; run: buf generate")
 
     # Use mTLS credentials when MTLS_ENABLED=true, otherwise insecure.
     # Insecure is the default so local dev and unit tests need no certs.
