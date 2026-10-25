@@ -13,6 +13,8 @@ the short member names the code uses:
 """
 from __future__ import annotations
 
+from typing import TYPE_CHECKING, Any
+
 from vartrack.v1.enums import sync_mode_pb2
 
 from app.utils.enums import proto_enum
@@ -20,7 +22,11 @@ from app.utils.enums import proto_enum
 _PREFIX = "SYNC_MODE_"
 _PROTO = sync_mode_pb2.SyncMode
 
-SyncMode = proto_enum("SyncMode", _PROTO, _PREFIX, __name__)
+if TYPE_CHECKING:
+    # built at run time from the generated module: not a class the checker can see
+    SyncMode = Any
+else:
+    SyncMode = proto_enum("SyncMode", _PROTO, _PREFIX, __name__)
 
 
 def parse_sync_mode(value: object) -> SyncMode:

@@ -323,7 +323,7 @@ def with_datasource_settings(datasource: str, rule_config: dict) -> dict:
     if not bundle:
         return rule_config
     kind, cfg = find_datasource(bundle, datasource)
-    if cfg is None:
+    if kind is None or cfg is None:
         return rule_config
     settings = sink_settings(kind, cfg, datasource, bundle, str(rule_config.get("secret_manager") or ""))
     overridden = sorted(k for k, v in settings.items() if k in rule_config and rule_config[k] != v)

@@ -215,7 +215,7 @@ def tenant_rules(bundle_rules: list[dict], tenant_id: str, claimed: set[tuple[An
     out: list[dict] = []
     for rule in bundle_rules:
         cue = _find(cues, rule.get("platform"), rule.get("datasource"))
-        if _usable(cue, rule, tenant_id):
+        if cue is not None and _usable(cue, rule, tenant_id):
             out.append(layered_rule(cue, rule, tenant_id, bundle))
     out.extend(layered_rule(cue, None, tenant_id, bundle)
                for cue in unclaimed(cues, claimed) if owner(cue) == tenant_id)

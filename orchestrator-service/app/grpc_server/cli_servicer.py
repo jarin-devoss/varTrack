@@ -15,6 +15,7 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
+_ServicerBase: Any  # the generated base class, or object without the stubs
 try:
     import grpc
     from vartrack.v1.enums import task_state_pb2  # type: ignore

@@ -169,6 +169,8 @@ def resolve_bundle_rules(data: Any, origin: Optional[Origin], source: str,
     with their presets resolved: the file's own "extends" first, then each
     rule's. A preset that cannot be resolved raises PresetError for the whole
     file, so no rule of the tenant syncs without the settings it asked for."""
+    rules: list[Any]
+    top: list[Any]
     if isinstance(data, list):
         rules, top = data, []
     elif isinstance(data, dict):

@@ -40,17 +40,16 @@ import re
 import shutil
 import stat
 import subprocess
+import sys
 import tempfile
 import threading
 import time
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Iterator, Optional
+from typing import Iterator, Optional, TypeGuard
 
-try:  # not on Windows: there only the thread lock applies
+if sys.platform != "win32":  # on Windows only the thread lock applies
     import fcntl
-except ImportError:  # pragma: no cover
-    fcntl = None  # type: ignore[assignment]
 
 logger = logging.getLogger(__name__)
 
@@ -64,7 +63,7 @@ class MirrorError(RuntimeError):
     """A git operation on a mirror failed. The message never holds a credential."""
 
 
-def is_commit_sha(value: object) -> bool:
+def is_commit_sha(value: object) -> TypeGuard[str]:
     """A full commit id. The all-zero id a push event carries for a deleted ref is not one."""
     return isinstance(value, str) and bool(_SHA.fullmatch(value)) and set(value) != {"0"}
 
@@ -239,7 +238,7 @@ class RepoMirrors:
         """Exclusive on this repository, across threads and, where the platform
         has file locks, across the processes that share the directory."""
         with self._lock_for(key):
-            if fcntl is None:
+            if sys.platform == "win32":
                 yield
                 return
             with open(self.root / "_locks" / f"{key}.lock", "w") as handle:
@@ -257,7 +256,7 @@ class RepoMirrors:
             yield False
             return
         try:
-            if fcntl is None:
+            if sys.platform == "win32":
                 yield True
                 return
             with open(self.root / "_locks" / f"{key}.lock", "w") as handle:

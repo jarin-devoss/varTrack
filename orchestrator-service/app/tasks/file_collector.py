@@ -42,13 +42,13 @@ def collect(
     """
     extractor = GitExtractor()
     token     = rule_config.get("token")
-    revision  = revision or None
+    commit    = revision or None
 
     # Strategy 1 – single tracked file
     file_name = rule_config.get("file_name")
     if file_name:
         content = extractor.extract_file(
-            repo_url, ref, file_name, token=token, revision=revision
+            repo_url, ref, file_name, token=token, revision=commit
         )
         if content is None:
             logger.warning("file_name=%s not found in %s@%s", file_name, repo_url, ref)
@@ -61,7 +61,7 @@ def collect(
         results = []
         for fp in sorted(set(file_path_map.values())):
             content = extractor.extract_file(
-                repo_url, ref, fp, token=token, revision=revision
+                repo_url, ref, fp, token=token, revision=commit
             )
             if content is not None:
                 results.append((fp, content))
@@ -88,7 +88,7 @@ def collect(
 
     results = []
     for fc in extractor.extract_changed_files(
-        repo_url, ref, changed_names, token=token, revision=revision
+        repo_url, ref, changed_names, token=token, revision=commit
     ):
         if fc.content:
             results.append((fc.path, fc.content))
