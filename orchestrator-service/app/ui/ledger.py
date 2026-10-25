@@ -154,8 +154,15 @@ def record_target(
     author: str,
     sync: dict[str, Any],
     pending_prune: Iterable[str] | None = None,
+    key_space: str | None = None,
 ) -> None:
     """Remember the desired state just written for one environment.
+
+    *key_space* is where the sync put its keys (stage_sync.key_space_id; empty
+    for a sink that does not delete single keys). It is stored as keySpace so
+    a later prune of another target can tell whose keys share its key space;
+    None keeps what the target already holds, a target recorded before this
+    has no keySpace at all.
 
     *pending_prune* is the keys the sync wanted to delete and could not (the
     next sync retries them); an empty list clears them, None keeps what the
@@ -224,6 +231,9 @@ def record_target(
             "pendingPrune": pending,
             "lastSync": sync,
         }
+        space = key_space if key_space is not None else prev.get("keySpace")
+        if space is not None:
+            doc["keySpace"] = space
         r.set(key, json.dumps(doc))
         r.sadd(_key("targets", tenant), f"{datasource}|{env}")
     except Exception:

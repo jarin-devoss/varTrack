@@ -8,6 +8,7 @@ something else changed is left alone.
 """
 from __future__ import annotations
 
+import json
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
@@ -36,12 +37,26 @@ class FakeLock:
 class FakeRedis:
     def __init__(self):
         self.kv, self.sets = {}, {}
+        self.legacy = False   # store targets as an older version did: without keySpace
 
     def get(self, key):
         return self.kv.get(key)
 
-    def set(self, key, value, *a, **kw):
+    def mget(self, keys):
+        return [self.kv.get(k) for k in keys]
+
+    def delete(self, key):
+        self.kv.pop(key, None)
+
+    def set(self, key, value, *a, nx=False, **kw):
+        if nx and key in self.kv:
+            return None
+        if self.legacy and ":target:" in key:
+            doc = json.loads(value)
+            doc.pop("keySpace", None)
+            value = json.dumps(doc)
         self.kv[key] = value
+        return True
 
     def sadd(self, key, *values):
         self.sets.setdefault(key, set()).update(values)
@@ -137,9 +152,11 @@ def _sink_class(prunes=True):
 def redis():
     fake = FakeRedis()
     fake.rules = []  # (tenant, rule) of every tenant's rules, as stage_sync._every_rule lists them
+    fake.tenants = [TENANT]
     with patch("app.ui.ledger._redis", return_value=fake), \
          patch("app.ui.ledger.record_task"), \
          patch("app.pipeline.stage_sync._every_rule", side_effect=lambda: list(fake.rules)), \
+         patch("app.pipeline.stage_sync._tenant_ids", side_effect=lambda: list(fake.tenants)), \
          patch.object(ledger, "record_event") as event:
         fake.events = event
         yield fake
@@ -229,7 +246,10 @@ def test_environments_with_their_own_key_space_prune_independently(redis):
 
 
 def _two_datasources_on(redis, *, store_a="r1", store_b="r1", space_a="shared", space_b="shared"):
-    """redis (DS) and redis-dr, each with its own settings, both listed as rules."""
+    """redis (DS) and redis-dr, each with its own settings, both listed as rules; the
+    targets are recorded as an older version did (no keySpace), so who shares a
+    key space comes from the rules."""
+    redis.legacy = True
     a = {"space": space_a, "store": store_a}
     b = {"space": space_b, "store": store_b}
     redis.rules = [(TENANT, {"datasource": DS, **a}), (TENANT, {"datasource": "redis-dr", **b})]
@@ -292,8 +312,13 @@ def test_a_datasource_of_another_sink_type_is_not_compared(redis):
 def test_when_the_rules_cannot_be_listed_nothing_is_pruned(redis):
     cls = _sink_class()
     sink = cls()
-    _sync(sink, [_file("a.yaml", "production", **{"X": "1"})])
-    with patch("app.pipeline.stage_sync._every_rule", side_effect=RuntimeError("schema repo down")):
+    redis.legacy = True
+    _two_datasources_on(redis)
+    with patch("app.pipeline.sinks.sink_class", return_value=cls):
+        _sync(sink, [_file("a.yaml", "production", **{"X": "1"})])
+        _sync(sink, [_file("a.yaml", "production", **{"X": "1"})], ds="redis-dr")
+    with patch("app.pipeline.sinks.sink_class", return_value=cls), \
+         patch("app.pipeline.stage_sync._every_rule", side_effect=RuntimeError("schema repo down")):
         results = _sync(sink, [_file("a.yaml", "production", **{"Z": "3"})])
 
     assert sink.deleted == []
@@ -708,3 +733,125 @@ def test_the_key_value_direction_has_its_own_wording():
     from app.ui.recorder import _shape_changed
     msg = _shape_changed({"file": "app.yaml", "replaced": 1, "replacedBy": "STRATEGY_KEY_VALUE"})
     assert msg == "replaced the document of app.yaml with one document per key (update_strategy STRATEGY_KEY_VALUE)"
+
+
+# ── Who owns a key is recorded when it is written ─────────────────────────────
+
+SHARED = {"space": "shared"}
+SHARED_ID = "Sink||shared"
+
+
+def _record_elsewhere(tenant, datasource, env="production", *, key_space=SHARED_ID, **flat):
+    ledger.record_target(
+        tenant=tenant, platform="github", datasource=datasource, env=env, repo_url=REPO, ref="main",
+        revision="abc", file_path="a.yaml", flat_data=flat, secret_fields=[], commit_message="", author="",
+        sync={}, **({} if key_space is None else {"key_space": key_space}),
+    )
+
+
+def test_the_key_space_is_recorded_with_the_target_on_the_first_sync(redis):
+    _sync(_sink_class()(), [_file("a.yaml", "production", a="1")], rule_extra={"store": "r1"})
+    assert _target("production")["keySpace"] == "Sink|r1|acme/production"
+
+
+def test_a_sink_that_does_not_delete_single_keys_records_an_empty_key_space(redis):
+    _sync(_sink_class(prunes=False)(), [_file("a.yaml", "production", a="1")], prune=False)
+    assert _target("production")["keySpace"] == ""
+
+
+def test_another_datasources_recorded_key_space_keeps_its_keys_without_the_rules(redis):
+    sink = _sink_class()()
+    _sync(sink, [_file("a.yaml", "production", X="1")], rule_extra=SHARED)
+    _sync(sink, [_file("a.yaml", "production", X="1", Y="2")], rule_extra=SHARED, ds="redis-dr")
+
+    with patch("app.pipeline.stage_sync._every_rule", side_effect=AssertionError("rules were rebuilt")):
+        _sync(sink, [_file("a.yaml", "production", Z="3")], rule_extra=SHARED)
+
+    assert sink.deleted == []
+
+
+def test_a_tenant_whose_rules_cannot_be_loaded_still_has_its_keys_kept(redis):
+    redis.tenants = [TENANT, "beta"]
+    _record_elsewhere("beta", "redis", X="1")   # beta's schema repository is down: it has no rules here
+    sink = _sink_class()()
+    _sync(sink, [_file("a.yaml", "production", X="1")], rule_extra=SHARED)
+
+    with patch("app.pipeline.stage_sync._every_rule", side_effect=RuntimeError("beta's schema repo is down")):
+        results = _sync(sink, [_file("a.yaml", "production", Z="3")], rule_extra=SHARED)
+
+    assert sink.deleted == [] and results[-1].pruned == 0
+
+
+def test_a_key_space_of_another_store_is_not_shared(redis):
+    redis.tenants = [TENANT, "beta"]
+    _record_elsewhere("beta", "redis", key_space="Sink|other-server|shared", X="1")
+    sink = _sink_class()()
+    _sync(sink, [_file("a.yaml", "production", X="1")], rule_extra=SHARED)
+
+    _sync(sink, [_file("a.yaml", "production", Z="3")], rule_extra=SHARED)
+
+    assert sink.deleted == [("production", ["X"])]
+
+
+def test_when_the_tenants_cannot_be_listed_nothing_is_pruned(redis):
+    sink = _sink_class()()
+    _sync(sink, [_file("a.yaml", "production", X="1")])
+    with patch("app.pipeline.stage_sync._tenant_ids", side_effect=RuntimeError("registry down")):
+        results = _sync(sink, [_file("a.yaml", "production", Z="3")])
+    assert sink.deleted == [] and results[-1].pruned == 0
+
+
+def test_a_target_recorded_without_a_key_space_is_placed_by_the_rules(redis):
+    cls = _sink_class()
+    redis.tenants = [TENANT, "beta"]
+    redis.rules = [("beta", {"datasource": "redis", **SHARED})]
+    _record_elsewhere("beta", "redis", key_space=None, X="1")      # as an older version recorded it
+    assert "keySpace" not in ledger.get_target("beta", "redis", "production")
+    sink = cls()
+    with patch("app.pipeline.sinks.sink_class", return_value=cls):
+        _sync(sink, [_file("a.yaml", "production", X="1")], rule_extra=SHARED)
+        _sync(sink, [_file("a.yaml", "production", Z="3")], rule_extra=SHARED)
+    assert sink.deleted == []
+
+
+def test_writing_again_replaces_the_recorded_key_space(redis):
+    sink = _sink_class()()
+    _sync(sink, [_file("a.yaml", "production", a="1")], rule_extra={"space": "one"})
+    _sync(sink, [_file("a.yaml", "production", a="1")], rule_extra={"space": "two"})
+    assert _target("production")["keySpace"] == "Sink||two"
+
+
+def _shared_events(redis, rule=None):
+    return [c.kwargs for c in redis.events.call_args_list
+            if c.kwargs["reason"] == "SharedKeySpace" and rule in (None, c.kwargs["rule"])]
+
+
+def test_sharing_a_key_space_warns_once_per_episode_and_again_after_it_ends(redis):
+    sink = _sink_class()()
+    other = lambda: _sync(sink, [_file("a.yaml", "production", X="1")], rule_extra=SHARED, ds="redis-dr")  # noqa: E731
+
+    _sync(sink, [_file("a.yaml", "production", X="1")], rule_extra=SHARED)
+    assert _shared_events(redis) == []                    # nobody else holds keys there yet
+
+    other()
+    other()
+    events = _shared_events(redis, "github/redis-dr")
+    assert len(events) == 1                               # once, not on every sync
+    assert events[0]["message"] == ("redis-dr/production shares its key space with acme/redis/production: "
+                                    "their keys are never pruned from here")
+
+    _sync(sink, [_file("a.yaml", "production", X="1")], rule_extra={"space": "own"})   # redis moves away
+    other()                                               # nothing shared any more: the warning is cleared
+    _sync(sink, [_file("a.yaml", "production", X="1")], rule_extra=SHARED)             # and back again
+    other()
+    assert len(_shared_events(redis, "github/redis-dr")) == 2   # a new episode warns again
+
+
+def test_a_dry_run_prune_reports_no_shared_key_space_event(redis):
+    sink = _sink_class()()
+    _sync(sink, [_file("a.yaml", "production", X="1")], rule_extra=SHARED)
+    from app.pipeline.stage_sync import prune_candidates
+    with patch("app.pipeline.sinks.sink_class", return_value=type(sink)):
+        prune_candidates(ETLResult(files=[_file("a.yaml", "production", X="1")]), "redis-dr", TENANT,
+                         {"datasource": "redis-dr", "prune": True, **SHARED}, REPO)
+    assert _shared_events(redis) == []

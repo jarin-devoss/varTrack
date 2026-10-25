@@ -104,6 +104,8 @@ def _file_result(r: Any, dry_run_file: dict | None = None) -> dict[str, Any]:
         "pruned": r.pruned,
         **({"rootKey": r.root_key} if r.root_key else {}),
         **({"replaced": r.replaced, "replacedBy": r.replaced_by} if r.replaced else {}),
+        "keySpace": r.key_space,
+        **({"sharedWith": r.shared_with} if r.shared_with is not None else {}),
         **({"error": r.error} if r.error else {}),
         # Keys only: prune's values stay in the ledger's target, not in a task.
         **({"prunePending": r.prune_pending} if r.prune_pending is not None else {}),
@@ -240,6 +242,7 @@ def _record_envs(task: dict[str, Any], *, tenant: str, envs: list[str], files: l
                 author=task.get("_author", ""),
                 sync=sync,
                 pending_prune=pending_prune,
+                key_space=f.get("keySpace", ""),
             )
 
         if failed:
@@ -257,6 +260,7 @@ def _record_envs(task: dict[str, Any], *, tenant: str, envs: list[str], files: l
             rule=rule, env=env, task_id=task["taskId"],
             message=f"wrote {sync['written']} key{'s' if sync['written'] != 1 else ''} to {datasource}",
         )
+        _shared_key_space(tenant, rule, env, task["taskId"], env_files, datasource)
         for f in env_files:
             if f.get("replaced"):
                 ledger.record_event(tenant=tenant, reason="ShapeChanged", rule=rule, env=env,
@@ -276,6 +280,28 @@ def _record_envs(task: dict[str, Any], *, tenant: str, envs: list[str], files: l
                                     message=f"{len(keys)} key{'s' if len(keys) != 1 else ''} no longer in Git "
                                             f"changed outside varTrack, not deleted: {', '.join(keys[:5])}"
                                             + (" …" if len(keys) > 5 else ""))
+
+
+def _shared_key_space(tenant: str, rule: str, env: str, task_id: str, env_files: list[dict], datasource: str) -> None:
+    """One SharedKeySpace warning when the environment's prune found other
+    targets holding keys in the same key space; the next sync that finds none
+    clears it, so a new episode warns again. Skipped when prune did not look."""
+    found = next((f["sharedWith"] for f in env_files if f.get("sharedWith") is not None), None)
+    if found is None:
+        return
+    try:
+        r = ledger._redis()
+        marker = f"vt:ui:shared-key-space:{tenant}:{datasource}:{env}"
+        if not found:
+            r.delete(marker)
+        elif r.set(marker, ledger.now_iso(), nx=True):
+            ledger.record_event(
+                tenant=tenant, reason="SharedKeySpace", warning=True, rule=rule, env=env, task_id=task_id,
+                message=f"{datasource}/{env} shares its key space with {', '.join(found)}: "
+                        "their keys are never pruned from here",
+            )
+    except Exception:
+        logger.warning("ui recorder: shared key space marker failed", exc_info=True)
 
 
 def _shape_changed(f: dict[str, Any]) -> str:

@@ -66,9 +66,41 @@ def _inventory(entries: dict[str, dict]) -> set[str]:
     return {key for entry in entries.values() for key in entry.get("desired", {})}
 
 
+def key_space_id(sink_cls: Any, rule_config: dict, tenant_id: str, env: str) -> str:
+    """Where a sync of *env* puts its keys, as one string: the sink type, the
+    store (server) and the key space inside it. Two targets with the same id
+    write the same keys. Empty for a sink that does not delete single keys,
+    which has no key space to share."""
+    if not sink_cls.prunes_keys(rule_config):
+        return ""
+    return "|".join((sink_cls.__name__, str(sink_cls.store(rule_config)),
+                     str(sink_cls.key_space(rule_config, tenant_id, env))))
+
+
+def _recorded_key_space(sink: Any, rule_config: dict, tenant_id: str, env: str) -> str:
+    """key_space_id for the ledger. Noting where keys went is no reason to fail
+    a write that already happened."""
+    try:
+        return key_space_id(type(sink), rule_config, tenant_id, env)
+    except Exception:
+        logger.warning("key space of %s/%s not recorded", tenant_id, env, exc_info=True)
+        return ""
+
+
+def _tenant_ids() -> list[str]:
+    """The tenants registered with this process: a local list, nothing is cloned."""
+    from app.schema_registry.manager import get_schema_manager
+
+    return list(get_schema_manager().list_tenant_ids())
+
+
 def _every_rule() -> list[tuple[str, dict]]:
     """(tenant, rule) of every tenant's rules, each with its datasource's
-    config.cue settings laid over it: what shows where a rule writes."""
+    config.cue settings laid over it: what shows where a rule writes.
+
+    Only for targets recorded before they carried their key space: it rebuilds
+    every tenant's rules, which fails or comes back empty for a tenant whose
+    schema repository cannot be read."""
     from app.pipeline.datasource_settings import with_datasource_settings
     from app.ui import drift
 
@@ -78,34 +110,77 @@ def _every_rule() -> list[tuple[str, dict]]:
 
 def _keys_held_elsewhere(
     sink_cls: Any, rule_config: dict, space: str, seen: set[tuple[str, str, str]],
+    tenant_id: str, sharers: list[str] | None = None,
 ) -> set[str]:
-    """The keys other datasources and tenants hold in the key space *space* of
-    the store the rule writes to. A datasource name says nothing about where
-    it writes: two datasources on the same Redis database with the same prefix
-    and hash (or the same ZooKeeper servers and root, or Vercel project and
-    targets) write the same keys, so one's stale key may be the other's live
-    one. *seen* are the targets already counted."""
+    """The keys other datasources and tenants hold in the key space *space*
+    (a key_space_id) of the store the rule writes to. A datasource name says
+    nothing about where it writes: two datasources on the same Redis database
+    with the same prefix and hash (or the same ZooKeeper servers and root, or
+    Vercel project and targets) write the same keys, so one's stale key may be
+    the other's live one. *seen* are the targets already counted; *sharers*,
+    when given, collects "tenant/datasource/env" of each target that holds keys
+    there.
+
+    Who holds what is read from the records each sync leaves (the key space it
+    wrote to), not rebuilt from the rules as they are now. A record made before
+    targets carried their key space is placed by the rules instead."""
     from app.pipeline.sinks import sink_class
     from app.ui import ledger
 
-    store = sink_cls.store(rule_config)
+    held: set[str] = set()
+    legacy: set[tuple[str, str, str]] = set()
+    for tenant in sorted({tenant_id, *_tenant_ids()}):
+        for record in ledger.list_targets(tenant):
+            target = (tenant, str(record.get("datasource", "")), str(record.get("env", "")))
+            if target in seen:
+                continue
+            if "keySpace" not in record:
+                if sink_class(target[1]) is sink_cls:
+                    legacy.add(target)
+                continue
+            if record["keySpace"] != space:
+                continue
+            seen.add(target)
+            keys = _inventory(ledger.entries_of(record))
+            held |= keys
+            if keys and sharers is not None:
+                sharers.append("/".join(target))
+    if legacy:
+        held |= _keys_held_by_rules(sink_cls, space, seen, legacy, sharers)
+    return held
+
+
+def _keys_held_by_rules(
+    sink_cls: Any, space: str, seen: set[tuple[str, str, str]],
+    legacy: set[tuple[str, str, str]], sharers: list[str] | None,
+) -> set[str]:
+    """_keys_held_elsewhere for the *legacy* targets (recorded without a key
+    space): which of them share *space* follows from the rules as they are
+    now. Once every target has been written again this finds nothing to do."""
+    from app.pipeline.sinks import sink_class
+    from app.ui import ledger
+
     held: set[str] = set()
     for tenant, other in _every_rule():
         datasource = str(other.get("datasource", ""))
-        if sink_class(datasource) is not sink_cls or sink_cls.store(other) != store:
+        if sink_class(datasource) is not sink_cls:
             continue
         for env in ledger.list_envs(tenant, datasource):
-            if (tenant, datasource, env) in seen:
+            target = (tenant, datasource, env)
+            if target not in legacy or target in seen:
                 continue
-            seen.add((tenant, datasource, env))
-            if sink_cls.key_space(other, tenant, env) == space:
-                held |= _inventory(ledger.entries_of(ledger.get_target(tenant, datasource, env)))
+            seen.add(target)
+            if key_space_id(sink_cls, other, tenant, env) == space:
+                keys = _inventory(ledger.entries_of(ledger.get_target(tenant, datasource, env)))
+                held |= keys
+                if keys and sharers is not None:
+                    sharers.append("/".join(target))
     return held
 
 
 def _stale_keys(
     tenant_id: str, datasource: str, rule_config: dict, sink_cls: Any, env: str,
-    written: dict[str, tuple[str, dict]],
+    written: dict[str, tuple[str, dict]], sharers: list[str] | None = None,
 ) -> tuple[set[str], dict[str, tuple[Any, str | None]]]:
     """The keys varTrack wrote to env before that nothing holds any more: the
     old inventory minus the new one. Returns them with the value (or secret
@@ -114,7 +189,8 @@ def _stale_keys(
     *written* is this sync's files for env: inventory key -> (file path, flat
     data). The environment's other files keep their keys, and so do the
     environments that share env's key space (two that land on the same Redis
-    hash, Vercel target or znode path write the same keys). Raises when the
+    hash, Vercel target or znode path write the same keys). *sharers* collects
+    the other targets that hold keys in env's key space. Raises when the
     ledger cannot be read."""
     from app.ui import ledger
 
@@ -126,13 +202,13 @@ def _stale_keys(
     kept = {key: entry for key, entry in old_entries.items() if key not in rewritten}
     new = _inventory(kept) | {key for _, flat in written.values() for key in flat}
 
-    space = sink_cls.key_space(rule_config, tenant_id, env)
+    space = key_space_id(sink_cls, rule_config, tenant_id, env)
     seen = {(tenant_id, datasource, env)}
     for other in ledger.list_envs(tenant_id, datasource):
         seen.add((tenant_id, datasource, other))
-        if other != env and sink_cls.key_space(rule_config, tenant_id, other) == space:
+        if other != env and key_space_id(sink_cls, rule_config, tenant_id, other) == space:
             new |= _inventory(ledger.entries_of(ledger.get_target(tenant_id, datasource, other)))
-    new |= _keys_held_elsewhere(sink_cls, rule_config, space, seen)
+    new |= _keys_held_elsewhere(sink_cls, rule_config, space, seen, tenant_id, sharers)
 
     stale = (_inventory(old_entries) | set(pending)) - new
     desired = (target or {}).get("desired") or {}
@@ -152,6 +228,9 @@ class PruneOutcome:
     skipped:      list[str] = field(default_factory=list)
     would_delete: list[str] = field(default_factory=list)
     error:        str = ""
+    # Other targets holding keys in this environment's key space ("tenant/
+    # datasource/env"); their keys are never pruned from here.
+    shared_with:  list[str] = field(default_factory=list)
 
 
 def _prune_environment(
@@ -169,26 +248,28 @@ def _prune_environment(
     sink_cls = type(sink)
     if not prune_cfg.enabled or not sink_cls.prunes_keys(rule_config):
         return None
+    sharers: list[str] = []
     try:
-        stale, expected = _stale_keys(tenant_id, datasource, rule_config, sink_cls, env, written)
+        stale, expected = _stale_keys(tenant_id, datasource, rule_config, sink_cls, env, written, sharers)
     except Exception:
         logger.warning("prune: the ledger of %s/%s cannot be read - nothing is pruned", datasource, env,
                        exc_info=True)
         return None
+    shared = sorted(set(sharers))
     # Protected keys stay, and are no longer varTrack's.
     stale = {key for key in stale if not any(fnmatch.fnmatch(key, p) for p in prune_cfg.protection)}
     if not stale:
-        return PruneOutcome(pending=[])
+        return PruneOutcome(pending=[], shared_with=shared)
     keys = sorted(stale)
     if prune_cfg.dry_run:
-        return PruneOutcome(pending=keys, would_delete=keys)
+        return PruneOutcome(pending=keys, would_delete=keys, shared_with=shared)
 
     sink.strict_reads = True  # a failed read is "can't tell", not "every key is gone"
     try:
         live = sink.read_values(keys, datasource, env)
     except Exception as exc:
         logger.warning("prune: %s/%s cannot be read (%s) - nothing is pruned", datasource, env, exc)
-        return PruneOutcome(pending=keys)
+        return PruneOutcome(pending=keys, shared_with=shared)
     finally:
         sink.strict_reads = False
 
@@ -209,8 +290,8 @@ def _prune_environment(
         pruned = sink.delete_keys(to_delete, datasource=datasource, env=env) if to_delete else 0
     except Exception as exc:
         logger.exception("prune: %s/%s failed", datasource, env)
-        return PruneOutcome(pending=to_delete, skipped=skipped, error=str(exc))
-    return PruneOutcome(pruned=pruned, pending=[], skipped=skipped)
+        return PruneOutcome(pending=to_delete, skipped=skipped, error=str(exc), shared_with=shared)
+    return PruneOutcome(pruned=pruned, pending=[], skipped=skipped, shared_with=shared)
 
 
 def prune_candidates(
@@ -373,6 +454,7 @@ def run_stage_sync(
 
                     sync_result.sync_mode = sync_mode.name
                     sync_result.written   = write_result.get("written", 0)
+                    sync_result.key_space = _recorded_key_space(sink, rule_config, tenant_id, etl_file.env)
                     sync_result.replaced  = write_result.get("replaced", 0) or 0
                     sync_result.replaced_by = write_result.get("strategy", "") if sync_result.replaced else ""
                     written_files.append((datasource, etl_file.env, etl_file.file_path, snapshot))
@@ -451,6 +533,7 @@ def run_stage_sync(
                     last.prune_skipped = outcome.skipped
                     last.prune_would_delete = outcome.would_delete
                     last.prune_error = outcome.error
+                    last.shared_with = outcome.shared_with
                     metrics = _m()
                     if metrics and outcome.pruned:
                         try:
@@ -486,4 +569,5 @@ def sync_result_to_dict(r: SyncResult) -> dict:
         **({"prune_skipped": r.prune_skipped} if r.prune_skipped else {}),
         **({"prune_would_delete": r.prune_would_delete} if r.prune_would_delete else {}),
         **({"prune_error": r.prune_error} if r.prune_error else {}),
+        **({"key_space": r.key_space} if r.key_space else {}),
     }

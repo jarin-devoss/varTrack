@@ -60,6 +60,13 @@ class SyncResult:
     # replaced_by), so a change of shape is never silent.
     replaced:    int = 0
     replaced_by: str = ""
+    # Where this file's keys went (stage_sync.key_space_id): recorded with the
+    # target so a later prune of another target can tell whose keys these are.
+    # Empty when the sink does not delete single keys.
+    key_space:   str = ""
+    # Prune's finding for the environment, on its last file: the other targets
+    # that hold keys in the same key space (None: prune did not run).
+    shared_with: list[str] | None = None
     # Prune runs once per environment, after all its files are written: its
     # outcome is on the last file of the environment.
     #   prune_pending      keys it could not delete (the next sync retries
