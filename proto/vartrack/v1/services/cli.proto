@@ -29,6 +29,15 @@ service CLIService {
     };
   }
 
+  // ValidateConfig checks a vartrack.json or bundle.json — shape, keys,
+  // presets — with the code a sync reads them with.
+  rpc ValidateConfig(ValidateConfigRequest) returns (ValidateConfigResponse) {
+    option (google.api.http) = {
+      post: "/v1/cli/validate-config"
+      body: "*"
+    };
+  }
+
   // GetTask retrieves the status of a CLI-submitted sync task.
   rpc GetTask(GetCliTaskRequest) returns (CliTask) {
     option (google.api.http) = {
@@ -73,6 +82,17 @@ message SyncFileRequest {
 
   // Optional human-readable label for this push (e.g. git commit SHA, PR number).
   string label = 8 [(google.api.field_behavior) = OPTIONAL];
+
+  // A branch or tag to sync the rule's file from, instead of content: the
+  // file as it is in Git at that ref (a rollback to a release tag, say).
+  // file_path and content are then left empty.
+  string revision = 9 [(google.api.field_behavior) = OPTIONAL];
+
+  // The platform of the rule (e.g. "github", "gitea-internal"). A rule is
+  // identified by its platform and datasource; this is needed only when rules
+  // on several platforms write to the datasource, and the request is refused
+  // with the platforms to pick from when it is left out then.
+  string platform = 10 [(google.api.field_behavior) = OPTIONAL];
 }
 
 message SyncFileResponse {
@@ -105,6 +125,10 @@ message ValidateFileRequest {
 
   // Tenant identifier.
   string tenant_id = 5 [(google.api.field_behavior) = OPTIONAL];
+
+  // The platform of the rule; needed only when rules on several platforms
+  // write to the datasource (see SyncFileRequest.platform).
+  string platform = 6 [(google.api.field_behavior) = OPTIONAL];
 }
 
 message ValidateFileResponse {
@@ -116,6 +140,32 @@ message ValidateFileResponse {
 
   // Number of keys parsed from the file.
   int32 key_count = 3 [(google.api.field_behavior) = OUTPUT_ONLY];
+}
+
+// ────────────────────────────────────────────
+// ValidateConfig
+// ────────────────────────────────────────────
+
+message ValidateConfigRequest {
+  // The file's name, which says what it is: vartrack.json (also under
+  // .github/, .gitea/, .gitlab/), bundle.json or rules.json.
+  string file_path = 1 [(google.api.field_behavior) = REQUIRED];
+
+  // Raw file content (UTF-8).
+  string content = 2 [(google.api.field_behavior) = REQUIRED];
+
+  // Tenant identifier: whose rules a bundle.json holds, and whose schema repo
+  // its presets are fetched from.
+  string tenant_id = 3 [(google.api.field_behavior) = OPTIONAL];
+}
+
+message ValidateConfigResponse {
+  // What a sync rejects: the file, a preset, a rule.
+  repeated string errors = 1 [(google.api.field_behavior) = OUTPUT_ONLY];
+  // What a sync ignores.
+  repeated string warnings = 2 [(google.api.field_behavior) = OUTPUT_ONLY];
+  // Options under a name that changed: a sync still reads them.
+  repeated string migrations = 3 [(google.api.field_behavior) = OUTPUT_ONLY];
 }
 
 // ────────────────────────────────────────────
@@ -149,6 +199,8 @@ message CliTask {
   string    label      = 9  [(google.api.field_behavior) = OUTPUT_ONLY];
   int32     written    = 10 [(google.api.field_behavior) = OUTPUT_ONLY];
   int32     pruned     = 11 [(google.api.field_behavior) = OUTPUT_ONLY];
+  // The platform of the rule the task ran for.
+  string    platform   = 12 [(google.api.field_behavior) = OUTPUT_ONLY];
 
   google.protobuf.Timestamp created_at  = 20 [(google.api.field_behavior) = OUTPUT_ONLY];
   google.protobuf.Timestamp finished_at = 21 [(google.api.field_behavior) = OUTPUT_ONLY];

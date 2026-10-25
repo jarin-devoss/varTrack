@@ -42,6 +42,17 @@ service Watcher {
       get: "/v1/check/{datasource}"
     };
   }
+
+  // ListWatchTargets lists the rules the watcher keeps in sync: self_heal on,
+  // and not suspended. The orchestrator is the one service that layers
+  // config.cue, a tenant's bundle.json and a repository's vartrack.json into
+  // the rule a sync runs with, so it answers; the watcher asks again on every
+  // poll and follows rule changes without a restart.
+  rpc ListWatchTargets(google.protobuf.Empty) returns (ListWatchTargetsResponse) {
+    option (google.api.http) = {
+      get: "/v1/watcher/targets"
+    };
+  }
 }
 
 // ────────────────────────────────────────────
@@ -114,4 +125,24 @@ message CheckDatasourceResponse {
 
   // Why the status is what it is, for logs.
   string message = 3 [(google.api.field_behavior) = OUTPUT_ONLY];
+}
+
+// ────────────────────────────────────────────
+// ListWatchTargets
+// ────────────────────────────────────────────
+
+// WatchTarget is one rule of one tenant that the watcher checks and heals.
+message WatchTarget {
+  // Platform name of the rule (e.g. "github").
+  string platform = 1 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // Datasource name of the rule (e.g. "mongo").
+  string datasource = 2 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // The tenant whose rule it is.
+  string tenant_id = 3 [(google.api.field_behavior) = OUTPUT_ONLY];
+}
+
+message ListWatchTargetsResponse {
+  repeated WatchTarget targets = 1 [(google.api.field_behavior) = OUTPUT_ONLY];
 }

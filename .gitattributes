@@ -1,0 +1,3 @@
+# Generated code: collapsed in review diffs and left out of language stats.
+libs/go/gen/** linguist-generated=true
+orchestrator-service/app/generated/** linguist-generated=true

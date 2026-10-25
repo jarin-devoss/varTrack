@@ -31,15 +31,16 @@ message OIDCConfig {
 
   // Expected "aud" (audience) claim value.
   // Tokens whose "aud" does not include this value are rejected.
-  // Usually the same as client_id.  Leave empty to skip audience validation.
+  // Defaults to client_id when empty.
   string audience = 3 [(google.api.field_behavior) = OPTIONAL];
 
   // Additional OAuth2 scopes to request during login.
   // "openid", "email", "profile", and "offline_access" are always included.
   repeated string extra_scopes = 4 [(google.api.field_behavior) = OPTIONAL];
 
-  // groups_claim is the JWT claim key that holds the user's group memberships.
-  // Defaults to "groups" when empty.
+  // groups_claim is the JWT claim key that holds the user's group memberships
+  // (a string or a list of strings). When empty, the "groups", "roles" and
+  // "group_membership" claims are all read.
   // Azure AD / Entra ID uses "groups" or custom role mappings.
   string groups_claim = 5 [(google.api.field_behavior) = OPTIONAL];
 }
@@ -48,26 +49,27 @@ message OIDCConfig {
 //
 // Casbin policy CSV format:
 //
-//	# Permission rules
+//	# Permission rules — allow or deny; a deny line wins over every allow
 //	p, role:admin,    *,          *,        allow
 //	p, role:operator, datasource, sync,     allow
 //	p, role:operator, task,       get,      allow
 //	p, role:viewer,   datasource, validate, allow
+//	p, contractors,   datasource, sync,     deny
 //
-//	# Role assignments (users or group names → roles)
+//	# Role assignments (the token's sub, email or a group → a role)
 //	g, alice@example.com,  role:admin
 //	g, ops-team,           role:operator
-//	g, everyone,           role:viewer
 //
-// Resources:  datasource, task, bundle, watcher
-// Actions:    sync, validate, get, list, heal
+// The gateway checks: datasource/sync, datasource/validate, task/get, task/list.
+// A policy with only g lines keeps the built-in permissions; any p line
+// replaces them.
 message RBACConfig {
   // Inline Casbin policy CSV.
   // When omitted a built-in default policy is used (see auth.Enforcer defaults).
   string policy = 1 [(google.api.field_behavior) = OPTIONAL];
 
   // default_role is assigned to authenticated users who are not matched by
-  // any grouping rule.  Defaults to "role:viewer".
+  // any grouping rule. When empty, such users have no permissions.
   string default_role = 2 [(google.api.field_behavior) = OPTIONAL];
 }
 

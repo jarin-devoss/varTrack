@@ -1,0 +1,35 @@
+syntax = "proto3";
+
+package vartrack.v1;
+
+import "google/protobuf/descriptor.proto";
+
+// ConfigOption says how one config option behaves across the layers a rule is
+// built from: config.cue, a tenant's bundle.json and a repository's
+// vartrack.json.
+//
+// It is kept on the field it describes instead of in a table beside it, so the
+// orchestrator (Python), the gateway and the watcher (Go) read one answer. An
+// option with no annotation is replaced by the layer above it, may be set in
+// config.cue and bundle.json, and not in a vartrack.json.
+message ConfigOption {
+  // Only config.cue sets it; a bundle.json value is dropped with a warning.
+  bool admin_only = 1;
+
+  // Merged key by key when two layers set it, instead of the upper layer
+  // replacing the lower one.
+  bool mergeable = 2;
+
+  // A repository's vartrack.json may set it.
+  bool repo_overridable = 3;
+
+  // Former names, still read with a warning, so a config written before a
+  // rename keeps working.
+  repeated string old_names = 4;
+}
+
+extend google.protobuf.FieldOptions {
+  // Named "config" because "option" is a keyword in proto.
+  // 50000-99999 is the range for in-house extensions.
+  ConfigOption config = 50001;
+}

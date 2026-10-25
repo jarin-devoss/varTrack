@@ -1,9 +1,11 @@
 version: v2
+# The Go stubs are one module, libs/go, that the gateway and the watcher both
+# require (see their go.mod): one copy of the generated code for every binary.
 managed:
   enabled: true
   override:
     - file_option: go_package_prefix
-      value: gateway-service/internal/gen/proto/go
+      value: vartrack/libs/gen
     # Route google/rpc protos to the canonical Go module package.
     - file_option: go_package
       path: google/rpc/status.proto
@@ -21,11 +23,11 @@ managed:
 plugins:
   # --- GO GENERATION ---
   - remote: buf.build/protocolbuffers/go:v1.34.2
-    out: gateway-service/internal/gen/proto/go
+    out: libs/go/gen
     opt: paths=source_relative
 
   - remote: buf.build/grpc/go:v1.5.1
-    out: gateway-service/internal/gen/proto/go
+    out: libs/go/gen
     opt:
       - paths=source_relative
       - require_unimplemented_servers=false
