@@ -51,6 +51,10 @@ type SyncRequest struct {
 	TenantID   string `json:"tenant_id,omitempty"`
 	DryRun     bool   `json:"dry_run,omitempty"`
 	Label      string `json:"label,omitempty"`
+	Revision   string `json:"revision,omitempty"`
+	// Platform names the rule's platform; needed only when rules on several
+	// platforms write to the datasource.
+	Platform string `json:"platform,omitempty"`
 }
 
 // SyncResponse is returned by POST /v1/cli/sync.
@@ -67,6 +71,7 @@ type ValidateRequest struct {
 	Format     string `json:"format,omitempty"`
 	Datasource string `json:"datasource,omitempty"`
 	TenantID   string `json:"tenant_id,omitempty"`
+	Platform   string `json:"platform,omitempty"`
 }
 
 // ValidateResponse is returned by POST /v1/cli/validate.
@@ -74,6 +79,20 @@ type ValidateResponse struct {
 	Status   string   `json:"status"`
 	Messages []string `json:"messages"`
 	KeyCount int      `json:"key_count"`
+}
+
+// ValidateConfigRequest is sent to POST /v1/cli/validate-config.
+type ValidateConfigRequest struct {
+	FilePath string `json:"file_path"`
+	Content  string `json:"content"`
+	TenantID string `json:"tenant_id,omitempty"`
+}
+
+// ValidateConfigResponse is returned by POST /v1/cli/validate-config.
+type ValidateConfigResponse struct {
+	Errors     []string `json:"errors"`
+	Warnings   []string `json:"warnings"`
+	Migrations []string `json:"migrations"`
 }
 
 // TaskResponse represents a single task status record.
@@ -86,6 +105,7 @@ type TaskResponse struct {
 	FilePath   string `json:"file_path"`
 	TenantID   string `json:"tenant_id"`
 	DryRun     bool   `json:"dry_run"`
+	Label      string `json:"label,omitempty"`
 	Written    int    `json:"written"`
 	Pruned     int    `json:"pruned"`
 	Error      string `json:"error,omitempty"`
@@ -116,6 +136,18 @@ func (c *Client) Validate(ctx context.Context, req ValidateRequest) (*ValidateRe
 	}
 	var resp ValidateResponse
 	if err := c.post(ctx, "/v1/cli/validate", req, &resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
+// ValidateConfig checks a vartrack.json or bundle.json the way a sync would read it.
+func (c *Client) ValidateConfig(ctx context.Context, req ValidateConfigRequest) (*ValidateConfigResponse, error) {
+	if req.TenantID == "" {
+		req.TenantID = c.tenantID
+	}
+	var resp ValidateConfigResponse
+	if err := c.post(ctx, "/v1/cli/validate-config", req, &resp); err != nil {
 		return nil, err
 	}
 	return &resp, nil

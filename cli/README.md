@@ -27,39 +27,21 @@ move vt.exe C:\Windows\System32\ # Windows
 
 ## Authentication
 
-### Interactive login — OIDC / SSO
+`vt` authenticates with your Git token — a GitHub or Gitea personal access token. The gateway asks the rule's Git platform what that token may do in the rule's repositories: push access syncs, read access validates, dry-runs and reads tasks.
 
-Supported providers: Azure AD / Entra ID, Google, Okta, Keycloak, and any OIDC-compliant IdP.
-
-```bash
-# Azure AD
-vt login \
-  --server         https://gateway.example.com \
-  --oidc-issuer    "https://login.microsoftonline.com/<tenant-id>/v2.0" \
-  --oidc-client-id "<app-client-id>"
-
-# Google
-vt login \
-  --server         https://gateway.example.com \
-  --oidc-issuer    https://accounts.google.com \
-  --oidc-client-id "<client-id>"
-```
-
-A browser window opens, you authenticate, and the token is saved automatically.
-
-### CI/CD — static token
+### Log in
 
 ```bash
 vt login \
   --server https://gateway.example.com \
-  --token  "$VARTRACK_TOKEN"
+  --token  "$GIT_TOKEN"
 ```
 
 Or skip `vt login` entirely and set environment variables — `vt` reads them on every invocation:
 
 ```bash
 export VARTRACK_SERVER=https://gateway.example.com
-export VARTRACK_TOKEN=eyJ...
+export VARTRACK_TOKEN=<your Git token>
 ```
 
 ---
@@ -102,6 +84,7 @@ vt sync --file configs/app.yaml --datasource mongo --env staging --json
 |---|---|---|
 | `--file` | — | Path to the config file (required) |
 | `--datasource` | — | Target datasource name (required) |
+| `--platform` | — | Platform of the rule (for example `github`, `gitea-internal`); needed only when rules on several platforms write to the datasource |
 | `--env` | — | Deployment environment (required) |
 | `--tenant` | (from context) | Tenant ID |
 | `--dry-run` | false | Validate without writing |
@@ -132,8 +115,25 @@ vt validate --file configs/app.yaml --datasource mongo --tenant myapp
 |---|---|---|
 | `--file` | — | Path to the config file (required) |
 | `--datasource` | — | Datasource name (selects the CUE schema) |
+| `--platform` | — | Platform of the rule; needed only when rules on several platforms write to the datasource |
 | `--tenant` | (from context) | Tenant ID |
 | `--format` | auto | File format override |
+| `--json` | false | Print result as JSON |
+
+---
+
+### validate-config
+
+Check a `vartrack.json` or a tenant's `bundle.json` before pushing it, the way a sync would read it. Reports errors, warnings and migrations; exit code 1 on errors.
+
+```bash
+vt validate-config vartrack.json
+vt validate-config schemas/bundle.json --tenant payments
+```
+
+| Flag | Default | Description |
+|---|---|---|
+| `--tenant` | (from context) | Tenant ID: whose rules and presets a `bundle.json` is checked against |
 | `--json` | false | Print result as JSON |
 
 ---
@@ -195,7 +195,7 @@ Settings are stored in `~/.config/vt/config.yaml`. Environment variables overrid
 | Variable | Purpose |
 |---|---|
 | `VARTRACK_SERVER` | Gateway base URL |
-| `VARTRACK_TOKEN` | Bearer token (skips OIDC login) |
+| `VARTRACK_TOKEN` | Your Git token (skips `vt login`) |
 | `VARTRACK_TENANT` | Tenant ID |
 | `VARTRACK_CONTEXT` | Named context to activate |
 
@@ -282,45 +282,11 @@ GitCommit = git rev-parse --short HEAD
 
 ## Access control
 
-Authorization is enforced at the gateway level on every request:
+Authorization is enforced at the gateway on every request:
 
-1. **JWT / OIDC** — every request must carry a valid Bearer token
-2. **Casbin RBAC** — roles control which actions are permitted
-3. **OPA** — fine-grained context-aware policies (which environment, which datasource, which file path)
+1. **Git permissions** — the caller's Git token must have push access to one of the rule's repositories to sync, read access for anything else
+2. **OPA** (optional) — context-aware policies: which environment, which datasource, which file path. The policy sees the caller's permission as `input.user.permission` (`admin`, `write` or `read`)
 
-### Built-in roles
+Details: [Authentication & Authorization](../docs/configuration/auth.md).
 
-| Role | sync | validate | task get/list |
-|---|:---:|:---:|:---:|
-| `role:admin` | all envs | yes | yes |
-| `role:operator` | non-prod only | yes | yes |
-| `role:viewer` | — | yes | yes |
-
-### OPA policy example
-
-```rego
-package vartrack.authz
-
-default allow = false
-
-# Operators can sync to any non-production environment
-allow {
-    input.action == "sync"
-    not startswith(input.env, "prod")
-    "role:operator" == input.user.groups[_]
-}
-
-# Admins have unrestricted access
-allow {
-    "role:admin" == input.user.groups[_]
-}
-
-# Dry-run is always allowed for operators
-allow {
-    input.action == "sync"
-    input.dry_run == true
-    "role:operator" == input.user.groups[_]
-}
-```
-
-See [examples/policies/vartrack_authz.rego](../examples/policies/vartrack_authz.rego) and [examples/bundles/13_auth_oidc_rbac_opa.cue](../examples/bundles/13_auth_oidc_rbac_opa.cue) for complete examples.
+See [examples/policies/vartrack_authz.rego](../examples/policies/vartrack_authz.rego) and [examples/bundles/13_cli_auth_opa.cue](../examples/bundles/13_cli_auth_opa.cue) for complete examples.
