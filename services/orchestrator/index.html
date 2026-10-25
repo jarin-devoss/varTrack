@@ -1790,12 +1790,12 @@
 <tr>
 <td><code>GIT_CACHE_DIR</code></td>
 <td><code>/tmp/vt_gitcache</code></td>
-<td>Git repo LRU cache directory</td>
+<td>Directory of the bare Git mirrors, one per repository. Give the API and every worker the same directory (a shared volume) to clone once per host</td>
 </tr>
 <tr>
 <td><code>GIT_CACHE_MAX_ENTRIES</code></td>
 <td><code>20</code></td>
-<td>Max cached repo checkouts</td>
+<td>Mirrors kept; past that the least recently used are removed, never one in use</td>
 </tr>
 <tr>
 <td><code>SCHEMA_CACHE_DIR</code></td>
@@ -1809,8 +1809,8 @@
 </tr>
 <tr>
 <td><code>UI_DEFAULT_TENANT</code></td>
-<td>first registered</td>
-<td>Tenant the web UI reads when the request has no <code>X-Tenant-ID</code></td>
+<td><code>default</code></td>
+<td>Tenant the web UI reads when no tenant is registered at all</td>
 </tr>
 <tr>
 <td><code>UI_COMPARE_TTL_SECONDS</code></td>
@@ -1869,7 +1869,7 @@
 </tbody>
 </table>
 <h3 id="web-ui-read-api-port-8000">Web UI read API (port 8000)<a class="headerlink" href="#web-ui-read-api-port-8000" title="Permanent link">&para;</a></h3>
-<p>The web UI reads everything it shows from these endpoints. The tenant comes from the <code>X-Tenant-ID</code> header, then <code>UI_DEFAULT_TENANT</code>, then the first registered tenant.</p>
+<p>The web UI reads everything it shows from these endpoints. They cover every registered tenant at once and answer with what the viewer's Git permissions allow (see <a href="../../configuration/auth/#tenants-are-shown-not-chosen">Tenants are shown, not chosen</a>); <code>?tenant=</code> or the <code>X-Tenant-ID</code> header narrows an answer to one tenant. A rule endpoint without <code>?tenant=</code> takes the only visible tenant that has the rule, and answers <code>409</code> when several do.</p>
 <table>
 <thead>
 <tr>
@@ -1882,7 +1882,7 @@
 <tr>
 <td><code>GET</code></td>
 <td><code>/v1/ui/rules</code></td>
-<td>Every rule of the tenant with one target per synced environment</td>
+<td>Every visible rule, of every tenant, with one target per synced environment; <code>hidden</code> counts rules on platforms the user has not connected</td>
 </tr>
 <tr>
 <td><code>GET</code></td>
@@ -1917,7 +1917,7 @@
 <tr>
 <td><code>GET</code></td>
 <td><code>/v1/ui/bundle</code></td>
-<td>Platforms and datasources, without credentials</td>
+<td>Platforms and datasources, without credentials; <code>tenants</code> lists the visible tenants and each datasource names its rules as <code>{tenant, name}</code></td>
 </tr>
 </tbody>
 </table>
@@ -1982,8 +1982,29 @@
 <td>watcher-service</td>
 <td>Re-sync one datasource from Git on drift (self-heal)</td>
 </tr>
+<tr>
+<td><code>CLIService.SyncFile</code></td>
+<td>gateway-service</td>
+<td><code>vt sync</code>: run a file's content through the pipeline for the rule of its datasource</td>
+</tr>
+<tr>
+<td><code>CLIService.ValidateFile</code></td>
+<td>gateway-service</td>
+<td><code>vt validate</code>: parse and check a file against the tenant's schema</td>
+</tr>
+<tr>
+<td><code>CLIService.ValidateConfig</code></td>
+<td>gateway-service</td>
+<td><code>vt validate-config</code>: check a <code>vartrack.json</code> or <code>bundle.json</code> the way a sync would read it</td>
+</tr>
+<tr>
+<td><code>CLIService.GetTask</code>, <code>ListTasks</code></td>
+<td>gateway-service</td>
+<td><code>vt task</code>: a CLI sync task, recent CLI tasks</td>
+</tr>
 </tbody>
 </table>
+<p>The gateway calls <code>CLIService</code> only after a request passed its <a href="../../configuration/auth/">Git permission and OPA checks</a>, and names the caller (<code>login@platform</code>) in the <code>x-cli-user</code> metadata; the task records it. A CLI sync belongs to the rule for its datasource: in the web UI it shows under that rule, marked <strong>CLI</strong>.</p>
 
 
 

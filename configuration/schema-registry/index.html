@@ -811,6 +811,24 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#how-a-rule-is-built" class="md-nav__link">
+    <span class="md-ellipsis">
+      How a rule is built
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#presets-extends" class="md-nav__link">
+    <span class="md-ellipsis">
+      Presets (extends)
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#bundlejson" class="md-nav__link">
     <span class="md-ellipsis">
       bundle.json
@@ -830,9 +848,9 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#full-example" class="md-nav__link">
+  <a href="#example" class="md-nav__link">
     <span class="md-ellipsis">
-      Full example
+      Example
     </span>
   </a>
   
@@ -1633,6 +1651,24 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#how-a-rule-is-built" class="md-nav__link">
+    <span class="md-ellipsis">
+      How a rule is built
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#presets-extends" class="md-nav__link">
+    <span class="md-ellipsis">
+      Presets (extends)
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#bundlejson" class="md-nav__link">
     <span class="md-ellipsis">
       bundle.json
@@ -1652,9 +1688,9 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#full-example" class="md-nav__link">
+  <a href="#example" class="md-nav__link">
     <span class="md-ellipsis">
-      Full example
+      Example
     </span>
   </a>
   
@@ -1732,12 +1768,12 @@
 <p>The schema registry is a Git repository that holds two things:</p>
 <ol>
 <li><strong>CUE schema files</strong> — used to validate config files before any write</li>
-<li><strong><code>bundle.json</code> / <code>rules.json</code></strong> — a rule manifest that lets Celery workers resolve rules locally without a round-trip to the API process</li>
+<li><strong><code>bundle.json</code> / <code>rules.json</code></strong> — the tenant's layer of rule settings, laid over the rules in <code>config.cue</code> (see <a href="#how-a-rule-is-built">How a rule is built</a>)</li>
 </ol>
 <hr />
 <h2 id="repo-structure">Repo structure<a class="headerlink" href="#repo-structure" title="Permanent link">&para;</a></h2>
 <div class="language-text highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>my-org/schemas/                  ← schema registry repo
-</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>├── bundle.json                  ← rule manifest (optional but recommended)
+</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>├── bundle.json                  ← the tenant&#39;s rule settings (optional)
 </span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>├── app-settings.yaml.cue        ← CUE schema for app-settings.yaml
 </span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>├── config.toml.cue              ← CUE schema for config.toml
 </span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>├── dotenv.cue                   ← CUE schema for .env files
@@ -1752,65 +1788,145 @@
 </span></code></pre></div>
 <p>varTrack clones this repo for each tenant on first use and refreshes it automatically on a TTL (default 5 minutes) or immediately when the schema repo itself receives a push webhook.</p>
 <hr />
+<h2 id="how-a-rule-is-built">How a rule is built<a class="headerlink" href="#how-a-rule-is-built" title="Permanent link">&para;</a></h2>
+<p>varTrack builds the rule a sync runs with in layers: the admin's config, the tenant's config and the repository's own. Each layer overrides the one before it, key by key:</p>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>Layer</th>
+<th>Where</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>The rule in <code>config.cue</code></td>
+<td>the bundle every service reads</td>
+</tr>
+<tr>
+<td>2</td>
+<td>The tenant's rule</td>
+<td><code>bundle.json</code> in the tenant's schema repo — optional</td>
+</tr>
+<tr>
+<td>3</td>
+<td>The repository's overrides</td>
+<td><code>vartrack.json</code> in the pushed repo — optional (<a href="../per-repo-overrides/">Per-Repo Overrides</a>)</td>
+</tr>
+<tr>
+<td>4</td>
+<td><code>force</code></td>
+<td>the <code>config.cue</code> rule's <code>force</code> block</td>
+</tr>
+</tbody>
+</table>
+<p><code>branch_map</code>, <code>file_path_map</code>, <code>variables_map</code> and <code>prune</code> are merged key by key across layers: a <code>branch_map</code> of <code>{develop: staging}</code> in <code>bundle.json</code> adds to the <code>{main: production}</code> of <code>config.cue</code>. The <code>prune.protection</code> patterns of every layer add up — a layer can protect more keys, never fewer. Every other key is replaced.</p>
+<p><code>bundle.json</code> and <code>vartrack.json</code> can also pull in shared settings with <code>extends</code> — see <a href="#presets-extends">Presets</a>.</p>
+<p><strong>Keys only <code>config.cue</code> sets.</strong> These are dropped from <code>bundle.json</code> with a warning (<code>… sets mongo_uri, self_heal, which only config.cue sets — ignored</code>). The gateway routes pushes by <code>config.cue</code>'s repositories and the watcher heals the rules <code>config.cue</code> marks <code>self_heal</code>, so another value further down would split the services:</p>
+<ul>
+<li>the datasource's connection settings and credentials: every sink key a <a href="../bundle/#datasources">datasource block</a> sets (<code>mongo_uri</code>, <code>database</code>, <code>collection</code>, <code>update_strategy</code>, <code>redis_hosts</code>, <code>s3_bucket</code>, <code>ssh_host</code>, …)</li>
+<li>the rule's <code>secret_manager</code>, <code>repositories</code>, <code>exclude_repositories</code>, <code>overrides</code>, <code>self_heal</code>, <code>force</code> and <code>tenants</code></li>
+</ul>
+<p><code>force</code> cannot pin these either; they are set on the rule itself.</p>
+<p><strong>Which rules exist.</strong> The rules are <code>config.cue</code>'s, since the gateway only routes pushes to those. A <code>bundle.json</code> rule for a platform and datasource with no rule in <code>config.cue</code> is ignored with a warning. A <code>config.cue</code> rule that no tenant's <code>bundle.json</code> names still syncs, as tenant <code>default</code>'s. Its <code>repo_url</code> is derived from the platform's <code>endpoint</code> and the rule's only repository (<code>http://gitea:3000</code> + <code>acme/configs</code> → <code>http://gitea:3000/acme/configs.git</code>); a webhook for a rule covering several repositories reads the pushed one.</p>
+<p>A bundle whose <code>config.cue</code> has no <code>rules</code> gets only the second layer: <code>bundle.json</code>'s rules are used as they are, and a datasource's <code>config.cue</code> settings still win over the same keys in a rule.</p>
+<hr />
+<h2 id="presets-extends">Presets (<code>extends</code>)<a class="headerlink" href="#presets-extends" title="Permanent link">&para;</a></h2>
+<p>A preset is a JSON file of rule settings in a Git repository, shared by every <code>bundle.json</code> or <code>vartrack.json</code> that names it in <code>extends</code>. A presets repository might hold:</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>my-org/presets/
+</span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>├── default.json        ← {&quot;prune&quot;: {&quot;protection&quot;: [&quot;_vt_*&quot;]}}
+</span><span id="__span-2-3"><a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>├── production.json     ← {&quot;extends&quot;: [&quot;local&gt;my-org/presets&quot;], &quot;prune&quot;: {&quot;protection&quot;: [&quot;manual.*&quot;]}}
+</span><span id="__span-2-4"><a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a>└── repos/
+</span><span id="__span-2-5"><a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a>    └── checkout.json   ← {&quot;prune&quot;: {&quot;protection&quot;: [&quot;features.*&quot;]}}
+</span></code></pre></div>
+<p>A preset is named like this:</p>
+<table>
+<thead>
+<tr>
+<th><code>extends</code> entry</th>
+<th>File</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>local&gt;my-org/presets</code></td>
+<td><code>default.json</code> in <code>my-org/presets</code></td>
+</tr>
+<tr>
+<td><code>local&gt;my-org/presets:production</code></td>
+<td><code>production.json</code></td>
+</tr>
+<tr>
+<td><code>local&gt;my-org/presets//repos/checkout</code></td>
+<td><code>repos/checkout.json</code></td>
+</tr>
+<tr>
+<td><code>local&gt;my-org/presets:production#v2</code></td>
+<td><code>production.json</code> on branch or tag <code>v2</code> (default: <code>main</code>)</td>
+</tr>
+<tr>
+<td><code>gitea&gt;my-org/presets:production</code></td>
+<td>the same file on <code>config.cue</code>'s platform <code>gitea</code> (any platform name: <code>github</code>, <code>gitea-team</code>, …), read with that platform's <code>token</code></td>
+</tr>
+</tbody>
+</table>
+<p><code>local&gt;</code> (or no prefix) is the Git server of the file naming the preset: the schema repo's for <code>bundle.json</code>, the pushed repo's for <code>vartrack.json</code>, and the preset's own inside a preset.</p>
+<p>How presets are resolved:</p>
+<ul>
+<li>presets are merged left to right, then the settings beside <code>extends</code> go on top;</li>
+<li>a preset can extend presets itself; one already in the chain is skipped;</li>
+<li>a preset's <code>description</code> is dropped;</li>
+<li>a preset that cannot be read, or is not a JSON object, is an error: a tenant whose <code>bundle.json</code> names one has no rules until it is fixed (logged as <code>bundle.json cannot be used — the tenant has no rules until it is fixed: …</code>), and a sync whose <code>vartrack.json</code> names one fails.</li>
+</ul>
+<p>The same holds for a <code>bundle.json</code> that does not parse: the tenant does not fall back to the <code>config.cue</code> rules without its layer.</p>
+<p>A preset adds to its layer only: presets that a <code>bundle.json</code> extends are part of the tenant's layer, so keys only <code>config.cue</code> sets are dropped from them too, and presets that a <code>vartrack.json</code> extends are limited to its <a href="../per-repo-overrides/#overridable-keys">overridable keys</a>. A changed preset is picked up when the tenant's schema repo is next refreshed (every <code>SCHEMA_TTL_SECONDS</code>, or on a push to it); a <code>vartrack.json</code>'s presets are read on every sync.</p>
+<hr />
 <h2 id="bundlejson"><code>bundle.json</code><a class="headerlink" href="#bundlejson" title="Permanent link">&para;</a></h2>
-<p><code>bundle.json</code> is the primary rule manifest. It is a JSON array of rule objects — one entry per platform + datasource combination the tenant uses.</p>
-<p>Workers parse it on startup to resolve <code>rule_config</code> locally, avoiding a round-trip to the orchestrator API process on every task.</p>
+<p><code>bundle.json</code> is a JSON array of rule objects — one entry per platform + datasource the tenant syncs. Each entry holds only what the tenant adds to, or changes in, the <code>config.cue</code> rule for that platform and datasource.</p>
 <h3 id="format">Format<a class="headerlink" href="#format" title="Permanent link">&para;</a></h3>
 <p>Two formats are accepted:</p>
 <p><strong>Array (recommended):</strong>
-<div class="language-json highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="p">[</span>
-</span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="w">  </span><span class="p">{</span><span class="w"> </span><span class="err">...</span><span class="w"> </span><span class="err">rule</span><span class="w"> </span><span class="err">objec</span><span class="kc">t</span><span class="w"> </span><span class="err">...</span><span class="w"> </span><span class="p">},</span>
-</span><span id="__span-2-3"><a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="w">  </span><span class="p">{</span><span class="w"> </span><span class="err">...</span><span class="w"> </span><span class="err">rule</span><span class="w"> </span><span class="err">objec</span><span class="kc">t</span><span class="w"> </span><span class="err">...</span><span class="w"> </span><span class="p">}</span>
-</span><span id="__span-2-4"><a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="p">]</span>
+<div class="language-json highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="p">[</span>
+</span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="w">  </span><span class="p">{</span><span class="w"> </span><span class="err">...</span><span class="w"> </span><span class="err">rule</span><span class="w"> </span><span class="err">objec</span><span class="kc">t</span><span class="w"> </span><span class="err">...</span><span class="w"> </span><span class="p">},</span>
+</span><span id="__span-3-3"><a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="w">  </span><span class="p">{</span><span class="w"> </span><span class="err">...</span><span class="w"> </span><span class="err">rule</span><span class="w"> </span><span class="err">objec</span><span class="kc">t</span><span class="w"> </span><span class="err">...</span><span class="w"> </span><span class="p">}</span>
+</span><span id="__span-3-4"><a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="p">]</span>
 </span></code></pre></div></p>
-<p><strong>Object with a <code>rules</code> key:</strong>
-<div class="language-json highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="p">{</span>
-</span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="w">  </span><span class="nt">&quot;rules&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
-</span><span id="__span-3-3"><a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="w">    </span><span class="p">{</span><span class="w"> </span><span class="err">...</span><span class="w"> </span><span class="err">rule</span><span class="w"> </span><span class="err">objec</span><span class="kc">t</span><span class="w"> </span><span class="err">...</span><span class="w"> </span><span class="p">}</span>
-</span><span id="__span-3-4"><a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="w">  </span><span class="p">]</span>
-</span><span id="__span-3-5"><a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a><span class="p">}</span>
+<p><strong>Object with a <code>rules</code> key</strong> — which can also <code>extends</code> presets for every rule in it:
+<div class="language-json highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="p">{</span>
+</span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="w">  </span><span class="nt">&quot;extends&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;local&gt;my-org/presets:production&quot;</span><span class="p">],</span>
+</span><span id="__span-4-3"><a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="w">  </span><span class="nt">&quot;rules&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+</span><span id="__span-4-4"><a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="w">    </span><span class="p">{</span><span class="w"> </span><span class="err">...</span><span class="w"> </span><span class="err">rule</span><span class="w"> </span><span class="err">objec</span><span class="kc">t</span><span class="w"> </span><span class="err">...</span><span class="w"> </span><span class="p">}</span>
+</span><span id="__span-4-5"><a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a><span class="w">  </span><span class="p">]</span>
+</span><span id="__span-4-6"><a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a><span class="p">}</span>
 </span></code></pre></div></p>
-<h3 id="full-example">Full example<a class="headerlink" href="#full-example" title="Permanent link">&para;</a></h3>
-<div class="language-json highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="p">[</span>
-</span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="w">  </span><span class="p">{</span>
-</span><span id="__span-4-3"><a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="w">    </span><span class="nt">&quot;platform&quot;</span><span class="p">:</span><span class="w">         </span><span class="s2">&quot;github&quot;</span><span class="p">,</span>
-</span><span id="__span-4-4"><a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="w">    </span><span class="nt">&quot;datasource&quot;</span><span class="p">:</span><span class="w">       </span><span class="s2">&quot;mongo&quot;</span><span class="p">,</span>
-</span><span id="__span-4-5"><a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a><span class="w">    </span><span class="nt">&quot;tenant_id&quot;</span><span class="p">:</span><span class="w">        </span><span class="s2">&quot;acme&quot;</span><span class="p">,</span>
-</span><span id="__span-4-6"><a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a><span class="w">    </span><span class="nt">&quot;repo_url&quot;</span><span class="p">:</span><span class="w">         </span><span class="s2">&quot;https://github.com/acme/app-configs.git&quot;</span><span class="p">,</span>
-</span><span id="__span-4-7"><a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a><span class="w">    </span><span class="nt">&quot;file_name&quot;</span><span class="p">:</span><span class="w">        </span><span class="s2">&quot;configs/app.yaml&quot;</span><span class="p">,</span>
-</span><span id="__span-4-8"><a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a><span class="w">    </span><span class="nt">&quot;repositories&quot;</span><span class="p">:</span><span class="w">     </span><span class="p">[</span><span class="s2">&quot;acme/*&quot;</span><span class="p">],</span>
-</span><span id="__span-4-9"><a id="__codelineno-4-9" name="__codelineno-4-9" href="#__codelineno-4-9"></a><span class="w">    </span><span class="nt">&quot;branch&quot;</span><span class="p">:</span><span class="w">           </span><span class="s2">&quot;main&quot;</span><span class="p">,</span>
-</span><span id="__span-4-10"><a id="__codelineno-4-10" name="__codelineno-4-10" href="#__codelineno-4-10"></a><span class="w">    </span><span class="nt">&quot;branch_map&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-</span><span id="__span-4-11"><a id="__codelineno-4-11" name="__codelineno-4-11" href="#__codelineno-4-11"></a><span class="w">      </span><span class="nt">&quot;main&quot;</span><span class="p">:</span><span class="w">    </span><span class="s2">&quot;production&quot;</span><span class="p">,</span>
-</span><span id="__span-4-12"><a id="__codelineno-4-12" name="__codelineno-4-12" href="#__codelineno-4-12"></a><span class="w">      </span><span class="nt">&quot;develop&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;staging&quot;</span>
-</span><span id="__span-4-13"><a id="__codelineno-4-13" name="__codelineno-4-13" href="#__codelineno-4-13"></a><span class="w">    </span><span class="p">},</span>
-</span><span id="__span-4-14"><a id="__codelineno-4-14" name="__codelineno-4-14" href="#__codelineno-4-14"></a><span class="w">    </span><span class="nt">&quot;sync_mode&quot;</span><span class="p">:</span><span class="w">        </span><span class="s2">&quot;SYNC_MODE_FULL&quot;</span><span class="p">,</span>
-</span><span id="__span-4-15"><a id="__codelineno-4-15" name="__codelineno-4-15" href="#__codelineno-4-15"></a><span class="w">    </span><span class="nt">&quot;prune&quot;</span><span class="p">:</span><span class="w">            </span><span class="kc">true</span><span class="p">,</span>
-</span><span id="__span-4-16"><a id="__codelineno-4-16" name="__codelineno-4-16" href="#__codelineno-4-16"></a><span class="w">    </span><span class="nt">&quot;prune_last&quot;</span><span class="p">:</span><span class="w">       </span><span class="kc">false</span><span class="p">,</span>
-</span><span id="__span-4-17"><a id="__codelineno-4-17" name="__codelineno-4-17" href="#__codelineno-4-17"></a><span class="w">    </span><span class="nt">&quot;self_heal&quot;</span><span class="p">:</span><span class="w">        </span><span class="kc">true</span><span class="p">,</span>
-</span><span id="__span-4-18"><a id="__codelineno-4-18" name="__codelineno-4-18" href="#__codelineno-4-18"></a><span class="w">    </span><span class="nt">&quot;root_key&quot;</span><span class="p">:</span><span class="w">         </span><span class="s2">&quot;vartrack&quot;</span><span class="p">,</span>
-</span><span id="__span-4-19"><a id="__codelineno-4-19" name="__codelineno-4-19" href="#__codelineno-4-19"></a><span class="w">    </span><span class="nt">&quot;mongo_uri&quot;</span><span class="p">:</span><span class="w">        </span><span class="s2">&quot;mongodb://mongo:27017&quot;</span><span class="p">,</span>
-</span><span id="__span-4-20"><a id="__codelineno-4-20" name="__codelineno-4-20" href="#__codelineno-4-20"></a><span class="w">    </span><span class="nt">&quot;database&quot;</span><span class="p">:</span><span class="w">         </span><span class="s2">&quot;vartrack&quot;</span><span class="p">,</span>
-</span><span id="__span-4-21"><a id="__codelineno-4-21" name="__codelineno-4-21" href="#__codelineno-4-21"></a><span class="w">    </span><span class="nt">&quot;collection&quot;</span><span class="p">:</span><span class="w">       </span><span class="s2">&quot;variables&quot;</span><span class="p">,</span>
-</span><span id="__span-4-22"><a id="__codelineno-4-22" name="__codelineno-4-22" href="#__codelineno-4-22"></a><span class="w">    </span><span class="nt">&quot;update_strategy&quot;</span><span class="p">:</span><span class="w">  </span><span class="s2">&quot;STRATEGY_KEY_VALUE&quot;</span>
-</span><span id="__span-4-23"><a id="__codelineno-4-23" name="__codelineno-4-23" href="#__codelineno-4-23"></a><span class="w">  </span><span class="p">},</span>
-</span><span id="__span-4-24"><a id="__codelineno-4-24" name="__codelineno-4-24" href="#__codelineno-4-24"></a><span class="w">  </span><span class="p">{</span>
-</span><span id="__span-4-25"><a id="__codelineno-4-25" name="__codelineno-4-25" href="#__codelineno-4-25"></a><span class="w">    </span><span class="nt">&quot;platform&quot;</span><span class="p">:</span><span class="w">         </span><span class="s2">&quot;github&quot;</span><span class="p">,</span>
-</span><span id="__span-4-26"><a id="__codelineno-4-26" name="__codelineno-4-26" href="#__codelineno-4-26"></a><span class="w">    </span><span class="nt">&quot;datasource&quot;</span><span class="p">:</span><span class="w">       </span><span class="s2">&quot;redis&quot;</span><span class="p">,</span>
-</span><span id="__span-4-27"><a id="__codelineno-4-27" name="__codelineno-4-27" href="#__codelineno-4-27"></a><span class="w">    </span><span class="nt">&quot;tenant_id&quot;</span><span class="p">:</span><span class="w">        </span><span class="s2">&quot;acme&quot;</span><span class="p">,</span>
-</span><span id="__span-4-28"><a id="__codelineno-4-28" name="__codelineno-4-28" href="#__codelineno-4-28"></a><span class="w">    </span><span class="nt">&quot;repo_url&quot;</span><span class="p">:</span><span class="w">         </span><span class="s2">&quot;https://github.com/acme/app-configs.git&quot;</span><span class="p">,</span>
-</span><span id="__span-4-29"><a id="__codelineno-4-29" name="__codelineno-4-29" href="#__codelineno-4-29"></a><span class="w">    </span><span class="nt">&quot;file_name&quot;</span><span class="p">:</span><span class="w">        </span><span class="s2">&quot;configs/app.yaml&quot;</span><span class="p">,</span>
-</span><span id="__span-4-30"><a id="__codelineno-4-30" name="__codelineno-4-30" href="#__codelineno-4-30"></a><span class="w">    </span><span class="nt">&quot;repositories&quot;</span><span class="p">:</span><span class="w">     </span><span class="p">[</span><span class="s2">&quot;acme/*&quot;</span><span class="p">],</span>
-</span><span id="__span-4-31"><a id="__codelineno-4-31" name="__codelineno-4-31" href="#__codelineno-4-31"></a><span class="w">    </span><span class="nt">&quot;branch&quot;</span><span class="p">:</span><span class="w">           </span><span class="s2">&quot;main&quot;</span><span class="p">,</span>
-</span><span id="__span-4-32"><a id="__codelineno-4-32" name="__codelineno-4-32" href="#__codelineno-4-32"></a><span class="w">    </span><span class="nt">&quot;sync_mode&quot;</span><span class="p">:</span><span class="w">        </span><span class="s2">&quot;SYNC_MODE_FULL&quot;</span><span class="p">,</span>
-</span><span id="__span-4-33"><a id="__codelineno-4-33" name="__codelineno-4-33" href="#__codelineno-4-33"></a><span class="w">    </span><span class="nt">&quot;prune&quot;</span><span class="p">:</span><span class="w">            </span><span class="kc">true</span><span class="p">,</span>
-</span><span id="__span-4-34"><a id="__codelineno-4-34" name="__codelineno-4-34" href="#__codelineno-4-34"></a><span class="w">    </span><span class="nt">&quot;self_heal&quot;</span><span class="p">:</span><span class="w">        </span><span class="kc">true</span><span class="p">,</span>
-</span><span id="__span-4-35"><a id="__codelineno-4-35" name="__codelineno-4-35" href="#__codelineno-4-35"></a><span class="w">    </span><span class="nt">&quot;redis_host&quot;</span><span class="p">:</span><span class="w">       </span><span class="s2">&quot;redis&quot;</span><span class="p">,</span>
-</span><span id="__span-4-36"><a id="__codelineno-4-36" name="__codelineno-4-36" href="#__codelineno-4-36"></a><span class="w">    </span><span class="nt">&quot;redis_port&quot;</span><span class="p">:</span><span class="w">       </span><span class="mi">6379</span><span class="p">,</span>
-</span><span id="__span-4-37"><a id="__codelineno-4-37" name="__codelineno-4-37" href="#__codelineno-4-37"></a><span class="w">    </span><span class="nt">&quot;redis_db&quot;</span><span class="p">:</span><span class="w">         </span><span class="mi">0</span>
-</span><span id="__span-4-38"><a id="__codelineno-4-38" name="__codelineno-4-38" href="#__codelineno-4-38"></a><span class="w">  </span><span class="p">}</span>
-</span><span id="__span-4-39"><a id="__codelineno-4-39" name="__codelineno-4-39" href="#__codelineno-4-39"></a><span class="p">]</span>
+<p>A rule can <code>extends</code> presets of its own as well; they come after the file's.</p>
+<h3 id="example">Example<a class="headerlink" href="#example" title="Permanent link">&para;</a></h3>
+<p>With this rule in <code>config.cue</code>:</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>rules: [{
+</span><span id="__span-5-2"><a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>  platform:     &quot;github&quot;
+</span><span id="__span-5-3"><a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>  datasource:   &quot;mongo&quot;
+</span><span id="__span-5-4"><a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a>  repositories: [&quot;acme/app-configs&quot;]
+</span><span id="__span-5-5"><a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a>  file_name:    &quot;configs/app.yaml&quot;
+</span><span id="__span-5-6"><a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a>  branch_map:   {main: &quot;production&quot;}
+</span><span id="__span-5-7"><a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a>  self_heal:    true
+</span><span id="__span-5-8"><a id="__codelineno-5-8" name="__codelineno-5-8" href="#__codelineno-5-8"></a>  force:        {prune: {enabled: false}}   // production never prunes
+</span><span id="__span-5-9"><a id="__codelineno-5-9" name="__codelineno-5-9" href="#__codelineno-5-9"></a>}]
 </span></code></pre></div>
+<p>the tenant's <code>bundle.json</code> adds a staging branch, a root key and the smart-repair sync mode:</p>
+<div class="language-json highlight"><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="p">[</span>
+</span><span id="__span-6-2"><a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="w">  </span><span class="p">{</span>
+</span><span id="__span-6-3"><a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="w">    </span><span class="nt">&quot;platform&quot;</span><span class="p">:</span><span class="w">   </span><span class="s2">&quot;github&quot;</span><span class="p">,</span>
+</span><span id="__span-6-4"><a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a><span class="w">    </span><span class="nt">&quot;datasource&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;mongo&quot;</span><span class="p">,</span>
+</span><span id="__span-6-5"><a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a><span class="w">    </span><span class="nt">&quot;tenant_id&quot;</span><span class="p">:</span><span class="w">  </span><span class="s2">&quot;acme&quot;</span><span class="p">,</span>
+</span><span id="__span-6-6"><a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a><span class="w">    </span><span class="nt">&quot;branch_map&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nt">&quot;develop&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;staging&quot;</span><span class="p">},</span>
+</span><span id="__span-6-7"><a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a><span class="w">    </span><span class="nt">&quot;root_key&quot;</span><span class="p">:</span><span class="w">   </span><span class="s2">&quot;vartrack&quot;</span><span class="p">,</span>
+</span><span id="__span-6-8"><a id="__codelineno-6-8" name="__codelineno-6-8" href="#__codelineno-6-8"></a><span class="w">    </span><span class="nt">&quot;sync_mode&quot;</span><span class="p">:</span><span class="w">  </span><span class="s2">&quot;GIT_SMART_REPAIR&quot;</span><span class="p">,</span>
+</span><span id="__span-6-9"><a id="__codelineno-6-9" name="__codelineno-6-9" href="#__codelineno-6-9"></a><span class="w">    </span><span class="nt">&quot;prune&quot;</span><span class="p">:</span><span class="w">      </span><span class="kc">true</span>
+</span><span id="__span-6-10"><a id="__codelineno-6-10" name="__codelineno-6-10" href="#__codelineno-6-10"></a><span class="w">  </span><span class="p">}</span>
+</span><span id="__span-6-11"><a id="__codelineno-6-11" name="__codelineno-6-11" href="#__codelineno-6-11"></a><span class="p">]</span>
+</span></code></pre></div>
+<p>The rule a sync runs with: <code>file_name</code> <code>configs/app.yaml</code>, <code>branch_map</code> <code>{main: production, develop: staging}</code>, <code>root_key</code> <code>vartrack</code>, <code>sync_mode</code> <code>GIT_SMART_REPAIR</code>, <code>self_heal</code> true, <code>prune</code> <code>{enabled: false}</code> (forced), and the <code>mongo</code> datasource's connection settings from <code>config.cue</code>.</p>
 <h3 id="rule-object-fields">Rule object fields<a class="headerlink" href="#rule-object-fields" title="Permanent link">&para;</a></h3>
 <table>
 <thead>
@@ -1824,67 +1940,67 @@
 <tr>
 <td><code>platform</code></td>
 <td>Yes</td>
-<td>Platform name — <code>github</code>, <code>gitlab</code>, <code>gitea</code>, or <code>github-{tag}</code></td>
+<td>Platform name — <code>github</code>, <code>gitea</code>, or <code>{type}-{tag}</code>; with <code>datasource</code>, picks the <code>config.cue</code> rule</td>
 </tr>
 <tr>
 <td><code>datasource</code></td>
 <td>Yes</td>
-<td>Datasource name — <code>mongo</code>, <code>redis</code>, <code>zookeeper</code>, <code>s3</code>, etc.</td>
+<td>Datasource name — <code>mongo</code>, <code>redis-cfg</code>, <code>s3-minio</code>, …</td>
 </tr>
 <tr>
 <td><code>tenant_id</code></td>
-<td>Yes</td>
-<td>Tenant this rule belongs to</td>
+<td>No</td>
+<td>Tenant this rule belongs to (default: the schema repo's tenant)</td>
 </tr>
 <tr>
 <td><code>repo_url</code></td>
-<td>Yes</td>
-<td>HTTPS clone URL of the config repository</td>
+<td>No</td>
+<td>HTTPS clone URL of the config repository (default: derived from the platform and the rule's only repository)</td>
 </tr>
 <tr>
 <td><code>file_name</code></td>
-<td>One of</td>
+<td>No</td>
 <td>Single file path to track in all repos</td>
 </tr>
 <tr>
 <td><code>file_path_map</code></td>
-<td>One of</td>
-<td><code>{ env → file_path }</code> for per-environment file selection</td>
-</tr>
-<tr>
-<td><code>repositories</code></td>
 <td>No</td>
-<td>Glob patterns for which repos trigger this rule</td>
+<td><code>{ env → file_path }</code> for per-environment file selection — merged</td>
 </tr>
 <tr>
 <td><code>branch</code></td>
 <td>No</td>
-<td>Branch to track (default: <code>main</code>)</td>
+<td>Branch to heal when there is no <code>branch_map</code> (default: <code>main</code>)</td>
+</tr>
+<tr>
+<td><code>max_changed_files</code></td>
+<td>No</td>
+<td>The most files one push syncs (default: 500). A push that changed more is cut to the first of them, with a warning in the log</td>
 </tr>
 <tr>
 <td><code>branch_map</code></td>
 <td>No</td>
-<td><code>{ branch → env }</code> label mapping</td>
+<td><code>{ branch → env }</code> label mapping — merged</td>
+</tr>
+<tr>
+<td><code>variables_map</code></td>
+<td>No</td>
+<td>Merged</td>
 </tr>
 <tr>
 <td><code>sync_mode</code></td>
 <td>No</td>
-<td><code>AUTO</code>, <code>SYNC_MODE_FULL</code>, <code>GIT_UPSERT_ALL</code>, <code>GIT_SMART_REPAIR</code>, <code>LIVE_STATE</code></td>
+<td><code>AUTO</code>, <code>GIT_UPSERT_ALL</code>, <code>GIT_SMART_REPAIR</code>, <code>LIVE_STATE</code> (<code>FULL</code> reads as <code>GIT_UPSERT_ALL</code>)</td>
 </tr>
 <tr>
 <td><code>prune</code></td>
 <td>No</td>
-<td>Delete datasource keys no longer in Git (default: <code>false</code>)</td>
+<td><code>true</code>, or <code>{enabled, last, dry_run, protection}</code> — merged with the other layers; <code>protection</code> patterns add up, and an object with only <code>protection</code> does not enable pruning</td>
 </tr>
 <tr>
-<td><code>prune_last</code></td>
+<td><code>prune_protection</code></td>
 <td>No</td>
-<td>Defer key deletion until all sources are processed</td>
-</tr>
-<tr>
-<td><code>self_heal</code></td>
-<td>No</td>
-<td>Auto-restore on drift (default: <code>false</code>)</td>
+<td>Former flat name of <code>prune.protection</code>, still read. <code>prune_last</code> and <code>prune.last</code> were removed and are ignored</td>
 </tr>
 <tr>
 <td><code>root_key</code></td>
@@ -1892,44 +2008,49 @@
 <td>Subtree key to extract before flattening (default: <code>"vartrack"</code>)</td>
 </tr>
 <tr>
-<td><code>branch_as_env</code></td>
+<td><code>branch_as_env</code> / <code>pr_as_env</code> / <code>tag_as_env</code></td>
 <td>No</td>
-<td>Use branch name as the environment label</td>
+<td>Environment from the branch name, <code>pr-{number}</code>, or the tag</td>
 </tr>
 <tr>
-<td><code>pr_as_env</code></td>
+<td><code>destination_template</code>, <code>dry_run</code>, <code>strict_validation</code></td>
 <td>No</td>
-<td>Use <code>pr-{number}</code> as the environment label</td>
+<td>As in <a href="../bundle/#rules"><code>config.cue</code></a></td>
 </tr>
 <tr>
-<td><code>tag_as_env</code></td>
+<td>sink options with no <code>config.cue</code> field</td>
 <td>No</td>
-<td>Use tag name as the environment label</td>
+<td>e.g. <code>key_format</code>, <code>helm_values_mode</code></td>
+</tr>
+<tr>
+<td><code>extends</code></td>
+<td>No</td>
+<td><a href="#presets-extends">Presets</a> for this rule, after the file's</td>
 </tr>
 </tbody>
 </table>
-<p>Additional sink-specific fields (connection strings, credentials, etc.) are included inline per rule — see the individual <a href="../../sinks/">sink pages</a> for what each datasource type accepts.</p>
+<p><code>repositories</code>, <code>self_heal</code>, <code>secret_manager</code> and the sink connection settings are set in <code>config.cue</code> only (see above).</p>
 <hr />
 <h2 id="rulesjson"><code>rules.json</code><a class="headerlink" href="#rulesjson" title="Permanent link">&para;</a></h2>
 <p><code>rules.json</code> is a drop-in alias for <code>bundle.json</code>. If both files exist, <code>bundle.json</code> takes precedence. Use <code>rules.json</code> if you prefer a shorter name or want to distinguish the manifest from other bundle exports.</p>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>my-org/schemas/
-</span><span id="__span-5-2"><a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>├── rules.json     ← identical format to bundle.json
-</span><span id="__span-5-3"><a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>└── *.cue
+<div class="language-text highlight"><pre><span></span><code><span id="__span-7-1"><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>my-org/schemas/
+</span><span id="__span-7-2"><a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>├── rules.json     ← identical format to bundle.json
+</span><span id="__span-7-3"><a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a>└── *.cue
 </span></code></pre></div>
 <hr />
 <h2 id="tenant-configuration">Tenant configuration<a class="headerlink" href="#tenant-configuration" title="Permanent link">&para;</a></h2>
 <p>Tenants are registered via environment variables on the orchestrator-service and its Celery workers:</p>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="nv">SCHEMA_TENANT_ACME_REPO</span><span class="o">=</span>https://github.com/acme/schemas.git
-</span><span id="__span-6-2"><a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="nv">SCHEMA_TENANT_ACME_BRANCH</span><span class="o">=</span>main
-</span><span id="__span-6-3"><a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="nv">SCHEMA_TENANT_ACME_TOKEN</span><span class="o">=</span>ghp_xxx
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-8-1"><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="nv">SCHEMA_TENANT_ACME_REPO</span><span class="o">=</span>https://github.com/acme/schemas.git
+</span><span id="__span-8-2"><a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a><span class="nv">SCHEMA_TENANT_ACME_BRANCH</span><span class="o">=</span>main
+</span><span id="__span-8-3"><a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a><span class="nv">SCHEMA_TENANT_ACME_TOKEN</span><span class="o">=</span>ghp_xxx
 </span></code></pre></div>
 <p>The tenant ID is derived from the variable name (<code>ACME</code> → <code>acme</code>). Multiple tenants can be registered in the same process:</p>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-7-1"><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="nv">SCHEMA_TENANT_ACME_REPO</span><span class="o">=</span>https://github.com/acme/schemas.git
-</span><span id="__span-7-2"><a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="nv">SCHEMA_TENANT_ACME_TOKEN</span><span class="o">=</span>ghp_xxx
-</span><span id="__span-7-3"><a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a>
-</span><span id="__span-7-4"><a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a><span class="nv">SCHEMA_TENANT_BETA_REPO</span><span class="o">=</span>https://github.com/beta-corp/schemas.git
-</span><span id="__span-7-5"><a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a><span class="nv">SCHEMA_TENANT_BETA_BRANCH</span><span class="o">=</span>production
-</span><span id="__span-7-6"><a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a><span class="nv">SCHEMA_TENANT_BETA_TOKEN</span><span class="o">=</span>ghp_yyy
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-9-1"><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="nv">SCHEMA_TENANT_ACME_REPO</span><span class="o">=</span>https://github.com/acme/schemas.git
+</span><span id="__span-9-2"><a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a><span class="nv">SCHEMA_TENANT_ACME_TOKEN</span><span class="o">=</span>ghp_xxx
+</span><span id="__span-9-3"><a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a>
+</span><span id="__span-9-4"><a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a><span class="nv">SCHEMA_TENANT_BETA_REPO</span><span class="o">=</span>https://github.com/beta-corp/schemas.git
+</span><span id="__span-9-5"><a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a><span class="nv">SCHEMA_TENANT_BETA_BRANCH</span><span class="o">=</span>production
+</span><span id="__span-9-6"><a id="__codelineno-9-6" name="__codelineno-9-6" href="#__codelineno-9-6"></a><span class="nv">SCHEMA_TENANT_BETA_TOKEN</span><span class="o">=</span>ghp_yyy
 </span></code></pre></div>
 <hr />
 <h2 id="caching-and-refresh">Caching and refresh<a class="headerlink" href="#caching-and-refresh" title="Permanent link">&para;</a></h2>
@@ -1959,15 +2080,14 @@
 </tr>
 <tr>
 <td>Rule resolution cache</td>
-<td>Resolved rules are cached in Redis for 300 s under key <code>rule:{tenant_id}:{platform}:{datasource}</code></td>
+<td>The tenant's <code>bundle.json</code> rule is cached in Redis for 300 s under key <code>rule:{tenant_id}:{platform}:{datasource}</code>; the other layers are laid over it on every lookup, so a <code>config.cue</code> change applies at once</td>
 </tr>
 </tbody>
 </table>
 <p>To share the clone cache between the API process and workers in Docker Compose or Kubernetes, mount <code>SCHEMA_CACHE_DIR</code> as a shared volume.</p>
 <hr />
 <h2 id="relationship-to-configcue">Relationship to <code>config.cue</code><a class="headerlink" href="#relationship-to-configcue" title="Permanent link">&para;</a></h2>
-<p><code>config.cue</code> is the authoritative source for which tenants, platforms, and datasources exist. <code>bundle.json</code> is a <strong>worker-side cache</strong> of the relevant rules, formatted as flat JSON so workers can resolve <code>rule_config</code> without deserialising the full CUE bundle on every task.</p>
-<p>The two should be kept in sync. When you add or change a rule in <code>config.cue</code>, update <code>bundle.json</code> in the schema repo and push — the schema webhook will cause workers to pick up the new rules within seconds.</p>
+<p><code>config.cue</code> decides which platforms, datasources and rules exist, how to connect to each datasource, and which settings no tenant may change (<code>force</code>). <code>bundle.json</code> is the tenant's layer on top: nothing in it repeats <code>config.cue</code>, and nothing has to be kept in sync. A push to the schema repo makes workers pick up a changed <code>bundle.json</code> within seconds.</p>
 
 
 

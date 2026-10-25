@@ -1596,7 +1596,7 @@
 <p>varTrack is built around a simple idea: your Git repository is the source of truth for configuration, and any datasource that holds config values should automatically stay in sync with it.</p>
 <hr />
 <h2 id="the-pipeline">The pipeline<a class="headerlink" href="#the-pipeline" title="Permanent link">&para;</a></h2>
-<p>Every sync — whether triggered by a webhook or the CLI — runs through the same three-stage pipeline:</p>
+<p>Every sync — whether triggered by a webhook or the CLI — runs through the same pipeline. A CLI sync brings the file itself, so it skips fetching from Git: it starts at the rule for its datasource and goes straight to parsing.</p>
 <div class="language-text highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>PAYLOAD       →   ETL             →   SYNC
 </span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>──────────────────────────────────────────────
 </span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>resolve rule      fetch from Git      pick strategy
@@ -1608,13 +1608,13 @@
 <p>When a webhook arrives at the gateway-service, varTrack resolves:</p>
 <ul>
 <li>Which <strong>platform</strong> sent the event (GitHub, GitLab, ...)</li>
-<li>Which <strong>rule</strong> matches (based on <code>datasource</code>, <code>repositories</code>, and <code>file_name</code>)</li>
+<li>Which <strong>rule</strong> applies: the one for the platform that sent the event and the datasource in the webhook URL (a rule is identified by that pair). Its <code>repositories</code> and <code>exclude_repositories</code> decide whether the pushed repository is synced, and <code>file_name</code> or <code>file_path_map</code> which files</li>
 <li>Which <strong>environment</strong> to target (from branch name, PR number, tag, or explicit <code>branch_map</code>)</li>
 </ul>
 <h3 id="stage-2-etl">Stage 2 — ETL<a class="headerlink" href="#stage-2-etl" title="Permanent link">&para;</a></h3>
 <p>The orchestrator-service:</p>
 <ol>
-<li>Clones or fetches the pushed Git ref (LRU cache, max 20 repos)</li>
+<li>Reads the files at the pushed commit, from a bare mirror of the repository kept under <code>GIT_CACHE_DIR</code> (at most 20 repos, least recently used removed first)</li>
 <li>Parses the file (YAML / JSON / TOML / .env / HCL / XML / INI)</li>
 <li>Extracts the subtree under the <code>vartrack</code> root key (if present)</li>
 <li>Detects the environment key pattern (branch-keyed or flat)</li>
@@ -1627,7 +1627,7 @@
 <ul>
 <li>Picks the sync strategy (<code>AUTO</code>, <code>GIT_UPSERT_ALL</code>, <code>GIT_SMART_REPAIR</code>, or <code>LIVE_STATE</code>)</li>
 <li>Runs writes to all matching sinks in parallel</li>
-<li>Prunes stale keys if <code>prune: true</code> is set on the rule</li>
+<li>Prunes stale keys once per environment, after all its files are written, if <code>prune</code> is enabled on the rule</li>
 <li>Rolls back (deletes written data) if a write fails partway through</li>
 </ul>
 <hr />
@@ -1682,7 +1682,7 @@
 </span><span id="__span-1-10"><a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a>                    ┌────────────────▼─────────────────────┐
 </span><span id="__span-1-11"><a id="__codelineno-1-11" name="__codelineno-1-11" href="#__codelineno-1-11"></a>                    │        orchestrator-service           │
 </span><span id="__span-1-12"><a id="__codelineno-1-12" name="__codelineno-1-12" href="#__codelineno-1-12"></a>                    │  ┌────────────────────────────────┐  │
-</span><span id="__span-1-13"><a id="__codelineno-1-13" name="__codelineno-1-13" href="#__codelineno-1-13"></a>                    │  │  fetch Git ref (LRU cache)      │  │
+</span><span id="__span-1-13"><a id="__codelineno-1-13" name="__codelineno-1-13" href="#__codelineno-1-13"></a>                    │  │  read files at pushed commit    │  │
 </span><span id="__span-1-14"><a id="__codelineno-1-14" name="__codelineno-1-14" href="#__codelineno-1-14"></a>                    │  │  parse + flatten (Rust)         │  │
 </span><span id="__span-1-15"><a id="__codelineno-1-15" name="__codelineno-1-15" href="#__codelineno-1-15"></a>                    │  │  validate CUE schema            │  │
 </span><span id="__span-1-16"><a id="__codelineno-1-16" name="__codelineno-1-16" href="#__codelineno-1-16"></a>                    │  │  write to sinks                 │──┼──► MongoDB
@@ -1691,10 +1691,11 @@
 </span><span id="__span-1-19"><a id="__codelineno-1-19" name="__codelineno-1-19" href="#__codelineno-1-19"></a>                                                               ──► S3 / ...
 </span><span id="__span-1-20"><a id="__codelineno-1-20" name="__codelineno-1-20" href="#__codelineno-1-20"></a>                    ┌──────────────────────────────────────┐
 </span><span id="__span-1-21"><a id="__codelineno-1-21" name="__codelineno-1-21" href="#__codelineno-1-21"></a>                    │          watcher-service              │
-</span><span id="__span-1-22"><a id="__codelineno-1-22" name="__codelineno-1-22" href="#__codelineno-1-22"></a>                    │  polls datasources every 60 s        │
-</span><span id="__span-1-23"><a id="__codelineno-1-23" name="__codelineno-1-23" href="#__codelineno-1-23"></a>                    │  compares live state vs Git baseline  │
-</span><span id="__span-1-24"><a id="__codelineno-1-24" name="__codelineno-1-24" href="#__codelineno-1-24"></a>                    │  drift detected → TriggerSync (gRPC) │
-</span><span id="__span-1-25"><a id="__codelineno-1-25" name="__codelineno-1-25" href="#__codelineno-1-25"></a>                    └──────────────────────────────────────┘
+</span><span id="__span-1-22"><a id="__codelineno-1-22" name="__codelineno-1-22" href="#__codelineno-1-22"></a>                    │  every 60 s, per self_heal rule:     │
+</span><span id="__span-1-23"><a id="__codelineno-1-23" name="__codelineno-1-23" href="#__codelineno-1-23"></a>                    │  CheckDatasource (gRPC) — the        │
+</span><span id="__span-1-24"><a id="__codelineno-1-24" name="__codelineno-1-24" href="#__codelineno-1-24"></a>                    │  orchestrator compares sink vs Git   │
+</span><span id="__span-1-25"><a id="__codelineno-1-25" name="__codelineno-1-25" href="#__codelineno-1-25"></a>                    │  drifted → SyncDatasource (gRPC)     │
+</span><span id="__span-1-26"><a id="__codelineno-1-26" name="__codelineno-1-26" href="#__codelineno-1-26"></a>                    └──────────────────────────────────────┘
 </span></code></pre></div>
 <hr />
 <h2 id="rust-core">Rust core<a class="headerlink" href="#rust-core" title="Permanent link">&para;</a></h2>
@@ -1714,10 +1715,6 @@
 <tr>
 <td><code>merge</code></td>
 <td>Variable map overlay + environment resolution</td>
-</tr>
-<tr>
-<td><code>prune</code></td>
-<td>Stale-key detection and deferred deletion</td>
 </tr>
 <tr>
 <td><code>sync</code></td>

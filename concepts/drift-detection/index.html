@@ -770,15 +770,6 @@
   
 </li>
       
-        <li class="md-nav__item">
-  <a href="#shared-state-store" class="md-nav__link">
-    <span class="md-ellipsis">
-      Shared state store
-    </span>
-  </a>
-  
-</li>
-      
     </ul>
   
 </nav>
@@ -1689,15 +1680,6 @@
   
 </li>
       
-        <li class="md-nav__item">
-  <a href="#shared-state-store" class="md-nav__link">
-    <span class="md-ellipsis">
-      Shared state store
-    </span>
-  </a>
-  
-</li>
-      
     </ul>
   
 </nav>
@@ -1717,7 +1699,7 @@
 
 
 <h1 id="drift-detection-self-heal">Drift Detection &amp; Self-Heal<a class="headerlink" href="#drift-detection-self-heal" title="Permanent link">&para;</a></h1>
-<p>The watcher-service continuously polls every configured datasource and compares the live state against the Git baseline. When values diverge, it can restore the correct state automatically.</p>
+<p>For every rule with <code>self_heal: true</code>, the watcher-service asks the orchestrator on each poll whether the datasource still matches Git, and has it restore the ones that don't.</p>
 <hr />
 <h2 id="what-is-drift">What is drift?<a class="headerlink" href="#what-is-drift" title="Permanent link">&para;</a></h2>
 <p>Drift happens when a datasource value no longer matches what Git says it should be. Common causes:</p>
@@ -1730,28 +1712,23 @@
 <p>Without drift detection, these changes go unnoticed until something breaks.</p>
 <hr />
 <h2 id="how-detection-works">How detection works<a class="headerlink" href="#how-detection-works" title="Permanent link">&para;</a></h2>
-<p>The watcher reads each datasource and keeps a fingerprint of it. A fingerprint only says <em>that</em> something changed — varTrack's own syncs change it too — so when it moves, the watcher asks the orchestrator whether the datasource still matches Git, key by key (<code>CheckDatasource</code>). Only a mismatch is drift.</p>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>Every POLL_INTERVAL (default: 60s)
+<p>The orchestrator is the one component that reads and writes the sinks: it holds their credentials and their client code. So it also does the comparing. On every poll the watcher calls <code>CheckDatasource</code>; the orchestrator reads, in each synced environment, the keys varTrack wrote and compares them with what it last synced from Git (the sync ledger). The watcher itself reads no sink and holds no sink credentials.</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>Every POLL_INTERVAL (default: 60s), for each self_heal rule
 </span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>  │
-</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>  ├── Fingerprint the datasource
-</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>  ├── Same as the baseline → nothing to do
-</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>  │
-</span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>  └── Changed → CheckDatasource: compare every synced environment with the
-</span><span id="__span-0-7"><a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>      desired state varTrack last wrote from Git
-</span><span id="__span-0-8"><a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>        ├── in sync  → a varTrack sync wrote it: new baseline, no heal
-</span><span id="__span-0-9"><a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>        ├── syncing  → a sync is still writing: look again on the next poll
-</span><span id="__span-0-10"><a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a>        └── drifted  → (also: orchestrator can&#39;t compare, see below)
-</span><span id="__span-0-11"><a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a>              ├── Increment vartrack_watcher_drift_total
-</span><span id="__span-0-12"><a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a>              └── Heal: SyncDatasource gRPC → orchestrator re-syncs this
-</span><span id="__span-0-13"><a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a>                  datasource from the head of every branch that feeds it
+</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>  └── CheckDatasource → the orchestrator reads the sink, key by key
+</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>        ├── in sync  → nothing to do
+</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>        ├── syncing  → a sync is still writing: look again on the next poll
+</span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>        ├── unknown  → can&#39;t tell (never synced, sink unreadable): no heal
+</span><span id="__span-0-7"><a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>        └── drifted  → vartrack_watcher_drift_detected_total + 1
+</span><span id="__span-0-8"><a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>              └── Heal: SyncDatasource → the orchestrator re-syncs this
+</span><span id="__span-0-9"><a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>                  datasource from the head of every branch that feeds it
 </span></code></pre></div>
 <p>A few rules keep this from healing what it shouldn't, or waiting forever:</p>
 <ul>
-<li><strong>Unknown</strong> — the orchestrator answers but can't compare (nothing synced yet, or it can't read the sink back, as with Vercel): the watcher heals, as it did before the check existed. A heal only ever writes what Git says.</li>
-<li><strong>Orchestrator unreachable or older</strong> (no <code>CheckDatasource</code>): the watcher heals on any change, as before.</li>
+<li><strong>Unknown is not drift.</strong> A sink that cannot be read answers <em>unknown</em>, never "every key is missing", so an outage does not set off heals. A value the sink never gives back — a Vercel <em>sensitive</em> variable — is neither missing nor changed.</li>
+<li><strong>One heal at a time.</strong> After it asks for a heal, the watcher waits two poll intervals (at least 30 s) before asking again for the same drift, so the queued sync has time to start; a check that answers <em>in sync</em> ends the wait.</li>
+<li><strong>A failed heal</strong> is tried again on the next poll; while heal requests keep failing, a circuit breaker stops sending them for a while.</li>
 <li><strong>A sync that died</strong> — a worker killed mid-sync leaves no result. A sync still marked running after 15 minutes (Celery stops any task after 10) no longer counts, so the watcher heals instead of waiting on it.</li>
-<li><strong>First start without a saved baseline</strong> — the watcher asks once right away, so drift from before it ever ran is healed too. At startup only a definite <em>drifted</em> heals; with no change seen, <em>unknown</em> is no evidence.</li>
-<li><strong>A failed heal</strong> is not retried until the datasource changes again: the same sync would fail the same way. The web UI shows it as <em>Heal failed</em>.</li>
 </ul>
 <hr />
 <h2 id="enabling-self-heal">Enabling self-heal<a class="headerlink" href="#enabling-self-heal" title="Permanent link">&para;</a></h2>
@@ -1762,7 +1739,7 @@
 </span><span id="__span-1-4"><a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>  self_heal:  true    // watcher will restore state on drift
 </span><span id="__span-1-5"><a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>}]
 </span></code></pre></div>
-<p>Rules with <code>self_heal: false</code> (or omitted) are not polled by the watcher, and nothing repairs them. The web UI still compares them with Git whenever it reads them, so their drift shows there until someone syncs from Git:</p>
+<p>The watcher asks the orchestrator which rules to watch on every poll, so a rule that gains <code>self_heal</code>, or is suspended or removed, is picked up at the next poll, without restarting the watcher. Rules with <code>self_heal: false</code> (or omitted) are not polled by the watcher, and nothing repairs them. The web UI still compares them with Git whenever it reads them, so their drift shows there until someone syncs from Git:</p>
 <p><img alt="A Redis rule with self-heal off: production is out of sync, staging matches Git" src="../../assets/screenshots/rule-drift.png" /></p>
 <hr />
 <h2 id="concrete-example">Concrete example<a class="headerlink" href="#concrete-example" title="Permanent link">&para;</a></h2>
@@ -1773,13 +1750,12 @@
 <p>Someone runs <code>db.variables.updateOne({key: "max_connections"}, {$set: {value: 5}})</code> directly in MongoDB.</p>
 <p>On the next poll cycle:</p>
 <ol>
-<li>Watcher sees the MongoDB fingerprint change</li>
-<li>Asks the orchestrator (<code>CheckDatasource</code>): Git says <code>50</code>, MongoDB has <code>5</code> — drifted</li>
-<li><code>self_heal: true</code> → calls <code>SyncDatasource</code> on the orchestrator</li>
-<li>Orchestrator fetches the file from Git, parses it, writes <code>max_connections = 50</code> back to MongoDB</li>
-<li>That write moves the fingerprint again; the orchestrator says it matches Git, so it becomes the new baseline — state restored</li>
+<li>The watcher asks the orchestrator (<code>CheckDatasource</code>): Git says <code>50</code>, MongoDB has <code>5</code> — drifted</li>
+<li><code>self_heal: true</code> → it calls <code>SyncDatasource</code> on the orchestrator</li>
+<li>The orchestrator fetches the file from Git, parses it, writes <code>max_connections = 50</code> back to MongoDB</li>
+<li>The next check answers <em>in sync</em> — state restored</li>
 </ol>
-<p>Had the change come from a push to Git, step 2 would have answered <em>in sync</em> and nothing would be healed.</p>
+<p>Had the change come from a push to Git, the sync of that push would have recorded it, step 1 would have answered <em>in sync</em>, and nothing would be healed.</p>
 <p>Total recovery time: up to one <code>POLL_INTERVAL</code> (default 60 seconds).</p>
 <p>On the web UI's Events page a repair shows as <strong>Healed</strong>. Drift on rules without self-heal shows as <strong>Drift detected</strong> and stays until someone syncs:</p>
 <p><img alt="Events page: Redis and S3 drift detected, MongoDB healed by self-heal" src="../../assets/screenshots/events.png" /></p>
@@ -1796,29 +1772,29 @@
 </thead>
 <tbody>
 <tr>
-<td><code>vartrack_watcher_poll_total</code></td>
+<td><code>vartrack_watcher_drift_detected_total</code></td>
 <td>Counter</td>
-<td>Total poll cycles, labeled by datasource</td>
+<td>Drift found, by rule</td>
 </tr>
 <tr>
-<td><code>vartrack_watcher_drift_total</code></td>
+<td><code>vartrack_watcher_heal_triggered_total</code></td>
 <td>Counter</td>
-<td>Drift events detected</td>
+<td>Heals the orchestrator accepted</td>
 </tr>
 <tr>
-<td><code>vartrack_watcher_heal_total</code></td>
+<td><code>vartrack_watcher_heal_failed_total</code></td>
 <td>Counter</td>
-<td>Self-heal calls triggered</td>
-</tr>
-<tr>
-<td><code>vartrack_watcher_heal_errors_total</code></td>
-<td>Counter</td>
-<td>Self-heal calls that failed</td>
+<td>Heals that could not be requested</td>
 </tr>
 <tr>
 <td><code>vartrack_watcher_poll_duration_seconds</code></td>
 <td>Histogram</td>
-<td>Poll cycle duration</td>
+<td>How long a <code>CheckDatasource</code> took</td>
+</tr>
+<tr>
+<td><code>vartrack_watcher_up</code></td>
+<td>Gauge</td>
+<td>1 while a rule's loop runs</td>
 </tr>
 </tbody>
 </table>
@@ -1827,7 +1803,7 @@
 <p>Adjust how often the watcher checks each datasource:</p>
 <div class="language-bash highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="nv">POLL_INTERVAL</span><span class="o">=</span>30s<span class="w"> </span>go<span class="w"> </span>run<span class="w"> </span>./watcher-service/cmd
 </span></code></pre></div>
-<p>Lower values mean faster drift detection but more load on datasources.</p>
+<p>Lower values mean faster drift detection but more load on the orchestrator, which reads every self-heal datasource each poll.</p>
 <hr />
 <h2 id="why-polling-and-how-its-kept-efficient">Why polling? (and how it's kept efficient)<a class="headerlink" href="#why-polling-and-how-its-kept-efficient" title="Permanent link">&para;</a></h2>
 <p>varTrack uses a <strong>scheduled pull model</strong> rather than event-driven push because it must support eight fundamentally different backends — MongoDB, Redis, ZooKeeper, S3, Kubernetes ConfigMaps, Helm, Vercel, and Linux servers. Each backend exposes a different (or no) change-notification mechanism:</p>
@@ -1876,28 +1852,21 @@
 <p>A unified polling model means a single code path works across all backends with no external infrastructure requirements.</p>
 <p><strong>How the overhead is minimised:</strong></p>
 <ul>
-<li><strong>Lightweight reads</strong> — for key/value stores (Redis, MongoDB document), the watcher fetches only the keys declared in the rule's config file, not the entire database.</li>
+<li><strong>Lightweight reads</strong> — the orchestrator reads only the keys varTrack wrote in each environment, not the entire datasource, and reads the environments of a datasource in parallel.</li>
 <li><strong>Configurable interval</strong> — default 60 s; set <code>POLL_INTERVAL</code> to match your SLA.</li>
-<li><strong>Leader election</strong> — in multi-replica deployments, only one replica polls at a time (ZooKeeper or Redis distributed lock).</li>
-<li><strong>Shared state store</strong> — replicas share the baseline via Redis so each poll compares against a consistent snapshot.</li>
-<li><strong>Circuit breaker</strong> — if a datasource is unreachable, the watcher backs off exponentially rather than hammering it.</li>
+<li><strong>Leader election</strong> — in multi-replica deployments, only one replica polls (ZooKeeper or Redis distributed lock).</li>
+<li><strong>Circuit breaker</strong> — while heal requests keep failing, the watcher stops sending them for a while.</li>
 </ul>
 <hr />
 <h2 id="multi-replica-deployments">Multi-replica deployments<a class="headerlink" href="#multi-replica-deployments" title="Permanent link">&para;</a></h2>
-<p>When running multiple watcher replicas, only one should run the heal loop at a time. Leader election ensures this:</p>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>global_tags: {
+<p>When running multiple watcher replicas, only one should poll and heal at a time. Leader election ensures this:</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>bundle: {
 </span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>  watcher_leader_election_datasource: &quot;redis&quot;   // or &quot;zookeeper&quot;
 </span><span id="__span-4-3"><a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>}
 </span></code></pre></div>
-<p>Replicas that are not the leader still poll and detect drift, but defer healing to the current leader. If the leader crashes, another replica acquires the lock within one TTL window (15 seconds for Redis).</p>
-<hr />
-<h2 id="shared-state-store">Shared state store<a class="headerlink" href="#shared-state-store" title="Permanent link">&para;</a></h2>
-<p>In multi-replica deployments, all replicas can share the same baseline state via Redis:</p>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>global_tags: {
-</span><span id="__span-5-2"><a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>  watcher_state_redis: &quot;redis&quot;   // name of a configured redis datasource
-</span><span id="__span-5-3"><a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>}
-</span></code></pre></div>
-<p>This prevents replicas from triggering unnecessary heals due to stale local state.</p>
+<p>This is the only thing the watcher reads <code>config.cue</code> for. The datasource is one of the bundle's <code>datasources</code>, named like the others (<code>redis</code>, or <code>redis-broker</code> for the one tagged <code>broker</code>). Its password may be written inline or as a <code>{file: …}</code>; a <code>{ref: …}</code> is refused at startup, because the watcher has no secret manager.</p>
+<p>Replicas that are not the leader stay idle. If the leader crashes, another replica acquires the lock within one TTL window (15 seconds for Redis).</p>
+<p>The watcher keeps no state between polls: the orchestrator compares with its sync ledger. (<code>watcher_state_datasource</code> was removed; a <code>config.cue</code> that still sets it loads, with a log line.)</p>
 
 
 

@@ -823,6 +823,15 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#where-the-file-lives" class="md-nav__link">
+    <span class="md-ellipsis">
+      Where the file lives
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#how-it-works" class="md-nav__link">
     <span class="md-ellipsis">
       How it works
@@ -1591,6 +1600,15 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#where-the-file-lives" class="md-nav__link">
+    <span class="md-ellipsis">
+      Where the file lives
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#how-it-works" class="md-nav__link">
     <span class="md-ellipsis">
       How it works
@@ -1663,17 +1681,28 @@
 
 
 <h1 id="per-repo-overrides-vartrackjson">Per-Repo Overrides (<code>vartrack.json</code>)<a class="headerlink" href="#per-repo-overrides-vartrackjson" title="Permanent link">&para;</a></h1>
-<p>Individual repositories can override a subset of their central rule configuration without touching <code>config.cue</code>. Place a <code>vartrack.json</code> file at the root of the repository and varTrack will apply its settings on top of the matching rule whenever a webhook is received.</p>
+<p>Individual repositories can override a subset of their central rule configuration without touching <code>config.cue</code>. Place a <code>vartrack.json</code> file at the root of the repository and varTrack will apply its settings on top of the matching rule whenever a webhook is received — the third of the <a href="../schema-registry/#how-a-rule-is-built">layers a rule is built from</a>.</p>
+<hr />
+<h2 id="where-the-file-lives">Where the file lives<a class="headerlink" href="#where-the-file-lives" title="Permanent link">&para;</a></h2>
+<p>varTrack reads the first of these it finds at the pushed ref:</p>
+<ol>
+<li><code>vartrack.json</code></li>
+<li><code>.github/vartrack.json</code></li>
+<li><code>.gitea/vartrack.json</code></li>
+<li><code>.gitlab/vartrack.json</code></li>
+</ol>
+<p>The file is read at the pushed commit, so each branch can carry its own — <code>main</code> and <code>develop</code> can override differently.</p>
 <hr />
 <h2 id="how-it-works">How it works<a class="headerlink" href="#how-it-works" title="Permanent link">&para;</a></h2>
 <p>When a push webhook arrives, the ETL pipeline:</p>
 <ol>
-<li>Resolves the central rule from <code>config.cue</code> (Stage 1 — Payload)</li>
-<li>Fetches <code>vartrack.json</code> from the repository at the pushed commit ref</li>
-<li>Merges the overridable keys from <code>vartrack.json</code> into the active rule config</li>
+<li>Resolves the rule: the one in <code>config.cue</code>, with the tenant's <code>bundle.json</code> rule laid over it (Stage 1 — Payload)</li>
+<li>Fetches <code>vartrack.json</code> from the repository at the pushed commit ref, and resolves the <a href="../schema-registry/#presets-extends">presets</a> it <code>extends</code></li>
+<li>Merges the overridable keys from <code>vartrack.json</code> into the rule: <code>branch_map</code>, <code>file_path_map</code>, <code>variables_map</code> and <code>prune</code> key by key, the others replaced</li>
+<li>Applies the <code>config.cue</code> rule's <code>force</code> keys, which win over <code>vartrack.json</code></li>
 <li>Runs ETL and Sync with the merged settings (Stages 2 and 3)</li>
 </ol>
-<p>If <code>vartrack.json</code> is absent, malformed, or empty, the central rule is used unchanged. The schema registry is never affected by per-repo overrides.</p>
+<p>If <code>vartrack.json</code> is absent or empty, the central rule is used unchanged. If it is there but cannot be used — not valid JSON, not a JSON object, or extending a preset that cannot be read — the sync fails with that error: it does not go ahead without settings the repository asked for, such as a <code>dry_run</code>. The schema registry is never affected by per-repo overrides.</p>
 <hr />
 <h2 id="example">Example<a class="headerlink" href="#example" title="Permanent link">&para;</a></h2>
 <div class="language-json highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="p">{</span>
@@ -1687,11 +1716,17 @@
 </span><span id="__span-0-9"><a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a><span class="w">  </span><span class="nt">&quot;sync_mode&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;GIT_UPSERT_ALL&quot;</span>
 </span><span id="__span-0-10"><a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a><span class="p">}</span>
 </span></code></pre></div>
+<p>Shared settings can come from presets — here a preset in the org's presets repository, then a key of the repository's own:</p>
+<div class="language-json highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="p">{</span>
+</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="w">  </span><span class="nt">&quot;extends&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;local&gt;my-org/presets//repos/checkout&quot;</span><span class="p">],</span>
+</span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="w">  </span><span class="nt">&quot;prune&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nt">&quot;protection&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;experiments.*&quot;</span><span class="p">]}</span>
+</span><span id="__span-1-4"><a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="p">}</span>
+</span></code></pre></div>
 <p>Place this file at the root of the repository (next to your config file):</p>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>my-repo/
-</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>├── vartrack.json        ← per-repo overrides
-</span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>└── configs/
-</span><span id="__span-1-4"><a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>    └── app.yaml         ← your config file (watched by the central rule)
+<div class="language-text highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>my-repo/
+</span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>├── vartrack.json        ← per-repo overrides
+</span><span id="__span-2-3"><a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>└── configs/
+</span><span id="__span-2-4"><a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a>    └── app.yaml         ← your config file (watched by the central rule)
 </span></code></pre></div>
 <hr />
 <h2 id="overridable-keys">Overridable keys<a class="headerlink" href="#overridable-keys" title="Permanent link">&para;</a></h2>
@@ -1718,12 +1753,12 @@
 <tr>
 <td><code>file_path_map</code></td>
 <td><code>object</code></td>
-<td>Map of <code>env → file_path</code> for per-environment file selection.</td>
+<td>Map of <code>env → file_path</code> for per-environment file selection. Merged like <code>branch_map</code>.</td>
 </tr>
 <tr>
 <td><code>branch_map</code></td>
 <td><code>object</code></td>
-<td>Map of <code>branch → env</code> label. Overrides the central branch mapping.</td>
+<td>Map of <code>branch → env</code> label. Merged into the central branch mapping; a branch set here wins.</td>
 </tr>
 <tr>
 <td><code>branch_as_env</code></td>
@@ -1747,8 +1782,8 @@
 </tr>
 <tr>
 <td><code>prune</code></td>
-<td><code>bool</code></td>
-<td>Delete keys from the datasource that are no longer present in Git.</td>
+<td><code>bool</code> or <code>object</code></td>
+<td>Delete keys from the datasource that are no longer present in Git. An object (<code>{enabled, last, dry_run, protection}</code>) is merged with the rule's; its <code>protection</code> patterns are added to the rule's, never replace them.</td>
 </tr>
 <tr>
 <td><code>strict_validation</code></td>
@@ -1758,12 +1793,7 @@
 <tr>
 <td><code>variables_map</code></td>
 <td><code>object</code></td>
-<td>Key-value pairs injected or overridden after ETL transform.</td>
-</tr>
-<tr>
-<td><code>apply_strategy</code></td>
-<td><code>int</code></td>
-<td>Internal apply strategy (advanced).</td>
+<td>Key-value pairs injected or overridden after ETL transform. Merged like <code>branch_map</code>.</td>
 </tr>
 <tr>
 <td><code>dry_run</code></td>
@@ -1777,28 +1807,32 @@
 <p>Infrastructure and security-critical keys are <strong>always</strong> taken from the central bundle and cannot be changed by the repository:</p>
 <ul>
 <li><code>platform</code>, <code>datasource</code>, <code>repo_url</code>, <code>tenant_id</code></li>
-<li><code>token</code>, <code>secrets</code>, <code>secret_managers</code></li>
+<li><code>token</code>, <code>secret_manager</code>, <code>secret_managers</code></li>
 <li><code>repositories</code>, <code>exclude_repositories</code></li>
 <li><code>self_heal</code> and all Celery wiring keys</li>
 </ul>
 <p>Any key in <code>vartrack.json</code> that is not in the overridable list above is silently ignored and logged at <code>INFO</code> level.</p>
+<p>A key the <code>config.cue</code> rule lists under <code>force</code> cannot be overridden either: <code>force</code> is applied after <code>vartrack.json</code>. For example, <code>force: {prune: {enabled: false}}</code> keeps a production rule from pruning whatever a repository asks for.</p>
 <hr />
 <h2 id="interaction-with-the-schema-registry">Interaction with the schema registry<a class="headerlink" href="#interaction-with-the-schema-registry" title="Permanent link">&para;</a></h2>
 <p><code>vartrack.json</code> has <strong>no effect</strong> on CUE schema validation. The schema used to validate your config file is always sourced from the tenant's schema registry (configured in <code>config.cue</code> under <code>schema_registry</code>). Per-repo overrides cannot change which schema is applied or bypass validation.</p>
 <hr />
 <h2 id="troubleshooting">Troubleshooting<a class="headerlink" href="#troubleshooting" title="Permanent link">&para;</a></h2>
 <p><strong>Override not applied</strong> — Check the orchestrator logs for:
-<div class="language-text highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>repo_overrides: no vartrack.json repo=... ref=...
+<div class="language-text highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>repo_overrides: no vartrack.json repo=... ref=...
 </span></code></pre></div>
 This means the file was not found at the repo root for that commit ref.</p>
 <p><strong>Keys ignored</strong> — If you see:
-<div class="language-text highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>repo_overrides: ignoring non-overridable keys [&#39;platform&#39;, ...] repo=...
+<div class="language-text highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>repo_overrides: ignoring non-overridable keys [&#39;platform&#39;, ...] repo=...
 </span></code></pre></div>
 Those keys are infrastructure-level and cannot be overridden from the repo.</p>
-<p><strong>Invalid JSON</strong> — A parse error produces:
-<div class="language-text highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>repo_overrides: invalid JSON in vartrack.json repo=... ref=...
+<p><strong>Preset not found</strong> — A preset in <code>extends</code> that cannot be read fails the sync with:
+<div class="language-text highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>vartrack.json in https://...: preset local&gt;my-org/presets:nope: no nope.json at main in my-org/presets
+</span></code></pre></div></p>
+<p><strong>Invalid JSON</strong> — A parse error fails the sync with:
+<div class="language-text highlight"><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>vartrack.json in https://... is not valid JSON: Expecting &#39;,&#39; delimiter: line 3 column 5 (char 41)
 </span></code></pre></div>
-The central rule is used unchanged.</p>
+Fix the file and push again; the sync runs with it.</p>
 
 
 

@@ -1029,18 +1029,18 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#strategy_key_value-default" class="md-nav__link">
+  <a href="#strategy_key_value" class="md-nav__link">
     <span class="md-ellipsis">
-      STRATEGY_KEY_VALUE (default)
+      STRATEGY_KEY_VALUE
     </span>
   </a>
   
 </li>
         
           <li class="md-nav__item">
-  <a href="#strategy_document" class="md-nav__link">
+  <a href="#strategy_document-default" class="md-nav__link">
     <span class="md-ellipsis">
-      STRATEGY_DOCUMENT
+      STRATEGY_DOCUMENT (default)
     </span>
   </a>
   
@@ -1682,18 +1682,18 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#strategy_key_value-default" class="md-nav__link">
+  <a href="#strategy_key_value" class="md-nav__link">
     <span class="md-ellipsis">
-      STRATEGY_KEY_VALUE (default)
+      STRATEGY_KEY_VALUE
     </span>
   </a>
   
 </li>
         
           <li class="md-nav__item">
-  <a href="#strategy_document" class="md-nav__link">
+  <a href="#strategy_document-default" class="md-nav__link">
     <span class="md-ellipsis">
-      STRATEGY_DOCUMENT
+      STRATEGY_DOCUMENT (default)
     </span>
   </a>
   
@@ -1759,7 +1759,7 @@
 
 
 <h1 id="mongodb-sink">MongoDB Sink<a class="headerlink" href="#mongodb-sink" title="Permanent link">&para;</a></h1>
-<p>varTrack writes config values to MongoDB. The datasource's <code>update_strategy</code> picks the shape: <strong>key-value</strong> (one document per key), <strong>document</strong> (one nested document per file), or <strong>file</strong> (one document per file, in the shape the file parsed to).</p>
+<p>varTrack writes config values to MongoDB. The datasource's <code>update_strategy</code> picks the shape: <strong>document</strong> (one nested document per file, the default), <strong>key-value</strong> (one document per key), or <strong>file</strong> (one document per file, in the shape the file parsed to).</p>
 <hr />
 <h2 id="configuration">Configuration<a class="headerlink" href="#configuration" title="Permanent link">&para;</a></h2>
 <div class="language-text highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>datasources: [{
@@ -1768,7 +1768,7 @@
 </span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>    endpoint:        &quot;mongodb://mongo:27017&quot;
 </span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>    database:        &quot;vartrack&quot;
 </span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>    collection:      &quot;variables&quot;
-</span><span id="__span-0-7"><a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>    update_strategy: &quot;STRATEGY_KEY_VALUE&quot;       // or &quot;STRATEGY_DOCUMENT&quot;, &quot;STRATEGY_FILE&quot;
+</span><span id="__span-0-7"><a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>    update_strategy: &quot;STRATEGY_DOCUMENT&quot;        // the default; or &quot;STRATEGY_KEY_VALUE&quot;, &quot;STRATEGY_FILE&quot;
 </span><span id="__span-0-8"><a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>  }
 </span><span id="__span-0-9"><a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>}]
 </span></code></pre></div>
@@ -1801,14 +1801,14 @@
 </span><span id="__span-3-4"><a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="nt">max_connections</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">50</span>
 </span><span id="__span-3-5"><a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a><span class="nt">regions</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">eu</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">us</span><span class="p p-Indicator">]</span>
 </span></code></pre></div>
-<h3 id="strategy_key_value-default"><code>STRATEGY_KEY_VALUE</code> (default)<a class="headerlink" href="#strategy_key_value-default" title="Permanent link">&para;</a></h3>
+<h3 id="strategy_key_value"><code>STRATEGY_KEY_VALUE</code><a class="headerlink" href="#strategy_key_value" title="Permanent link">&para;</a></h3>
 <p>Each config key is stored as a separate document, its value as a string:</p>
 <div class="language-json highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="p">{</span><span class="w"> </span><span class="nt">&quot;_vt_env&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;production&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;key&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;database.host&quot;</span><span class="p">,</span><span class="w">   </span><span class="nt">&quot;value&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;mongo.prod.internal&quot;</span><span class="w"> </span><span class="p">}</span>
 </span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="p">{</span><span class="w"> </span><span class="nt">&quot;_vt_env&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;production&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;key&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;max_connections&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;value&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;50&quot;</span><span class="w"> </span><span class="p">}</span>
 </span><span id="__span-4-3"><a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="p">{</span><span class="w"> </span><span class="nt">&quot;_vt_env&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;production&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;key&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;regions.0&quot;</span><span class="p">,</span><span class="w">       </span><span class="nt">&quot;value&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;eu&quot;</span><span class="w"> </span><span class="p">}</span>
 </span></code></pre></div>
 <p>Reading a value: <code>db.collection.findOne({ _vt_env: "production", key: "database.host" }).value</code></p>
-<h3 id="strategy_document"><code>STRATEGY_DOCUMENT</code><a class="headerlink" href="#strategy_document" title="Permanent link">&para;</a></h3>
+<h3 id="strategy_document-default"><code>STRATEGY_DOCUMENT</code> (default)<a class="headerlink" href="#strategy_document-default" title="Permanent link">&para;</a></h3>
 <p>One document per environment and file, with the config always nested under <code>data</code>. Values keep the types and arrays they have in the file:</p>
 <div class="language-json highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="p">{</span>
 </span><span id="__span-5-2"><a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="w">  </span><span class="nt">&quot;_vt_env&quot;</span><span class="p">:</span><span class="w">  </span><span class="s2">&quot;production&quot;</span><span class="p">,</span>
@@ -1833,7 +1833,11 @@
 </span><span id="__span-6-7"><a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a><span class="w">  </span><span class="p">}</span>
 </span><span id="__span-6-8"><a id="__codelineno-6-8" name="__codelineno-6-8" href="#__codelineno-6-8"></a><span class="p">}</span>
 </span></code></pre></div>
-<p>With either document strategy, every sync replaces the file's document, so keys removed from Git disappear without <code>prune</code>. Switching a datasource from <code>STRATEGY_KEY_VALUE</code> to one of them removes that file's per-key documents on the next sync.</p>
+<p>With either document strategy, every sync replaces the file's document, so keys removed from Git disappear without <code>prune</code>. Switching a datasource from <code>STRATEGY_KEY_VALUE</code> to one of them removes that file's per-key documents on the next sync; switching back to <code>STRATEGY_KEY_VALUE</code> removes the file's document the same way. The orchestrator logs a warning with the number of documents removed, and the UI shows a <strong>Shape changed</strong> event on the environment.</p>
+<div class="admonition note">
+<p class="admonition-title">The default changed</p>
+<p>A Mongo datasource that sets no <code>update_strategy</code> used to store one document per key. It now stores one nested document per file. To keep per-key documents, set <code>update_strategy: "STRATEGY_KEY_VALUE"</code>; without it, the next sync replaces the per-key documents of each file with its document, logs how many it removed and shows a <strong>Shape changed</strong> event.</p>
+</div>
 <hr />
 <h2 id="per-environment-collections">Per-environment collections<a class="headerlink" href="#per-environment-collections" title="Permanent link">&para;</a></h2>
 <p>Set <code>env_as_collection: true</code> to write each environment into its own collection instead of a fixed one:</p>
@@ -1882,7 +1886,7 @@
 </table>
 <hr />
 <h2 id="drift-detection">Drift detection<a class="headerlink" href="#drift-detection" title="Permanent link">&para;</a></h2>
-<p>The watcher-service reads every varTrack document in the configured collection: the <code>key → value</code> pairs, or the keys inside <code>data</code>, flat or nested. When they change, the orchestrator compares each key with Git; a changed or missing key is drift.</p>
+<p>The watcher asks the orchestrator each poll; the orchestrator reads the keys varTrack wrote — the <code>key → value</code> documents, or the keys inside <code>data</code> and compares them with what it last synced from Git — a changed or missing key is drift (<a href="../../concepts/drift-detection/">Drift Detection</a>).</p>
 <p>Enable self-heal to restore automatically:</p>
 <div class="language-text highlight"><pre><span></span><code><span id="__span-9-1"><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>rules: [{
 </span><span id="__span-9-2"><a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>  platform:   &quot;github&quot;

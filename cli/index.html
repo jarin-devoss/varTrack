@@ -1536,30 +1536,6 @@
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="Authentication">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#oidc-sso-login" class="md-nav__link">
-    <span class="md-ellipsis">
-      OIDC / SSO login
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#static-token-for-cicd" class="md-nav__link">
-    <span class="md-ellipsis">
-      Static token (for CI/CD)
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
 </li>
       
         <li class="md-nav__item">
@@ -1585,6 +1561,15 @@
   <a href="#vt-validate" class="md-nav__link">
     <span class="md-ellipsis">
       vt validate
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#vt-validate-config" class="md-nav__link">
+    <span class="md-ellipsis">
+      vt validate-config
     </span>
   </a>
   
@@ -1680,54 +1665,40 @@
 </span></code></pre></div>
 <hr />
 <h2 id="authentication">Authentication<a class="headerlink" href="#authentication" title="Permanent link">&para;</a></h2>
-<h3 id="oidc-sso-login">OIDC / SSO login<a class="headerlink" href="#oidc-sso-login" title="Permanent link">&para;</a></h3>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="c1"># Azure AD / Entra ID</span>
-</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>vt<span class="w"> </span>login<span class="w"> </span><span class="se">\</span>
-</span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="w">  </span>--server<span class="w">         </span>https://gateway.example.com<span class="w"> </span><span class="se">\</span>
-</span><span id="__span-1-4"><a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="w">  </span>--oidc-issuer<span class="w">    </span><span class="s2">&quot;https://login.microsoftonline.com/&lt;tenant-id&gt;/v2.0&quot;</span><span class="w"> </span><span class="se">\</span>
-</span><span id="__span-1-5"><a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="w">  </span>--oidc-client-id<span class="w"> </span><span class="s2">&quot;&lt;app-client-id&gt;&quot;</span>
-</span><span id="__span-1-6"><a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a>
-</span><span id="__span-1-7"><a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a><span class="c1"># Google</span>
-</span><span id="__span-1-8"><a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a>vt<span class="w"> </span>login<span class="w"> </span><span class="se">\</span>
-</span><span id="__span-1-9"><a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a><span class="w">  </span>--server<span class="w">         </span>https://gateway.example.com<span class="w"> </span><span class="se">\</span>
-</span><span id="__span-1-10"><a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a><span class="w">  </span>--oidc-issuer<span class="w">    </span>https://accounts.google.com<span class="w"> </span><span class="se">\</span>
-</span><span id="__span-1-11"><a id="__codelineno-1-11" name="__codelineno-1-11" href="#__codelineno-1-11"></a><span class="w">  </span>--oidc-client-id<span class="w"> </span><span class="s2">&quot;&lt;client-id&gt;&quot;</span>
-</span></code></pre></div>
-<p>A browser window opens for login. The token is saved automatically.</p>
-<h3 id="static-token-for-cicd">Static token (for CI/CD)<a class="headerlink" href="#static-token-for-cicd" title="Permanent link">&para;</a></h3>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>vt<span class="w"> </span>login<span class="w"> </span>--server<span class="w"> </span>https://gateway.example.com<span class="w"> </span>--token<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$VARTRACK_TOKEN</span><span class="s2">&quot;</span>
-</span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>
-</span><span id="__span-2-3"><a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="c1"># Or skip login entirely — set env vars</span>
-</span><span id="__span-2-4"><a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="nb">export</span><span class="w"> </span><span class="nv">VARTRACK_SERVER</span><span class="o">=</span>https://gateway.example.com
-</span><span id="__span-2-5"><a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a><span class="nb">export</span><span class="w"> </span><span class="nv">VARTRACK_TOKEN</span><span class="o">=</span>eyJ...
+<p><code>vt</code> authenticates with your Git token — a GitHub or Gitea personal access token. What it may do is what that token may do in the rule's repositories: push access syncs, read access validates and dry-runs (<a href="../configuration/auth/">Authentication &amp; Authorization</a>).</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>vt<span class="w"> </span>login<span class="w"> </span>--server<span class="w"> </span>https://gateway.example.com<span class="w"> </span>--token<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$GIT_TOKEN</span><span class="s2">&quot;</span>
+</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>
+</span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="c1"># Or skip login entirely — set env vars</span>
+</span><span id="__span-1-4"><a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="nb">export</span><span class="w"> </span><span class="nv">VARTRACK_SERVER</span><span class="o">=</span>https://gateway.example.com
+</span><span id="__span-1-5"><a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="nb">export</span><span class="w"> </span><span class="nv">VARTRACK_TOKEN</span><span class="o">=</span>&lt;your<span class="w"> </span>Git<span class="w"> </span>token&gt;
 </span></code></pre></div>
 <hr />
 <h2 id="commands">Commands<a class="headerlink" href="#commands" title="Permanent link">&para;</a></h2>
 <h3 id="vt-sync"><code>vt sync</code><a class="headerlink" href="#vt-sync" title="Permanent link">&para;</a></h3>
 <p>Push a local file to a datasource. Runs the full ETL pipeline.</p>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="c1"># Basic sync</span>
-</span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>vt<span class="w"> </span>sync<span class="w"> </span><span class="se">\</span>
-</span><span id="__span-3-3"><a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="w">  </span>--file<span class="w">       </span>configs/app.yaml<span class="w"> </span><span class="se">\</span>
-</span><span id="__span-3-4"><a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="w">  </span>--datasource<span class="w"> </span>mongo<span class="w"> </span><span class="se">\</span>
-</span><span id="__span-3-5"><a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a><span class="w">  </span>--env<span class="w">        </span>production
-</span><span id="__span-3-6"><a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a>
-</span><span id="__span-3-7"><a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a><span class="c1"># Dry-run — see what would be written without touching the datasource</span>
-</span><span id="__span-3-8"><a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a>vt<span class="w"> </span>sync<span class="w"> </span>--file<span class="w"> </span>configs/app.yaml<span class="w"> </span>--datasource<span class="w"> </span>mongo<span class="w"> </span>--env<span class="w"> </span>staging<span class="w"> </span>--dry-run
-</span><span id="__span-3-9"><a id="__codelineno-3-9" name="__codelineno-3-9" href="#__codelineno-3-9"></a>
-</span><span id="__span-3-10"><a id="__codelineno-3-10" name="__codelineno-3-10" href="#__codelineno-3-10"></a><span class="c1"># Wait for the task to complete</span>
-</span><span id="__span-3-11"><a id="__codelineno-3-11" name="__codelineno-3-11" href="#__codelineno-3-11"></a>vt<span class="w"> </span>sync<span class="w"> </span>--file<span class="w"> </span>configs/app.yaml<span class="w"> </span>--datasource<span class="w"> </span>mongo<span class="w"> </span>--env<span class="w"> </span>production<span class="w"> </span>--wait
-</span><span id="__span-3-12"><a id="__codelineno-3-12" name="__codelineno-3-12" href="#__codelineno-3-12"></a>
-</span><span id="__span-3-13"><a id="__codelineno-3-13" name="__codelineno-3-13" href="#__codelineno-3-13"></a><span class="c1"># Custom timeout and label</span>
-</span><span id="__span-3-14"><a id="__codelineno-3-14" name="__codelineno-3-14" href="#__codelineno-3-14"></a>vt<span class="w"> </span>sync<span class="w"> </span><span class="se">\</span>
-</span><span id="__span-3-15"><a id="__codelineno-3-15" name="__codelineno-3-15" href="#__codelineno-3-15"></a><span class="w">  </span>--file<span class="w">       </span>configs/app.yaml<span class="w"> </span><span class="se">\</span>
-</span><span id="__span-3-16"><a id="__codelineno-3-16" name="__codelineno-3-16" href="#__codelineno-3-16"></a><span class="w">  </span>--datasource<span class="w"> </span>mongo<span class="w"> </span><span class="se">\</span>
-</span><span id="__span-3-17"><a id="__codelineno-3-17" name="__codelineno-3-17" href="#__codelineno-3-17"></a><span class="w">  </span>--env<span class="w">        </span>production<span class="w"> </span><span class="se">\</span>
-</span><span id="__span-3-18"><a id="__codelineno-3-18" name="__codelineno-3-18" href="#__codelineno-3-18"></a><span class="w">  </span>--wait<span class="w">       </span><span class="se">\</span>
-</span><span id="__span-3-19"><a id="__codelineno-3-19" name="__codelineno-3-19" href="#__codelineno-3-19"></a><span class="w">  </span>--timeout<span class="w">    </span>10m<span class="w"> </span><span class="se">\</span>
-</span><span id="__span-3-20"><a id="__codelineno-3-20" name="__codelineno-3-20" href="#__codelineno-3-20"></a><span class="w">  </span>--label<span class="w">      </span><span class="s2">&quot;release/v2.3.1&quot;</span>
-</span><span id="__span-3-21"><a id="__codelineno-3-21" name="__codelineno-3-21" href="#__codelineno-3-21"></a>
-</span><span id="__span-3-22"><a id="__codelineno-3-22" name="__codelineno-3-22" href="#__codelineno-3-22"></a><span class="c1"># Output raw JSON</span>
-</span><span id="__span-3-23"><a id="__codelineno-3-23" name="__codelineno-3-23" href="#__codelineno-3-23"></a>vt<span class="w"> </span>sync<span class="w"> </span>--file<span class="w"> </span>configs/app.yaml<span class="w"> </span>--datasource<span class="w"> </span>mongo<span class="w"> </span>--env<span class="w"> </span>staging<span class="w"> </span>--json
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="c1"># Basic sync</span>
+</span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>vt<span class="w"> </span>sync<span class="w"> </span><span class="se">\</span>
+</span><span id="__span-2-3"><a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="w">  </span>--file<span class="w">       </span>configs/app.yaml<span class="w"> </span><span class="se">\</span>
+</span><span id="__span-2-4"><a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="w">  </span>--datasource<span class="w"> </span>mongo<span class="w"> </span><span class="se">\</span>
+</span><span id="__span-2-5"><a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a><span class="w">  </span>--env<span class="w">        </span>production
+</span><span id="__span-2-6"><a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a>
+</span><span id="__span-2-7"><a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a><span class="c1"># Dry-run — see what would be written without touching the datasource</span>
+</span><span id="__span-2-8"><a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a>vt<span class="w"> </span>sync<span class="w"> </span>--file<span class="w"> </span>configs/app.yaml<span class="w"> </span>--datasource<span class="w"> </span>mongo<span class="w"> </span>--env<span class="w"> </span>staging<span class="w"> </span>--dry-run
+</span><span id="__span-2-9"><a id="__codelineno-2-9" name="__codelineno-2-9" href="#__codelineno-2-9"></a>
+</span><span id="__span-2-10"><a id="__codelineno-2-10" name="__codelineno-2-10" href="#__codelineno-2-10"></a><span class="c1"># Wait for the task to complete</span>
+</span><span id="__span-2-11"><a id="__codelineno-2-11" name="__codelineno-2-11" href="#__codelineno-2-11"></a>vt<span class="w"> </span>sync<span class="w"> </span>--file<span class="w"> </span>configs/app.yaml<span class="w"> </span>--datasource<span class="w"> </span>mongo<span class="w"> </span>--env<span class="w"> </span>production<span class="w"> </span>--wait
+</span><span id="__span-2-12"><a id="__codelineno-2-12" name="__codelineno-2-12" href="#__codelineno-2-12"></a>
+</span><span id="__span-2-13"><a id="__codelineno-2-13" name="__codelineno-2-13" href="#__codelineno-2-13"></a><span class="c1"># Custom timeout and label</span>
+</span><span id="__span-2-14"><a id="__codelineno-2-14" name="__codelineno-2-14" href="#__codelineno-2-14"></a>vt<span class="w"> </span>sync<span class="w"> </span><span class="se">\</span>
+</span><span id="__span-2-15"><a id="__codelineno-2-15" name="__codelineno-2-15" href="#__codelineno-2-15"></a><span class="w">  </span>--file<span class="w">       </span>configs/app.yaml<span class="w"> </span><span class="se">\</span>
+</span><span id="__span-2-16"><a id="__codelineno-2-16" name="__codelineno-2-16" href="#__codelineno-2-16"></a><span class="w">  </span>--datasource<span class="w"> </span>mongo<span class="w"> </span><span class="se">\</span>
+</span><span id="__span-2-17"><a id="__codelineno-2-17" name="__codelineno-2-17" href="#__codelineno-2-17"></a><span class="w">  </span>--env<span class="w">        </span>production<span class="w"> </span><span class="se">\</span>
+</span><span id="__span-2-18"><a id="__codelineno-2-18" name="__codelineno-2-18" href="#__codelineno-2-18"></a><span class="w">  </span>--wait<span class="w">       </span><span class="se">\</span>
+</span><span id="__span-2-19"><a id="__codelineno-2-19" name="__codelineno-2-19" href="#__codelineno-2-19"></a><span class="w">  </span>--timeout<span class="w">    </span>10m<span class="w"> </span><span class="se">\</span>
+</span><span id="__span-2-20"><a id="__codelineno-2-20" name="__codelineno-2-20" href="#__codelineno-2-20"></a><span class="w">  </span>--label<span class="w">      </span><span class="s2">&quot;release/v2.3.1&quot;</span>
+</span><span id="__span-2-21"><a id="__codelineno-2-21" name="__codelineno-2-21" href="#__codelineno-2-21"></a>
+</span><span id="__span-2-22"><a id="__codelineno-2-22" name="__codelineno-2-22" href="#__codelineno-2-22"></a><span class="c1"># Output raw JSON</span>
+</span><span id="__span-2-23"><a id="__codelineno-2-23" name="__codelineno-2-23" href="#__codelineno-2-23"></a>vt<span class="w"> </span>sync<span class="w"> </span>--file<span class="w"> </span>configs/app.yaml<span class="w"> </span>--datasource<span class="w"> </span>mongo<span class="w"> </span>--env<span class="w"> </span>staging<span class="w"> </span>--json
 </span></code></pre></div>
 <p><strong>Flags:</strong></p>
 <table>
@@ -1748,6 +1719,11 @@
 <td><code>--datasource</code></td>
 <td>—</td>
 <td>Target datasource name (<strong>required</strong>)</td>
+</tr>
+<tr>
+<td><code>--platform</code></td>
+<td>—</td>
+<td>Platform of the rule (for example <code>github</code>, <code>gitea-internal</code>); needed only when rules on several platforms write to the datasource</td>
 </tr>
 <tr>
 <td><code>--env</code></td>
@@ -1789,13 +1765,13 @@
 <hr />
 <h3 id="vt-validate"><code>vt validate</code><a class="headerlink" href="#vt-validate" title="Permanent link">&para;</a></h3>
 <p>Validate a file against the CUE schema without syncing. Exits with code 1 on failure — ideal for PR checks.</p>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>vt<span class="w"> </span>validate<span class="w"> </span>--file<span class="w"> </span>configs/app.yaml
-</span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>
-</span><span id="__span-4-3"><a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="c1"># Specify the datasource to select the right schema</span>
-</span><span id="__span-4-4"><a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a>vt<span class="w"> </span>validate<span class="w"> </span>--file<span class="w"> </span>configs/app.yaml<span class="w"> </span>--datasource<span class="w"> </span>mongo
-</span><span id="__span-4-5"><a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a>
-</span><span id="__span-4-6"><a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a><span class="c1"># With tenant</span>
-</span><span id="__span-4-7"><a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a>vt<span class="w"> </span>validate<span class="w"> </span>--file<span class="w"> </span>configs/app.yaml<span class="w"> </span>--datasource<span class="w"> </span>mongo<span class="w"> </span>--tenant<span class="w"> </span>myapp
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>vt<span class="w"> </span>validate<span class="w"> </span>--file<span class="w"> </span>configs/app.yaml
+</span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>
+</span><span id="__span-3-3"><a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="c1"># Specify the datasource to select the right schema</span>
+</span><span id="__span-3-4"><a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a>vt<span class="w"> </span>validate<span class="w"> </span>--file<span class="w"> </span>configs/app.yaml<span class="w"> </span>--datasource<span class="w"> </span>mongo
+</span><span id="__span-3-5"><a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a>
+</span><span id="__span-3-6"><a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a><span class="c1"># With tenant</span>
+</span><span id="__span-3-7"><a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a>vt<span class="w"> </span>validate<span class="w"> </span>--file<span class="w"> </span>configs/app.yaml<span class="w"> </span>--datasource<span class="w"> </span>mongo<span class="w"> </span>--tenant<span class="w"> </span>myapp
 </span></code></pre></div>
 <p><strong>Flags:</strong></p>
 <table>
@@ -1818,6 +1794,11 @@
 <td>Datasource name (selects the schema)</td>
 </tr>
 <tr>
+<td><code>--platform</code></td>
+<td>—</td>
+<td>Platform of the rule; needed only when rules on several platforms write to the datasource</td>
+</tr>
+<tr>
 <td><code>--tenant</code></td>
 <td>from context</td>
 <td>Tenant ID</td>
@@ -1834,6 +1815,68 @@
 </tr>
 </tbody>
 </table>
+<hr />
+<h3 id="vt-validate-config"><code>vt validate-config</code><a class="headerlink" href="#vt-validate-config" title="Permanent link">&para;</a></h3>
+<p>Check a <code>vartrack.json</code> or a tenant's <code>bundle.json</code> before pushing it, with the code a sync reads it with. With no file named, it checks the <code>vartrack.json</code> files in the current directory (<code>vartrack.json</code>, <code>.github/vartrack.json</code>, <code>.gitea/vartrack.json</code>, <code>.gitlab/vartrack.json</code>); with none, it prints <code>no vartrack.json found</code> and exits 0.</p>
+<p>It exits with code 1 when any file has <strong>errors or warnings</strong>, and with <code>--strict</code> also when a file has <strong>migrations</strong>.</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>vt<span class="w"> </span>validate-config
+</span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>vt<span class="w"> </span>validate-config<span class="w"> </span>--strict
+</span><span id="__span-4-3"><a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>vt<span class="w"> </span>validate-config<span class="w"> </span>vartrack.json
+</span><span id="__span-4-4"><a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a>vt<span class="w"> </span>validate-config<span class="w"> </span>.gitea/vartrack.json
+</span><span id="__span-4-5"><a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a>vt<span class="w"> </span>validate-config<span class="w"> </span>schemas/bundle.json<span class="w"> </span>--tenant<span class="w"> </span>payments
+</span></code></pre></div>
+<p>The file's name says what it is: <code>vartrack.json</code> (also under <code>.github/</code>, <code>.gitea/</code> or <code>.gitlab/</code>), <code>bundle.json</code> or <code>rules.json</code>.</p>
+<table>
+<thead>
+<tr>
+<th>It reports</th>
+<th>What it means</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>errors</strong></td>
+<td>what a sync rejects: invalid JSON, a value of the wrong type, a second rule for one platform and datasource, a rule <code>config.cue</code> does not have or a tenant may not layer</td>
+</tr>
+<tr>
+<td><strong>warnings</strong></td>
+<td>what a sync ignores: keys only <code>config.cue</code> sets, <a href="../configuration/schema-registry/#how-a-rule-is-built">removed options</a>, <code>prune</code> that has no effect on a whole-object sink</td>
+</tr>
+<tr>
+<td><strong>migrations</strong></td>
+<td>options under a name that changed (<code>env_as_branch</code> → <code>branch_as_env</code>); a sync still reads them</td>
+</tr>
+</tbody>
+</table>
+<p>A <code>vartrack.json</code>'s <code>extends</code> presets are checked by name, not fetched. A <code>bundle.json</code>'s presets are fetched from the tenant's schema repository, as a sync does.</p>
+<p><strong>Flags:</strong></p>
+<table>
+<thead>
+<tr>
+<th>Flag</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--tenant</code></td>
+<td>from context</td>
+<td>Tenant ID: whose rules and presets a <code>bundle.json</code> is checked against</td>
+</tr>
+<tr>
+<td><code>--strict</code></td>
+<td>false</td>
+<td>Also exit 1 when a file uses options under a name that changed (migrations)</td>
+</tr>
+<tr>
+<td><code>--json</code></td>
+<td>false</td>
+<td>Print <code>[{file, errors, warnings, migrations}]</code> as JSON</td>
+</tr>
+</tbody>
+</table>
+<p>The caller needs a token any platform of the bundle accepts; the file names no rule, so no repository permission is asked.</p>
 <hr />
 <h3 id="vt-task"><code>vt task</code><a class="headerlink" href="#vt-task" title="Permanent link">&para;</a></h3>
 <p>Inspect sync tasks created by <code>vt sync</code>.</p>
@@ -1881,7 +1924,7 @@
 </tr>
 <tr>
 <td><code>VARTRACK_TOKEN</code></td>
-<td>Bearer token — skips <code>vt login</code></td>
+<td>Your Git token — skips <code>vt login</code></td>
 </tr>
 <tr>
 <td><code>VARTRACK_TENANT</code></td>

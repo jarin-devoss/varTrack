@@ -1343,6 +1343,21 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="What it does">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#which-rules-it-watches" class="md-nav__link">
+    <span class="md-ellipsis">
+      Which rules it watches
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -1594,6 +1609,21 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="What it does">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#which-rules-it-watches" class="md-nav__link">
+    <span class="md-ellipsis">
+      Which rules it watches
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -1657,18 +1687,26 @@
 
 
 <h1 id="watcher-service">watcher-service<a class="headerlink" href="#watcher-service" title="Permanent link">&para;</a></h1>
-<p>The watcher-service continuously polls your configured datasources and compares the live state against the Git baseline. When drift is detected and <code>self_heal: true</code> is set, it calls the orchestrator to restore correct state automatically.</p>
+<p>For every rule with <code>self_heal: true</code>, the watcher-service asks the orchestrator on each poll whether the datasource still matches Git (<code>CheckDatasource</code>), and has it restore the ones that drifted (<code>SyncDatasource</code>). The orchestrator reads the sinks and builds the rules; the watcher holds no sink credentials and reads no rule. It needs only the orchestrator's address, and <code>config.cue</code> for <a href="../../concepts/drift-detection/#multi-replica-deployments">leader election</a>.</p>
 <hr />
 <h2 id="what-it-does">What it does<a class="headerlink" href="#what-it-does" title="Permanent link">&para;</a></h2>
 <div class="language-text highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>Every POLL_INTERVAL
-</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>  ├── Fingerprint each datasource
-</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>  ├── Unchanged → OK
-</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>  └── Changed   → CheckDatasource (orchestrator compares with Git, key by key)
-</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>        ├── in sync  → a varTrack sync: new baseline
-</span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>        ├── syncing  → look again next poll
-</span><span id="__span-0-7"><a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>        └── drifted  → log + increment metric + SyncDatasource (heal)
+</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>  ├── ListWatchTargets (the orchestrator lists the rules to watch: self_heal on, not suspended)
+</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>  └── for each rule
+</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>        └── CheckDatasource (the orchestrator reads the sink and compares with Git, key by key)
+</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>              ├── in sync  → OK
+</span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>              ├── syncing  → look again next poll
+</span><span id="__span-0-7"><a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>              ├── unknown  → no heal
+</span><span id="__span-0-8"><a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>              └── drifted  → log + increment metric + SyncDatasource (heal)
 </span></code></pre></div>
-<p>See <a href="../../concepts/drift-detection/">Drift Detection &amp; Self-Heal</a> for the edge cases (unknown, a sync that died, first start).</p>
+<h3 id="which-rules-it-watches">Which rules it watches<a class="headerlink" href="#which-rules-it-watches" title="Permanent link">&para;</a></h3>
+<p>The watcher does not read rules from <code>config.cue</code>, a tenant's <code>bundle.json</code> or a repository's <code>vartrack.json</code>. The orchestrator is the one service that layers those into the rule a sync runs with, so the watcher asks it which rules to watch, on every poll. A rule that gains <code>self_heal</code>, is suspended or is removed reaches the watcher at the next poll; nothing needs a restart.</p>
+<ul>
+<li>If the orchestrator cannot be asked, the watcher keeps watching the rules it has.</li>
+<li>If it cannot be asked at startup, the watcher asks again, waiting a little longer each time (up to one poll interval).</li>
+<li>A rule of two tenants is two targets: each tenant's is checked and healed on its own.</li>
+</ul>
+<p>See <a href="../../concepts/drift-detection/">Drift Detection &amp; Self-Heal</a> for the edge cases (unknown, a heal underway, a sync that died).</p>
 <hr />
 <h2 id="running">Running<a class="headerlink" href="#running" title="Permanent link">&para;</a></h2>
 <div class="language-bash highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="nv">ORCHESTRATOR_ADDR</span><span class="o">=</span>localhost:50051<span class="w"> </span><span class="se">\</span>
@@ -1705,7 +1743,7 @@
 <tr>
 <td><code>CONFIG_PATH</code></td>
 <td><code>config.cue</code></td>
-<td>CUE bundle path</td>
+<td>CUE bundle path; read only for <code>watcher_leader_election_datasource</code></td>
 </tr>
 <tr>
 <td><code>ORCHESTRATOR_ADDR</code></td>
@@ -1715,7 +1753,7 @@
 <tr>
 <td><code>POLL_INTERVAL</code></td>
 <td><code>60s</code></td>
-<td>How often each sink is polled</td>
+<td>How often the rules to watch are listed and each is checked</td>
 </tr>
 <tr>
 <td><code>HEAL_TIMEOUT</code></td>
@@ -1755,16 +1793,20 @@
 </thead>
 <tbody>
 <tr>
-<td><code>vartrack_watcher_drift_total</code></td>
-<td>Drift events by datasource</td>
+<td><code>vartrack_watcher_drift_detected_total</code></td>
+<td>Drift found, by rule</td>
 </tr>
 <tr>
-<td><code>vartrack_watcher_heal_total</code></td>
-<td>Self-heal calls triggered</td>
+<td><code>vartrack_watcher_heal_triggered_total</code></td>
+<td>Heals the orchestrator accepted</td>
+</tr>
+<tr>
+<td><code>vartrack_watcher_heal_failed_total</code></td>
+<td>Heals that could not be requested</td>
 </tr>
 <tr>
 <td><code>vartrack_watcher_poll_duration_seconds</code></td>
-<td>Poll cycle duration</td>
+<td>How long a <code>CheckDatasource</code> took</td>
 </tr>
 </tbody>
 </table>

@@ -1802,9 +1802,10 @@
 <div class="language-text highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>1. Parse schema → find @secret-annotated fields
 </span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>2. For each field present in flat_data:
 </span><span id="__span-2-3"><a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>   a. Determine secret manager: ref= or &quot;default&quot;
-</span><span id="__span-2-4"><a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a>   b. Fetch value from Vault: mount/path → field
-</span><span id="__span-2-5"><a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a>   c. Replace flat_data[field] with the real value
-</span><span id="__span-2-6"><a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a>3. Write to sink — Vault value arrives, not the path string
+</span><span id="__span-2-4"><a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a>   b. Fetch value from Vault: the path and field from &quot;@secret(mount/path#field)&quot;
+</span><span id="__span-2-5"><a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a>      (the manager&#39;s mount point may lead the path)
+</span><span id="__span-2-6"><a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a>   c. Replace flat_data[field] with the real value
+</span><span id="__span-2-7"><a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a>3. Write to sink — Vault value arrives, not the path string
 </span></code></pre></div>
 <h3 id="dry-run-behaviour">Dry-run behaviour<a class="headerlink" href="#dry-run-behaviour" title="Permanent link">&para;</a></h3>
 <p>In dry-run mode, <code>@secret</code> fields are <strong>masked as <code>***</code></strong> in the report. The real value is fetched from Vault but never returned to the caller.</p>
@@ -1833,6 +1834,7 @@
 </span><span id="__span-3-21"><a id="__codelineno-3-21" name="__codelineno-3-21" href="#__codelineno-3-21"></a>  ]
 </span><span id="__span-3-22"><a id="__codelineno-3-22" name="__codelineno-3-22" href="#__codelineno-3-22"></a>}
 </span></code></pre></div>
+<p><code>@secret()</code> without <code>ref=</code> uses the rule's <code>secret_manager</code> when it names one, else the entry tagged <code>default</code>, else the bundle's only one. Secret managers are declared in <code>config.cue</code>'s <a href="../bundle/#secret_managers"><code>secret_managers</code></a> only; a rule's own <code>secrets</code> block was removed. A field whose value is not in the <code>@secret(path#field)</code> form is read at the manager's <code>path_prefix</code>, under the field's own name.</p>
 <hr />
 <h2 id="logger"><code>@logger()</code><a class="headerlink" href="#logger" title="Permanent link">&para;</a></h2>
 <p>Marks a field for <strong>structured change logging</strong>. Every time a value changes between ETL runs, the orchestrator emits an INFO log entry showing the field name, old value, new value, datasource, and environment.</p>

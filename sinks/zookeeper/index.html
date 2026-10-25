@@ -1785,7 +1785,7 @@
 </span></code></pre></div>
 <hr />
 <h2 id="drift-detection">Drift detection<a class="headerlink" href="#drift-detection" title="Permanent link">&para;</a></h2>
-<p>The watcher recursively lists all znodes under the configured path and compares their data (bytes) against the Git baseline. It also registers a ZooKeeper session watcher for near-real-time detection in addition to the periodic poll.</p>
+<p>The watcher asks the orchestrator each poll; the orchestrator reads the znodes varTrack wrote and compares them with what it last synced from Git — a changed or missing key is drift (<a href="../../concepts/drift-detection/">Drift Detection</a>).</p>
 <div class="language-text highlight"><pre><span></span><code><span id="__span-7-1"><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>rules: [{
 </span><span id="__span-7-2"><a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>  platform:   &quot;github&quot;
 </span><span id="__span-7-3"><a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a>  datasource: &quot;zookeeper&quot;

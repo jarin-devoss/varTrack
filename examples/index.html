@@ -1844,24 +1844,32 @@ Neither rule sees the other service's keys.</p>
 The Kubernetes fields (<code>replicaCount</code>, <code>image</code>, <code>resources</code>) are never touched.</p>
 <hr />
 <h3 id="multiple-files">Multiple files<a class="headerlink" href="#multiple-files" title="Permanent link">&para;</a></h3>
-<p>Each rule targets one file. To sync multiple files to the same (or different) sinks, add more rules:</p>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-9-1"><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>rules: [
-</span><span id="__span-9-2"><a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>  {
-</span><span id="__span-9-3"><a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a>    platform:             &quot;github&quot;
-</span><span id="__span-9-4"><a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a>    datasource:           &quot;mongo&quot;
-</span><span id="__span-9-5"><a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a>    file_name:            &quot;configs/app.yaml&quot;
-</span><span id="__span-9-6"><a id="__codelineno-9-6" name="__codelineno-9-6" href="#__codelineno-9-6"></a>    repositories:         [&quot;my-org/*&quot;]
-</span><span id="__span-9-7"><a id="__codelineno-9-7" name="__codelineno-9-7" href="#__codelineno-9-7"></a>    destination_template: &quot;{env}-app&quot;
-</span><span id="__span-9-8"><a id="__codelineno-9-8" name="__codelineno-9-8" href="#__codelineno-9-8"></a>  },
-</span><span id="__span-9-9"><a id="__codelineno-9-9" name="__codelineno-9-9" href="#__codelineno-9-9"></a>  {
-</span><span id="__span-9-10"><a id="__codelineno-9-10" name="__codelineno-9-10" href="#__codelineno-9-10"></a>    platform:             &quot;github&quot;
-</span><span id="__span-9-11"><a id="__codelineno-9-11" name="__codelineno-9-11" href="#__codelineno-9-11"></a>    datasource:           &quot;mongo&quot;
-</span><span id="__span-9-12"><a id="__codelineno-9-12" name="__codelineno-9-12" href="#__codelineno-9-12"></a>    file_name:            &quot;configs/database.yaml&quot;
-</span><span id="__span-9-13"><a id="__codelineno-9-13" name="__codelineno-9-13" href="#__codelineno-9-13"></a>    repositories:         [&quot;my-org/*&quot;]
-</span><span id="__span-9-14"><a id="__codelineno-9-14" name="__codelineno-9-14" href="#__codelineno-9-14"></a>    destination_template: &quot;{env}-db&quot;
-</span><span id="__span-9-15"><a id="__codelineno-9-15" name="__codelineno-9-15" href="#__codelineno-9-15"></a>  },
-</span><span id="__span-9-16"><a id="__codelineno-9-16" name="__codelineno-9-16" href="#__codelineno-9-16"></a>]
+<p>A rule is identified by its <strong>platform and datasource</strong>: there is at most one rule for the pair, and varTrack refuses to start when two share it. There are two ways to sync more than one file.</p>
+<p><strong>To one destination</strong>, use one rule. Leave out <code>file_name</code> and every file a push touches is synced, or list the files in <code>file_path_map</code>. When a sync writes several files to one environment, prune runs once afterwards, so a key that moved from one file to the other is not deleted.</p>
+<p><strong>To different destinations in the same database</strong>, declare a datasource for each (a datasource has an optional <code>tag</code>, so these are <code>mongo-app</code> and <code>mongo-db</code>), and give each its own rule:</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-9-1"><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>datasources: [
+</span><span id="__span-9-2"><a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>  {mongo: {tag: &quot;app&quot;, endpoint: &quot;mongodb://mongo:27017&quot;, database: &quot;vartrack&quot;, collection: &quot;app&quot;}},
+</span><span id="__span-9-3"><a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a>  {mongo: {tag: &quot;db&quot;,  endpoint: &quot;mongodb://mongo:27017&quot;, database: &quot;vartrack&quot;, collection: &quot;db&quot;}},
+</span><span id="__span-9-4"><a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a>]
+</span><span id="__span-9-5"><a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a>
+</span><span id="__span-9-6"><a id="__codelineno-9-6" name="__codelineno-9-6" href="#__codelineno-9-6"></a>rules: [
+</span><span id="__span-9-7"><a id="__codelineno-9-7" name="__codelineno-9-7" href="#__codelineno-9-7"></a>  {
+</span><span id="__span-9-8"><a id="__codelineno-9-8" name="__codelineno-9-8" href="#__codelineno-9-8"></a>    platform:             &quot;github&quot;
+</span><span id="__span-9-9"><a id="__codelineno-9-9" name="__codelineno-9-9" href="#__codelineno-9-9"></a>    datasource:           &quot;mongo-app&quot;
+</span><span id="__span-9-10"><a id="__codelineno-9-10" name="__codelineno-9-10" href="#__codelineno-9-10"></a>    file_name:            &quot;configs/app.yaml&quot;
+</span><span id="__span-9-11"><a id="__codelineno-9-11" name="__codelineno-9-11" href="#__codelineno-9-11"></a>    repositories:         [&quot;my-org/*&quot;]
+</span><span id="__span-9-12"><a id="__codelineno-9-12" name="__codelineno-9-12" href="#__codelineno-9-12"></a>    destination_template: &quot;{env}-app&quot;
+</span><span id="__span-9-13"><a id="__codelineno-9-13" name="__codelineno-9-13" href="#__codelineno-9-13"></a>  },
+</span><span id="__span-9-14"><a id="__codelineno-9-14" name="__codelineno-9-14" href="#__codelineno-9-14"></a>  {
+</span><span id="__span-9-15"><a id="__codelineno-9-15" name="__codelineno-9-15" href="#__codelineno-9-15"></a>    platform:             &quot;github&quot;
+</span><span id="__span-9-16"><a id="__codelineno-9-16" name="__codelineno-9-16" href="#__codelineno-9-16"></a>    datasource:           &quot;mongo-db&quot;
+</span><span id="__span-9-17"><a id="__codelineno-9-17" name="__codelineno-9-17" href="#__codelineno-9-17"></a>    file_name:            &quot;configs/database.yaml&quot;
+</span><span id="__span-9-18"><a id="__codelineno-9-18" name="__codelineno-9-18" href="#__codelineno-9-18"></a>    repositories:         [&quot;my-org/*&quot;]
+</span><span id="__span-9-19"><a id="__codelineno-9-19" name="__codelineno-9-19" href="#__codelineno-9-19"></a>    destination_template: &quot;{env}-db&quot;
+</span><span id="__span-9-20"><a id="__codelineno-9-20" name="__codelineno-9-20" href="#__codelineno-9-20"></a>  },
+</span><span id="__span-9-21"><a id="__codelineno-9-21" name="__codelineno-9-21" href="#__codelineno-9-21"></a>]
 </span></code></pre></div>
+<p>The datasource name is the webhook URL, so point one webhook of the repository at each: <code>/webhooks/mongo-app</code> and <code>/webhooks/mongo-db</code>.</p>
 <hr />
 <h2 id="multi-sink-fan-out">Multi-sink fan-out<a class="headerlink" href="#multi-sink-fan-out" title="Permanent link">&para;</a></h2>
 <p>One push writes to MongoDB, Redis, and ZooKeeper simultaneously.</p>

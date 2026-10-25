@@ -706,18 +706,18 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#prune_last" class="md-nav__link">
+  <a href="#what-prune-deletes" class="md-nav__link">
     <span class="md-ellipsis">
-      prune_last
+      What prune deletes
     </span>
   </a>
   
 </li>
         
           <li class="md-nav__item">
-  <a href="#prune_protection" class="md-nav__link">
+  <a href="#pruneprotection" class="md-nav__link">
     <span class="md-ellipsis">
-      prune_protection
+      prune.protection
     </span>
   </a>
   
@@ -1649,18 +1649,18 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#prune_last" class="md-nav__link">
+  <a href="#what-prune-deletes" class="md-nav__link">
     <span class="md-ellipsis">
-      prune_last
+      What prune deletes
     </span>
   </a>
   
 </li>
         
           <li class="md-nav__item">
-  <a href="#prune_protection" class="md-nav__link">
+  <a href="#pruneprotection" class="md-nav__link">
     <span class="md-ellipsis">
-      prune_protection
+      prune.protection
     </span>
   </a>
   
@@ -1824,9 +1824,10 @@
 </span><span id="__span-4-5"><a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a>}]
 </span></code></pre></div>
 <p>Or let <code>AUTO</code> decide — just omit <code>sync_mode</code> or set it to <code>"AUTO"</code>.</p>
+<p>Each mode can be written short (<code>"AUTO"</code>, <code>"GIT_SMART_REPAIR"</code>) or as its full proto name (<code>"SYNC_MODE_AUTO"</code>, <code>"SYNC_MODE_GIT_SMART_REPAIR"</code>); both load.</p>
 <hr />
 <h2 id="stale-key-pruning">Stale key pruning<a class="headerlink" href="#stale-key-pruning" title="Permanent link">&para;</a></h2>
-<p>When keys are removed from your Git config file, varTrack can automatically delete them from the datasource:</p>
+<p>When keys are removed from your Git config file, varTrack can delete them from the datasource:</p>
 <div class="language-text highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>rules: [{
 </span><span id="__span-5-2"><a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>  platform:   &quot;github&quot;
 </span><span id="__span-5-3"><a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>  datasource: &quot;mongo&quot;
@@ -1836,43 +1837,55 @@
 </span></code></pre></div>
 <div class="admonition warning">
 <p class="admonition-title">Warning</p>
-<p><code>prune: true</code> permanently deletes keys from the datasource that are no longer in Git. Use <code>prune_dry_run</code> or the full dry-run first to verify what would be removed.</p>
+<p><code>prune: true</code> permanently deletes keys from the datasource that are no longer in Git. Use <code>prune: {enabled: true, dry_run: true}</code> or the full dry-run first to verify what would be removed.</p>
 </div>
-<h3 id="prune_last"><code>prune_last</code><a class="headerlink" href="#prune_last" title="Permanent link">&para;</a></h3>
-<p>When multiple files map to the same datasource, deletions are deferred until all files have been written. This prevents a key from being pruned because it was removed from one file but still exists in another:</p>
+<h3 id="what-prune-deletes">What prune deletes<a class="headerlink" href="#what-prune-deletes" title="Permanent link">&para;</a></h3>
+<p>Prune runs <strong>once per environment, after all of its files are written</strong>, and only if none of them failed. So a key that moved from one file to another is never deleted, and there is nothing to configure for multi-file rules.</p>
+<p>A key is stale when varTrack wrote it before and no file of the environment holds it any more. Prune deletes nothing else:</p>
+<ul>
+<li>A key somebody else put in the datasource is never deleted, with or without <code>protection</code>.</li>
+<li>A stale key that was <strong>changed outside varTrack</strong> since varTrack wrote it is kept, and reported with a <code>PruneSkipped</code> event.</li>
+<li>Environments that write to the same place keep each other's keys: Vercel's <code>staging</code> and <code>develop</code> both write to <code>preview</code>, and a Redis <code>key_prefix</code> or a ZooKeeper path without <code>{env}</code> is shared by every environment.</li>
+<li><strong>So do datasources and tenants.</strong> A datasource's name says nothing about where it writes. Two datasources on the same Redis database (same servers and <code>db</code>) with the same <code>key_prefix</code> and hash, the same ZooKeeper servers and root path, or the same Vercel team, project and targets write the same keys, and one never prunes a key the other still holds. A datasource on another server, or with another prefix, is not compared. MongoDB filters its documents by tenant, datasource and environment, so its datasources never share keys.
+  Who holds a key is recorded with each sync, as the key space the sync wrote to, so another tenant counts even when its schema repository cannot be read right now. A target last written by an older version has no such record and is placed by the rules until it is written again. When a prune finds another target holding keys in the same key space, the UI shows one <strong>Shared key space</strong> warning event for the environment (again after the sharing has ended and begun anew).</li>
+<li>If the rules of the tenants cannot be listed when prune runs, nothing is pruned, as when the ledger cannot be read.</li>
+<li>If the delete fails, the sync still succeeds. The keys stay on the list and the next sync retries them (a <code>PruneFailed</code> event).</li>
+</ul>
+<p>Prune applies to sinks that keep each key separately: Redis (hash or strings), Vercel, ZooKeeper and MongoDB with <code>update_strategy: "STRATEGY_KEY_VALUE"</code>. A sink that replaces a whole object on every write — ConfigMap, S3, Linux server, Helm, MongoDB with its default <code>STRATEGY_DOCUMENT</code> (or <code>STRATEGY_FILE</code>), Redis with the JSON structure — has no stale key to delete. Setting <code>prune</code> on one has no effect.</p>
+<p><code>prune.last</code> was removed: the delete is always last now. A <code>prune</code> block that only had <code>last</code> is a disabled block; write <code>prune: true</code> or <code>prune: {enabled: true}</code>.</p>
+<h3 id="pruneprotection"><code>prune.protection</code><a class="headerlink" href="#pruneprotection" title="Permanent link">&para;</a></h3>
+<p>Glob patterns for keys that must <strong>never</strong> be deleted, even if they're absent from Git. A pattern is matched against the flat key, like <code>db.host</code>, before the sink formats it for its own layout:</p>
 <div class="language-text highlight"><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>rules: [{
-</span><span id="__span-6-2"><a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>  prune:      true
-</span><span id="__span-6-3"><a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a>  prune_last: true   // safe for multi-file rules
-</span><span id="__span-6-4"><a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a>}]
+</span><span id="__span-6-2"><a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>  prune: {
+</span><span id="__span-6-3"><a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a>    enabled:    true
+</span><span id="__span-6-4"><a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a>    protection: [&quot;SYSTEM_*&quot;, &quot;_vt_*&quot;, &quot;readonly.*&quot;]
+</span><span id="__span-6-5"><a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a>  }
+</span><span id="__span-6-6"><a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a>}]
 </span></code></pre></div>
-<h3 id="prune_protection"><code>prune_protection</code><a class="headerlink" href="#prune_protection" title="Permanent link">&para;</a></h3>
-<p>Glob patterns for keys that must <strong>never</strong> be deleted, even if they're absent from Git:</p>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-7-1"><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>rules: [{
-</span><span id="__span-7-2"><a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>  prune:            true
-</span><span id="__span-7-3"><a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a>  prune_protection: [&quot;SYSTEM_*&quot;, &quot;_vt_*&quot;, &quot;readonly.*&quot;]
-</span><span id="__span-7-4"><a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a>}]
-</span></code></pre></div>
+<p><code>prune_protection</code>, the former flat name, is still read from <code>bundle.json</code> and <code>vartrack.json</code>; <code>config.cue</code> only takes the <code>prune</code> block.</p>
 <hr />
 <h2 id="dry-run">Dry-run<a class="headerlink" href="#dry-run" title="Permanent link">&para;</a></h2>
 <h3 id="full-dry-run-simulate-the-entire-sync">Full dry-run — simulate the entire sync<a class="headerlink" href="#full-dry-run-simulate-the-entire-sync" title="Permanent link">&para;</a></h3>
-<p>No writes, no deletes. Returns a full report of what would be written, changed, and deleted — including which keys would be pruned.</p>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-8-1"><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="c1"># Via CLI</span>
-</span><span id="__span-8-2"><a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>vt<span class="w"> </span>sync<span class="w"> </span>--file<span class="w"> </span>configs/app.yaml<span class="w"> </span>--datasource<span class="w"> </span>mongo<span class="w"> </span>--env<span class="w"> </span>staging<span class="w"> </span>--dry-run
-</span><span id="__span-8-3"><a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a>
-</span><span id="__span-8-4"><a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a><span class="c1"># Via HTTP</span>
-</span><span id="__span-8-5"><a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a>POST<span class="w"> </span>/v1/webhooks/mongo/dry-run
+<p>No writes, no deletes. Returns a full report of what would be written, changed, and deleted. The keys prune would see as stale are listed per environment under <code>prune.would_delete</code>; whether something changed one outside varTrack is only known when a real sync reads it.</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-7-1"><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="c1"># Via CLI</span>
+</span><span id="__span-7-2"><a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>vt<span class="w"> </span>sync<span class="w"> </span>--file<span class="w"> </span>configs/app.yaml<span class="w"> </span>--datasource<span class="w"> </span>mongo<span class="w"> </span>--env<span class="w"> </span>staging<span class="w"> </span>--dry-run
+</span><span id="__span-7-3"><a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a>
+</span><span id="__span-7-4"><a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a><span class="c1"># Via HTTP</span>
+</span><span id="__span-7-5"><a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a>POST<span class="w"> </span>/v1/webhooks/mongo/dry-run
 </span></code></pre></div>
 <p><code>@secret</code>-annotated fields are fetched from Vault but masked as <code>***</code> in the report.</p>
 <p>In the web UI, <strong>Dry run</strong> on a rule runs the same simulation for the environments you pick:</p>
 <p><img alt="Dry run panel for an S3 rule: production and staging selected, Dry run checked" src="../../assets/screenshots/dry-run.png" /></p>
 <h3 id="prune-dry-run-simulate-deletes-only">Prune dry-run — simulate deletes only<a class="headerlink" href="#prune-dry-run-simulate-deletes-only" title="Permanent link">&para;</a></h3>
 <p>Test the prune step independently without touching any writes. Enabled per rule:</p>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-9-1"><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>rules: [{
-</span><span id="__span-9-2"><a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>  prune:         true
-</span><span id="__span-9-3"><a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a>  dry_run_prune: true   // always simulate deletes — never actually remove keys
-</span><span id="__span-9-4"><a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a>}]
+<div class="language-text highlight"><pre><span></span><code><span id="__span-8-1"><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>rules: [{
+</span><span id="__span-8-2"><a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>  prune: {
+</span><span id="__span-8-3"><a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a>    enabled: true
+</span><span id="__span-8-4"><a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a>    dry_run: true   // always simulate deletes — never actually remove keys
+</span><span id="__span-8-5"><a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a>  }
+</span><span id="__span-8-6"><a id="__codelineno-8-6" name="__codelineno-8-6" href="#__codelineno-8-6"></a>}]
 </span></code></pre></div>
-<p>With <code>dry_run_prune: true</code>, every sync runs normally (writes go through) but the delete step is always simulated and logged, never executed. Useful for auditing which stale keys would be removed before committing to live pruning.</p>
+<p>With <code>prune.dry_run</code>, every sync runs normally (writes go through) but the delete step is always simulated, never executed. The task reports the stale keys, and they stay on the list: turn <code>dry_run</code> off and the next sync deletes them.</p>
 
 
 

@@ -565,9 +565,9 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#how-it-compares-to-argocd-and-fluxcd" class="md-nav__link">
+  <a href="#what-vartrack-syncs" class="md-nav__link">
     <span class="md-ellipsis">
-      How it compares to ArgoCD and FluxCD
+      What varTrack syncs
     </span>
   </a>
   
@@ -1613,9 +1613,9 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#how-it-compares-to-argocd-and-fluxcd" class="md-nav__link">
+  <a href="#what-vartrack-syncs" class="md-nav__link">
     <span class="md-ellipsis">
-      How it compares to ArgoCD and FluxCD
+      What varTrack syncs
     </span>
   </a>
   
@@ -1702,57 +1702,49 @@
 <li>Drift is caught within one poll interval and optionally healed automatically</li>
 </ul>
 <hr />
-<h2 id="how-it-compares-to-argocd-and-fluxcd">How it compares to ArgoCD and FluxCD<a class="headerlink" href="#how-it-compares-to-argocd-and-fluxcd" title="Permanent link">&para;</a></h2>
-<p>ArgoCD and FluxCD are the dominant GitOps tools for Kubernetes. They are excellent at what they do: reconciling <strong>Kubernetes manifests</strong> from a Git repo into a cluster. varTrack solves a different problem.</p>
+<h2 id="what-vartrack-syncs">What varTrack syncs<a class="headerlink" href="#what-vartrack-syncs" title="Permanent link">&para;</a></h2>
+<p>varTrack syncs <strong>configuration data</strong>, not Kubernetes resources.</p>
 <table>
 <thead>
 <tr>
 <th></th>
-<th>ArgoCD / FluxCD</th>
 <th>varTrack</th>
 </tr>
 </thead>
 <tbody>
 <tr>
 <td><strong>What it syncs</strong></td>
-<td>Kubernetes resources (Deployments, Services, CRDs…)</td>
 <td>Configuration data: MongoDB, Redis, ZooKeeper, S3, ConfigMap, Helm values, Vercel env vars, Linux files</td>
 </tr>
 <tr>
 <td><strong>Where config lives</strong></td>
-<td>Kubernetes etcd</td>
 <td>The application's own datastore</td>
 </tr>
 <tr>
 <td><strong>Drift detection</strong></td>
-<td>Kubernetes state only</td>
 <td>Any datasource — MongoDB, Redis, ZooKeeper, S3</td>
 </tr>
 <tr>
 <td><strong>Secret management</strong></td>
-<td>External Secrets Operator / Sealed Secrets</td>
 <td>HashiCorp Vault with <code>@secret()</code> annotations</td>
 </tr>
 <tr>
 <td><strong>Schema validation</strong></td>
-<td>None</td>
 <td>CUE schema per tenant, enforced before every write</td>
 </tr>
 <tr>
-<td><strong>Non-K8s targets</strong></td>
-<td>✗</td>
-<td>✓ Redis, MongoDB, ZooKeeper, S3, Linux SSH, Vercel</td>
+<td><strong>Targets</strong></td>
+<td>Redis, MongoDB, ZooKeeper, S3, Linux SSH, Vercel, ConfigMap, Helm</td>
 </tr>
 <tr>
 <td><strong>Multi-sink fan-out</strong></td>
-<td>✗</td>
-<td>✓ One push → multiple sinks in parallel</td>
+<td>One push → multiple sinks in parallel</td>
 </tr>
 </tbody>
 </table>
-<p><strong>They are complementary, not competing.</strong> A typical setup:</p>
+<p>It works alongside whatever deploys your services. A typical setup:</p>
 <div class="language-text highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>Git push
-</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>  ├── ArgoCD → reconciles your Kubernetes Deployment
+</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>  ├── your deployment pipeline → deploys your services
 </span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>  └── varTrack → syncs runtime config into MongoDB + Redis + ConfigMap
 </span></code></pre></div>
 <hr />
@@ -1776,7 +1768,7 @@
 <p>✅ You want secrets to stay in Vault and never touch Git — <code>@secret()</code> annotations resolve at sync time</p>
 <p>✅ You need to validate configs before they reach the datastore — CUE schemas catch bad values at the gate</p>
 <h2 id="when-vartrack-is-not-the-right-fit">When varTrack is NOT the right fit<a class="headerlink" href="#when-vartrack-is-not-the-right-fit" title="Permanent link">&para;</a></h2>
-<p>❌ You only need to sync Kubernetes manifests — ArgoCD or FluxCD is the better tool</p>
+<p>❌ You only need to sync Kubernetes manifests — a deployment tool is the better fit</p>
 <p>❌ You want a general-purpose feature flag service (LaunchDarkly, Unleash) with gradual rollouts and targeting rules</p>
 <p>❌ Your config is too dynamic to live in Git (e.g. user-generated content, real-time game state)</p>
 

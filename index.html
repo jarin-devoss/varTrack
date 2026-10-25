@@ -1659,45 +1659,39 @@
 <p>If someone edits MongoDB directly and changes <code>max_connections</code> to <code>5</code>, the watcher detects it and restores <code>50</code> automatically — no manual intervention needed.</p>
 <hr />
 <h2 id="why-vartrack">Why varTrack?<a class="headerlink" href="#why-vartrack" title="Permanent link">&para;</a></h2>
-<p>Tools like <strong>ArgoCD</strong> and <strong>FluxCD</strong> are excellent at deploying <em>Kubernetes manifests</em> from Git. They don't solve a different problem: syncing runtime configuration values into the datastores your applications actually read — MongoDB documents, Redis hashes, ZooKeeper znodes, S3 objects, Linux <code>.env</code> files.</p>
-<p>varTrack fills that gap. It treats Git as the single source of truth for <strong>application configuration data</strong> — not Kubernetes resources.</p>
+<p>Git is a good home for application configuration, but the values your applications read live in datastores — MongoDB documents, Redis hashes, ZooKeeper znodes, S3 objects, Linux <code>.env</code> files — and nothing keeps them in step with Git.</p>
+<p>varTrack fills that gap. It treats Git as the single source of truth for <strong>application configuration data</strong>, and writes it to the datastores your applications actually read.</p>
 <table>
 <thead>
 <tr>
 <th></th>
-<th>ArgoCD / FluxCD</th>
 <th>varTrack</th>
 </tr>
 </thead>
 <tbody>
 <tr>
 <td>Target</td>
-<td>Kubernetes manifests</td>
 <td>MongoDB, Redis, ZooKeeper, S3, ConfigMap, Helm, Vercel, Linux</td>
 </tr>
 <tr>
 <td>Trigger</td>
-<td>Git push</td>
 <td>Git push / webhook</td>
 </tr>
 <tr>
 <td>Drift detection</td>
-<td>Kubernetes state</td>
 <td>Any datasource</td>
 </tr>
 <tr>
 <td>Secret management</td>
-<td>Kubernetes secrets</td>
 <td>HashiCorp Vault integration</td>
 </tr>
 <tr>
 <td>Schema validation</td>
-<td>None</td>
 <td>CUE schema per tenant</td>
 </tr>
 </tbody>
 </table>
-<p>They complement each other: use ArgoCD to deploy your services, use varTrack to keep their runtime config in sync.</p>
+<p>It works alongside whatever deploys your services: varTrack only keeps their runtime config in sync.</p>
 <hr />
 <h2 id="key-features">Key features<a class="headerlink" href="#key-features" title="Permanent link">&para;</a></h2>
 <div class="grid cards">
@@ -1723,7 +1717,7 @@
 <li>
 <p><span class="twemoji lg middle"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m19.07 4.93-1.41 1.41A8.01 8.01 0 0 1 20 12a8 8 0 0 1-8 8 8 8 0 0 1-8-8c0-4.08 3.05-7.44 7-7.93v2.02C8.16 6.57 6 9.03 6 12a6 6 0 0 0 6 6 6 6 0 0 0 6-6c0-1.66-.67-3.16-1.76-4.24l-1.41 1.41C15.55 9.9 16 10.9 16 12a4 4 0 0 1-4 4 4 4 0 0 1-4-4c0-1.86 1.28-3.41 3-3.86v2.14c-.6.35-1 .98-1 1.72a2 2 0 0 0 2 2 2 2 0 0 0 2-2c0-.74-.4-1.38-1-1.72V2h-1A10 10 0 0 0 2 12a10 10 0 0 0 10 10 10 10 0 0 0 10-10c0-2.76-1.12-5.26-2.93-7.07"/></svg></span> <strong>Drift detection</strong></p>
 <hr />
-<p>Watcher polls each datasource and compares against the Git baseline. On drift, logs the delta and optionally restores correct state — automatically</p>
+<p>The watcher asks the orchestrator each poll whether a datasource still matches Git. On drift, it logs the delta and optionally restores correct state — automatically</p>
 <p><a href="concepts/drift-detection/"><span class="twemoji"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13.22 19.03a.75.75 0 0 1 0-1.06L18.19 13H3.75a.75.75 0 0 1 0-1.5h14.44l-4.97-4.97a.749.749 0 0 1 .326-1.275.75.75 0 0 1 .734.215l6.25 6.25a.75.75 0 0 1 0 1.06l-6.25 6.25a.75.75 0 0 1-1.06 0"/></svg></span> How drift detection works</a></p>
 </li>
 <li>
@@ -1776,14 +1770,13 @@
     ORCH --&gt;|write| S3["S3 / MinIO"]
     ORCH --&gt;|write| OTHER["ConfigMap · Helm\nVercel · Linux"]
 
-    WATCH --&gt;|"poll\n(drift check)"| MONGO
-    WATCH --&gt;|"poll"| REDIS
-    WATCH --&gt;|"TriggerSync\n(self-heal)"| ORCH</code></pre>
+    WATCH --&gt;|"CheckDatasource\n(drift check)"| ORCH
+    WATCH --&gt;|"SyncDatasource\n(self-heal)"| ORCH</code></pre>
 <ol>
 <li>You push a config file.</li>
 <li><strong>gateway-service</strong> (Go) receives the webhook, verifies the HMAC signature, and forwards it via gRPC.</li>
 <li><strong>orchestrator-service</strong> (Python) fetches the file from Git, validates it against a CUE schema, runs the Rust ETL core (diff, merge, prune), and writes to all configured sinks.</li>
-<li><strong>watcher-service</strong> (Go) polls datasources on a configurable interval. On drift, it logs the delta and — if <code>self_heal: true</code> — calls the orchestrator to restore correct state.</li>
+<li><strong>watcher-service</strong> (Go) asks the orchestrator on a configurable interval whether each <code>self_heal</code> rule's datasource still matches Git — the orchestrator reads the sink — and on drift has it restore correct state.</li>
 </ol>
 <div class="admonition info">
 <p class="admonition-title">Why Rust inside the orchestrator?</p>

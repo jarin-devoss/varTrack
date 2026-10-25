@@ -1100,18 +1100,9 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#server-side-encryption" class="md-nav__link">
+  <a href="#encryption-versioning-and-connection" class="md-nav__link">
     <span class="md-ellipsis">
-      Server-side encryption
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#object-versioning" class="md-nav__link">
-    <span class="md-ellipsis">
-      Object versioning
+      Encryption, versioning and connection
     </span>
   </a>
   
@@ -1666,18 +1657,9 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#server-side-encryption" class="md-nav__link">
+  <a href="#encryption-versioning-and-connection" class="md-nav__link">
     <span class="md-ellipsis">
-      Server-side encryption
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#object-versioning" class="md-nav__link">
-    <span class="md-ellipsis">
-      Object versioning
+      Encryption, versioning and connection
     </span>
   </a>
   
@@ -1737,15 +1719,16 @@
 </span><span id="__span-1-9"><a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a>}]
 </span></code></pre></div>
 <h3 id="iam-role-no-credentials">IAM role (no credentials)<a class="headerlink" href="#iam-role-no-credentials" title="Permanent link">&para;</a></h3>
-<p>For services running on AWS with an instance role or IRSA:</p>
+<p>For services running on AWS with an instance role or IRSA, leave out <code>access_key_id</code> and <code>secret_access_key</code>: the sink then uses the AWS default credential chain.</p>
 <div class="language-text highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>datasources: [{
 </span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>  s3: {
 </span><span id="__span-2-3"><a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>    bucket:       &quot;my-config-bucket&quot;
 </span><span id="__span-2-4"><a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a>    region:       &quot;us-east-1&quot;
-</span><span id="__span-2-5"><a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a>    use_iam_role: true   // no access_key_id / secret_access_key needed
+</span><span id="__span-2-5"><a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a>    use_iam_role: true   // documents the intent; no keys needed
 </span><span id="__span-2-6"><a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a>  }
 </span><span id="__span-2-7"><a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a>}]
 </span></code></pre></div>
+<p><code>access_key_id</code> and <code>secret_access_key</code> take any credential form: a string, <code>{file: …}</code> or <code>{ref: …}</code> from Vault. <code>prefix</code> sets a key prefix used when the rule has no <code>destination_template</code>.</p>
 <hr />
 <h2 id="destination-template">Destination template<a class="headerlink" href="#destination-template" title="Permanent link">&para;</a></h2>
 <p>The <code>destination_template</code> sets the S3 key prefix:</p>
@@ -1792,51 +1775,73 @@
 </table>
 <p><code>STRATEGY_DOCUMENT</code> and <code>STRATEGY_FILE</code> keep the types and arrays the file has. A flat file under <code>STRATEGY_DOCUMENT</code> is nested by the dots in its keys; one where a key is both a value and the parent of other keys fails to sync. Use <code>STRATEGY_FILE</code> for that file.</p>
 <hr />
-<h2 id="server-side-encryption">Server-side encryption<a class="headerlink" href="#server-side-encryption" title="Permanent link">&para;</a></h2>
+<h2 id="encryption-versioning-and-connection">Encryption, versioning and connection<a class="headerlink" href="#encryption-versioning-and-connection" title="Permanent link">&para;</a></h2>
 <div class="language-text highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>datasources: [{
 </span><span id="__span-5-2"><a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>  s3: {
-</span><span id="__span-5-3"><a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>    bucket:               &quot;my-config-bucket&quot;
-</span><span id="__span-5-4"><a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a>    sse_algorithm:        &quot;AES256&quot;     // or &quot;aws:kms&quot;
-</span><span id="__span-5-5"><a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a>    // sse_kms_key_id:    &quot;arn:aws:kms:...&quot;  // only for aws:kms
-</span><span id="__span-5-6"><a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a>  }
-</span><span id="__span-5-7"><a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a>}]
+</span><span id="__span-5-3"><a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>    bucket:                 &quot;my-config-bucket&quot;
+</span><span id="__span-5-4"><a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a>    server_side_encryption: &quot;aws:kms&quot;            // or &quot;AES256&quot;
+</span><span id="__span-5-5"><a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a>    kms_key_id:             &quot;arn:aws:kms:us-east-1:123456789012:key/…&quot;
+</span><span id="__span-5-6"><a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a>    enable_versioning:      true
+</span><span id="__span-5-7"><a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a>    session_token:          {file: &quot;/run/secrets/aws-session-token&quot;}
+</span><span id="__span-5-8"><a id="__codelineno-5-8" name="__codelineno-5-8" href="#__codelineno-5-8"></a>    force_path_style:       true                 // MinIO and other S3-compatible stores
+</span><span id="__span-5-9"><a id="__codelineno-5-9" name="__codelineno-5-9" href="#__codelineno-5-9"></a>    timeout:                &quot;30s&quot;
+</span><span id="__span-5-10"><a id="__codelineno-5-10" name="__codelineno-5-10" href="#__codelineno-5-10"></a>    ssl_ca_cert:            &quot;/etc/ssl/minio-ca.pem&quot;
+</span><span id="__span-5-11"><a id="__codelineno-5-11" name="__codelineno-5-11" href="#__codelineno-5-11"></a>    content_type:           &quot;application/json&quot;
+</span><span id="__span-5-12"><a id="__codelineno-5-12" name="__codelineno-5-12" href="#__codelineno-5-12"></a>    file_pattern:           &quot;settings-{env}.json&quot;
+</span><span id="__span-5-13"><a id="__codelineno-5-13" name="__codelineno-5-13" href="#__codelineno-5-13"></a>  }
+</span><span id="__span-5-14"><a id="__codelineno-5-14" name="__codelineno-5-14" href="#__codelineno-5-14"></a>}]
 </span></code></pre></div>
 <table>
 <thead>
 <tr>
-<th>Algorithm</th>
-<th>Description</th>
+<th>Field</th>
+<th>Effect</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td><code>AES256</code></td>
-<td>S3-managed keys (SSE-S3)</td>
+<td><code>server_side_encryption</code>, <code>kms_key_id</code></td>
+<td>Sent with every object written</td>
 </tr>
 <tr>
-<td><code>aws:kms</code></td>
-<td>AWS KMS key (SSE-KMS) — specify <code>sse_kms_key_id</code></td>
+<td><code>enable_versioning</code></td>
+<td>Versioning is turned on for the bucket when the sink first writes to it; without the permission to, the write goes on and the log says why</td>
+</tr>
+<tr>
+<td><code>session_token</code></td>
+<td>Temporary credentials, with <code>access_key_id</code> and <code>secret_access_key</code></td>
+</tr>
+<tr>
+<td><code>force_path_style</code></td>
+<td>Path-style addressing (<code>endpoint/bucket/key</code>)</td>
+</tr>
+<tr>
+<td><code>timeout</code></td>
+<td>Connect and read timeout</td>
+</tr>
+<tr>
+<td><code>verify_ssl: false</code></td>
+<td>Turns certificate checks off; <code>ssl_ca_cert</code> names a CA bundle to check against instead</td>
+</tr>
+<tr>
+<td><code>content_type</code></td>
+<td>The objects' <code>Content-Type</code>; otherwise JSON for <code>config.json</code> and a guess per key</td>
+</tr>
+<tr>
+<td><code>file_pattern</code></td>
+<td>The name of the single object (<code>config.json</code> by default); <code>{env}</code> is the environment</td>
 </tr>
 </tbody>
 </table>
-<hr />
-<h2 id="object-versioning">Object versioning<a class="headerlink" href="#object-versioning" title="Permanent link">&para;</a></h2>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>datasources: [{
-</span><span id="__span-6-2"><a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>  s3: {
-</span><span id="__span-6-3"><a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a>    bucket:            &quot;my-config-bucket&quot;
-</span><span id="__span-6-4"><a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a>    enable_versioning: true   // enable S3 bucket versioning
-</span><span id="__span-6-5"><a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a>  }
-</span><span id="__span-6-6"><a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a>}]
-</span></code></pre></div>
-<p>When enabled, each write creates a new object version, preserving full config history.</p>
+<p><code>version_id</code> is not used when writing.</p>
 <hr />
 <h2 id="drift-detection">Drift detection<a class="headerlink" href="#drift-detection" title="Permanent link">&para;</a></h2>
-<p>The watcher lists all objects under the configured prefix and compares their ETags against the baseline. Objects are only re-downloaded on ETag mismatch, keeping bandwidth low.</p>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-7-1"><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>rules: [{
-</span><span id="__span-7-2"><a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>  platform:   &quot;github&quot;
-</span><span id="__span-7-3"><a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a>  datasource: &quot;s3&quot;
-</span><span id="__span-7-4"><a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a>  self_heal:  true
-</span><span id="__span-7-5"><a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a>}]
+<p>The watcher asks the orchestrator each poll; the orchestrator reads the objects varTrack wrote and compares their keys with what it last synced from Git — a changed or missing key is drift (<a href="../../concepts/drift-detection/">Drift Detection</a>).</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>rules: [{
+</span><span id="__span-6-2"><a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>  platform:   &quot;github&quot;
+</span><span id="__span-6-3"><a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a>  datasource: &quot;s3&quot;
+</span><span id="__span-6-4"><a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a>  self_heal:  true
+</span><span id="__span-6-5"><a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a>}]
 </span></code></pre></div>
 
 

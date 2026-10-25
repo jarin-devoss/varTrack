@@ -1139,81 +1139,39 @@
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="Configuration">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#password-authentication" class="md-nav__link">
-    <span class="md-ellipsis">
-      Password authentication
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
 </li>
       
         <li class="md-nav__item">
-  <a href="#destination-template" class="md-nav__link">
+  <a href="#where-the-file-goes" class="md-nav__link">
     <span class="md-ellipsis">
-      Destination template
+      Where the file goes
     </span>
   </a>
   
 </li>
       
         <li class="md-nav__item">
-  <a href="#file-permissions-ownership" class="md-nav__link">
+  <a href="#host-keys" class="md-nav__link">
     <span class="md-ellipsis">
-      File permissions &amp; ownership
+      Host keys
     </span>
   </a>
   
 </li>
       
         <li class="md-nav__item">
-  <a href="#backup-before-write" class="md-nav__link">
+  <a href="#writing-the-file" class="md-nav__link">
     <span class="md-ellipsis">
-      Backup before write
+      Writing the file
     </span>
   </a>
   
 </li>
       
         <li class="md-nav__item">
-  <a href="#post-write-commands" class="md-nav__link">
+  <a href="#transfer-sudo-and-connection" class="md-nav__link">
     <span class="md-ellipsis">
-      Post-write commands
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#sudo" class="md-nav__link">
-    <span class="md-ellipsis">
-      Sudo
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#sftp-mode" class="md-nav__link">
-    <span class="md-ellipsis">
-      SFTP mode
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#host-key-verification" class="md-nav__link">
-    <span class="md-ellipsis">
-      Host key verification
+      Transfer, sudo and connection
     </span>
   </a>
   
@@ -1639,81 +1597,39 @@
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="Configuration">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#password-authentication" class="md-nav__link">
-    <span class="md-ellipsis">
-      Password authentication
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
 </li>
       
         <li class="md-nav__item">
-  <a href="#destination-template" class="md-nav__link">
+  <a href="#where-the-file-goes" class="md-nav__link">
     <span class="md-ellipsis">
-      Destination template
+      Where the file goes
     </span>
   </a>
   
 </li>
       
         <li class="md-nav__item">
-  <a href="#file-permissions-ownership" class="md-nav__link">
+  <a href="#host-keys" class="md-nav__link">
     <span class="md-ellipsis">
-      File permissions &amp; ownership
+      Host keys
     </span>
   </a>
   
 </li>
       
         <li class="md-nav__item">
-  <a href="#backup-before-write" class="md-nav__link">
+  <a href="#writing-the-file" class="md-nav__link">
     <span class="md-ellipsis">
-      Backup before write
+      Writing the file
     </span>
   </a>
   
 </li>
       
         <li class="md-nav__item">
-  <a href="#post-write-commands" class="md-nav__link">
+  <a href="#transfer-sudo-and-connection" class="md-nav__link">
     <span class="md-ellipsis">
-      Post-write commands
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#sudo" class="md-nav__link">
-    <span class="md-ellipsis">
-      Sudo
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#sftp-mode" class="md-nav__link">
-    <span class="md-ellipsis">
-      SFTP mode
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#host-key-verification" class="md-nav__link">
-    <span class="md-ellipsis">
-      Host key verification
+      Transfer, sudo and connection
     </span>
   </a>
   
@@ -1747,139 +1663,65 @@
 
 
 <h1 id="linux-server-sink">Linux Server Sink<a class="headerlink" href="#linux-server-sink" title="Permanent link">&para;</a></h1>
-<p>varTrack writes config values as a file on a remote Linux server over SSH. Useful for servers that read configuration from flat files (<code>.env</code>, INI, etc.) and can't use a central datastore.</p>
+<p>varTrack writes config values as a file on a remote Linux server over SSH (SFTP). Useful for servers that read configuration from flat files (<code>.env</code>, <code>.properties</code>, JSON, YAML) and can't use a central datastore.</p>
 <hr />
 <h2 id="configuration">Configuration<a class="headerlink" href="#configuration" title="Permanent link">&para;</a></h2>
 <div class="language-text highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>datasources: [{
 </span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>  linux_server: {
-</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>    tag:         &quot;&quot;
-</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>    host:        &quot;server.example.com&quot;
-</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>    port:        22
-</span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>    username:    &quot;deploy&quot;
-</span><span id="__span-0-7"><a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>    private_key: &quot;-----BEGIN OPENSSH PRIVATE KEY-----\n...&quot;
-</span><span id="__span-0-8"><a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>    base_path:   &quot;/etc/app&quot;
-</span><span id="__span-0-9"><a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>  }
-</span><span id="__span-0-10"><a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a>}]
+</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>    tag:      &quot;&quot;                         // optional — resolves to &quot;linux_server-{tag}&quot;
+</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>    host:     &quot;server.example.com&quot;
+</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>    port:     22                         // optional, default 22
+</span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>    username: &quot;deploy&quot;
+</span><span id="__span-0-7"><a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>
+</span><span id="__span-0-8"><a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>    // One of password or ssh_key:
+</span><span id="__span-0-9"><a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>    ssh_key: {private_key: {file: &quot;/run/secrets/id_rsa&quot;}}
+</span><span id="__span-0-10"><a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a>    // password: {file: &quot;/run/secrets/ssh-password&quot;}
+</span><span id="__span-0-11"><a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a>
+</span><span id="__span-0-12"><a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a>    base_directory: &quot;/etc/app&quot;
+</span><span id="__span-0-13"><a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a>    file_paths:     [&quot;app.env&quot;]          // the file written; relative paths are under base_directory
+</span><span id="__span-0-14"><a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a>    env_as_path:    false                // true: one directory per environment
+</span><span id="__span-0-15"><a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a>
+</span><span id="__span-0-16"><a id="__codelineno-0-16" name="__codelineno-0-16" href="#__codelineno-0-16"></a>    known_hosts_file: &quot;/etc/vartrack/known_hosts&quot;   // optional
+</span><span id="__span-0-17"><a id="__codelineno-0-17" name="__codelineno-0-17" href="#__codelineno-0-17"></a>  }
+</span><span id="__span-0-18"><a id="__codelineno-0-18" name="__codelineno-0-18" href="#__codelineno-0-18"></a>}]
 </span></code></pre></div>
-<h3 id="password-authentication">Password authentication<a class="headerlink" href="#password-authentication" title="Permanent link">&para;</a></h3>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>datasources: [{
-</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>  linux_server: {
-</span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>    host:     &quot;server.example.com&quot;
-</span><span id="__span-1-4"><a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>    username: &quot;deploy&quot;
-</span><span id="__span-1-5"><a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>    password: &quot;secret&quot;
-</span><span id="__span-1-6"><a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a>  }
-</span><span id="__span-1-7"><a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a>}]
-</span></code></pre></div>
+<p>The SSH key is read from a file, so give <code>private_key</code> as <code>{file: "/path"}</code>. <code>password</code> takes any credential form: a string, <code>{file: …}</code> or <code>{ref: …}</code> from Vault.</p>
 <hr />
-<h2 id="destination-template">Destination template<a class="headerlink" href="#destination-template" title="Permanent link">&para;</a></h2>
-<p>The <code>destination_template</code> sets the full remote file path:</p>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>rules: [{
-</span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>  platform:             &quot;github&quot;
-</span><span id="__span-2-3"><a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>  datasource:           &quot;linux_server&quot;
-</span><span id="__span-2-4"><a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a>  destination_template: &quot;/etc/app/{env}.env&quot;
-</span><span id="__span-2-5"><a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a>}]
-</span></code></pre></div>
+<h2 id="where-the-file-goes">Where the file goes<a class="headerlink" href="#where-the-file-goes" title="Permanent link">&para;</a></h2>
 <table>
 <thead>
 <tr>
-<th>Push branch</th>
-<th>File written</th>
+<th>Setting</th>
+<th><code>production</code> is written to</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td><code>main</code></td>
-<td><code>/etc/app/production.env</code></td>
+<td>default</td>
+<td><code>/etc/app/app_production.env</code></td>
 </tr>
 <tr>
-<td><code>develop</code></td>
-<td><code>/etc/app/staging.env</code></td>
+<td><code>env_as_path: true</code></td>
+<td><code>/etc/app/production/app.env</code></td>
+</tr>
+<tr>
+<td>rule <code>destination_template: "/etc/app/{env}.env"</code></td>
+<td><code>/etc/app/production.env</code></td>
 </tr>
 </tbody>
 </table>
-<p>The file is written in <code>KEY=value</code> format by default:</p>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="c1"># /etc/app/production.env</span>
-</span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="nv">DATABASE_HOST</span><span class="o">=</span>mongo.prod.internal
-</span><span id="__span-3-3"><a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="nv">MAX_CONNECTIONS</span><span class="o">=</span><span class="m">50</span>
-</span><span id="__span-3-4"><a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="nv">FEATURE_DARK_MODE</span><span class="o">=</span><span class="nb">true</span>
+<p><code>destination_template</code> on the rule takes precedence over <code>base_directory</code> and <code>file_paths</code>. Missing directories are created.</p>
+<p>The file's extension sets its format: <code>.env</code> writes <code>key=value</code> lines; <code>.json</code>, <code>.yaml</code>, <code>.properties</code> and <code>.ini</code> are written in their own format. Keys are written as they come out of the config file, sorted; <code>.env</code>, <code>.properties</code> and <code>.ini</code> files start with a header line:</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="c1"># /etc/app/production/app.env — from a YAML file with database.host, feature.dark_mode, max_connections</span>
+</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="c1"># vartrack managed — env=production tenant=default</span>
+</span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>database.host<span class="o">=</span>mongo.prod.internal
+</span><span id="__span-1-4"><a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>feature.dark_mode<span class="o">=</span><span class="nb">true</span>
+</span><span id="__span-1-5"><a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="nv">max_connections</span><span class="o">=</span><span class="m">50</span>
 </span></code></pre></div>
 <hr />
-<h2 id="file-permissions-ownership">File permissions &amp; ownership<a class="headerlink" href="#file-permissions-ownership" title="Permanent link">&para;</a></h2>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>datasources: [{
-</span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>  linux_server: {
-</span><span id="__span-4-3"><a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>    host:              &quot;server.example.com&quot;
-</span><span id="__span-4-4"><a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a>    username:          &quot;deploy&quot;
-</span><span id="__span-4-5"><a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a>    private_key:       &quot;...&quot;
-</span><span id="__span-4-6"><a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a>    file_permissions:  &quot;0640&quot;       // octal — owner rw, group r
-</span><span id="__span-4-7"><a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a>    file_owner:        &quot;app&quot;        // chown user
-</span><span id="__span-4-8"><a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a>    file_group:        &quot;appgroup&quot;   // chown group
-</span><span id="__span-4-9"><a id="__codelineno-4-9" name="__codelineno-4-9" href="#__codelineno-4-9"></a>    create_parent_dirs: true        // mkdir -p before writing
-</span><span id="__span-4-10"><a id="__codelineno-4-10" name="__codelineno-4-10" href="#__codelineno-4-10"></a>  }
-</span><span id="__span-4-11"><a id="__codelineno-4-11" name="__codelineno-4-11" href="#__codelineno-4-11"></a>}]
-</span></code></pre></div>
-<hr />
-<h2 id="backup-before-write">Backup before write<a class="headerlink" href="#backup-before-write" title="Permanent link">&para;</a></h2>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>datasources: [{
-</span><span id="__span-5-2"><a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>  linux_server: {
-</span><span id="__span-5-3"><a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>    host:          &quot;server.example.com&quot;
-</span><span id="__span-5-4"><a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a>    username:      &quot;deploy&quot;
-</span><span id="__span-5-5"><a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a>    private_key:   &quot;...&quot;
-</span><span id="__span-5-6"><a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a>    backup_suffix: &quot;.bak&quot;   // creates /etc/app/production.env.bak before overwrite
-</span><span id="__span-5-7"><a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a>  }
-</span><span id="__span-5-8"><a id="__codelineno-5-8" name="__codelineno-5-8" href="#__codelineno-5-8"></a>}]
-</span></code></pre></div>
-<hr />
-<h2 id="post-write-commands">Post-write commands<a class="headerlink" href="#post-write-commands" title="Permanent link">&para;</a></h2>
-<p>Run shell commands on the server after the file is written (e.g. reload a service):</p>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>datasources: [{
-</span><span id="__span-6-2"><a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>  linux_server: {
-</span><span id="__span-6-3"><a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a>    host:        &quot;server.example.com&quot;
-</span><span id="__span-6-4"><a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a>    username:    &quot;deploy&quot;
-</span><span id="__span-6-5"><a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a>    private_key: &quot;...&quot;
-</span><span id="__span-6-6"><a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a>    post_write_commands: [
-</span><span id="__span-6-7"><a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a>      &quot;systemctl reload nginx&quot;,
-</span><span id="__span-6-8"><a id="__codelineno-6-8" name="__codelineno-6-8" href="#__codelineno-6-8"></a>      &quot;systemctl restart myapp&quot;,
-</span><span id="__span-6-9"><a id="__codelineno-6-9" name="__codelineno-6-9" href="#__codelineno-6-9"></a>    ]
-</span><span id="__span-6-10"><a id="__codelineno-6-10" name="__codelineno-6-10" href="#__codelineno-6-10"></a>    continue_on_command_error: false   // abort remaining commands on first failure
-</span><span id="__span-6-11"><a id="__codelineno-6-11" name="__codelineno-6-11" href="#__codelineno-6-11"></a>  }
-</span><span id="__span-6-12"><a id="__codelineno-6-12" name="__codelineno-6-12" href="#__codelineno-6-12"></a>}]
-</span></code></pre></div>
-<p>Commands run in order. Set <code>continue_on_command_error: true</code> to keep running even if one fails.</p>
-<hr />
-<h2 id="sudo">Sudo<a class="headerlink" href="#sudo" title="Permanent link">&para;</a></h2>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-7-1"><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>datasources: [{
-</span><span id="__span-7-2"><a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>  linux_server: {
-</span><span id="__span-7-3"><a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a>    host:          &quot;server.example.com&quot;
-</span><span id="__span-7-4"><a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a>    username:      &quot;deploy&quot;
-</span><span id="__span-7-5"><a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a>    private_key:   &quot;...&quot;
-</span><span id="__span-7-6"><a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a>    use_sudo:      true
-</span><span id="__span-7-7"><a id="__codelineno-7-7" name="__codelineno-7-7" href="#__codelineno-7-7"></a>    sudo_password: &quot;sudo-secret&quot;            // optional — for passworded sudo
-</span><span id="__span-7-8"><a id="__codelineno-7-8" name="__codelineno-7-8" href="#__codelineno-7-8"></a>  }
-</span><span id="__span-7-9"><a id="__codelineno-7-9" name="__codelineno-7-9" href="#__codelineno-7-9"></a>}]
-</span></code></pre></div>
-<hr />
-<h2 id="sftp-mode">SFTP mode<a class="headerlink" href="#sftp-mode" title="Permanent link">&para;</a></h2>
-<p>By default varTrack uses SCP. Switch to SFTP for environments where SCP is disabled:</p>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-8-1"><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>datasources: [{
-</span><span id="__span-8-2"><a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>  linux_server: {
-</span><span id="__span-8-3"><a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a>    host:        &quot;server.example.com&quot;
-</span><span id="__span-8-4"><a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a>    username:    &quot;deploy&quot;
-</span><span id="__span-8-5"><a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a>    private_key: &quot;...&quot;
-</span><span id="__span-8-6"><a id="__codelineno-8-6" name="__codelineno-8-6" href="#__codelineno-8-6"></a>    enable_sftp: true
-</span><span id="__span-8-7"><a id="__codelineno-8-7" name="__codelineno-8-7" href="#__codelineno-8-7"></a>  }
-</span><span id="__span-8-8"><a id="__codelineno-8-8" name="__codelineno-8-8" href="#__codelineno-8-8"></a>}]
-</span></code></pre></div>
-<hr />
-<h2 id="host-key-verification">Host key verification<a class="headerlink" href="#host-key-verification" title="Permanent link">&para;</a></h2>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-9-1"><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>datasources: [{
-</span><span id="__span-9-2"><a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>  linux_server: {
-</span><span id="__span-9-3"><a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a>    host:                    &quot;server.example.com&quot;
-</span><span id="__span-9-4"><a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a>    username:                &quot;deploy&quot;
-</span><span id="__span-9-5"><a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a>    private_key:             &quot;...&quot;
-</span><span id="__span-9-6"><a id="__codelineno-9-6" name="__codelineno-9-6" href="#__codelineno-9-6"></a>    host_key_verification:   &quot;strict&quot;           // &quot;strict&quot; (default), &quot;accept-new&quot;, &quot;off&quot;
-</span><span id="__span-9-7"><a id="__codelineno-9-7" name="__codelineno-9-7" href="#__codelineno-9-7"></a>    known_hosts_file:        &quot;~/.ssh/known_hosts&quot;
-</span><span id="__span-9-8"><a id="__codelineno-9-8" name="__codelineno-9-8" href="#__codelineno-9-8"></a>  }
-</span><span id="__span-9-9"><a id="__codelineno-9-9" name="__codelineno-9-9" href="#__codelineno-9-9"></a>}]
+<h2 id="host-keys">Host keys<a class="headerlink" href="#host-keys" title="Permanent link">&para;</a></h2>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>host_key_verification: &quot;strict&quot;     // &quot;strict&quot; (default), &quot;accept-new&quot;, &quot;off&quot;
+</span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>known_hosts_file:      &quot;/etc/vartrack/known_hosts&quot;
 </span></code></pre></div>
 <table>
 <thead>
@@ -1891,26 +1733,74 @@
 <tbody>
 <tr>
 <td><code>strict</code></td>
-<td>Reject unknown hosts — recommended for production</td>
+<td>The host's key must already be in <code>known_hosts_file</code> (or the orchestrator's system known hosts)</td>
 </tr>
 <tr>
 <td><code>accept-new</code></td>
-<td>Accept new hosts on first connect, reject changed keys</td>
+<td>Needs <code>known_hosts_file</code>. A host seen for the first time is accepted and its key is written to that file before the first command runs, so the next connection checks it; a changed key is refused</td>
 </tr>
 <tr>
 <td><code>off</code></td>
-<td>Disable host key checking — not recommended</td>
+<td>Any key is accepted and nothing is recorded. Every connection logs a warning: a man in the middle would not be detected. Not recommended</td>
 </tr>
 </tbody>
 </table>
 <hr />
+<h2 id="writing-the-file">Writing the file<a class="headerlink" href="#writing-the-file" title="Permanent link">&para;</a></h2>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>linux_server: {
+</span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>  // …connection, file_paths…
+</span><span id="__span-3-3"><a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>  file_mode:           &quot;0640&quot;
+</span><span id="__span-3-4"><a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a>  file_owner:          &quot;app:app&quot;          // chown; usually needs use_sudo
+</span><span id="__span-3-5"><a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a>  create_directories:  true               // default; false fails when the directory is missing
+</span><span id="__span-3-6"><a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a>  backup_before_write: true
+</span><span id="__span-3-7"><a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a>  backup_suffix:       &quot;.bak&quot;             // default
+</span><span id="__span-3-8"><a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a>  validation_command:          &quot;nginx -t -c {file}&quot;
+</span><span id="__span-3-9"><a id="__codelineno-3-9" name="__codelineno-3-9" href="#__codelineno-3-9"></a>  rollback_on_validation_fail: true
+</span><span id="__span-3-10"><a id="__codelineno-3-10" name="__codelineno-3-10" href="#__codelineno-3-10"></a>  post_write_commands:         [&quot;systemctl reload nginx&quot;]
+</span><span id="__span-3-11"><a id="__codelineno-3-11" name="__codelineno-3-11" href="#__codelineno-3-11"></a>  continue_on_command_error:   false
+</span><span id="__span-3-12"><a id="__codelineno-3-12" name="__codelineno-3-12" href="#__codelineno-3-12"></a>}
+</span></code></pre></div>
+<p>In order: missing directories are created, the previous file is copied to <code>{file}{backup_suffix}</code> when <code>backup_before_write</code> is on, the new file is written, then <code>file_mode</code> and <code>file_owner</code> are applied. <code>validation_command</code> runs next — <code>{file}</code> is the written file — and when it fails the sync fails; with <code>rollback_on_validation_fail</code> the previous file is put back first. Last, <code>post_write_commands</code> run in order: a failing one fails the sync unless <code>continue_on_command_error</code> is on.</p>
+<h2 id="transfer-sudo-and-connection">Transfer, sudo and connection<a class="headerlink" href="#transfer-sudo-and-connection" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Effect</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>use_sftp</code></td>
+<td>Files move over SFTP (default); <code>false</code> moves them through shell commands, for servers without SFTP</td>
+</tr>
+<tr>
+<td><code>use_sudo</code>, <code>sudo_password</code></td>
+<td>File operations and commands run with <code>sudo</code>; the file is uploaded to <code>/tmp</code> first and installed from there. <code>sudo_password</code> takes any credential form</td>
+</tr>
+<tr>
+<td><code>connection_timeout</code>, <code>command_timeout</code></td>
+<td>Limits for connecting and for each command</td>
+</tr>
+<tr>
+<td><code>max_retries</code>, <code>retry_backoff</code></td>
+<td>Connection attempts after the first, and the wait between them; a changed host key is never retried</td>
+</tr>
+<tr>
+<td><code>enable_compression</code></td>
+<td>SSH compression</td>
+</tr>
+</tbody>
+</table>
+<p>Files are written as the SSH user (or root with <code>use_sudo</code>); without <code>file_mode</code> they get that user's default permissions.</p>
+<hr />
 <h2 id="drift-detection">Drift detection<a class="headerlink" href="#drift-detection" title="Permanent link">&para;</a></h2>
-<p>The watcher connects via SSH, reads the remote file, and compares its contents against the Git baseline.</p>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-10-1"><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a>rules: [{
-</span><span id="__span-10-2"><a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a>  platform:   &quot;github&quot;
-</span><span id="__span-10-3"><a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a>  datasource: &quot;linux_server&quot;
-</span><span id="__span-10-4"><a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a>  self_heal:  true
-</span><span id="__span-10-5"><a id="__codelineno-10-5" name="__codelineno-10-5" href="#__codelineno-10-5"></a>}]
+<p>The watcher asks the orchestrator each poll; the orchestrator reads the remote file over SSH and compares its keys with what it last synced from Git — a changed or missing key is drift (<a href="../../concepts/drift-detection/">Drift Detection</a>).</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>rules: [{
+</span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>  platform:   &quot;github&quot;
+</span><span id="__span-4-3"><a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>  datasource: &quot;linux_server&quot;
+</span><span id="__span-4-4"><a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a>  self_heal:  true
+</span><span id="__span-4-5"><a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a>}]
 </span></code></pre></div>
 
 

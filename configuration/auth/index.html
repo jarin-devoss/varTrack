@@ -886,27 +886,9 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#enabling-auth" class="md-nav__link">
+  <a href="#git-permissions" class="md-nav__link">
     <span class="md-ellipsis">
-      Enabling auth
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#oidc-identity-layer" class="md-nav__link">
-    <span class="md-ellipsis">
-      OIDC — identity layer
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#rbac-role-layer-casbin" class="md-nav__link">
-    <span class="md-ellipsis">
-      RBAC — role layer (Casbin)
+      Git permissions
     </span>
   </a>
   
@@ -926,6 +908,15 @@
   <a href="#opa-input-document" class="md-nav__link">
     <span class="md-ellipsis">
       OPA input document
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#reloading-the-policy" class="md-nav__link">
+    <span class="md-ellipsis">
+      Reloading the policy
     </span>
   </a>
   
@@ -954,6 +945,15 @@
   
     <nav class="md-nav" aria-label="Web UI sign-in with your Git platform">
       <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#tenants-are-shown-not-chosen" class="md-nav__link">
+    <span class="md-ellipsis">
+      Tenants are shown, not chosen
+    </span>
+  </a>
+  
+</li>
         
           <li class="md-nav__item">
   <a href="#rules-on-several-platforms" class="md-nav__link">
@@ -1639,27 +1639,9 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#enabling-auth" class="md-nav__link">
+  <a href="#git-permissions" class="md-nav__link">
     <span class="md-ellipsis">
-      Enabling auth
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#oidc-identity-layer" class="md-nav__link">
-    <span class="md-ellipsis">
-      OIDC — identity layer
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#rbac-role-layer-casbin" class="md-nav__link">
-    <span class="md-ellipsis">
-      RBAC — role layer (Casbin)
+      Git permissions
     </span>
   </a>
   
@@ -1679,6 +1661,15 @@
   <a href="#opa-input-document" class="md-nav__link">
     <span class="md-ellipsis">
       OPA input document
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#reloading-the-policy" class="md-nav__link">
+    <span class="md-ellipsis">
+      Reloading the policy
     </span>
   </a>
   
@@ -1707,6 +1698,15 @@
   
     <nav class="md-nav" aria-label="Web UI sign-in with your Git platform">
       <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#tenants-are-shown-not-chosen" class="md-nav__link">
+    <span class="md-ellipsis">
+      Tenants are shown, not chosen
+    </span>
+  </a>
+  
+</li>
         
           <li class="md-nav__item">
   <a href="#rules-on-several-platforms" class="md-nav__link">
@@ -1759,102 +1759,94 @@
 
 
 <h1 id="authentication-authorization">Authentication &amp; Authorization<a class="headerlink" href="#authentication-authorization" title="Permanent link">&para;</a></h1>
-<p>varTrack's CLI API (<code>/v1/cli/*</code>) is secured by a three-layer auth stack: <strong>OIDC</strong> for identity, <strong>RBAC</strong> for coarse-grained roles, and <strong>OPA</strong> for fine-grained policy. All three are optional — when absent, CLI routes are disabled.</p>
+<p>varTrack's CLI API (<code>/v1/cli/*</code>, used by <code>vt</code>) keeps no users or roles of its own. The caller shows their own Git token, and the rule's Git platform says what they may do. An optional <strong>OPA</strong> policy then decides with the whole request.</p>
 <hr />
-<h2 id="enabling-auth">Enabling auth<a class="headerlink" href="#enabling-auth" title="Permanent link">&para;</a></h2>
-<p>Auth is configured in the bundle under <code>auth</code>:</p>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>bundle: {
-</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>  auth: {
-</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>    oidc: {
-</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>      issuer_url: &quot;https://accounts.google.com&quot;
-</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>      client_id:  &quot;my-client-id&quot;
-</span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>    }
-</span><span id="__span-0-7"><a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>    rbac: {
-</span><span id="__span-0-8"><a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>      policy: &quot;&quot;&quot;
-</span><span id="__span-0-9"><a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>        p, role:admin,    *, *,         allow
-</span><span id="__span-0-10"><a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a>        p, role:operator, datasource, sync,     allow
-</span><span id="__span-0-11"><a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a>        p, role:operator, datasource, validate, allow
-</span><span id="__span-0-12"><a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a>        p, role:operator, task,       get,      allow
-</span><span id="__span-0-13"><a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a>        p, role:viewer,   datasource, validate, allow
-</span><span id="__span-0-14"><a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a>        p, role:viewer,   task,       get,      allow
-</span><span id="__span-0-15"><a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a>
-</span><span id="__span-0-16"><a id="__codelineno-0-16" name="__codelineno-0-16" href="#__codelineno-0-16"></a>        g, alice@myorg.com, role:admin
-</span><span id="__span-0-17"><a id="__codelineno-0-17" name="__codelineno-0-17" href="#__codelineno-0-17"></a>        g, bob@myorg.com,   role:operator
-</span><span id="__span-0-18"><a id="__codelineno-0-18" name="__codelineno-0-18" href="#__codelineno-0-18"></a>      &quot;&quot;&quot;
-</span><span id="__span-0-19"><a id="__codelineno-0-19" name="__codelineno-0-19" href="#__codelineno-0-19"></a>      default_role: &quot;role:viewer&quot;
-</span><span id="__span-0-20"><a id="__codelineno-0-20" name="__codelineno-0-20" href="#__codelineno-0-20"></a>    }
-</span><span id="__span-0-21"><a id="__codelineno-0-21" name="__codelineno-0-21" href="#__codelineno-0-21"></a>  }
-</span><span id="__span-0-22"><a id="__codelineno-0-22" name="__codelineno-0-22" href="#__codelineno-0-22"></a>}
+<h2 id="git-permissions">Git permissions<a class="headerlink" href="#git-permissions" title="Permanent link">&para;</a></h2>
+<p><code>vt</code> sends the caller's Git token for the rule's platform — a GitHub or Gitea personal access token — as <code>Authorization: Bearer &lt;token&gt;</code>:</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>vt<span class="w"> </span>login<span class="w"> </span>--server<span class="w"> </span>https://gateway.example.com<span class="w"> </span>--token<span class="w"> </span>&lt;your<span class="w"> </span>Git<span class="w"> </span>token&gt;
 </span></code></pre></div>
-<hr />
-<h2 id="oidc-identity-layer">OIDC — identity layer<a class="headerlink" href="#oidc-identity-layer" title="Permanent link">&para;</a></h2>
-<p>varTrack validates the <code>Authorization: Bearer &lt;token&gt;</code> header against your OIDC provider. Any compliant provider works.</p>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>auth: {
-</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>  oidc: {
-</span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>    issuer_url:   &quot;https://accounts.google.com&quot;  // required
-</span><span id="__span-1-4"><a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>    client_id:    &quot;my-client-id&quot;                 // required
-</span><span id="__span-1-5"><a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>    audience:     &quot;&quot;          // optional — defaults to client_id
-</span><span id="__span-1-6"><a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a>    extra_scopes: []          // optional additional OAuth2 scopes
-</span><span id="__span-1-7"><a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a>    groups_claim: &quot;groups&quot;    // JWT claim for group memberships
-</span><span id="__span-1-8"><a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a>  }
-</span><span id="__span-1-9"><a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a>}
-</span></code></pre></div>
-<p><strong>Supported providers:</strong> Google, Azure AD / Entra ID, Okta, Auth0, Keycloak, GitLab, any OIDC-compliant provider.</p>
-<p>The CLI logs in via <code>vt login</code> and stores the token locally. The token is sent as a Bearer header on every request.</p>
-<hr />
-<h2 id="rbac-role-layer-casbin">RBAC — role layer (Casbin)<a class="headerlink" href="#rbac-role-layer-casbin" title="Permanent link">&para;</a></h2>
-<p>Casbin RBAC maps users and groups to roles, and roles to allowed actions.</p>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>auth: {
-</span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>  rbac: {
-</span><span id="__span-2-3"><a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>    policy: &quot;&quot;&quot;
-</span><span id="__span-2-4"><a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a>      // Format: p, &lt;role&gt;, &lt;resource&gt;, &lt;action&gt;, allow
-</span><span id="__span-2-5"><a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a>      p, role:admin,    *,          *,        allow
-</span><span id="__span-2-6"><a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a>      p, role:operator, datasource, sync,     allow
-</span><span id="__span-2-7"><a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a>      p, role:operator, datasource, validate, allow
-</span><span id="__span-2-8"><a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a>      p, role:operator, task,       get,      allow
-</span><span id="__span-2-9"><a id="__codelineno-2-9" name="__codelineno-2-9" href="#__codelineno-2-9"></a>      p, role:viewer,   datasource, validate, allow
-</span><span id="__span-2-10"><a id="__codelineno-2-10" name="__codelineno-2-10" href="#__codelineno-2-10"></a>      p, role:viewer,   task,       get,      allow
-</span><span id="__span-2-11"><a id="__codelineno-2-11" name="__codelineno-2-11" href="#__codelineno-2-11"></a>
-</span><span id="__span-2-12"><a id="__codelineno-2-12" name="__codelineno-2-12" href="#__codelineno-2-12"></a>      // Format: g, &lt;email-or-group&gt;, &lt;role&gt;
-</span><span id="__span-2-13"><a id="__codelineno-2-13" name="__codelineno-2-13" href="#__codelineno-2-13"></a>      g, alice@myorg.com,   role:admin
-</span><span id="__span-2-14"><a id="__codelineno-2-14" name="__codelineno-2-14" href="#__codelineno-2-14"></a>      g, bob@myorg.com,     role:operator
-</span><span id="__span-2-15"><a id="__codelineno-2-15" name="__codelineno-2-15" href="#__codelineno-2-15"></a>      g, platform-team,     role:operator    // group from groups_claim
-</span><span id="__span-2-16"><a id="__codelineno-2-16" name="__codelineno-2-16" href="#__codelineno-2-16"></a>    &quot;&quot;&quot;
-</span><span id="__span-2-17"><a id="__codelineno-2-17" name="__codelineno-2-17" href="#__codelineno-2-17"></a>    default_role: &quot;role:viewer&quot;              // for users with no explicit assignment
-</span><span id="__span-2-18"><a id="__codelineno-2-18" name="__codelineno-2-18" href="#__codelineno-2-18"></a>  }
-</span><span id="__span-2-19"><a id="__codelineno-2-19" name="__codelineno-2-19" href="#__codelineno-2-19"></a>}
-</span></code></pre></div>
-<p><strong>Resources:</strong> <code>datasource</code>, <code>task</code>, <code>bundle</code>, <code>watcher</code></p>
-<p><strong>Actions:</strong> <code>sync</code>, <code>validate</code>, <code>get</code>, <code>list</code>, <code>heal</code></p>
-<p>The <code>default_role</code> applies to any authenticated user who has no explicit role assignment.</p>
+<p>For each request the gateway asks the platform of the rule that syncs to the datasource who the token belongs to (<code>GET /user</code>) and what they may do in the rule's repositories (<code>GET /repos/{owner}/{repo}</code>, and <code>GET /user/repos</code> for patterns such as <code>acme/*</code>):</p>
+<table>
+<thead>
+<tr>
+<th>The caller can, in one of the rule's repositories…</th>
+<th>…so they may</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>push</td>
+<td><code>vt sync</code></td>
+</tr>
+<tr>
+<td>read</td>
+<td><code>vt sync --dry-run</code>, <code>vt validate</code>, <code>vt task</code></td>
+</tr>
+</tbody>
+</table>
+<p>A rule's repositories are the ones its <code>repositories</code> and enabled <code>overrides</code> name or match, minus its exclusions — the repositories the gateway routes pushes from. The web UI decides the same way (see below).</p>
+<table>
+<thead>
+<tr>
+<th>Answer</th>
+<th>When</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>401</code></td>
+<td>no token, or the platform rejects it</td>
+</tr>
+<tr>
+<td><code>403</code></td>
+<td>the caller lacks the access above, or the OPA policy denies the request</td>
+</tr>
+<tr>
+<td><code>404</code></td>
+<td>no rule syncs to the datasource; a task of a rule the caller cannot read</td>
+</tr>
+</tbody>
+</table>
+<p><code>vt validate</code> without <code>--datasource</code>, and <code>vt validate-config</code>, need a token any platform of the bundle accepts. <code>vt task list</code> shows the tasks of the rules the caller can read.</p>
+<p>The <code>platform:login</code> entries of <a href="#set-it-up"><code>ui.auth.admins</code></a> may do anything, on the CLI API as in the UI. Tasks record their caller as <code>login@platform</code>.</p>
+<p>The bundle's <code>auth.oidc</code> and <code>auth.rbac</code> blocks are no longer used; the gateway logs a warning when they are set.</p>
 <hr />
 <h2 id="opa-policy-layer-open-policy-agent">OPA — policy layer (Open Policy Agent)<a class="headerlink" href="#opa-policy-layer-open-policy-agent" title="Permanent link">&para;</a></h2>
-<p>OPA runs after RBAC for fine-grained decisions that RBAC can't express — e.g., "only allow syncing to <code>production</code> if the user's group is <code>platform-team</code>".</p>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>auth: {
-</span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>  opa: {
-</span><span id="__span-3-3"><a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>    policy: &quot;&quot;&quot;
-</span><span id="__span-3-4"><a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a>      package vartrack.authz
-</span><span id="__span-3-5"><a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a>
-</span><span id="__span-3-6"><a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a>      default allow = false
-</span><span id="__span-3-7"><a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a>
-</span><span id="__span-3-8"><a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a>      allow {
-</span><span id="__span-3-9"><a id="__codelineno-3-9" name="__codelineno-3-9" href="#__codelineno-3-9"></a>        input.action == &quot;sync&quot;
-</span><span id="__span-3-10"><a id="__codelineno-3-10" name="__codelineno-3-10" href="#__codelineno-3-10"></a>        input.env    != &quot;production&quot;   // anyone can sync non-prod
-</span><span id="__span-3-11"><a id="__codelineno-3-11" name="__codelineno-3-11" href="#__codelineno-3-11"></a>      }
-</span><span id="__span-3-12"><a id="__codelineno-3-12" name="__codelineno-3-12" href="#__codelineno-3-12"></a>
-</span><span id="__span-3-13"><a id="__codelineno-3-13" name="__codelineno-3-13" href="#__codelineno-3-13"></a>      allow {
-</span><span id="__span-3-14"><a id="__codelineno-3-14" name="__codelineno-3-14" href="#__codelineno-3-14"></a>        input.action == &quot;sync&quot;
-</span><span id="__span-3-15"><a id="__codelineno-3-15" name="__codelineno-3-15" href="#__codelineno-3-15"></a>        input.env    == &quot;production&quot;
-</span><span id="__span-3-16"><a id="__codelineno-3-16" name="__codelineno-3-16" href="#__codelineno-3-16"></a>        &quot;platform-team&quot; in input.user.groups   // only platform-team can sync prod
-</span><span id="__span-3-17"><a id="__codelineno-3-17" name="__codelineno-3-17" href="#__codelineno-3-17"></a>      }
-</span><span id="__span-3-18"><a id="__codelineno-3-18" name="__codelineno-3-18" href="#__codelineno-3-18"></a>
-</span><span id="__span-3-19"><a id="__codelineno-3-19" name="__codelineno-3-19" href="#__codelineno-3-19"></a>      allow {
-</span><span id="__span-3-20"><a id="__codelineno-3-20" name="__codelineno-3-20" href="#__codelineno-3-20"></a>        input.action == &quot;validate&quot;     // everyone can validate
-</span><span id="__span-3-21"><a id="__codelineno-3-21" name="__codelineno-3-21" href="#__codelineno-3-21"></a>      }
-</span><span id="__span-3-22"><a id="__codelineno-3-22" name="__codelineno-3-22" href="#__codelineno-3-22"></a>    &quot;&quot;&quot;
-</span><span id="__span-3-23"><a id="__codelineno-3-23" name="__codelineno-3-23" href="#__codelineno-3-23"></a>  }
-</span><span id="__span-3-24"><a id="__codelineno-3-24" name="__codelineno-3-24" href="#__codelineno-3-24"></a>}
+<p>OPA runs after the Git permission check for decisions Git permissions can't express — e.g., "writers may sync anywhere but production". Give the policy in exactly one of three ways:</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>auth: {
+</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>  opa: {
+</span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>    inline_policy: &quot;&quot;&quot;
+</span><span id="__span-1-4"><a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>      package vartrack.authz
+</span><span id="__span-1-5"><a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>
+</span><span id="__span-1-6"><a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a>      default allow = false
+</span><span id="__span-1-7"><a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a>
+</span><span id="__span-1-8"><a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a>      # validate and task reads: Git read access has decided
+</span><span id="__span-1-9"><a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a>      allow {
+</span><span id="__span-1-10"><a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a>        input.action != &quot;sync&quot;
+</span><span id="__span-1-11"><a id="__codelineno-1-11" name="__codelineno-1-11" href="#__codelineno-1-11"></a>      }
+</span><span id="__span-1-12"><a id="__codelineno-1-12" name="__codelineno-1-12" href="#__codelineno-1-12"></a>
+</span><span id="__span-1-13"><a id="__codelineno-1-13" name="__codelineno-1-13" href="#__codelineno-1-13"></a>      # anyone who may push syncs outside production
+</span><span id="__span-1-14"><a id="__codelineno-1-14" name="__codelineno-1-14" href="#__codelineno-1-14"></a>      allow {
+</span><span id="__span-1-15"><a id="__codelineno-1-15" name="__codelineno-1-15" href="#__codelineno-1-15"></a>        input.action == &quot;sync&quot;
+</span><span id="__span-1-16"><a id="__codelineno-1-16" name="__codelineno-1-16" href="#__codelineno-1-16"></a>        input.env    != &quot;production&quot;
+</span><span id="__span-1-17"><a id="__codelineno-1-17" name="__codelineno-1-17" href="#__codelineno-1-17"></a>      }
+</span><span id="__span-1-18"><a id="__codelineno-1-18" name="__codelineno-1-18" href="#__codelineno-1-18"></a>
+</span><span id="__span-1-19"><a id="__codelineno-1-19" name="__codelineno-1-19" href="#__codelineno-1-19"></a>      # only repository admins sync production
+</span><span id="__span-1-20"><a id="__codelineno-1-20" name="__codelineno-1-20" href="#__codelineno-1-20"></a>      allow {
+</span><span id="__span-1-21"><a id="__codelineno-1-21" name="__codelineno-1-21" href="#__codelineno-1-21"></a>        input.action == &quot;sync&quot;
+</span><span id="__span-1-22"><a id="__codelineno-1-22" name="__codelineno-1-22" href="#__codelineno-1-22"></a>        input.env    == &quot;production&quot;
+</span><span id="__span-1-23"><a id="__codelineno-1-23" name="__codelineno-1-23" href="#__codelineno-1-23"></a>        input.user.permission == &quot;admin&quot;
+</span><span id="__span-1-24"><a id="__codelineno-1-24" name="__codelineno-1-24" href="#__codelineno-1-24"></a>      }
+</span><span id="__span-1-25"><a id="__codelineno-1-25" name="__codelineno-1-25" href="#__codelineno-1-25"></a>    &quot;&quot;&quot;
+</span><span id="__span-1-26"><a id="__codelineno-1-26" name="__codelineno-1-26" href="#__codelineno-1-26"></a>
+</span><span id="__span-1-27"><a id="__codelineno-1-27" name="__codelineno-1-27" href="#__codelineno-1-27"></a>    // policy_file: &quot;/etc/vartrack/policy.rego&quot;                      // a file on the gateway
+</span><span id="__span-1-28"><a id="__codelineno-1-28" name="__codelineno-1-28" href="#__codelineno-1-28"></a>    // server_url:  &quot;http://opa:8181/v1/data/vartrack/authz/allow&quot;  // a remote OPA server
+</span><span id="__span-1-29"><a id="__codelineno-1-29" name="__codelineno-1-29" href="#__codelineno-1-29"></a>  }
+</span><span id="__span-1-30"><a id="__codelineno-1-30" name="__codelineno-1-30" href="#__codelineno-1-30"></a>}
 </span></code></pre></div>
+<p>The policy must be in package <code>vartrack.authz</code> and define <code>allow</code>; anything but <code>allow == true</code> denies the request. Policies are written in Rego v0 syntax (<code>allow { … }</code>), as above. To write Rego v1 syntax (<code>allow if { … }</code>, <code>x in xs</code>), start the policy with <code>import rego.v1</code>.</p>
+<p><code>inline_policy</code> and <code>policy_file</code> are compiled in-process (tens of microseconds per decision) — no OPA server required. With <code>server_url</code> the gateway asks that server instead: point it at the rule (<code>…/v1/data/vartrack/authz/allow</code>) or at the package (<code>…/v1/data/vartrack/authz</code>, whose <code>allow</code> is then read). A server that cannot be reached, answers anything but 2xx, or takes longer than five seconds denies the request with <code>500</code>. A policy that does not compile, or a policy file that cannot be read, stops the gateway at startup.</p>
+<p>A full example policy — admins sync anywhere, writers outside production but never <code>configs/secrets/*</code>, dry runs anywhere — is at <a href="https://github.com/jarin-devoss/varTrack/blob/main/examples/policies/vartrack_authz.rego"><code>examples/policies/vartrack_authz.rego</code></a>.</p>
 <h3 id="opa-input-document">OPA input document<a class="headerlink" href="#opa-input-document" title="Permanent link">&para;</a></h3>
 <p>Every request evaluation receives:</p>
 <table>
@@ -1866,20 +1858,28 @@
 </thead>
 <tbody>
 <tr>
-<td><code>input.user.sub</code></td>
-<td><code>"alice@myorg.com"</code></td>
+<td><code>input.user.login</code></td>
+<td><code>"alice"</code> — on the rule's platform</td>
 </tr>
 <tr>
-<td><code>input.user.email</code></td>
-<td><code>"alice@myorg.com"</code></td>
+<td><code>input.user.platform</code></td>
+<td><code>"gitea"</code></td>
 </tr>
 <tr>
-<td><code>input.user.groups</code></td>
-<td><code>["platform-team", "sre"]</code></td>
+<td><code>input.user.permission</code></td>
+<td><code>"admin"</code>, <code>"write"</code> or <code>"read"</code> — in the rule's repositories</td>
+</tr>
+<tr>
+<td><code>input.user.admin</code></td>
+<td><code>true</code> for <code>ui.auth.admins</code> entries</td>
+</tr>
+<tr>
+<td><code>input.user.repositories</code></td>
+<td><code>["acme/configs"]</code> — the rule's repository names and patterns</td>
 </tr>
 <tr>
 <td><code>input.action</code></td>
-<td><code>"sync"</code></td>
+<td><code>"sync"</code>, <code>"validate"</code></td>
 </tr>
 <tr>
 <td><code>input.resource</code></td>
@@ -1891,7 +1891,7 @@
 </tr>
 <tr>
 <td><code>input.env</code></td>
-<td><code>"production"</code></td>
+<td><code>"production"</code> (lower-cased)</td>
 </tr>
 <tr>
 <td><code>input.file_path</code></td>
@@ -1907,25 +1907,25 @@
 </tr>
 </tbody>
 </table>
-<p>OPA runs embedded (in-process, ~50µs) — no external OPA server required. To reload a policy without restarting, call <code>POST /admin/opa/reload</code>.</p>
-<p>A full example policy is at <a href="../../examples/policies/vartrack_authz.rego"><code>examples/policies/vartrack_authz.rego</code></a>.</p>
+<h3 id="reloading-the-policy">Reloading the policy<a class="headerlink" href="#reloading-the-policy" title="Permanent link">&para;</a></h3>
+<p><code>POST /admin/opa/reload</code> on the gateway's admin port (<code>ADMIN_ADDR</code>, default <code>:9090</code>) recompiles the policy and re-reads <code>policy_file</code>. If the new policy does not compile, the call answers <code>422</code> with the compile error and the previous policy stays in force. A <code>policy_file</code> is also re-read every <code>OPA_RELOAD_INTERVAL</code> (default <code>30m</code>).</p>
 <hr />
 <h2 id="layer-evaluation-order">Layer evaluation order<a class="headerlink" href="#layer-evaluation-order" title="Permanent link">&para;</a></h2>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>Request
-</span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>  │
-</span><span id="__span-4-3"><a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>  ▼
-</span><span id="__span-4-4"><a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a>OIDC validation       ← 401 if token invalid or expired
-</span><span id="__span-4-5"><a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a>  │
-</span><span id="__span-4-6"><a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a>  ▼
-</span><span id="__span-4-7"><a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a>RBAC check            ← 403 if role doesn&#39;t allow action
-</span><span id="__span-4-8"><a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a>  │
-</span><span id="__span-4-9"><a id="__codelineno-4-9" name="__codelineno-4-9" href="#__codelineno-4-9"></a>  ▼
-</span><span id="__span-4-10"><a id="__codelineno-4-10" name="__codelineno-4-10" href="#__codelineno-4-10"></a>OPA evaluation        ← 403 if policy returns false
-</span><span id="__span-4-11"><a id="__codelineno-4-11" name="__codelineno-4-11" href="#__codelineno-4-11"></a>  │
-</span><span id="__span-4-12"><a id="__codelineno-4-12" name="__codelineno-4-12" href="#__codelineno-4-12"></a>  ▼
-</span><span id="__span-4-13"><a id="__codelineno-4-13" name="__codelineno-4-13" href="#__codelineno-4-13"></a>Handler
+<div class="language-text highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>Request
+</span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>  │
+</span><span id="__span-2-3"><a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>  ▼
+</span><span id="__span-2-4"><a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a>Git token             ← 401 if missing, or the rule&#39;s platform rejects it
+</span><span id="__span-2-5"><a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a>  │
+</span><span id="__span-2-6"><a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a>  ▼
+</span><span id="__span-2-7"><a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a>Git permission        ← 403 without push (sync) or read (anything else) access
+</span><span id="__span-2-8"><a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a>  │
+</span><span id="__span-2-9"><a id="__codelineno-2-9" name="__codelineno-2-9" href="#__codelineno-2-9"></a>  ▼
+</span><span id="__span-2-10"><a id="__codelineno-2-10" name="__codelineno-2-10" href="#__codelineno-2-10"></a>OPA evaluation        ← 403 if the policy does not allow it
+</span><span id="__span-2-11"><a id="__codelineno-2-11" name="__codelineno-2-11" href="#__codelineno-2-11"></a>  │
+</span><span id="__span-2-12"><a id="__codelineno-2-12" name="__codelineno-2-12" href="#__codelineno-2-12"></a>  ▼
+</span><span id="__span-2-13"><a id="__codelineno-2-13" name="__codelineno-2-13" href="#__codelineno-2-13"></a>Handler
 </span></code></pre></div>
-<p>All three must pass. OPA is skipped if no <code>opa</code> block is configured.</p>
+<p>OPA is skipped if no <code>opa</code> block is configured.</p>
 <hr />
 <h2 id="web-ui-sign-in-with-your-git-platform">Web UI sign-in with your Git platform<a class="headerlink" href="#web-ui-sign-in-with-your-git-platform" title="Permanent link">&para;</a></h2>
 <p>The web UI can sign users in with the Git platforms your rules already use (GitHub, GitHub Enterprise, Gitea) and show each user only what those platforms let them see. varTrack keeps no list of who may see what: each rule is judged on its own platform, asked with the user's own account there.</p>
@@ -1952,6 +1952,33 @@
 </tbody>
 </table>
 <p>A rule covers the repositories it names, the ones its patterns (<code>acme/*</code>) match minus its exclusions, and the ones its environments were synced from. A rule, environment or task the user cannot see answers <em>not found</em>, exactly like one that does not exist. Answers are cached for two minutes per session, so a permission change on a platform shows up within that time.</p>
+<h3 id="tenants-are-shown-not-chosen">Tenants are shown, not chosen<a class="headerlink" href="#tenants-are-shown-not-chosen" title="Permanent link">&para;</a></h3>
+<p>The UI covers <strong>every tenant at once</strong>: a rule, task or event carries its tenant, and what a person sees is what Git lets them read, whichever tenant it belongs to. There is no tenant to switch to.</p>
+<table>
+<thead>
+<tr>
+<th>Who</th>
+<th>Sees</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Sign-in is off</td>
+<td>every rule of every tenant</td>
+</tr>
+<tr>
+<td>An admin (<code>ui.auth.admins</code>)</td>
+<td>every rule of every tenant</td>
+</tr>
+<tr>
+<td>A signed-in user</td>
+<td>every rule, of any tenant, whose repository their account can read on the rule's platform. A tenant with no such rule does not appear at all.</td>
+</tr>
+</tbody>
+</table>
+<p>When the viewer sees more than one tenant, the Rules, Environments, Events and Tasks pages show the tenant and offer a Tenant filter that lists only those tenants. The same <code>platform/datasource</code> can exist in two tenants, so a rule is identified by its tenant too: <code>/rules/{tenant}/{platform}/{datasource}</code>; a link without the tenant still opens the rule when only one visible tenant has it.</p>
+<p>A rule you cannot see because you have not connected its platform is counted, never named: the Rules page says "3 rules on gitea are hidden" with a <strong>Connect gitea</strong> button. Rules on a platform you are connected to, in repositories your account cannot read, are not counted — that would show that a private repository's rules exist.</p>
+<p>The UI API takes an optional <code>?tenant=</code> (or the <code>X-Tenant-ID</code> header) to narrow an answer to one tenant. It narrows only: it never shows a rule the viewer cannot read.</p>
 <h3 id="rules-on-several-platforms">Rules on several platforms<a class="headerlink" href="#rules-on-several-platforms" title="Permanent link">&para;</a></h3>
 <p>With rules on GitHub and on Gitea, add a provider for each. Users sign in with either one and <strong>connect</strong> the other from the sign-in page, the user menu or their profile — the same session then holds both accounts, and each rule is judged with the account on its own platform. A GitHub rule is never judged by a Gitea account, even when the repository names match. Until a platform is connected, its rules stay hidden and the UI says how many there are. Signing out ends the session on every platform. Rules on a platform without sign-in set up are hidden from everyone but admins.</p>
 <h3 id="set-it-up">Set it up<a class="headerlink" href="#set-it-up" title="Permanent link">&para;</a></h3>
@@ -1963,33 +1990,33 @@
 </li>
 <li>Add a <code>ui</code> block to the bundle (<code>config.cue</code>), with one provider per platform users sign in with:</li>
 </ol>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>bundle: {
-</span><span id="__span-5-2"><a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>  platforms: [
-</span><span id="__span-5-3"><a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>    {github: {endpoint: &quot;https://github.com&quot;, ...}},
-</span><span id="__span-5-4"><a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a>    {gitea:  {endpoint: &quot;http://gitea:3000&quot;, ...}},
-</span><span id="__span-5-5"><a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a>  ]
-</span><span id="__span-5-6"><a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a>
-</span><span id="__span-5-7"><a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a>  ui: {
-</span><span id="__span-5-8"><a id="__codelineno-5-8" name="__codelineno-5-8" href="#__codelineno-5-8"></a>    public_url: &quot;https://vartrack.example.com&quot;   // where users open the UI
-</span><span id="__span-5-9"><a id="__codelineno-5-9" name="__codelineno-5-9" href="#__codelineno-5-9"></a>    auth: {
-</span><span id="__span-5-10"><a id="__codelineno-5-10" name="__codelineno-5-10" href="#__codelineno-5-10"></a>      providers: [
-</span><span id="__span-5-11"><a id="__codelineno-5-11" name="__codelineno-5-11" href="#__codelineno-5-11"></a>        {
-</span><span id="__span-5-12"><a id="__codelineno-5-12" name="__codelineno-5-12" href="#__codelineno-5-12"></a>          platform:      &quot;github&quot;                // a platform&#39;s name from platforms
-</span><span id="__span-5-13"><a id="__codelineno-5-13" name="__codelineno-5-13" href="#__codelineno-5-13"></a>          client_id:     &quot;Iv1.8a61f9b3a7aba766&quot;
-</span><span id="__span-5-14"><a id="__codelineno-5-14" name="__codelineno-5-14" href="#__codelineno-5-14"></a>          client_secret: {file: &quot;/run/secrets/github-oauth&quot;}
-</span><span id="__span-5-15"><a id="__codelineno-5-15" name="__codelineno-5-15" href="#__codelineno-5-15"></a>        },
-</span><span id="__span-5-16"><a id="__codelineno-5-16" name="__codelineno-5-16" href="#__codelineno-5-16"></a>        {
-</span><span id="__span-5-17"><a id="__codelineno-5-17" name="__codelineno-5-17" href="#__codelineno-5-17"></a>          platform:      &quot;gitea&quot;
-</span><span id="__span-5-18"><a id="__codelineno-5-18" name="__codelineno-5-18" href="#__codelineno-5-18"></a>          client_id:     {file: &quot;/run/secrets/gitea-oauth-id&quot;}
-</span><span id="__span-5-19"><a id="__codelineno-5-19" name="__codelineno-5-19" href="#__codelineno-5-19"></a>          client_secret: {ref: {path: &quot;ui/gitea&quot;, key: &quot;client_secret&quot;}}   // from Vault
-</span><span id="__span-5-20"><a id="__codelineno-5-20" name="__codelineno-5-20" href="#__codelineno-5-20"></a>          browser_url:   &quot;https://gitea.example.com&quot;   // when the platform&#39;s endpoint is internal
-</span><span id="__span-5-21"><a id="__codelineno-5-21" name="__codelineno-5-21" href="#__codelineno-5-21"></a>        },
-</span><span id="__span-5-22"><a id="__codelineno-5-22" name="__codelineno-5-22" href="#__codelineno-5-22"></a>      ]
-</span><span id="__span-5-23"><a id="__codelineno-5-23" name="__codelineno-5-23" href="#__codelineno-5-23"></a>      admins: [&quot;github:octo-admin&quot;]              // optional: see and sync every rule
-</span><span id="__span-5-24"><a id="__codelineno-5-24" name="__codelineno-5-24" href="#__codelineno-5-24"></a>      secret_manager: &quot;vault&quot;                    // optional with a single secret manager
-</span><span id="__span-5-25"><a id="__codelineno-5-25" name="__codelineno-5-25" href="#__codelineno-5-25"></a>    }
-</span><span id="__span-5-26"><a id="__codelineno-5-26" name="__codelineno-5-26" href="#__codelineno-5-26"></a>  }
-</span><span id="__span-5-27"><a id="__codelineno-5-27" name="__codelineno-5-27" href="#__codelineno-5-27"></a>}
+<div class="language-text highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>bundle: {
+</span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>  platforms: [
+</span><span id="__span-3-3"><a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>    {github: {endpoint: &quot;https://github.com&quot;, ...}},
+</span><span id="__span-3-4"><a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a>    {gitea:  {endpoint: &quot;http://gitea:3000&quot;, ...}},
+</span><span id="__span-3-5"><a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a>  ]
+</span><span id="__span-3-6"><a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a>
+</span><span id="__span-3-7"><a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a>  ui: {
+</span><span id="__span-3-8"><a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a>    public_url: &quot;https://vartrack.example.com&quot;   // where users open the UI
+</span><span id="__span-3-9"><a id="__codelineno-3-9" name="__codelineno-3-9" href="#__codelineno-3-9"></a>    auth: {
+</span><span id="__span-3-10"><a id="__codelineno-3-10" name="__codelineno-3-10" href="#__codelineno-3-10"></a>      providers: [
+</span><span id="__span-3-11"><a id="__codelineno-3-11" name="__codelineno-3-11" href="#__codelineno-3-11"></a>        {
+</span><span id="__span-3-12"><a id="__codelineno-3-12" name="__codelineno-3-12" href="#__codelineno-3-12"></a>          platform:      &quot;github&quot;                // a platform&#39;s name from platforms
+</span><span id="__span-3-13"><a id="__codelineno-3-13" name="__codelineno-3-13" href="#__codelineno-3-13"></a>          client_id:     &quot;Iv1.8a61f9b3a7aba766&quot;
+</span><span id="__span-3-14"><a id="__codelineno-3-14" name="__codelineno-3-14" href="#__codelineno-3-14"></a>          client_secret: {file: &quot;/run/secrets/github-oauth&quot;}
+</span><span id="__span-3-15"><a id="__codelineno-3-15" name="__codelineno-3-15" href="#__codelineno-3-15"></a>        },
+</span><span id="__span-3-16"><a id="__codelineno-3-16" name="__codelineno-3-16" href="#__codelineno-3-16"></a>        {
+</span><span id="__span-3-17"><a id="__codelineno-3-17" name="__codelineno-3-17" href="#__codelineno-3-17"></a>          platform:      &quot;gitea&quot;
+</span><span id="__span-3-18"><a id="__codelineno-3-18" name="__codelineno-3-18" href="#__codelineno-3-18"></a>          client_id:     {file: &quot;/run/secrets/gitea-oauth-id&quot;}
+</span><span id="__span-3-19"><a id="__codelineno-3-19" name="__codelineno-3-19" href="#__codelineno-3-19"></a>          client_secret: {ref: {path: &quot;ui/gitea&quot;, key: &quot;client_secret&quot;}}   // from Vault
+</span><span id="__span-3-20"><a id="__codelineno-3-20" name="__codelineno-3-20" href="#__codelineno-3-20"></a>          browser_url:   &quot;https://gitea.example.com&quot;   // when the platform&#39;s endpoint is internal
+</span><span id="__span-3-21"><a id="__codelineno-3-21" name="__codelineno-3-21" href="#__codelineno-3-21"></a>        },
+</span><span id="__span-3-22"><a id="__codelineno-3-22" name="__codelineno-3-22" href="#__codelineno-3-22"></a>      ]
+</span><span id="__span-3-23"><a id="__codelineno-3-23" name="__codelineno-3-23" href="#__codelineno-3-23"></a>      admins: [&quot;github:octo-admin&quot;]              // optional: see and sync every rule
+</span><span id="__span-3-24"><a id="__codelineno-3-24" name="__codelineno-3-24" href="#__codelineno-3-24"></a>      secret_manager: &quot;vault&quot;                    // optional with a single secret manager
+</span><span id="__span-3-25"><a id="__codelineno-3-25" name="__codelineno-3-25" href="#__codelineno-3-25"></a>    }
+</span><span id="__span-3-26"><a id="__codelineno-3-26" name="__codelineno-3-26" href="#__codelineno-3-26"></a>  }
+</span><span id="__span-3-27"><a id="__codelineno-3-27" name="__codelineno-3-27" href="#__codelineno-3-27"></a>}
 </span></code></pre></div>
 <table>
 <thead>
@@ -2057,7 +2084,7 @@
 <p><strong>Without a <code>ui.auth</code> block</strong>, the orchestrator reads the same settings from environment variables: <code>UI_AUTH_PLATFORMS</code> (<code>github,gitea</code>), then per platform <code>UI_AUTH_{P}_CLIENT_ID</code>, <code>UI_AUTH_{P}_CLIENT_SECRET</code>, <code>UI_AUTH_{P}_URL</code> and <code>UI_AUTH_{P}_SCOPES</code> (<code>{P}</code> is the platform name upper-cased with <code>-</code> as <code>_</code>), plus <code>UI_PUBLIC_URL</code>, <code>UI_AUTH_REDIRECT_URL</code>, <code>UI_AUTH_ADMINS</code>, <code>UI_SESSION_TTL_SECONDS</code> and <code>UI_SESSION_SECRET</code>. Any of them can be read from a file by appending <code>_FILE</code>.</p>
 <h3 id="how-sessions-work">How sessions work<a class="headerlink" href="#how-sessions-work" title="Permanent link">&para;</a></h3>
 <p>Sign-in is the OAuth2 authorization code flow with PKCE. The login state is single-use, expires after five minutes, names the platform, and is bound to the browser that started it by a cookie. After sign-in the browser holds only a random session id in an <code>HttpOnly</code> cookie (<code>Secure</code> when the UI is served over HTTPS). The platform tokens stay on the server, encrypted with AES-256-GCM, in Redis next to the sync ledger, and expired tokens are refreshed when the platform issues refresh tokens. Signing out deletes the session on the server, so a copied cookie stops working too.</p>
-<p>This covers the web UI's API (<code>/v1/ui/*</code>). The CLI API (<code>/v1/cli/*</code>, used by <code>vt</code> and by the UI's Playground) keeps the OIDC, RBAC and OPA layers above; paste a token under <em>API token for the Playground</em> on the sign-in page to use it from the UI.</p>
+<p>This covers the web UI's API (<code>/v1/ui/*</code>). The CLI API (<code>/v1/cli/*</code>, used by <code>vt</code> and by the UI's Playground) takes a Git token instead, as above; paste one under <em>API token for the Playground</em> on the sign-in page to use it from the UI.</p>
 
 
 

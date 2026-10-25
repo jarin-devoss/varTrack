@@ -1115,39 +1115,6 @@
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="Upgrade strategies">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#values_only-default" class="md-nav__link">
-    <span class="md-ellipsis">
-      VALUES_ONLY (default)
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#full_upgrade" class="md-nav__link">
-    <span class="md-ellipsis">
-      FULL_UPGRADE
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#install_or_upgrade" class="md-nav__link">
-    <span class="md-ellipsis">
-      INSTALL_OR_UPGRADE
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
 </li>
       
         <li class="md-nav__item">
@@ -1648,39 +1615,6 @@
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="Upgrade strategies">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#values_only-default" class="md-nav__link">
-    <span class="md-ellipsis">
-      VALUES_ONLY (default)
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#full_upgrade" class="md-nav__link">
-    <span class="md-ellipsis">
-      FULL_UPGRADE
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#install_or_upgrade" class="md-nav__link">
-    <span class="md-ellipsis">
-      INSTALL_OR_UPGRADE
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
 </li>
       
         <li class="md-nav__item">
@@ -1775,84 +1709,77 @@
 <h2 id="upgrade-strategies">Upgrade strategies<a class="headerlink" href="#upgrade-strategies" title="Permanent link">&para;</a></h2>
 <div class="language-text highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>datasources: [{
 </span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>  helm: {
-</span><span id="__span-2-3"><a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>    upgrade_strategy: &quot;VALUES_ONLY&quot;   // default
-</span><span id="__span-2-4"><a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a>  }
-</span><span id="__span-2-5"><a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a>}]
+</span><span id="__span-2-3"><a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>    release_name:     &quot;myapp&quot;
+</span><span id="__span-2-4"><a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a>    chart_name:       &quot;./charts/myapp&quot;
+</span><span id="__span-2-5"><a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a>    upgrade_strategy: &quot;INSTALL_OR_UPGRADE&quot;
+</span><span id="__span-2-6"><a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a>  }
+</span><span id="__span-2-7"><a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a>}]
 </span></code></pre></div>
 <table>
 <thead>
 <tr>
 <th>Strategy</th>
-<th>What it does</th>
+<th>What it runs</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td><code>VALUES_ONLY</code></td>
-<td>Inject new values into the existing release; chart version unchanged</td>
+<td><code>INSTALL_OR_UPGRADE</code></td>
+<td><code>helm upgrade --install --create-namespace RELEASE CHART --set …</code> — installs the release the first time, upgrades it after</td>
 </tr>
 <tr>
 <td><code>FULL_UPGRADE</code></td>
-<td>Run a full <code>helm upgrade</code> — chart + values</td>
+<td><code>helm upgrade RELEASE CHART --set …</code> — chart and values; the release must already exist</td>
 </tr>
 <tr>
-<td><code>INSTALL_OR_UPGRADE</code></td>
-<td>Install the release if it doesn't exist, upgrade otherwise</td>
+<td><code>VALUES_ONLY</code></td>
+<td><code>helm upgrade RELEASE CHART --reuse-values --set …</code> — sets varTrack's values on the existing release and keeps its other values; the release must already exist</td>
+</tr>
+<tr>
+<td>unset</td>
+<td>No Helm command: the values are written to a values file (<code>helm_values_file_path</code> in the rule, default <code>values.yaml</code>) for other tooling to apply</td>
 </tr>
 </tbody>
 </table>
-<h3 id="values_only-default"><code>VALUES_ONLY</code> (default)<a class="headerlink" href="#values_only-default" title="Permanent link">&para;</a></h3>
-<p>Writes a <code>values.yaml</code> and applies it without changing the chart:</p>
-<div class="language-yaml highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="c1"># Generated values.yaml</span>
-</span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="nt">database</span><span class="p">:</span>
-</span><span id="__span-3-3"><a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="w">  </span><span class="nt">host</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">mongo.prod.internal</span>
-</span><span id="__span-3-4"><a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="nt">maxConnections</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">50</span>
-</span><span id="__span-3-5"><a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a><span class="nt">featureFlags</span><span class="p">:</span>
-</span><span id="__span-3-6"><a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a><span class="w">  </span><span class="nt">darkMode</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
-</span></code></pre></div>
-<h3 id="full_upgrade"><code>FULL_UPGRADE</code><a class="headerlink" href="#full_upgrade" title="Permanent link">&para;</a></h3>
-<p>Runs a full Helm upgrade with the new values:</p>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>helm<span class="w"> </span>upgrade<span class="w"> </span>myapp-production<span class="w"> </span>./chart<span class="w"> </span><span class="se">\</span>
-</span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="w">  </span>--set<span class="w"> </span>database.host<span class="o">=</span>mongo.prod.internal<span class="w"> </span><span class="se">\</span>
-</span><span id="__span-4-3"><a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="w">  </span>--set<span class="w"> </span><span class="nv">maxConnections</span><span class="o">=</span><span class="m">50</span>
-</span></code></pre></div>
-<h3 id="install_or_upgrade"><code>INSTALL_OR_UPGRADE</code><a class="headerlink" href="#install_or_upgrade" title="Permanent link">&para;</a></h3>
-<p>Equivalent to <code>helm upgrade --install</code> — safe for first-time deployments:</p>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>helm<span class="w"> </span>upgrade<span class="w"> </span>--install<span class="w"> </span>myapp-production<span class="w"> </span>./chart<span class="w"> </span><span class="se">\</span>
-</span><span id="__span-5-2"><a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="w">  </span>-f<span class="w"> </span>generated-values.yaml
+<p><code>chart_version</code> adds <code>--version</code> and <code>chart_repo</code> adds <code>--repo</code>. Values go in as <code>--set</code> flags; <code>helm_values_mode: "file"</code> in the rule passes them as a values file instead.</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="c1"># INSTALL_OR_UPGRADE, release myapp-production</span>
+</span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>helm<span class="w"> </span>upgrade<span class="w"> </span>--install<span class="w"> </span>--create-namespace<span class="w"> </span>myapp-production<span class="w"> </span>./charts/myapp<span class="w"> </span><span class="se">\</span>
+</span><span id="__span-3-3"><a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="w">  </span>--namespace<span class="w"> </span>default<span class="w"> </span>--history-max<span class="w"> </span><span class="m">10</span><span class="w"> </span><span class="se">\</span>
+</span><span id="__span-3-4"><a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="w">  </span>--set<span class="w"> </span>database.host<span class="o">=</span>mongo.prod.internal<span class="w"> </span><span class="se">\</span>
+</span><span id="__span-3-5"><a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a><span class="w">  </span>--set<span class="w"> </span><span class="nv">maxConnections</span><span class="o">=</span><span class="m">50</span>
 </span></code></pre></div>
 <hr />
 <h2 id="chart-configuration">Chart configuration<a class="headerlink" href="#chart-configuration" title="Permanent link">&para;</a></h2>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>datasources: [{
-</span><span id="__span-6-2"><a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>  helm: {
-</span><span id="__span-6-3"><a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a>    chart_name:    &quot;myapp&quot;
-</span><span id="__span-6-4"><a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a>    chart_version: &quot;1.2.3&quot;     // optional — pin chart version
-</span><span id="__span-6-5"><a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a>    chart_repo:    &quot;https://charts.myorg.com&quot;
-</span><span id="__span-6-6"><a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a>  }
-</span><span id="__span-6-7"><a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a>}]
+<div class="language-text highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>datasources: [{
+</span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>  helm: {
+</span><span id="__span-4-3"><a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>    chart_name:    &quot;myapp&quot;
+</span><span id="__span-4-4"><a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a>    chart_version: &quot;1.2.3&quot;     // optional — pin chart version
+</span><span id="__span-4-5"><a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a>    chart_repo:    &quot;https://charts.myorg.com&quot;
+</span><span id="__span-4-6"><a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a>  }
+</span><span id="__span-4-7"><a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a>}]
 </span></code></pre></div>
 <hr />
 <h2 id="upgrade-options">Upgrade options<a class="headerlink" href="#upgrade-options" title="Permanent link">&para;</a></h2>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-7-1"><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>datasources: [{
-</span><span id="__span-7-2"><a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>  helm: {
-</span><span id="__span-7-3"><a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a>    wait:            true    // wait for all resources to be ready
-</span><span id="__span-7-4"><a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a>    wait_timeout:    &quot;5m&quot;   // timeout for --wait
-</span><span id="__span-7-5"><a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a>    atomic:          true    // roll back on failure
-</span><span id="__span-7-6"><a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a>    force:           false   // force resource updates
-</span><span id="__span-7-7"><a id="__codelineno-7-7" name="__codelineno-7-7" href="#__codelineno-7-7"></a>    cleanup_on_fail: true    // delete new resources if upgrade fails
-</span><span id="__span-7-8"><a id="__codelineno-7-8" name="__codelineno-7-8" href="#__codelineno-7-8"></a>    no_hooks:        false   // skip pre/post-upgrade hooks
-</span><span id="__span-7-9"><a id="__codelineno-7-9" name="__codelineno-7-9" href="#__codelineno-7-9"></a>    max_history:     10      // number of release versions to keep
-</span><span id="__span-7-10"><a id="__codelineno-7-10" name="__codelineno-7-10" href="#__codelineno-7-10"></a>  }
-</span><span id="__span-7-11"><a id="__codelineno-7-11" name="__codelineno-7-11" href="#__codelineno-7-11"></a>}]
+<div class="language-text highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>datasources: [{
+</span><span id="__span-5-2"><a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>  helm: {
+</span><span id="__span-5-3"><a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>    wait:            true    // wait for all resources to be ready
+</span><span id="__span-5-4"><a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a>    wait_timeout:    &quot;5m&quot;   // timeout for --wait
+</span><span id="__span-5-5"><a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a>    atomic:          true    // roll back on failure
+</span><span id="__span-5-6"><a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a>    force:           false   // force resource updates
+</span><span id="__span-5-7"><a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a>    cleanup_on_fail: true    // delete new resources if upgrade fails
+</span><span id="__span-5-8"><a id="__codelineno-5-8" name="__codelineno-5-8" href="#__codelineno-5-8"></a>    no_hooks:        false   // skip pre/post-upgrade hooks
+</span><span id="__span-5-9"><a id="__codelineno-5-9" name="__codelineno-5-9" href="#__codelineno-5-9"></a>    max_history:     10      // number of release versions to keep
+</span><span id="__span-5-10"><a id="__codelineno-5-10" name="__codelineno-5-10" href="#__codelineno-5-10"></a>  }
+</span><span id="__span-5-11"><a id="__codelineno-5-11" name="__codelineno-5-11" href="#__codelineno-5-11"></a>}]
 </span></code></pre></div>
 <hr />
 <h2 id="drift-detection">Drift detection<a class="headerlink" href="#drift-detection" title="Permanent link">&para;</a></h2>
-<p>The watcher reads the current Helm release values and compares against the Git baseline.</p>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-8-1"><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>rules: [{
-</span><span id="__span-8-2"><a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>  platform:   &quot;github&quot;
-</span><span id="__span-8-3"><a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a>  datasource: &quot;helm&quot;
-</span><span id="__span-8-4"><a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a>  self_heal:  true
-</span><span id="__span-8-5"><a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a>}]
+<p>The watcher asks the orchestrator each poll; the orchestrator reads the release's current values and compares them with what it last synced from Git — a changed or missing key is drift (<a href="../../concepts/drift-detection/">Drift Detection</a>).</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>rules: [{
+</span><span id="__span-6-2"><a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>  platform:   &quot;github&quot;
+</span><span id="__span-6-3"><a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a>  datasource: &quot;helm&quot;
+</span><span id="__span-6-4"><a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a>  self_heal:  true
+</span><span id="__span-6-5"><a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a>}]
 </span></code></pre></div>
 
 
