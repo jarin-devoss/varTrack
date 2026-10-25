@@ -67,6 +67,8 @@ docker run \
 | `UI_COMPARE_TTL_SECONDS` | `10` | How long a sink comparison is answered as is before it is refreshed in the background |
 | `UI_AUTH_PLATFORMS` | — | Web UI sign-in when the bundle has no `ui.auth` block; see [Web UI sign-in](../configuration/auth.md#web-ui-sign-in-with-your-git-platform) |
 
+Every variable, with the observability ones, is in [Environment variables](../reference/environment-variables.md).
+
 ---
 
 ## API

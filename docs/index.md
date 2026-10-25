@@ -166,3 +166,18 @@ flowchart LR
     The ETL core (diff, flatten, merge, prune) is implemented in Rust and called from Python via FFI. This keeps the hot path allocation-free and handles multi-megabyte config payloads without GC pressure, while the Python layer handles I/O, Vault, and sink drivers.
 
 [:octicons-arrow-right-24: Full architecture overview](concepts/index.md)
+
+---
+
+## Where to go from here
+
+| You want to | Read |
+|---|---|
+| Run it and sync a first file | [Getting started](getting-started.md) |
+| Know which file holds which setting | [Configuration files](configuration/index.md) |
+| Have your repository synced | [Onboard a config repository](guides/onboard-a-repository.md) |
+| Give a team its own settings and schemas | [Add a tenant](guides/add-a-tenant.md) |
+| Run it in production | [Production checklist](operations/production-checklist.md), [High availability](operations/high-availability.md), [Monitoring](operations/monitoring.md) |
+| Upgrade from v0.2.x | [Upgrading](operations/upgrading.md) |
+| Find out why something did not sync | [Troubleshooting](operations/troubleshooting.md), [FAQ](faq.md) |
+| Look up a term | [Glossary](concepts/glossary.md) |
