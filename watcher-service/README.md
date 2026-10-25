@@ -1,20 +1,16 @@
 # watcher-service
 
-The **watcher-service** continuously polls your configured datasources and compares their live state against what Git says they should contain. When drift is detected and `self_heal: true` is set on the rule, it calls the orchestrator to restore the correct state automatically.
+The **watcher-service** keeps your datasources in step with Git. It holds no sink connections and no rules: on every poll it asks the orchestrator which rules to watch, asks whether each datasource still matches Git, and has the orchestrator restore the ones that drifted when `self_heal: true` is set on the rule.
 
 ```
-                        ┌────────────────────────────────────────┐
-                        │           watcher-service               │
-                        │                                        │
-  MongoDB  ─── poll ──► │  WatcherManager                       │──► TriggerSync (gRPC)
-  ZooKeeper ── poll ──► │    ├── MongoWatcher                   │──► orchestrator-service
-  Redis ──────  poll ──► │    ├── ZooKeeperWatcher              │
-  S3 ──────── poll ──► │    ├── RedisWatcher                   │
-  Linux server  poll ──► │    ├── S3Watcher                     │
-  ConfigMap ─── poll ──► │    └── LinuxServerWatcher            │
-  Helm ──────── poll ──► │                                        │
-  Vercel ─────── poll ──► │  admin HTTP :9091  /health  /metrics  │
-                        └────────────────────────────────────────┘
+                 ┌────────────────────────┐   ListWatchTargets   ┌──────────────────────┐
+                 │    watcher-service     │ ───────────────────► │ orchestrator-service │
+                 │                        │   CheckDatasource    │                      │
+                 │  Manager: one loop per │ ───────────────────► │  reads the sinks,    │
+                 │  rule, rules re-read   │   SyncDatasource     │  compares with the   │
+                 │  every poll            │ ───────────────────► │  sync ledger, heals  │
+                 │  admin :9091           │                      └──────────────────────┘
+                 └────────────────────────┘
 ```
 
 ---
@@ -23,11 +19,11 @@ The **watcher-service** continuously polls your configured datasources and compa
 
 Say your config in Git specifies `max_connections: 50`. Someone edits MongoDB directly and changes it to `5`. On the next poll cycle:
 
-1. The watcher reads the live `max_connections` value from MongoDB
-2. It compares against the Git-sourced baseline — mismatch detected
-3. If `self_heal: true` on the rule → calls `TriggerSync` on the orchestrator
+1. The watcher asks the orchestrator whether the datasource still matches Git (`CheckDatasource`)
+2. The orchestrator reads `max_connections` back from MongoDB and compares it with what it last synced from Git — mismatch detected
+3. If `self_heal: true` on the rule → the watcher calls `SyncDatasource` on the orchestrator
 4. The orchestrator re-runs the ETL pipeline and writes `max_connections: 50` back
-5. `vartrack_watcher_drift_total` counter increments, alertable via Prometheus
+5. `vartrack_watcher_drift_detected_total` counter increments, alertable via Prometheus
 
 If `self_heal: false`, drift is logged and counted but no automatic repair is triggered.
 
@@ -35,11 +31,10 @@ If `self_heal: false`, drift is logged and counted but no automatic repair is tr
 
 ## Features
 
-- **8 sink types** — MongoDB, ZooKeeper, Redis, S3, Linux server (SSH), Kubernetes ConfigMap, Helm, Vercel
-- **Per-key diff** — detects added, changed, and deleted keys individually; flags on any mismatch
+- **Every sink the orchestrator writes** — the comparison runs in the orchestrator, key by key, so the watcher needs no sink credentials
+- **Rules followed without a restart** — the list of rules to watch is re-read on every poll; `suspend` pauses a rule and `drift_ignore` lists keys the application changes itself
 - **Configurable poll interval** — set per-service via `POLL_INTERVAL` (default 60s)
 - **Self-heal on demand** — `self_heal: true` in the CUE rule triggers automatic repair via gRPC
-- **Shared Redis state store** — multiple watcher replicas can share baseline state via Redis
 - **Leader election** — ZooKeeper or Redis distributed lock; only one replica runs the heal loop
 - **OpenTelemetry tracing** — distributed traces sent to Jaeger / otel-collector
 - **Prometheus metrics** — poll count, drift count, heal count, poll duration — all labeled by datasource
@@ -57,7 +52,6 @@ If `self_heal: false`, drift is logged and counted but no automatic repair is tr
 | `ORCHESTRATOR_ADDR` | `localhost:50051` | gRPC address of the orchestrator-service |
 | `POLL_INTERVAL` | `60s` | How often each watcher polls its sink |
 | `HEAL_TIMEOUT` | `30s` | Max time allowed for a single self-heal call |
-| `STATE_DIR` | `/tmp/watcher-state` | Local directory for baseline state snapshots |
 | `TLS_CA_FILE` | — | CA cert to verify the orchestrator's TLS certificate |
 | `TLS_CERT_FILE` | — | Client cert for mTLS |
 | `TLS_KEY_FILE` | — | Client key for mTLS |
@@ -71,53 +65,28 @@ If `self_heal: false`, drift is logged and counted but no automatic repair is tr
 
 ---
 
-## CUE Bundle (`CONFIG_PATH`)
+## Which rules it watches
 
-Only datasources whose rule has `self_heal: true` are actively watched. Others are skipped.
+The watcher reads no rules. On every poll it asks the orchestrator which rules to watch (`Watcher.ListWatchTargets`): those with `self_heal: true` that are not suspended. The orchestrator is the one service that layers `config.cue`, a tenant's `bundle.json` and a repository's `vartrack.json` into a rule, so a rule that gains `self_heal`, is suspended or is removed reaches the watcher at the next poll, without a restart. If the orchestrator cannot be asked, the watcher keeps watching the rules it has.
 
 ```cue
-bundle: {
-  platforms: [{
-    github: {
-      endpoint: "https://github.com"
-      token:    {value: "ghp_xxxx"}
-      org_name: "my-org"
-    }
-  }]
-
-  datasources: [
-    {
-      mongo: {
-        endpoint:   "mongodb://mongo:27017"
-        database:   "vartrack"
-        collection: "app_vars"
-      }
-    },
-    {
-      zookeeper: {
-        hosts: ["zookeeper:2181"]
-      }
-    }
-  ]
-
-  rules: [
-    {
-      platform:   "github"
-      datasource: "mongo"
-      self_heal:  true   // ← watcher watches this and auto-heals on drift
-    },
-    {
-      platform:   "github"
-      datasource: "zookeeper"
-      self_heal:  false  // ← not watched (push-only)
-    }
-  ]
-
-  global_tags: {
-    watcher_state_redis: "redis"  // which redis datasource stores watcher baseline state
+rules: [
+  {
+    platform:   "github"
+    datasource: "mongo"
+    self_heal:  true   // ← the orchestrator lists it; the watcher auto-heals on drift
+  },
+  {
+    platform:   "github"
+    datasource: "zookeeper"
+    self_heal:  false  // ← not listed (push-only)
   }
-}
+]
 ```
+
+## The bundle (`CONFIG_PATH`)
+
+`config.cue` is read for one setting: the datasource used for leader election (below). The rest of it is the gateway's and the orchestrator's.
 
 ---
 
@@ -126,10 +95,12 @@ bundle: {
 When running multiple watcher replicas, leader election ensures only one runs the heal loop at a time:
 
 ```cue
-global_tags: {
-  watcher_leader_election_datasource: "redis"  // or "zookeeper"
+bundle: {
+  watcher_leader_election_datasource: "redis"  // or "zookeeper"; a datasource of the bundle
 }
 ```
+
+The Redis password may be written inline or as a `{file: …}`. A `{ref: …}` is refused at startup: the watcher has no secret manager.
 
 **ZooKeeper** — ephemeral sequential znodes with predecessor-watch pattern. Each candidate watches only its immediate predecessor, avoiding thundering-herd wakeups.
 
@@ -145,11 +116,12 @@ GET /metrics    # Prometheus (port 9091)
 
 | Metric | Type | Description |
 |---|---|---|
-| `vartrack_watcher_poll_total` | Counter | Total poll cycles, labeled by datasource |
-| `vartrack_watcher_drift_total` | Counter | Drift events detected, labeled by datasource |
-| `vartrack_watcher_heal_total` | Counter | Self-heal calls triggered |
-| `vartrack_watcher_heal_errors_total` | Counter | Self-heal calls that failed |
-| `vartrack_watcher_poll_duration_seconds` | Histogram | Poll cycle duration, labeled by datasource |
+| `vartrack_watcher_drift_detected_total` | Counter | Drift events detected, labeled by datasource |
+| `vartrack_watcher_heal_triggered_total` | Counter | Self-heal requests sent to the orchestrator |
+| `vartrack_watcher_heal_failed_total` | Counter | Self-heal requests that failed |
+| `vartrack_watcher_poll_duration_seconds` | Histogram | Time spent on a datasource's poll, labeled by datasource |
+| `vartrack_watcher_up` | Gauge | Whether the watcher loop of a datasource is running |
+| `vartrack_watcher_build_info` | Gauge | Version and commit of the build |
 
 ---
 
@@ -190,7 +162,8 @@ go test ./... -timeout 120s
 ## Docker
 
 ```bash
-docker build -t vartrack/watcher-service:latest .
+# From the repository root: the watcher builds against the shared libs/go
+docker build -f watcher-service/Dockerfile -t vartrack/watcher-service:latest .
 
 docker run \
   -p 9091:9091 \
@@ -216,24 +189,15 @@ internal/
     bundle.go            # CUE bundle parsing (reads rules + datasources)
 
   watcher/
-    manager.go           # Starts/stops all sink watchers concurrently
-    watcher.go           # Watcher interface + poll loop
-    mongo.go             # MongoDB drift detection
-    zookeeper.go         # ZooKeeper drift detection
-    redis.go             # Redis drift detection
-    s3.go                # S3 drift detection
-    linux_server.go      # SSH / Linux file drift detection
-    configmap.go         # Kubernetes ConfigMap drift detection
-    helm.go              # Helm release drift detection
-    vercel.go            # Vercel edge config drift detection
-    redis_state_store.go # Shared Redis state store (multi-replica)
+    manager.go           # Asks the orchestrator for the rules to watch; starts and stops a loop per rule
+    watcher.go           # One rule's poll loop: CheckDatasource, then SyncDatasource on drift
 
   election/
     elector.go           # ZooKeeper leader election (ephemeral sequential znodes)
     redis_elector.go     # Redis leader election (SET NX PX + Lua renewal)
 
   healer/
-    healer.go            # Calls orchestrator TriggerSync on drift
+    healer.go            # Calls the orchestrator: ListWatchTargets, CheckDatasource, SyncDatasource
     circuit_breaker.go   # Backs off when orchestrator is degraded
 
   monitoring/
@@ -241,5 +205,5 @@ internal/
     elk.go               # Elasticsearch log shipper
     metrics.go           # Prometheus metric definitions
 
-  gen/proto/go/          # Generated protobuf / gRPC stubs
+  (the generated protobuf / gRPC stubs are the shared module ../libs/go/gen)
 ```

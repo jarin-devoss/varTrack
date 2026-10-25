@@ -1,19 +1,26 @@
 # ── Build stage ────────────────────────────────────────────────────────────────
 FROM golang:1.27-alpine@sha256:f92b6ef800e499660581efdabdf25d9d817a9d124eaf900924f0504e7e27e12d AS builder
 
+# The build context is the repository root: the watcher builds against the
+# shared module in libs/go (its go.mod replaces vartrack/libs with ../libs/go).
 WORKDIR /build
 
-COPY go.mod go.sum ./
+COPY libs/go/go.mod libs/go/go.sum libs/go/
+COPY watcher-service/go.mod watcher-service/go.sum watcher-service/
+WORKDIR /build/watcher-service
 RUN go mod download
 
-COPY . .
+WORKDIR /build
+COPY libs/go libs/go
+COPY watcher-service watcher-service
+WORKDIR /build/watcher-service
 
 ARG VERSION=dev
 ARG COMMIT=unknown
 
 RUN CGO_ENABLED=0 GOOS=linux go build \
     -ldflags="-s -w -X main.version=${VERSION} -X main.commit=${COMMIT}" \
-    -o watcher-service \
+    -o /bin/watcher-service \
     ./cmd/
 
 # ── Runtime stage ──────────────────────────────────────────────────────────────
@@ -34,7 +41,7 @@ LABEL org.opencontainers.image.title="vartrack-watcher-service" \
 RUN apk add --no-cache ca-certificates tzdata wget && \
     addgroup -S nonroot && adduser -S -G nonroot nonroot
 
-COPY --from=builder /build/watcher-service /watcher-service
+COPY --from=builder /bin/watcher-service /watcher-service
 
 # Admin server (health, metrics)
 EXPOSE 9091

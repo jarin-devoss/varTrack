@@ -88,8 +88,9 @@ services:
 
   gateway:
     build:
-      context: ../gateway-service
-      dockerfile: Dockerfile
+      # The repository root: the gateway builds against the shared libs/go.
+      context: ..
+      dockerfile: gateway-service/Dockerfile
     networks: [vartrack]
     environment:
       APP_ENV: demo
@@ -104,6 +105,8 @@ services:
       ELK_ENABLED: "false"
     volumes:
       - ./config.cue:/app/config.cue:ro
+      # The CLI API's OPA policy (auth.opa.policy_file in the bundle).
+      - ../examples/policies:/app/policies:ro
     ports:
       - "5657:5657"
       - "9092:9092"
@@ -193,8 +196,9 @@ services:
 
   watcher:
     build:
-      context: ../watcher-service
-      dockerfile: Dockerfile
+      # The repository root: the watcher builds against the shared libs/go.
+      context: ..
+      dockerfile: watcher-service/Dockerfile
     networks: [vartrack]
     environment:
       APP_ENV: demo
@@ -203,7 +207,6 @@ services:
       ORCHESTRATOR_ADDR: "orchestrator-api:50051"
       HEAL_TIMEOUT: 30s
       POLL_INTERVAL: ${WATCHER_POLL_INTERVAL:-60s}
-      STATE_DIR: /tmp/watcher-state
       ADMIN_ADDR: ":9091"
       OTEL_ENABLED: "false"
       JAEGER_ENABLED: "false"

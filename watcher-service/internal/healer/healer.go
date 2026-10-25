@@ -6,11 +6,12 @@
 // it will confirm healing on the next poll cycle.
 //
 // Proto definition: proto/vartrack/v1/services/watcher.proto
-// Generated stubs:  watcher-service/internal/gen/proto/go/vartrack/v1/services/
+// Generated stubs:  libs/go/gen/vartrack/v1/services/ (import path
+// vartrack/libs/gen/vartrack/v1/services)
 //
-// To regenerate stubs after proto changes:
+// To regenerate stubs after proto changes, from the repository root:
 //
-//	buf generate --template buf.gen.watcher.yaml
+//	buf generate
 package healer
 
 import (
@@ -33,7 +34,7 @@ import (
 	"google.golang.org/protobuf/types/known/emptypb"
 
 	"watcher-service/internal/config"
-	pb "watcher-service/internal/gen/proto/go/vartrack/v1/services"
+	pb "vartrack/libs/gen/vartrack/v1/services"
 )
 
 // correlationIDKey is the context key for the X-Correlation-ID value.
@@ -61,6 +62,16 @@ type HealRequest struct {
 
 	// Reason is a human-readable explanation logged by the orchestrator.
 	Reason string
+}
+
+// WatchTarget is a rule of one tenant that the orchestrator says to keep in
+// sync (Watcher.ListWatchTargets).
+type WatchTarget struct {
+	// Platform and Datasource name the rule.
+	Platform   string
+	Datasource string
+	// Tenant is the tenant whose rule it is.
+	Tenant string
 }
 
 // Healer calls the orchestrator's Watcher gRPC service to trigger self-heal.
@@ -242,6 +253,32 @@ func (h *Healer) Check(ctx context.Context, req HealRequest) (GitState, string, 
 	default:
 		return GitStateUnknown, resp.GetMessage(), nil
 	}
+}
+
+// ListTargets asks the orchestrator which rules to keep in sync: the ones with
+// self_heal on that are not suspended. The orchestrator layers config.cue, the
+// tenants' bundle.json and the repositories' vartrack.json into those rules;
+// the watcher reads none of them, so it asks again on every poll.
+func (h *Healer) ListTargets(ctx context.Context) ([]WatchTarget, error) {
+	if h.client == nil {
+		return nil, fmt.Errorf("healer: gRPC client not initialised (dial failed at startup)")
+	}
+	rctx, cancel := context.WithTimeout(ctx, h.timeout)
+	defer cancel()
+
+	resp, err := h.client.ListWatchTargets(rctx, &emptypb.Empty{})
+	if err != nil {
+		return nil, fmt.Errorf("healer: ListWatchTargets: %w", err)
+	}
+	targets := make([]WatchTarget, 0, len(resp.GetTargets()))
+	for _, t := range resp.GetTargets() {
+		targets = append(targets, WatchTarget{
+			Platform:   t.GetPlatform(),
+			Datasource: t.GetDatasource(),
+			Tenant:     t.GetTenantId(),
+		})
+	}
+	return targets, nil
 }
 
 // Ping checks the orchestrator liveness via the Watcher.Ping RPC.

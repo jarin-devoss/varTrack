@@ -1,0 +1,17 @@
+# The build context is the repository root. Only the watcher and the shared
+# Go module it builds against go into the build; read by BuildKit instead of
+# a .dockerignore next to the context.
+*
+!libs/go
+!watcher-service
+
+# Not part of the image
+**/*_test.go
+**/.git
+**/.idea
+**/.vscode
+**/*.swp
+**/*.exe
+**/*.env
+**/.env*
+**/README.md
