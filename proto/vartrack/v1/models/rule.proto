@@ -53,16 +53,24 @@ message PruneConfig {
 message Rule {
   // ── Required ────────────────────────────────────────────────────────────────
 
+  // The platform that sends this rule's pushes: a platforms entry's name,
+  // "github", "gitea", or "{type}-{tag}" for a tagged one. With datasource it
+  // names the rule: a bundle.json rule layers the config.cue rule with the same
+  // platform and datasource, and there is at most one of each pair.
   string platform = 1 [
     (buf.validate.field).string.min_len = 1,
     (google.api.field_behavior) = REQUIRED
   ];
 
+  // Where the rule writes: a datasources entry's name, "mongo", "redis", or
+  // "{type}-{tag}" for a tagged one ("mongo-billing").
   string datasource = 2 [
     (buf.validate.field).string.min_len = 1,
     (google.api.field_behavior) = REQUIRED
   ];
 
+  // The repositories whose pushes this rule syncs, as "owner/name" glob
+  // patterns ("acme/*", "acme/payments-*"). The gateway routes a push by them.
   repeated string repositories = 5 [
     (buf.validate.field).repeated.min_items = 1,
     (google.api.field_behavior) = REQUIRED,
@@ -116,9 +124,9 @@ message Rule {
   //   root_key: "vartrack"    → (default) sync "vartrack" section or whole file
   //   root_key: ""            → always sync whole file
   //
-  // Works the same way for every supported format: JSON, YAML, TOML, XML,
-  // .env, .properties, HCL, INI, JS-module — because lookup happens after
-  // parsing, against a plain Python/Rust dict.
+  // Works the same way for every supported format (JSON, YAML, TOML, XML,
+  // .env, .properties, HCL, INI, JS module): the key is looked up after the
+  // file is parsed.
   optional string root_key = 24 [
     (google.api.field_behavior) = OPTIONAL,
     (vartrack.v1.config) = {repo_overridable: true}
@@ -143,6 +151,10 @@ message Rule {
     (vartrack.v1.config) = {repo_overridable: true, old_names: ["env_as_tags"]}
   ];
 
+  // Branch → environment, e.g. {main: "production", develop: "staging"}.
+  // A push to a branch that is not listed, and that no file_path_map,
+  // branch_as_env, pr_as_env or tag_as_env places, is synced to the
+  // environment "default".
   map<string, string> branch_map = 10 [
     (google.api.field_behavior) = OPTIONAL,
     (vartrack.v1.config) = {mergeable: true, repo_overridable: true}
@@ -173,10 +185,18 @@ message Rule {
   //
   // When not set each sink falls back to its own sink-specific config key.
   string destination_template     = 12 [(google.api.field_behavior) = OPTIONAL];
+  // Renames of flat keys before they are written: {"NEW_NAME": "path.in.file"}
+  // writes the value at path.in.file under NEW_NAME.
   map<string, string> variables_map = 13 [
     (google.api.field_behavior) = OPTIONAL,
     (vartrack.v1.config) = {mergeable: true, repo_overridable: true}
   ];
+  // How a sync writes. AUTO (the default) uses GIT_UPSERT_ALL for a file of
+  // up to 500 keys and GIT_SMART_REPAIR above. GIT_UPSERT_ALL writes every
+  // key. GIT_SMART_REPAIR, on MongoDB, reads the stored documents and writes
+  // only what differs; other sinks write every key. LIVE_STATE is written like
+  // GIT_UPSERT_ALL. The proto names (SYNC_MODE_AUTO, ...) are read too, and
+  // FULL as GIT_UPSERT_ALL.
   SyncMode sync_mode              = 14 [
     (google.api.field_behavior) = OPTIONAL,
     (vartrack.v1.config) = {repo_overridable: true}
@@ -188,10 +208,14 @@ message Rule {
 
   // ── Repository filtering ─────────────────────────────────────────────────────
 
+  // Repositories (glob patterns) this rule skips although repositories
+  // matches them.
   repeated string exclude_repositories  = 6  [
     (google.api.field_behavior) = OPTIONAL,
     (vartrack.v1.config) = {admin_only: true}
   ];
+  // Turns the rule on or off for some repositories:
+  // [{match_repositories: ["other-org/*"], enable: true}].
   repeated RepositoryOverride overrides = 15 [
     (google.api.field_behavior) = OPTIONAL,
     (vartrack.v1.config) = {admin_only: true}
@@ -202,6 +226,13 @@ message Rule {
   // prune.dry_run    → simulate only; always forced true when task dry_run=true
   // prune.protection → glob patterns that are never pruned
 
+  // Delete keys varTrack wrote before that Git no longer holds: true, or
+  // {enabled, dry_run, protection}. Prune runs once per environment after all
+  // its files are written, only on sinks that keep each key separately (Redis,
+  // ZooKeeper, Vercel, MongoDB with STRATEGY_KEY_VALUE). A key changed outside
+  // varTrack is kept and reported. protection lists glob patterns of keys that
+  // are never deleted; every layer's patterns add up. An object with only
+  // protection does not turn pruning on.
   PruneConfig prune = 16 [
     (google.api.field_behavior) = OPTIONAL,
     (vartrack.v1.config) = {mergeable: true, repo_overridable: true}
@@ -231,6 +262,8 @@ message Rule {
 
   // ── Self-heal / scheduling ───────────────────────────────────────────────────
 
+  // The watcher compares the datasource with Git on every poll and, on drift,
+  // has the orchestrator write Git's values back.
   bool self_heal = 20 [
     (google.api.field_behavior) = OPTIONAL,
     (vartrack.v1.config) = {admin_only: true}
