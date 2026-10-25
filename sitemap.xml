@@ -5,6 +5,10 @@
          <lastmod>2026-10-25</lastmod>
     </url>
     <url>
+         <loc>https://jarin-devoss.github.io/varTrack/faq/</loc>
+         <lastmod>2026-10-25</lastmod>
+    </url>
+    <url>
          <loc>https://jarin-devoss.github.io/varTrack/getting-started/</loc>
          <lastmod>2026-10-25</lastmod>
     </url>
@@ -37,7 +41,15 @@
          <lastmod>2026-10-25</lastmod>
     </url>
     <url>
+         <loc>https://jarin-devoss.github.io/varTrack/concepts/glossary/</loc>
+         <lastmod>2026-10-25</lastmod>
+    </url>
+    <url>
          <loc>https://jarin-devoss.github.io/varTrack/concepts/sync-strategies/</loc>
+         <lastmod>2026-10-25</lastmod>
+    </url>
+    <url>
+         <loc>https://jarin-devoss.github.io/varTrack/configuration/</loc>
          <lastmod>2026-10-25</lastmod>
     </url>
     <url>
@@ -61,6 +73,10 @@
          <lastmod>2026-10-25</lastmod>
     </url>
     <url>
+         <loc>https://jarin-devoss.github.io/varTrack/configuration/rule-options/</loc>
+         <lastmod>2026-10-25</lastmod>
+    </url>
+    <url>
          <loc>https://jarin-devoss.github.io/varTrack/configuration/schema-registry/</loc>
          <lastmod>2026-10-25</lastmod>
     </url>
@@ -74,6 +90,42 @@
     </url>
     <url>
          <loc>https://jarin-devoss.github.io/varTrack/examples/gitea/</loc>
+         <lastmod>2026-10-25</lastmod>
+    </url>
+    <url>
+         <loc>https://jarin-devoss.github.io/varTrack/guides/</loc>
+         <lastmod>2026-10-25</lastmod>
+    </url>
+    <url>
+         <loc>https://jarin-devoss.github.io/varTrack/guides/add-a-tenant/</loc>
+         <lastmod>2026-10-25</lastmod>
+    </url>
+    <url>
+         <loc>https://jarin-devoss.github.io/varTrack/guides/onboard-a-repository/</loc>
+         <lastmod>2026-10-25</lastmod>
+    </url>
+    <url>
+         <loc>https://jarin-devoss.github.io/varTrack/operations/high-availability/</loc>
+         <lastmod>2026-10-25</lastmod>
+    </url>
+    <url>
+         <loc>https://jarin-devoss.github.io/varTrack/operations/monitoring/</loc>
+         <lastmod>2026-10-25</lastmod>
+    </url>
+    <url>
+         <loc>https://jarin-devoss.github.io/varTrack/operations/production-checklist/</loc>
+         <lastmod>2026-10-25</lastmod>
+    </url>
+    <url>
+         <loc>https://jarin-devoss.github.io/varTrack/operations/troubleshooting/</loc>
+         <lastmod>2026-10-25</lastmod>
+    </url>
+    <url>
+         <loc>https://jarin-devoss.github.io/varTrack/operations/upgrading/</loc>
+         <lastmod>2026-10-25</lastmod>
+    </url>
+    <url>
+         <loc>https://jarin-devoss.github.io/varTrack/reference/environment-variables/</loc>
          <lastmod>2026-10-25</lastmod>
     </url>
     <url>
