@@ -1,7 +1,7 @@
 # ─── Stage 0: Build CUE from source ─────────────────────────────────────────
 # Build the CUE binary with a current Go toolchain so the embedded stdlib
 # is up to date. Avoids shipping a pre-built binary whose Go version may lag.
-FROM golang:1.26-alpine@sha256:91eda9776261207ea25fd06b5b7fed8d397dd2c0a283e77f2ab6e91bfa71079d AS cue-builder
+FROM golang:1.27-alpine@sha256:f92b6ef800e499660581efdabdf25d9d817a9d124eaf900924f0504e7e27e12d AS cue-builder
 ARG CUE_VERSION=v0.16.0
 RUN go install cuelang.org/go/cmd/cue@${CUE_VERSION}
 
