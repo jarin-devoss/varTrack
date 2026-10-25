@@ -270,12 +270,30 @@ func (h *CLIHandler) HandleGetTask(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, taskJSON(task))
 }
 
+// parseTaskLimit reads the limit query value: empty means 0, which the
+// orchestrator takes as its default page size. It reports false for anything
+// that is not a whole number that fits an int32.
+func parseTaskLimit(s string) (int32, bool) {
+	if s == "" {
+		return 0, true
+	}
+	n, err := strconv.ParseInt(s, 10, 32)
+	if err != nil || n < 0 {
+		return 0, false
+	}
+	return int32(n), true
+}
+
 // HandleListTasks handles GET /v1/cli/tasks?tenant_id=&limit=: the tasks of
 // the rules the caller can read.
 func (h *CLIHandler) HandleListTasks(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	tenantID := coalesce(q.Get("tenant_id"), r.Header.Get("X-Tenant-ID"), "default")
-	limit, _ := strconv.Atoi(q.Get("limit"))
+	limit, ok := parseTaskLimit(q.Get("limit"))
+	if !ok {
+		writeJSON(w, http.StatusBadRequest, errDetail("limit must be a whole number from 0 to 2147483647"))
+		return
+	}
 	token := middlewares.GitTokenFromContext(r.Context())
 
 	caller, err := h.authz.Authenticate(r.Context(), token)
@@ -285,7 +303,7 @@ func (h *CLIHandler) HandleListTasks(w http.ResponseWriter, r *http.Request) {
 	}
 	resp, err := h.cli.ListTasks(outgoing(r, caller, tenantID), &pb.ListCliTasksRequest{
 		TenantId: tenantID,
-		Limit:    int32(limit),
+		Limit:    limit,
 		Cursor:   q.Get("cursor"),
 	})
 	if err != nil {
