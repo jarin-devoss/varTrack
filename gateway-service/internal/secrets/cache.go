@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	pb_utils "gateway-service/internal/gen/proto/go/vartrack/v1/utils"
+	pb_utils "vartrack/libs/gen/vartrack/v1/utils"
 )
 
 type cacheEntry struct {
@@ -76,8 +76,10 @@ func (c *CachingRefResolver) Resolve(ctx context.Context, ref *pb_utils.SecretRe
 		return "", nil
 	}
 
-	// Inline values: zero-cost pass-through.
-	if _, ok := ref.Source.(*pb_utils.SecretRef_Value); ok {
+	// Inline values and files: pass-through. A file is read each time, so a
+	// rotated file is picked up; only secret-manager reads are cached.
+	switch ref.Source.(type) {
+	case *pb_utils.SecretRef_Value, *pb_utils.SecretRef_File:
 		return c.inner.Resolve(ctx, ref, managerName)
 	}
 

@@ -4,6 +4,7 @@ package internal
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -25,6 +26,9 @@ type AdminConfig struct {
 	Addr           string
 	EnablePprof    bool
 	MetricsHandler http.Handler // optional — mounted at /metrics when non-nil
+
+	// OPAReload, when non-nil, is mounted at POST /admin/opa/reload.
+	OPAReload func(context.Context) error
 }
 
 // NewAdminServer creates an admin server with health, metrics, and optional debug endpoints.
@@ -37,6 +41,10 @@ func NewAdminServer(cfg AdminConfig, healthHandler *handlers.HealthHandler) *Adm
 
 	if cfg.MetricsHandler != nil {
 		mux.Handle("/metrics", cfg.MetricsHandler)
+	}
+
+	if cfg.OPAReload != nil {
+		mux.HandleFunc("POST /admin/opa/reload", opaReloadHandler(cfg.OPAReload))
 	}
 
 	if cfg.EnablePprof {
@@ -61,6 +69,22 @@ func NewAdminServer(cfg AdminConfig, healthHandler *handlers.HealthHandler) *Adm
 			IdleTimeout:       60 * time.Second,
 		},
 		healthHandler: healthHandler,
+	}
+}
+
+// opaReloadHandler recompiles the OPA policy. On failure the previous policy
+// stays in force and the compile error is returned to the caller.
+func opaReloadHandler(reload func(context.Context) error) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if err := reload(r.Context()); err != nil {
+			slog.Warn("OPA policy reload failed", "error", err)
+			w.WriteHeader(http.StatusUnprocessableEntity)
+			_ = json.NewEncoder(w).Encode(map[string]string{"detail": err.Error()})
+			return
+		}
+		slog.Info("OPA policy reloaded")
+		_ = json.NewEncoder(w).Encode(map[string]string{"status": "reloaded"})
 	}
 }
 

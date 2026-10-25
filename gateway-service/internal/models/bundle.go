@@ -4,12 +4,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sort"
+	"strings"
 	"sync"
 
 	"gateway-service/internal/driver"
 	"gateway-service/internal/secrets"
 
-	pb "gateway-service/internal/gen/proto/go/vartrack/v1/models"
+	pb "vartrack/libs/gen/vartrack/v1/models"
 )
 
 // Bundle holds the runtime state for the loaded bundle configuration.
@@ -124,6 +126,14 @@ func (s *Bundle) GetPlatformForRule(ctx context.Context, platformName, datasourc
 
 // GetSecretManager returns a cached or newly created secret manager.
 func (s *Bundle) GetSecretManager(ctx context.Context, name string) (SecretManager, error) {
+	if name == "" {
+		resolved, err := s.defaultSecretManagerName()
+		if err != nil {
+			return nil, err
+		}
+		name = resolved
+	}
+
 	s.mu.RLock()
 	if sm, ok := s.secretManagers[name]; ok {
 		s.mu.RUnlock()
@@ -215,27 +225,185 @@ func (s *Bundle) WebhookBodyLimit() int64 {
 	return defaultLimit
 }
 
-// FindRuleByDatasource returns the first rule matching the datasource name.
-func (s *Bundle) FindRuleByDatasource(datasourceName string) *pb.Rule {
-	for _, r := range s.bundle.Rules {
-		if r.Datasource == datasourceName {
-			return r
-		}
+// PlatformNames are the names of the bundle's platforms, in order.
+func (s *Bundle) PlatformNames() []string {
+	names := make([]string, 0, len(s.bundle.Platforms))
+	for _, p := range s.bundle.Platforms {
+		names = append(names, PlatformName(p))
 	}
-	return nil
+	return names
 }
 
-// GetPlatformForDatasource resolves the platform from a datasource name via the rule config.
-func (s *Bundle) GetPlatformForDatasource(ctx context.Context, datasourceName string) (Platform, string, error) {
-	rule := s.FindRuleByDatasource(datasourceName)
-	if rule == nil {
+// RulesForDatasource returns every rule that writes to the datasource, one
+// per platform: a rule is identified by its platform and datasource.
+func (s *Bundle) RulesForDatasource(datasourceName string) []*pb.Rule {
+	var rules []*pb.Rule
+	for _, r := range s.bundle.Rules {
+		if r.Datasource == datasourceName {
+			rules = append(rules, r)
+		}
+	}
+	return rules
+}
+
+// PlatformMismatchError: rules on several platforms write to the datasource
+// and the webhook carries none of their event headers.
+type PlatformMismatchError struct {
+	Datasource string
+	// Expected maps each platform with a rule for the datasource to the
+	// event header its webhooks carry.
+	Expected map[string]string
+}
+
+func (e *PlatformMismatchError) Error() string {
+	var parts []string
+	for name, header := range e.Expected {
+		parts = append(parts, fmt.Sprintf("%s (%s)", name, header))
+	}
+	sort.Strings(parts)
+	return fmt.Sprintf("no platform with a rule for datasource %q sent this webhook: expected an event header of %s",
+		e.Datasource, strings.Join(parts, ", "))
+}
+
+// AmbiguousPlatformError: more than one platform of the same type has a rule
+// for the datasource, and the webhook's headers fit them all. The signature
+// is what can still tell them apart (WebhookCandidate.Signed).
+type AmbiguousPlatformError struct {
+	Datasource string
+	Platforms  []string
+	// Candidates are the platforms the headers fit, in the order of the rules.
+	Candidates []WebhookCandidate
+}
+
+func (e *AmbiguousPlatformError) Error() string {
+	return fmt.Sprintf("this webhook fits several platforms with a rule for datasource %q (%s): "+
+		"their webhooks cannot be told apart", e.Datasource, strings.Join(e.Platforms, ", "))
+}
+
+// WebhookCandidate is a platform whose headers fit a webhook.
+type WebhookCandidate struct {
+	Name     string
+	Platform Platform
+}
+
+// Signed reports whether body, delivered with the given request headers, is
+// signed with this platform's webhook secret: the platform's own signature
+// check, run on a hash of the body. A platform without a secret signs nothing.
+func (c WebhookCandidate) Signed(body []byte, header func(string) string) bool {
+	if c.Platform.Secret() == "" {
+		return false
+	}
+	mac := c.Platform.WebhookHasher()
+	if mac == nil {
+		return false
+	}
+	mac.Write(body)
+	return c.Platform.VerifySignature(mac, header(c.Platform.SignatureHeader()))
+}
+
+// BySignature picks, among the candidates, the only platform whose webhook
+// secret signed the body. Platforms of one type share their signature scheme,
+// so the secret is what tells their deliveries apart, as it is the one thing
+// only the sender and its platform know. It reports false when no candidate
+// signed the body, or several did (the same secret on both).
+func (e *AmbiguousPlatformError) BySignature(body []byte, header func(string) string) (WebhookCandidate, bool) {
+	var found []WebhookCandidate
+	for _, c := range e.Candidates {
+		if c.Signed(body, header) {
+			found = append(found, c)
+		}
+	}
+	if len(found) != 1 {
+		return WebhookCandidate{}, false
+	}
+	return found[0], true
+}
+
+// PlatformForWebhook resolves the platform that sent a webhook for the
+// datasource. With one rule it is that rule's platform. With rules on several
+// platforms, the request says which: the event header of the platform. Gitea
+// also sends GitHub's header, so a platform of another type than GitHub wins
+// when both fit.
+func (s *Bundle) PlatformForWebhook(ctx context.Context, datasourceName string, header func(string) string) (Platform, string, error) {
+	rules := s.RulesForDatasource(datasourceName)
+	if len(rules) == 0 {
 		return nil, "", fmt.Errorf("no rule found for datasource %q", datasourceName)
 	}
-	platformName := rule.Platform
-	managerName := rule.GetSecretManager()
-	plat, err := s.GetPlatform(ctx, platformName, managerName)
-	if err != nil {
-		return nil, "", err
+	if len(rules) == 1 {
+		plat, err := s.GetPlatformForRule(ctx, rules[0].Platform, datasourceName)
+		return plat, rules[0].Platform, err
 	}
-	return plat, platformName, nil
+
+	type candidate struct {
+		name     string
+		driver   string
+		platform Platform
+	}
+	var fits []candidate
+	expected := map[string]string{}
+	for _, r := range rules {
+		plat, err := s.GetPlatformForRule(ctx, r.Platform, datasourceName)
+		if err != nil {
+			return nil, "", err
+		}
+		expected[r.Platform] = plat.EventTypeHeader()
+		if header(plat.EventTypeHeader()) != "" {
+			fits = append(fits, candidate{r.Platform, s.platformDriver(r.Platform), plat})
+		}
+	}
+	var specific []candidate
+	for _, c := range fits {
+		if c.driver != "github" {
+			specific = append(specific, c)
+		}
+	}
+	if len(specific) > 0 {
+		fits = specific
+	}
+	switch len(fits) {
+	case 0:
+		return nil, "", &PlatformMismatchError{Datasource: datasourceName, Expected: expected}
+	case 1:
+		return fits[0].platform, fits[0].name, nil
+	}
+	names := make([]string, len(fits))
+	candidates := make([]WebhookCandidate, len(fits))
+	for i, c := range fits {
+		names[i] = c.name
+		candidates[i] = WebhookCandidate{Name: c.name, Platform: c.platform}
+	}
+	return nil, "", &AmbiguousPlatformError{Datasource: datasourceName, Platforms: names, Candidates: candidates}
+}
+
+// platformDriver is the driver type ("github", "gitea") of the named platform.
+func (s *Bundle) platformDriver(name string) string {
+	for _, p := range s.bundle.Platforms {
+		if PlatformName(p) == name {
+			return PlatformDriverName(p)
+		}
+	}
+	return ""
+}
+
+// defaultSecretManagerName is the secret manager a rule without its own
+// secret_manager uses: the one tagged "default", else the bundle's only one.
+func (s *Bundle) defaultSecretManagerName() (string, error) {
+	var names []string
+	for _, sm := range s.bundle.GetSecretManagers() {
+		if n := SecretManagerName(sm); n != "" {
+			names = append(names, n)
+		}
+	}
+	for _, n := range names {
+		if n == "vault-default" {
+			return n, nil
+		}
+	}
+	switch len(names) {
+	case 1:
+		return names[0], nil
+	case 0:
+		return "", fmt.Errorf("the bundle has no secret_managers to read a {ref} from")
+	}
+	return "", fmt.Errorf("the bundle has several secret managers (%s); name one with secret_manager on the rule, or tag one \"default\"", strings.Join(names, ", "))
 }

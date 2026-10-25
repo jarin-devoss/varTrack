@@ -6,7 +6,7 @@ import (
 
 	"gateway-service/internal/driver"
 
-	pb_models "gateway-service/internal/gen/proto/go/vartrack/v1/models"
+	pb_models "vartrack/libs/gen/vartrack/v1/models"
 )
 
 // SecretManager is the interface all secret manager drivers must implement.

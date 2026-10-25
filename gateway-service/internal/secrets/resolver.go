@@ -7,7 +7,8 @@ import (
 	"fmt"
 	"time"
 
-	pb_utils "gateway-service/internal/gen/proto/go/vartrack/v1/utils"
+	pb_utils "vartrack/libs/gen/vartrack/v1/utils"
+	libsecrets "vartrack/libs/secrets"
 
 	"golang.org/x/sync/singleflight"
 )
@@ -41,7 +42,10 @@ func NewRefResolver(getManager func(ctx context.Context, name string) (Fetcher, 
 // Resolve returns the plain-text value for a SecretRef.
 //   - nil ref → empty string
 //   - inline value → returned directly (zero overhead)
-//   - external ref → fetched via singleflight deduplication
+//   - file → the whole file on this machine, trimmed — or, with key, that
+//     key of it (see libsecrets.ReadSecretFile)
+//   - external ref → fetched via singleflight deduplication from managerName
+//     (the rule's secret_manager); empty means the bundle's default one
 //
 // The provided context is threaded into the secret manager call so that
 // the caller's deadline (e.g. webhook handler's 10s timeout) is honoured.
@@ -54,17 +58,18 @@ func (r *RefResolver) Resolve(ctx context.Context, ref *pb_utils.SecretRef, mana
 	case *pb_utils.SecretRef_Value:
 		return source.Value, nil
 
+	case *pb_utils.SecretRef_File:
+		value, err := libsecrets.ReadSecretFile(source.File, ref.GetKey())
+		if err != nil {
+			return "", err
+		}
+		RegisterSecret(value)
+		return value, nil
+
 	case *pb_utils.SecretRef_Ref:
 		extRef := source.Ref
 		if extRef.Path == "" || extRef.Key == "" {
 			return "", fmt.Errorf("external secret ref: path and key are required")
-		}
-
-		if managerName == "" {
-			return "", fmt.Errorf(
-				"secret ref (path=%q, key=%q) requires a secret_manager but none is configured in the rule",
-				extRef.Path, extRef.Key,
-			)
 		}
 
 		// Deduplication key using \x00 separator (cannot appear in valid paths).

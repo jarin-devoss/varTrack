@@ -4,13 +4,14 @@ package models
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"hash"
 
 	"gateway-service/internal/driver"
 	"gateway-service/internal/secrets"
 
-	pb_models "gateway-service/internal/gen/proto/go/vartrack/v1/models"
+	pb_models "vartrack/libs/gen/vartrack/v1/models"
 )
 
 // Platform abstracts a Git hosting provider (GitHub, GitLab, Bitbucket).
@@ -28,7 +29,32 @@ type Platform interface {
 	Close(ctx context.Context) error
 	Repos(ctx context.Context, patterns []string) ([]string, error)
 	Secret() string
+
+	// The Git API as the holder of token sees it. The CLI API authorizes by
+	// Git permission: whoever may push to a rule's repository may sync it.
+	CallerLogin(ctx context.Context, token string) (string, error)
+	CallerPermission(ctx context.Context, token, repo string) (RepoPermission, error)
+	CallerRepos(ctx context.Context, token string) (map[string]RepoPermission, error)
+	// CallerCanPush reports whether the holder of token may push to branch
+	// directly, branch protection included.
+	CallerCanPush(ctx context.Context, token, repo, branch string) (bool, error)
 }
+
+// RepoPermission is what a person may do in a repository, as the Git
+// platform reports it for their token.
+type RepoPermission struct {
+	Read  bool
+	Write bool
+	Admin bool
+}
+
+// Or is what either p or o allows.
+func (p RepoPermission) Or(o RepoPermission) RepoPermission {
+	return RepoPermission{Read: p.Read || o.Read, Write: p.Write || o.Write, Admin: p.Admin || o.Admin}
+}
+
+// ErrTokenRejected: the Git platform does not accept the caller's token.
+var ErrTokenRejected = errors.New("the Git platform rejected the token")
 
 // PlatformConfig bundles the inputs needed to create a Platform instance.
 type PlatformConfig struct {

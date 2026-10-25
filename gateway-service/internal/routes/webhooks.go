@@ -7,7 +7,7 @@ import (
 	"gateway-service/internal/middlewares"
 	"gateway-service/internal/models"
 
-	pb "gateway-service/internal/gen/proto/go/vartrack/v1/services"
+	pb "vartrack/libs/gen/vartrack/v1/services"
 )
 
 // WebhookRoutes mounts all webhook endpoints under the /webhooks/ prefix.

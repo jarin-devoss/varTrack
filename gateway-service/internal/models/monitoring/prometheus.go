@@ -10,7 +10,7 @@ import (
 	"strconv"
 	"time"
 
-	monpb "gateway-service/internal/gen/proto/go/vartrack/v1/models/monitoring"
+	monpb "vartrack/libs/gen/vartrack/v1/models/monitoring"
 	"gateway-service/internal/protoutil"
 
 	otelprom "go.opentelemetry.io/otel/exporters/prometheus"

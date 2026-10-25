@@ -10,6 +10,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/open-policy-agent/opa/rego"
 )
@@ -27,16 +28,19 @@ type OPAInput struct {
 	DryRun     bool    `json:"dry_run"`
 }
 
-// OPAUser is the identity sub-document inside OPAInput.
+// OPAUser is the caller inside OPAInput, as their Git platform knows them.
 type OPAUser struct {
-	Sub    string   `json:"sub"`
-	Email  string   `json:"email"`
-	Groups []string `json:"groups"`
+	Login        string   `json:"login"`        // their login on the rule's platform
+	Platform     string   `json:"platform"`     // e.g. "gitea"
+	Permission   string   `json:"permission"`   // on the rule's repositories: admin, write, read, none
+	Admin        bool     `json:"admin"`        // in config.cue's ui.auth.admins
+	Repositories []string `json:"repositories"` // the rule's repository names and patterns
 }
 
 // OPAEvaluator evaluates a Rego policy against each CLI request.
 //
 // Two modes:
+//
 //   - Embedded: policy compiled in-process with the OPA Go SDK.
 //     Zero network calls, sub-millisecond evaluation after warmup.
 //     Use NewOPAEvaluatorEmbedded.
@@ -95,21 +99,37 @@ func NewOPAEvaluatorFromFile(path string) (*OPAEvaluator, error) {
 // REST server. serverURL must point to the data API rule endpoint, e.g.:
 //
 //	http://opa:8181/v1/data/vartrack/authz/allow
+//
+// Requests to the server time out after five seconds; a policy server that
+// does not answer denies the request (the handler answers 500).
 func NewOPAEvaluatorServer(serverURL string) *OPAEvaluator {
 	return &OPAEvaluator{serverURL: serverURL}
 }
 
 // Reload re-reads the policy file (if configured) and recompiles.
 // Safe to call concurrently — writes are serialised by the mutex.
+// In server mode there is nothing to recompile and Reload does nothing.
+// When the new policy does not compile, the previous one stays in force.
 func (e *OPAEvaluator) Reload(ctx context.Context) error {
+	if e.serverURL != "" {
+		return nil
+	}
 	if e.filePath != "" {
 		data, err := os.ReadFile(e.filePath)
 		if err != nil {
 			return fmt.Errorf("reload OPA file %s: %w", e.filePath, err)
 		}
+		e.mu.Lock()
 		e.regoText = string(data)
+		e.mu.Unlock()
 	}
 	return e.build(ctx)
+}
+
+// ReadsFile reports whether the policy comes from a file, the only source
+// whose content can change while the gateway runs.
+func (e *OPAEvaluator) ReadsFile() bool {
+	return e != nil && e.filePath != ""
 }
 
 // Allow evaluates the policy against input and returns (true, nil) when
@@ -130,9 +150,13 @@ func (e *OPAEvaluator) Allow(ctx context.Context, input OPAInput) (bool, error) 
 // PrepareForEval parses + compiles the module once; subsequent Eval calls
 // reuse the compiled plan, making per-request evaluation very fast (~50µs).
 func (e *OPAEvaluator) build(ctx context.Context) error {
+	e.mu.RLock()
+	text := e.regoText
+	e.mu.RUnlock()
+
 	pq, err := rego.New(
 		rego.Query("data.vartrack.authz.allow"),
-		rego.Module("vartrack_authz.rego", e.regoText),
+		rego.Module("vartrack_authz.rego", text),
 	).PrepareForEval(ctx)
 	if err != nil {
 		return err
@@ -182,6 +206,8 @@ func (e *OPAEvaluator) evalEmbedded(ctx context.Context, input OPAInput) (bool, 
 
 // ── server evaluation ─────────────────────────────────────────────────────────
 
+var opaHTTPClient = &http.Client{Timeout: 5 * time.Second}
+
 func (e *OPAEvaluator) queryServer(ctx context.Context, input OPAInput) (bool, error) {
 	body, err := json.Marshal(map[string]interface{}{"input": input})
 	if err != nil {
@@ -194,7 +220,7 @@ func (e *OPAEvaluator) queryServer(ctx context.Context, input OPAInput) (bool, e
 	}
 	req.Header.Set("Content-Type", "application/json")
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := opaHTTPClient.Do(req)
 	if err != nil {
 		return false, fmt.Errorf("OPA server: %w", err)
 	}
@@ -204,6 +230,9 @@ func (e *OPAEvaluator) queryServer(ctx context.Context, input OPAInput) (bool, e
 	if err != nil {
 		return false, err
 	}
+	if resp.StatusCode < 200 || resp.StatusCode > 299 {
+		return false, fmt.Errorf("OPA server answered HTTP %d", resp.StatusCode)
+	}
 
 	var result struct {
 		Result interface{} `json:"result"`
@@ -212,11 +241,14 @@ func (e *OPAEvaluator) queryServer(ctx context.Context, input OPAInput) (bool, e
 		return false, fmt.Errorf("parse OPA response: %w", err)
 	}
 
+	// Only true allows: the allow rule itself (…/vartrack/authz/allow), or
+	// the package document (…/vartrack/authz) with allow set to true.
 	switch v := result.Result.(type) {
 	case bool:
 		return v, nil
 	case map[string]interface{}:
-		return len(v) > 0, nil
+		allow, _ := v["allow"].(bool)
+		return allow, nil
 	default:
 		return false, nil
 	}
@@ -224,19 +256,20 @@ func (e *OPAEvaluator) queryServer(ctx context.Context, input OPAInput) (bool, e
 
 // ── shared helper ─────────────────────────────────────────────────────────────
 
-// InputFromRequest builds an OPAInput from the validated JWT claims and
-// the parameters extracted from the incoming CLI request.
+// InputFromRequest builds the OPA input of a CLI request.
 func InputFromRequest(
-	claims *Claims,
+	caller *GitCaller,
 	action, resource, datasource, env, filePath, tenantID string,
 	dryRun bool,
 ) OPAInput {
 	var user OPAUser
-	if claims != nil {
+	if caller != nil {
 		user = OPAUser{
-			Sub:    claims.Subject,
-			Email:  claims.Email,
-			Groups: claims.Groups,
+			Login:        caller.Login,
+			Platform:     caller.Platform,
+			Permission:   caller.PermissionName(),
+			Admin:        caller.Admin,
+			Repositories: caller.Repos,
 		}
 	}
 	return OPAInput{

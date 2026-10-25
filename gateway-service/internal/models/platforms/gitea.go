@@ -22,9 +22,9 @@ import (
 	"gateway-service/internal/protoutil"
 	"gateway-service/internal/secrets"
 
-	validate "gateway-service/internal/gen/proto/go/buf/validate"
-	pb_models "gateway-service/internal/gen/proto/go/vartrack/v1/models"
-	pb_gt "gateway-service/internal/gen/proto/go/vartrack/v1/models/platforms"
+	validate "vartrack/libs/gen/buf/validate"
+	pb_models "vartrack/libs/gen/vartrack/v1/models"
+	pb_gt "vartrack/libs/gen/vartrack/v1/models/platforms"
 )
 
 var _ models.Platform = (*Gitea)(nil)
@@ -315,4 +315,30 @@ func (g *Gitea) ConstructCloneURL(repo string) string {
 		auth = fmt.Sprintf("%s@", g.token)
 	}
 	return fmt.Sprintf("%s://%s%s/%s.git", u.Scheme, auth, u.Host, fullRepo)
+}
+
+// ─── the caller's view (CLI API authorization) ────────────────────────────────
+
+func (g *Gitea) caller() callerAPI {
+	return callerAPI{client: g.client, base: g.getBaseAPIURL(), scheme: "token", pageParam: "limit"}
+}
+
+// CallerLogin implements models.Platform.
+func (g *Gitea) CallerLogin(ctx context.Context, token string) (string, error) {
+	return g.caller().Login(ctx, token)
+}
+
+// CallerPermission implements models.Platform.
+func (g *Gitea) CallerPermission(ctx context.Context, token, repo string) (models.RepoPermission, error) {
+	return g.caller().Permission(ctx, token, repo)
+}
+
+// CallerRepos implements models.Platform.
+func (g *Gitea) CallerRepos(ctx context.Context, token string) (map[string]models.RepoPermission, error) {
+	return g.caller().Repos(ctx, token)
+}
+
+// CallerCanPush implements models.Platform.
+func (g *Gitea) CallerCanPush(ctx context.Context, token, repo, branch string) (bool, error) {
+	return g.caller().CanPush(ctx, token, repo, branch)
 }

@@ -20,8 +20,8 @@ import (
 	"gateway-service/internal/protoutil"
 	"gateway-service/internal/secrets"
 
-	pb_models "gateway-service/internal/gen/proto/go/vartrack/v1/models"
-	pb_gh "gateway-service/internal/gen/proto/go/vartrack/v1/models/platforms"
+	pb_models "vartrack/libs/gen/vartrack/v1/models"
+	pb_gh "vartrack/libs/gen/vartrack/v1/models/platforms"
 )
 
 var _ models.Platform = (*GitHub)(nil)
@@ -299,4 +299,30 @@ func (g *GitHub) ConstructCloneURL(repo string) string {
 		auth = fmt.Sprintf("%s@", g.token)
 	}
 	return fmt.Sprintf("%s://%s%s/%s.git", u.Scheme, auth, u.Host, fullRepo)
+}
+
+// ─── the caller's view (CLI API authorization) ────────────────────────────────
+
+func (g *GitHub) caller() callerAPI {
+	return callerAPI{client: g.client, base: g.getBaseAPIURL(), scheme: "Bearer", pageParam: "per_page"}
+}
+
+// CallerLogin implements models.Platform.
+func (g *GitHub) CallerLogin(ctx context.Context, token string) (string, error) {
+	return g.caller().Login(ctx, token)
+}
+
+// CallerPermission implements models.Platform.
+func (g *GitHub) CallerPermission(ctx context.Context, token, repo string) (models.RepoPermission, error) {
+	return g.caller().Permission(ctx, token, repo)
+}
+
+// CallerRepos implements models.Platform.
+func (g *GitHub) CallerRepos(ctx context.Context, token string) (map[string]models.RepoPermission, error) {
+	return g.caller().Repos(ctx, token)
+}
+
+// CallerCanPush implements models.Platform.
+func (g *GitHub) CallerCanPush(ctx context.Context, token, repo, branch string) (bool, error) {
+	return g.caller().CanPush(ctx, token, repo, branch)
 }
