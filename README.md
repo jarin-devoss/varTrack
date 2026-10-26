@@ -85,7 +85,6 @@ It works alongside whatever deploys your services: VarTrack only keeps their run
 - **Multi-sink fan-out** — one push writes to multiple sinks in parallel from one rule set
 - **4 sync strategies** — `AUTO` (cost-model picks for you), `GIT_UPSERT_ALL`, `GIT_SMART_REPAIR`, `LIVE_STATE`
 - **Stale key pruning** — once per environment, after all its files are written, delete the keys varTrack wrote before that Git no longer holds; `prune.protection` globs keep keys that must never go, and a key changed outside varTrack is kept and reported
-- **MongoDB shapes** — one nested document per file by default (`STRATEGY_DOCUMENT`); one document per key or per file as it parsed are one `update_strategy` away
 
 ### Routing & environments
 - **`destination_template`** — control exactly where data lands per rule using `{tenant}` and `{env}` placeholders
