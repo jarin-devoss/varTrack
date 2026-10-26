@@ -2180,17 +2180,16 @@
 </span></code></pre></div>
 <hr />
 <h2 id="full-schema-example">Full schema example<a class="headerlink" href="#full-schema-example" title="Permanent link">&para;</a></h2>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-9-1"><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>// schemas/myapp.cue
-</span><span id="__span-9-2"><a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>#Config: {
-</span><span id="__span-9-3"><a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a>  app_port:          int &amp; &gt;=1024 &amp; &lt;=65535   @logger()
-</span><span id="__span-9-4"><a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a>  log_level:         &quot;debug&quot; | &quot;info&quot; | &quot;warn&quot; | &quot;error&quot;
-</span><span id="__span-9-5"><a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a>  &quot;database.host&quot;:   string &amp; !=&quot;&quot;            @logger()
-</span><span id="__span-9-6"><a id="__codelineno-9-6" name="__codelineno-9-6" href="#__codelineno-9-6"></a>  &quot;database.port&quot;:   int                      @logger()
-</span><span id="__span-9-7"><a id="__codelineno-9-7" name="__codelineno-9-7" href="#__codelineno-9-7"></a>  &quot;database.password&quot;: string &amp; !=&quot;&quot;          @secret() @logger()
-</span><span id="__span-9-8"><a id="__codelineno-9-8" name="__codelineno-9-8" href="#__codelineno-9-8"></a>  &quot;api.secret_key&quot;:  string &amp; !=&quot;&quot;            @secret()
-</span><span id="__span-9-9"><a id="__codelineno-9-9" name="__codelineno-9-9" href="#__codelineno-9-9"></a>  max_connections:   int &amp; &gt;=1 &amp; &lt;=1000
-</span><span id="__span-9-10"><a id="__codelineno-9-10" name="__codelineno-9-10" href="#__codelineno-9-10"></a>}
+<div class="language-text highlight"><pre><span></span><code><span id="__span-9-1"><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>// app.yaml.cue at the root of the schema repo — checks every file named app.yaml
+</span><span id="__span-9-2"><a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>&quot;app.port&quot;:          string &amp; =~&quot;^[0-9]+$&quot;   @logger()
+</span><span id="__span-9-3"><a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a>&quot;log.level&quot;:         &quot;debug&quot; | &quot;info&quot; | &quot;warn&quot; | &quot;error&quot;
+</span><span id="__span-9-4"><a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a>&quot;database.host&quot;:     string &amp; !=&quot;&quot;            @logger()
+</span><span id="__span-9-5"><a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a>&quot;database.port&quot;:     string &amp; =~&quot;^[0-9]+$&quot;   @logger()
+</span><span id="__span-9-6"><a id="__codelineno-9-6" name="__codelineno-9-6" href="#__codelineno-9-6"></a>&quot;database.password&quot;: string &amp; !=&quot;&quot;            @secret() @logger()
+</span><span id="__span-9-7"><a id="__codelineno-9-7" name="__codelineno-9-7" href="#__codelineno-9-7"></a>&quot;api.secret_key&quot;:    string &amp; !=&quot;&quot;            @secret()
+</span><span id="__span-9-8"><a id="__codelineno-9-8" name="__codelineno-9-8" href="#__codelineno-9-8"></a>&quot;max_connections&quot;?:  string &amp; =~&quot;^[0-9]+$&quot;
 </span></code></pre></div>
+<p>The fields are at the top level, not inside a <code>#Definition</code> — <code>cue vet</code> checks the data only against top-level fields. Values are strings, as the file is flattened first, so a number is a string matching a pattern; see <a href="../schema-registry/#cue-schemas">CUE schemas</a>.</p>
 <p>Register the schema in your bundle:</p>
 <div class="language-text highlight"><pre><span></span><code><span id="__span-10-1"><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a>bundle: {
 </span><span id="__span-10-2"><a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a>  schema_registry: {

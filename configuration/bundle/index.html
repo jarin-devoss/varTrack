@@ -2463,7 +2463,7 @@
 </span><span id="__span-8-4"><a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a>  branch:   &quot;main&quot;
 </span><span id="__span-8-5"><a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a>}
 </span></code></pre></div>
-<p>When a webhook arrives, varTrack validates the parsed config against the tenant's CUE schema before writing anything. Invalid payloads are rejected with a descriptive error.</p>
+<p>varTrack checks every file a sync reads against the tenant's CUE schema for it before writing anything. A file that fails is skipped when the rule sets <code>strict_validation</code>, and written with a warning otherwise — see <a href="../schema-registry/#cue-schemas">CUE schemas</a> for how a file's schema is picked and an example.</p>
 <p>The schema repo can also hold <code>bundle.json</code> (or <code>rules.json</code>): the tenant's rule settings, laid over the rules here. It only holds what the tenant adds or changes — nothing has to be repeated or kept in sync. See the <a href="../schema-registry/">Schema Registry reference</a> for how a rule is built from the layers, the full repo structure, the <code>bundle.json</code> format, tenant env vars, and caching behaviour.</p>
 <hr />
 <h2 id="secret_managers"><code>secret_managers</code><a class="headerlink" href="#secret_managers" title="Permanent link">&para;</a></h2>
