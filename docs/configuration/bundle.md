@@ -229,7 +229,7 @@ schema_registry: {
 }
 ```
 
-When a webhook arrives, varTrack validates the parsed config against the tenant's CUE schema before writing anything. Invalid payloads are rejected with a descriptive error.
+varTrack checks every file a sync reads against the tenant's CUE schema for it before writing anything. A file that fails is skipped when the rule sets `strict_validation`, and written with a warning otherwise — see [CUE schemas](schema-registry.md#cue-schemas) for how a file's schema is picked and an example.
 
 The schema repo can also hold `bundle.json` (or `rules.json`): the tenant's rule settings, laid over the rules here. It only holds what the tenant adds or changes — nothing has to be repeated or kept in sync. See the [Schema Registry reference](schema-registry.md) for how a rule is built from the layers, the full repo structure, the `bundle.json` format, tenant env vars, and caching behaviour.
 

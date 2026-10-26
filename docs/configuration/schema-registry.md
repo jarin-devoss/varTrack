@@ -12,11 +12,15 @@ The schema registry is a Git repository that holds two things:
 ```
 my-org/schemas/                  ← schema registry repo
 ├── bundle.json                  ← the tenant's rule settings (optional)
-├── app-settings.yaml.cue        ← CUE schema for app-settings.yaml
-├── config.toml.cue              ← CUE schema for config.toml
-├── dotenv.cue                   ← CUE schema for .env files
-└── default.cue                  ← fallback schema when no file-specific match
+├── app.yaml.cue                 ← CUE schema for every file named app.yaml
+├── config.toml.cue              ← CUE schema for every file named config.toml
+├── .env.cue                     ← CUE schema for every file named .env
+├── default.cue                  ← schema for any other file (optional)
+└── presets/
+    └── team.json                ← a preset bundle.json can extend (optional)
 ```
+
+Schemas are read from the repository's root only; a `.cue` file in a folder is not used. See [CUE schemas](#cue-schemas) for what goes in one.
 
 The schema repo is pointed to from `config.cue`:
 
@@ -29,6 +33,100 @@ schema_registry: {
 ```
 
 varTrack clones this repo for each tenant on first use and refreshes it automatically on a TTL (default 5 minutes) or immediately when the schema repo itself receives a push webhook.
+
+---
+
+## CUE schemas
+
+A schema says which keys a config file must have and what their values may be. varTrack checks every file a sync reads against its schema before writing it to a sink.
+
+### Which schema a file gets
+
+1. `<file name>.cue` at the schema repo's root, by the file's name without its folder: `configs/app.yaml` and `services/api/app.yaml` both get `app.yaml.cue`
+2. else `default.cue`
+3. else the file is not checked
+
+If the `cue` binary is not on the orchestrator's `PATH` (or at `CUE_BINARY`), files are not checked and a warning is logged.
+
+### What a schema sees
+
+A schema checks the data as the sink receives it, not the file as written: after [`root_key`](rule-options.md#root_key) is taken out, the [environment slice](../concepts/environment-resolution.md) is picked, the data is flattened to dotted keys, [`variables_map`](rule-options.md#variables_map) renames are applied and [`@secret()`](annotations.md#secret) values are read.
+
+**Every value is a string by then:** `5432` is `"5432"`, `true` is `"true"`, `null` is `""`. Write `string & =~"^[0-9]+$"` for a number — `int` rejects every value.
+
+### Example
+
+The config repository has `configs/app.yaml`:
+
+```yaml
+app:
+  name: checkout
+database:
+  host: db.internal
+  port: 5432
+log:
+  level: info
+features:
+  dark_mode: true
+```
+
+which the schema sees as:
+
+```json
+{
+  "app.name":           "checkout",
+  "database.host":      "db.internal",
+  "database.port":      "5432",
+  "log.level":          "info",
+  "features.dark_mode": "true"
+}
+```
+
+The schema repo has `app.yaml.cue`:
+
+```cue
+// Required: a file without one of these keys fails.
+"app.name":      string & !=""
+"database.host": string & !=""
+"database.port": string & =~"^[0-9]{1,5}$"
+
+// One of a fixed set of values.
+"log.level": "debug" | "info" | "warn" | "error"
+
+// Optional: checked only when the file has it.
+"features.dark_mode"?: "true" | "false"
+```
+
+This file passes. With `port: 55x` and `level: verbose` it fails with:
+
+```
+"log.level": 4 errors in empty disjunction: …
+"database.port": invalid value "55x" (out of bound =~"^[0-9]{1,5}$")
+```
+
+and without `app.name` with `"app.name": incomplete value !=""`.
+
+Keys the schema does not name are allowed. To reject them, wrap the schema in `close({ … })`:
+
+```cue
+close({
+  "app.name":      string & !=""
+  "database.host": string & !=""
+})
+```
+
+A field can also carry [`@secret()` and `@logger()`](annotations.md).
+
+### When a file fails
+
+| [`strict_validation`](rule-options.md#strict_validation) | The file |
+|---|---|
+| `false` (default) | is written; the failure is logged as a warning and the file's validation is `warn` |
+| `true` | is not written; its validation is `failed`. The push's other files still sync |
+
+[`vt validate`](../cli/index.md#vt-validate) always treats a failure as an error and exits 1, so a pull request check catches it before the merge.
+
+To try a schema on your machine, put the flat form above in `data.json` and run `cue vet app.yaml.cue data.json`.
 
 ---
 
