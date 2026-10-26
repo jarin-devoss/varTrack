@@ -127,17 +127,17 @@ field changed  datasource=mongo  env=production  field=database.password
 ## Full schema example
 
 ```cue
-// schemas/myapp.cue
-#Config: {
-  app_port:          int & >=1024 & <=65535   @logger()
-  log_level:         "debug" | "info" | "warn" | "error"
-  "database.host":   string & !=""            @logger()
-  "database.port":   int                      @logger()
-  "database.password": string & !=""          @secret() @logger()
-  "api.secret_key":  string & !=""            @secret()
-  max_connections:   int & >=1 & <=1000
-}
+// app.yaml.cue at the root of the schema repo — checks every file named app.yaml
+"app.port":          string & =~"^[0-9]+$"   @logger()
+"log.level":         "debug" | "info" | "warn" | "error"
+"database.host":     string & !=""            @logger()
+"database.port":     string & =~"^[0-9]+$"   @logger()
+"database.password": string & !=""            @secret() @logger()
+"api.secret_key":    string & !=""            @secret()
+"max_connections"?:  string & =~"^[0-9]+$"
 ```
+
+The fields are at the top level, not inside a `#Definition` — `cue vet` checks the data only against top-level fields. Values are strings, as the file is flattened first, so a number is a string matching a pattern; see [CUE schemas](schema-registry.md#cue-schemas).
 
 Register the schema in your bundle:
 
