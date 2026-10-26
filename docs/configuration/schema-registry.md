@@ -94,6 +94,29 @@ A preset is named like this:
 
 `local>` (or no prefix) is the Git server of the file naming the preset: the schema repo's for `bundle.json`, the pushed repo's for `vartrack.json`, and the preset's own inside a preset.
 
+So an entry reads as **`<server>><owner>/<repo>`**, then optionally **`:<file>`** (a file at the repository's root, without `.json`) or **`//<path>`** (a file in a folder, without `.json`), then optionally **`#<branch or tag>`**. With neither `:` nor `//` the file is `default.json`.
+
+**Example — one setting shared by every checkout repository.** Create a repository `my-org/presets` with the file `repos/checkout.json`:
+
+```json
+{
+  "description": "Settings every checkout service repository uses",
+  "prune": {"protection": ["features.*"]},
+  "branch_map": {"release": "production"}
+}
+```
+
+Then each repository that wants it names it in its `vartrack.json`, and adds what is its own:
+
+```json
+{
+  "extends": ["local>my-org/presets//repos/checkout"],
+  "root_key": "checkout"
+}
+```
+
+The sync of that repository runs with `features.*` added to the rule's `prune.protection`, `release: production` added to its `branch_map`, and `root_key` `checkout`. Change `repos/checkout.json` once and every repository that extends it gets the change on its next sync. A preset can hold any option the file extending it may set — for a `vartrack.json` that is the [overridable keys](per-repo-overrides.md#overridable-keys); `description` is only a note and is dropped.
+
 How presets are resolved:
 
 - presets are merged left to right, then the settings beside `extends` go on top;

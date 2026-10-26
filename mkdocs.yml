@@ -8,60 +8,59 @@ edit_uri: edit/main/docs/
 docs_dir: docs
 
 nav:
-  - Home: index.md
-  - Getting Started: getting-started.md
-  - Why varTrack?: why-vartrack.md
-  - How It Works:
-    - Overview: concepts/index.md
-    - Destination Template: concepts/destination-template.md
+  - Get Started:
+    - index.md
+    - Getting Started: getting-started.md
+    - Why varTrack?: why-vartrack.md
+    - Examples:
+      - examples/index.md
+      - Gitea platform: examples/gitea.md
+  - Concepts:
+    - concepts/index.md
     - Environment Resolution: concepts/environment-resolution.md
-    - Sync Strategies: concepts/sync-strategies.md
+    - Destination Template: concepts/destination-template.md
+    - Sync Strategies & Prune: concepts/sync-strategies.md
     - Drift Detection & Self-Heal: concepts/drift-detection.md
     - Glossary: concepts/glossary.md
   - Guides:
-    - Overview: guides/index.md
+    - guides/index.md
     - Onboard a Config Repository: guides/onboard-a-repository.md
     - Add a Tenant: guides/add-a-tenant.md
+    - CI/CD Integration: cli/cicd.md
   - Configuration:
-    - Configuration Files: configuration/index.md
-    - Bundle Reference (config.cue): configuration/bundle.md
-    - Schema Registry (bundle.json): configuration/schema-registry.md
-    - Per-Repo Overrides (vartrack.json): configuration/per-repo-overrides.md
+    - configuration/index.md
+    - config.cue: configuration/bundle.md
+    - bundle.json & Schemas: configuration/schema-registry.md
+    - vartrack.json: configuration/per-repo-overrides.md
     - Rule Options: configuration/rule-options.md
     - File Formats: configuration/formats.md
     - Schema Annotations: configuration/annotations.md
     - Authentication & Authorization: configuration/auth.md
-  - Sinks:
-    - Overview: sinks/index.md
-    - MongoDB: sinks/mongodb.md
-    - Redis: sinks/redis.md
-    - ZooKeeper: sinks/zookeeper.md
-    - S3: sinks/s3.md
-    - Kubernetes ConfigMap: sinks/configmap.md
-    - Helm: sinks/helm.md
-    - Vercel: sinks/vercel.md
-    - Linux Server: sinks/linux-server.md
-  - CLI:
-    - vt Commands: cli/index.md
-    - CI/CD Integration: cli/cicd.md
-  - Services:
-    - gateway-service: services/gateway.md
-    - orchestrator-service: services/orchestrator.md
-    - watcher-service: services/watcher.md
-  - Deployment:
-    - Docker Compose: deployment/docker-compose.md
+    - Sinks:
+      - sinks/index.md
+      - MongoDB: sinks/mongodb.md
+      - Redis: sinks/redis.md
+      - ZooKeeper: sinks/zookeeper.md
+      - S3: sinks/s3.md
+      - Kubernetes ConfigMap: sinks/configmap.md
+      - Helm: sinks/helm.md
+      - Vercel: sinks/vercel.md
+      - Linux Server: sinks/linux-server.md
   - Operations:
+    - Docker Compose: deployment/docker-compose.md
     - Production Checklist: operations/production-checklist.md
     - High Availability & Scaling: operations/high-availability.md
     - Monitoring: operations/monitoring.md
     - Troubleshooting: operations/troubleshooting.md
     - Upgrading: operations/upgrading.md
+    - Services:
+      - gateway-service: services/gateway.md
+      - orchestrator-service: services/orchestrator.md
+      - watcher-service: services/watcher.md
   - Reference:
+    - vt Commands: cli/index.md
     - Environment Variables: reference/environment-variables.md
-  - FAQ: faq.md
-  - Examples:
-    - Overview: examples/index.md
-    - Gitea platform: examples/gitea.md
+    - FAQ: faq.md
 
 theme:
   name: material
@@ -91,6 +90,7 @@ theme:
     - navigation.tracking
     - navigation.indexes
     - navigation.footer
+    - navigation.top
     - content.code.copy
     - content.code.annotate
     - search.highlight
