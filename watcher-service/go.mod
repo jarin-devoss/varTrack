@@ -5,7 +5,7 @@ go 1.26.0
 require (
 	github.com/go-zookeeper/zk v1.0.4
 	github.com/prometheus/client_golang v1.25.0
-	github.com/prometheus/common v0.72.1
+	github.com/prometheus/common v0.73.1
 	github.com/redis/go-redis/v9 v9.19.0
 	go.opentelemetry.io/otel v1.47.0
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc v1.47.0
@@ -18,6 +18,7 @@ require (
 
 require (
 	cuelang.org/go v0.16.1 // indirect
+	github.com/pandatix/go-abnf v0.5.3 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20260928230214-8a89bd6388cc // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260928230214-8a89bd6388cc // indirect
 )
