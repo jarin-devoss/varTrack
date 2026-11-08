@@ -14,6 +14,7 @@ import logging
 from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor
 
+from app.pipeline import repo_scope
 from app.ui import ledger, views
 
 logger = logging.getLogger(__name__)
@@ -69,6 +70,11 @@ def check_datasource(datasource: str, platform: str = "", tenant: str = "") -> t
         for rule in rules:
             name = views.rule_name(rule)
             for record in records:
+                # An environment no branch feeds any more (the rule changed after it wrote it) is not this rule's to
+                # keep in sync: comparing it with the rule's destination would call it drifted for ever, and healing
+                # could not fix it. The UI shows it as "No longer synced by this rule".
+                if not repo_scope.branch_for(rule, record["env"]):
+                    continue
                 where = f"{name}/{record['env']}"
                 # A task records its environment when it finishes, so a running
                 # one without an env may be writing to this environment too.

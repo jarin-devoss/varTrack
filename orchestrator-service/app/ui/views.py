@@ -15,24 +15,13 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
+from app.pipeline import repo_scope
 from app.tasks.payload import extract_prune_config
 from app.ui import ledger
 
 logger = logging.getLogger(__name__)
 
-SINK_TYPES = ("mongo", "redis", "zookeeper", "s3", "configmap", "helm", "vercel", "linux_server")
-
-# Rule fields that only tell how to connect to a sink.
-_SINK_HINTS: list[tuple[str, tuple[str, ...]]] = [
-    ("mongo", ("mongo_uri", "database", "collection")),
-    ("zookeeper", ("zk_hosts",)),
-    ("redis", ("redis_hosts", "redis_host")),
-    ("s3", ("s3_bucket",)),
-    ("linux_server", ("ssh_host", "file_path")),
-    ("configmap", ("k8s_namespace", "k8s_kubeconfig_path", "configmap_name")),
-    ("helm", ("helm_release_name", "helm_chart", "helm_namespace")),
-    ("vercel", ("vercel_project_id", "vercel_token")),
-]
+SINK_TYPES = ("mongo", "redis", "zookeeper", "s3", "configmap", "helm", "linux_server")
 
 # A comparison is answered from the cache for this long; after that the cached
 # one is still answered at once while the sink is read again in the background
@@ -46,16 +35,9 @@ _refresh_pool = ThreadPoolExecutor(max_workers=8, thread_name_prefix="ui_refresh
 
 
 def sink_type(rule: dict) -> str:
-    ds = str(rule.get("datasource", "")).lower().replace("-", "_")
-    if ds in SINK_TYPES:
-        return ds
-    for kind in SINK_TYPES:
-        if ds.startswith(kind + "_") or ds.startswith(kind):
-            return kind
-    for kind, hints in _SINK_HINTS:
-        if any(h in rule for h in hints):
-            return kind
-    return "mongo"
+    """The sink kind the rule's datasource name says ("mongo-primary" is a mongo)."""
+    from app.pipeline.sinks.settings import kind_of
+    return kind_of(str(rule.get("datasource", ""))) or "mongo"
 
 
 def rule_name(rule: dict) -> str:
@@ -70,50 +52,45 @@ def _sync_mode(raw: Any) -> str:
 
 def _prune(rule: dict) -> dict:
     p = extract_prune_config(rule)
-    return {"enabled": p.enabled, "dryRun": p.dry_run, "protection": p.protection}
+    return {"enabled": p.enabled, "protection": p.protection}
 
 
-def destination(rule: dict, tenant: str, env: str, *, placeholders: bool = False) -> str:
-    """Where this rule writes for *env*, as the sink would resolve it."""
-    kind = sink_type(rule)
-    if kind == "linux_server" and not placeholders:
-        from app.pipeline.sinks.linux_server import _safe_filename
-        env = _safe_filename(env)  # the sink names files after the env this way
-    tpl = rule.get("destination_template") or ""
-    if tpl:
-        try:
-            return tpl.format(tenant=tenant, env=env)
-        except (KeyError, IndexError, ValueError):
-            return tpl
-    if kind == "linux_server":
-        # LinuxServerSink._resolve_path
-        from pathlib import PurePosixPath
-        base = PurePosixPath(rule.get("file_path", "/etc/vartrack/config.env"))
-        if rule.get("env_as_dir", False):
-            return str(base.parent / env / base.name)
-        if rule.get("env_as_filename", True):
-            return str(base.parent / f"{base.stem}_{env}{base.suffix}")
-        return str(base)
-    if kind == "mongo":
-        return f"{rule.get('database', 'vartrack')}.{rule.get('collection', 'variables')}"
-    if kind == "zookeeper":
-        return f"{rule.get('zk_base_path', '').rstrip('/')}/{tenant}/{env}"
-    if kind == "redis":
-        return rule.get("redis_key_prefix") or f"{tenant}:{rule.get('datasource')}:{env}"
-    if kind == "s3":
-        # S3Sink._key_prefix
-        prefix = f"{str(rule.get('s3_key_prefix', '')).rstrip('/')}/{env}".lstrip("/")
-        return f"s3://{rule.get('s3_bucket', '')}/{prefix}/"
-    return rule.get("datasource", "")
+def _settings(rule: dict):
+    from app.pipeline.sinks.settings import for_rule
+    try:
+        return for_rule(rule)
+    except ValueError:
+        return None
+
+
+def destination(rule: dict, tenant: str, env: str) -> str:
+    """Where this rule writes for *env*, as the sink resolves it: the datasource's settings in
+    config.cue and the rule's destination_template (app/pipeline/destinations.py, the one answer)."""
+    from app.pipeline.destinations import destination_of
+
+    settings = _settings(rule)
+    if settings is None:
+        return str(rule.get("datasource", ""))
+    try:
+        where = destination_of(settings.name, rule, tenant, env, settings)
+    except (KeyError, IndexError, ValueError):
+        return str(rule.get("destination_template") or rule.get("datasource", ""))
+    if settings.kind == "mongo":
+        return f"{settings.get('database', 'vartrack')}.{where}"
+    if settings.kind == "s3":
+        return f"s3://{where}/"
+    return where or str(rule.get("datasource", ""))
+
+
+# Stand-ins every sink keeps as they are when it makes a name safe (lowercase letters and digits).
+_TENANT, _ENV = "vt0tenant0vt", "vt0env0vt"
 
 
 def destination_template(rule: dict) -> str:
+    """Where the rule writes, with {tenant} and {env} left in."""
     if rule.get("destination_template"):
         return rule["destination_template"]
-    kind = sink_type(rule)
-    if kind == "mongo":
-        return f"{rule.get('database', 'vartrack')}.{rule.get('collection', 'variables')}"
-    return destination(rule, "{tenant}", "{env}", placeholders=True)
+    return destination(rule, _TENANT, _ENV).replace(_TENANT, "{tenant}").replace(_ENV, "{env}")
 
 
 # Rule options (rule.proto) whose key in rule_base's output is not their name
@@ -131,8 +108,17 @@ NOT_SHOWN_IN_UI: dict[str, str] = {
     "tenants": "which tenants may layer the rule; the page is already for one tenant",
     "drift_ignore": "its effect shows as the 'ignored' state of a key, not as a list of patterns",
     "strict_validation": "an ETL detail; a rejected file shows on its task",
+    "schema_map": "an ETL detail; each file of a task shows which schema checked it",
+    "schema_from_file": "an ETL detail; each file of a task shows which schema checked it",
     "branch": "which branch the periodic heal compares; the page lists the branches of the branch map",
     "max_changed_files": "an ETL limit; a push cut to it logs a warning",
+    "repo_url": "where the rule's files are cloned from; the page lists the repositories",
+    "key_format": "a sink's layout choice; the page shows the keys as written",
+    "file_format": "a sink's layout choice; the page shows the keys as written",
+    "env_as_filename": "a sink's layout choice; the page shows the keys as written",
+    "helm_values_mode": "a sink's layout choice; the page shows the keys as written",
+    "s3_object_tags": "a sink's layout choice; the page shows the keys as written",
+    "s3_tag_keys": "a sink's layout choice; the page shows the keys as written",
 }
 
 
@@ -160,7 +146,6 @@ def rule_base(rule: dict, tenant: str) -> dict[str, Any]:
         "syncMode": _sync_mode(rule.get("sync_mode")),
         "selfHeal": bool(rule.get("self_heal", False)),
         "suspended": bool(rule.get("suspend", False)),
-        "dryRun": bool(rule.get("dry_run", False)),
         "prune": _prune(rule),
         **({"secretManager": rule["secret_manager"]} if rule.get("secret_manager") else {}),
     }
@@ -340,7 +325,10 @@ def _drift_marker(tenant: str, rule: dict, env: str, differs: bool) -> str | Non
 
 def target_view(rule: dict, tenant: str, record: dict, *, recent_tasks: list[dict]) -> dict[str, Any]:
     env = record["env"]
-    cmp = compare(rule, tenant, record)
+    # An environment no branch feeds any more (the rule changed after it wrote it) is not compared with the rule's
+    # destination: that would call it drifted for ever. It is shown, with its history and keys, as no longer synced.
+    fed = bool(repo_scope.branch_for(rule, env))
+    cmp = compare(rule, tenant, record) if fed else None
     last_sync = record.get("lastSync") or None
     target: dict[str, Any] = {
         "env": env,
@@ -351,7 +339,7 @@ def target_view(rule: dict, tenant: str, record: dict, *, recent_tasks: list[dic
         "commitMessage": record.get("commitMessage") or None,
         "author": record.get("author") or None,
         "keyCount": len(record.get("desired", {})),
-        "lastPolledAt": cmp["checkedAt"],
+        **({"lastPolledAt": cmp["checkedAt"]} if cmp else {}),
         **({"lastSync": last_sync} if last_sync else {}),
     }
     # A sync for this environment that is still running supersedes the last finished one.
@@ -362,6 +350,10 @@ def target_view(rule: dict, tenant: str, record: dict, *, recent_tasks: list[dic
             "startedAt": running["createdAt"], "written": 0, "pruned": 0, "message": running.get("message", ""),
         }
 
+    if cmp is None:
+        _drift_marker(tenant, rule, env, False)
+        target.update(drift="not_watched", notFed=repo_scope.nothing_feeds(rule, env))
+        return target
     if cmp["error"]:
         target.update(drift="unknown", driftMessage=cmp["error"])
         return target
@@ -383,14 +375,46 @@ def target_view(rule: dict, tenant: str, record: dict, *, recent_tasks: list[dic
     return target
 
 
+def produced_envs(rule: dict) -> dict[str, str]:
+    """The environments the rule says it produces, and the branch that feeds each: every branch_map value, every
+    file_path_map environment, and the environment of a rule with no strategy ("default"). With branch_as_env the
+    environment of the rule's own branch (the others depend on which branches exist, which Git says, not the rule).
+    Written or not: the first sync of one writes it."""
+    out: dict[str, str] = {}
+    for branch, env in sorted((rule.get("branch_map") or {}).items()):
+        out.setdefault(env, branch)
+    own = repo_scope.own_branch(rule)
+    for env in sorted(rule.get("file_path_map") or {}):
+        out.setdefault(env, own)
+    if rule.get("branch_as_env"):
+        out.setdefault(own or str(rule.get("branch") or "main"), own or str(rule.get("branch") or "main"))
+    elif not out:
+        out["default"] = own
+    return {env: branch for env, branch in out.items() if branch and repo_scope.branch_for(rule, env)}
+
+
+def unsynced_target(rule: dict, tenant: str, env: str, branch: str) -> dict[str, Any]:
+    """An environment the rule produces and has never written: shown so a first sync can be started from the page."""
+    repos = list(rule.get("repositories") or [])
+    repo = ledger.repo_name(rule["repo_url"]) if rule.get("repo_url") else (repos[0] if len(repos) == 1 else "")
+    return {
+        "env": env,
+        "repository": repo,
+        "ref": branch,
+        "destination": destination(rule, tenant, env),
+        "keyCount": 0,
+        "drift": "missing",
+        "fedBy": branch,
+    }
+
+
 def rule_view(rule: dict, tenant: str, records: list[dict], tasks: list[dict]) -> dict[str, Any]:
     name = rule_name(rule)
     rule_tasks = [t for t in tasks if t.get("rule") == name]
-    targets = [
-        target_view(rule, tenant, rec, recent_tasks=rule_tasks)
-        for rec in sorted(records, key=lambda r: r.get("env", ""))
-        if rec.get("datasource") == rule.get("datasource")
-    ]
+    mine = [rec for rec in sorted(records, key=lambda r: r.get("env", "")) if rec.get("datasource") == rule.get("datasource")]
+    targets = [target_view(rule, tenant, rec, recent_tasks=rule_tasks) for rec in mine]
+    written = {rec.get("env") for rec in mine}
+    targets += [unsynced_target(rule, tenant, env, branch) for env, branch in produced_envs(rule).items() if env not in written]
     return {**rule_base(rule, tenant), "targets": targets}
 
 
