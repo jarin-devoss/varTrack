@@ -1,0 +1,44 @@
+# The gateway is the front door: Git platforms deliver webhooks to it and `vt`
+# users call its CLI API, so :5657 is open to any source. (Put the cluster's
+# ingress or load balancer in front of it and restrict by source address there.)
+# Its admin port (health, metrics, pprof, OPA reload) is Prometheus only. Its permission
+# engine (AUTHZ_ADDR, :5658) is for the orchestrator's API alone: it takes Git tokens,
+# and every call must also carry a signed grant.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: vartrack-gateway-ingress
+  labels:
+    app.kubernetes.io/part-of: vartrack
+    app.kubernetes.io/component: gateway
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/part-of: vartrack
+      app.kubernetes.io/component: gateway
+  policyTypes:
+    - Ingress
+  ingress:
+    - ports:
+        - protocol: TCP
+          port: 5657
+    # the orchestrator API, asking the permission engine
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/part-of: vartrack
+              app.kubernetes.io/component: orchestrator
+      ports:
+        - protocol: TCP
+          port: 5658
+    # prometheusSelector
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: monitoring
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: prometheus
+      ports:
+        - protocol: TCP
+          port: 9092
