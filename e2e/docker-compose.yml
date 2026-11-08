@@ -13,6 +13,7 @@ networks:
     driver: bridge
 
 volumes:
+  demo-state:          # written by e2e-demo (the web UI's OAuth client), read by the services
   gitea-data:
   mongo-data:
   zookeeper-data:
@@ -95,17 +96,24 @@ services:
     networks: [vartrack]
     environment:
       APP_ENV: demo
+      # Internal authentication is on: the orchestrator accepts a call only with a signed grant, and the
+      # gateway, the watcher and the test runner each sign theirs. A demo value; read it from a file
+      # (INTERNAL_AUTH_SECRET_FILE) anywhere real.
+      INTERNAL_AUTH_SECRET: "${VARTRACK_DEMO_INTERNAL_AUTH_SECRET:-demo-internal-auth-secret-0123456789abcdef}"
       LOG_LEVEL: INFO
       CONFIG_PATH: /app/config.cue
       ORCHESTRATOR_ADDR: "orchestrator-api:50051"
       GATEWAY_ADDR: ":5657"
       ADMIN_ADDR: ":9092"
+      # The permission engine, served to the orchestrator's web UI.
+      AUTHZ_ADDR: ":5658"
       MTLS_ENABLED: "false"
       OTEL_ENABLED: "false"
       JAEGER_ENABLED: "false"
       ELK_ENABLED: "false"
     volumes:
       - ./config.cue:/app/config.cue:ro
+      - demo-state:/demo-state:ro
       # The CLI API's OPA policy (auth.opa.policy_file in the bundle).
       - ../examples/policies:/app/policies:ro
     ports:
@@ -130,11 +138,19 @@ services:
     command: ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--log-level", "info"]
     environment:
       APP_ENV: demo
+      # Internal authentication is on: the orchestrator accepts a call only with a signed grant, and the
+      # gateway, the watcher and the test runner each sign theirs. A demo value; read it from a file
+      # (INTERNAL_AUTH_SECRET_FILE) anywhere real.
+      INTERNAL_AUTH_SECRET: "${VARTRACK_DEMO_INTERNAL_AUTH_SECRET:-demo-internal-auth-secret-0123456789abcdef}"
       LOG_LEVEL: INFO
       CONFIG_PATH: /app/config.cue
-      ORCHESTRATOR_ADDR: "0.0.0.0:8000"
+      ORCHESTRATOR_HTTP_ADDR: "0.0.0.0:8000"
+      # The web UI re-reads a sink after 2 s here (10 s by default), so a page shows a change within seconds.
+      UI_COMPARE_TTL_SECONDS: "2"
       ADMIN_HOST: "0.0.0.0"
       ADMIN_PORT: "9093"
+      # The web UI asks the gateway's permission engine what a signed-in user may see and do.
+      GATEWAY_AUTHZ_ADDR: "gateway:5658"
       CELERY_BROKER_URL: "redis://redis:6379/0"
       CELERY_RESULT_BACKEND: "redis://redis:6379/0"
       SCHEMA_CACHE_DIR: /app/schema_registry
@@ -142,6 +158,11 @@ services:
       MTLS_ENABLED: "false"
       CORS_ORIGINS: "*"
       GIT_ALLOWED_HOSTS: "gitea"
+      # The config repository is private: git adds the demo admin's credentials for this host only, so logs keep
+      # showing the plain URL.
+      GIT_CONFIG_COUNT: "1"
+      GIT_CONFIG_KEY_0: url.http://demo-admin:VarTrack123@gitea:3000/.insteadOf
+      GIT_CONFIG_VALUE_0: http://gitea:3000/
       PROM_ENABLED: "true"
       PROM_PORT: "9090"
       OTEL_ENABLED: "false"
@@ -149,6 +170,7 @@ services:
       ELK_ENABLED: "false"
     volumes:
       - ./config.cue:/app/config.cue:ro
+      - demo-state:/demo-state:ro
       - schema-cache:/app/schema_registry
       - git-cache:/app/git_cache
     ports:
@@ -177,6 +199,10 @@ services:
               "--concurrency=4"]
     environment:
       APP_ENV: demo
+      # Internal authentication is on: the orchestrator accepts a call only with a signed grant, and the
+      # gateway, the watcher and the test runner each sign theirs. A demo value; read it from a file
+      # (INTERNAL_AUTH_SECRET_FILE) anywhere real.
+      INTERNAL_AUTH_SECRET: "${VARTRACK_DEMO_INTERNAL_AUTH_SECRET:-demo-internal-auth-secret-0123456789abcdef}"
       LOG_LEVEL: INFO
       CONFIG_PATH: /app/config.cue
       CELERY_BROKER_URL: "redis://redis:6379/0"
@@ -184,11 +210,17 @@ services:
       SCHEMA_CACHE_DIR: /app/schema_registry
       GIT_CACHE_DIR: /app/git_cache
       GIT_ALLOWED_HOSTS: "gitea"
+      # The config repository is private: git adds the demo admin's credentials for this host only, so logs keep
+      # showing the plain URL.
+      GIT_CONFIG_COUNT: "1"
+      GIT_CONFIG_KEY_0: url.http://demo-admin:VarTrack123@gitea:3000/.insteadOf
+      GIT_CONFIG_VALUE_0: http://gitea:3000/
       OTEL_ENABLED: "false"
       JAEGER_ENABLED: "false"
       ELK_ENABLED: "false"
     volumes:
       - ./config.cue:/app/config.cue:ro
+      - demo-state:/demo-state:ro
       - schema-cache:/app/schema_registry
       - git-cache:/app/git_cache
     depends_on:
@@ -207,17 +239,23 @@ services:
     networks: [vartrack]
     environment:
       APP_ENV: demo
+      # Internal authentication is on: the orchestrator accepts a call only with a signed grant, and the
+      # gateway, the watcher and the test runner each sign theirs. A demo value; read it from a file
+      # (INTERNAL_AUTH_SECRET_FILE) anywhere real.
+      INTERNAL_AUTH_SECRET: "${VARTRACK_DEMO_INTERNAL_AUTH_SECRET:-demo-internal-auth-secret-0123456789abcdef}"
       LOG_LEVEL: INFO
       CONFIG_PATH: /app/config.cue
       ORCHESTRATOR_ADDR: "orchestrator-api:50051"
       HEAL_TIMEOUT: 30s
-      POLL_INTERVAL: ${WATCHER_POLL_INTERVAL:-60s}
+      # A test stack looks every 10 s so that a spec waits seconds, not minutes (the product default is 60 s).
+      POLL_INTERVAL: ${WATCHER_POLL_INTERVAL:-10s}
       ADMIN_ADDR: ":9091"
       OTEL_ENABLED: "false"
       JAEGER_ENABLED: "false"
       ELK_ENABLED: "false"
     volumes:
       - ./config.cue:/app/config.cue:ro
+      - demo-state:/demo-state:ro
     ports:
       - "9091:9091"
     depends_on:
@@ -335,6 +373,20 @@ services:
 
 # ── E2E init + demo script ────────────────────────────────────────────────────
 
+  # The web UI as shipped: the static build behind nginx, proxying /api/* to the services.
+  ui:
+    build:
+      context: ../ui
+    networks: [vartrack]
+    environment:
+      GATEWAY_URL: http://gateway:5657
+      ORCHESTRATOR_URL: http://orchestrator-api:8000
+      WATCHER_URL: http://watcher:9091
+    ports:
+      - "8080:8080"
+    depends_on:
+      gateway: {condition: service_healthy}
+
   e2e-demo:
     build:
       context: ../e2e/init
@@ -342,10 +394,12 @@ services:
     networks: [vartrack]
     environment:
       ORCHESTRATOR_URL: http://orchestrator-api:8000
+      INTERNAL_AUTH_SECRET: "${VARTRACK_DEMO_INTERNAL_AUTH_SECRET:-demo-internal-auth-secret-0123456789abcdef}"
       GITEA_URL: http://gitea:3000
       GITEA_ADMIN_USER: demo-admin
       GITEA_ADMIN_PASSWORD: VarTrack123
       WATCHER_POLL_INTERVAL: "10"
+      DEMO_STATE: /demo-state
       MINIO_ENDPOINT: http://minio:9002
       MINIO_ACCESS_KEY: minioadmin
       MINIO_SECRET_KEY: minioadmin
@@ -357,6 +411,7 @@ services:
       - ../e2e/configs:/demo/configs:ro
       - ../e2e/schemas:/demo/schemas:ro
       - ../e2e/results:/results
+      - demo-state:/demo-state
     depends_on:
       gitea:            {condition: service_healthy}
       orchestrator-api: {condition: service_healthy}

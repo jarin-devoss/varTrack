@@ -6,39 +6,33 @@
     {
       "platform": "gitea",
       "datasource": "mongo-primary",
-      "tenant_id": "default",
       "branch": "main"
     },
     {
       "platform": "gitea",
       "datasource": "zookeeper",
-      "tenant_id": "default",
       "branch": "main",
       "key_format": "slash"
     },
     {
       "platform": "gitea",
       "datasource": "redis",
-      "tenant_id": "default",
       "branch": "main"
     },
     {
       "platform": "gitea",
       "datasource": "s3-minio",
-      "tenant_id": "default",
       "branch": "main"
     },
     {
       "platform": "gitea",
       "datasource": "configmap-checkout",
-      "tenant_id": "default",
       "branch": "main",
       "key_format": "dot"
     },
     {
       "platform": "gitea",
       "datasource": "helm-checkout",
-      "tenant_id": "default",
       "branch": "main",
       "helm_values_mode": "file"
     }
