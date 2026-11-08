@@ -23,6 +23,10 @@ platforms. A user signs in with one and can connect the others to the same
 session; each rule is then judged on its own platform with that platform's
 account. Without ui.auth the UI is open, as before.
 
+Signing in only says who someone is. What they may see and do, and who the admins
+are, is decided by the gateway's permission engine, which reads ui.auth.admins
+itself (app/authz_client.py); this module reads no admin list.
+
 Without a ui.auth block, the same settings are read from UI_AUTH_* environment
 variables (UI_AUTH_PLATFORMS, UI_AUTH_{P}_CLIENT_ID, …, see docs/configuration/auth.md).
 
@@ -65,11 +69,7 @@ class AuthConfig:
     redirect_uri: str
     secure_cookies: bool
     session_ttl: int
-    admins: frozenset[str]               # "platform:login", lower-case
     key: bytes                           # AES-256 key for sessions at rest
-
-    def is_admin(self, platform: str, login: str) -> bool:
-        return f"{platform}:{login}".lower() in self.admins
 
 
 @dataclass
@@ -112,9 +112,15 @@ def config() -> AuthConfig | None:
 
 
 def _cue_bundle() -> dict:
-    from app.config import _load_cue_bundle, settings as app_settings
+    from app.config import BundleError, _load_cue_bundle, settings as app_settings
 
-    return (_load_cue_bundle(app_settings.CONFIG_PATH) if app_settings.CONFIG_PATH else None) or {}
+    if not app_settings.CONFIG_PATH:
+        return {}
+    try:
+        return _load_cue_bundle(app_settings.CONFIG_PATH) or {}
+    except BundleError as exc:
+        # Not an empty bundle: with no ui.auth the UI would be open. Sign-in stays closed, and says why.
+        raise AuthConfigError(f"config.cue cannot be loaded: {exc}") from exc
 
 
 def _load_config() -> AuthConfig | None:
@@ -178,8 +184,9 @@ class _SecretManagerRefs:
                 kv_version=int(cfg.get("kv_version") or 2),
                 namespace=cfg.get("namespace") or None,
                 auth=_vault_auth(cfg, name),
-                verify_ssl=bool(cfg.get("verify_ssl", True)),
+                insecure_skip_verify=bool(cfg.get("insecure_skip_verify", False)),
                 ssl_ca=cfg.get("ssl_ca") or None,
+                ssl_ca_file=cfg.get("ssl_ca_file") or None,
                 timeout=_seconds(cfg.get("timeout"), 10),
                 max_retries=int(cfg.get("max_retries") or 3),
             )
@@ -273,10 +280,8 @@ def _from_bundle(bundle: dict, ui: dict) -> AuthConfig:
         bundle, providers,
         public_url=str(ui.get("public_url") or DEFAULT_PUBLIC_URL),
         redirect_url=str(auth.get("redirect_url") or ""),
-        admins=[str(a) for a in auth.get("admins") or []],
         session_ttl=int(auth.get("session_ttl_seconds") or DEFAULT_SESSION_TTL_SECONDS),
         session_secret=_secret(auth.get("session_secret"), "ui.auth.session_secret", refs, required=False),
-        admins_setting="ui.auth.admins",
     )
 
 
@@ -293,6 +298,11 @@ def _from_env(bundle: dict) -> AuthConfig | None:
         names = [n for n in [os.getenv("UI_AUTH_PLATFORM", "").strip()] if n]
     if not names:
         return None
+    if os.getenv("UI_AUTH_ADMINS", "").strip():
+        # Refuse rather than ignore: an admin list that silently stopped counting would
+        # leave people believing they were admins, or that nobody was.
+        raise AuthConfigError("UI_AUTH_ADMINS is no longer read: list the admins in ui.auth.admins in "
+                              "config.cue (\"platform:login\"); the gateway's permission engine decides who is one")
 
     providers = []
     for name in dict.fromkeys(names):
@@ -322,17 +332,15 @@ def _from_env(bundle: dict) -> AuthConfig | None:
         bundle, providers,
         public_url=os.getenv("UI_PUBLIC_URL", DEFAULT_PUBLIC_URL),
         redirect_url=os.getenv("UI_AUTH_REDIRECT_URL", "").strip(),
-        admins=[a for a in os.getenv("UI_AUTH_ADMINS", "").split(",")],
         session_ttl=int(os.getenv("UI_SESSION_TTL_SECONDS", str(DEFAULT_SESSION_TTL_SECONDS))),
         session_secret=os.getenv("UI_SESSION_SECRET", "").strip(),
-        admins_setting="UI_AUTH_ADMINS",
     )
 
 
 # ── shared ────────────────────────────────────────────────────────────────────
 
 def _assemble(bundle: dict, providers: list[_Provider], *, public_url: str, redirect_url: str,
-              admins: list[str], session_ttl: int, session_secret: str, admins_setting: str) -> AuthConfig:
+              session_ttl: int, session_secret: str) -> AuthConfig:
     platforms: dict[str, scm.Provider] = {}
     for p in providers:
         if p.platform in platforms:
@@ -347,18 +355,8 @@ def _assemble(bundle: dict, providers: list[_Provider], *, public_url: str, redi
             client_id=p.client_id,
             client_secret=p.client_secret,
             scopes=p.scopes or None,
-            verify_ssl=bool(settings.get("verify_ssl", True)),
+            verify_ssl=not settings.get("insecure_skip_verify", False),
         )
-
-    admin_set = set()
-    for entry in (a.strip().lower() for a in admins if a.strip()):
-        if ":" in entry:
-            admin_set.add(entry)
-        elif len(platforms) == 1:
-            admin_set.add(f"{next(iter(platforms)).lower()}:{entry}")
-        else:
-            # "alice" on GitHub and "alice" on Gitea need not be the same person.
-            raise AuthConfigError(f"{admins_setting} entry {entry!r} must name its platform, e.g. gitea:{entry}")
 
     redirect_uri = redirect_url or f"{public_url.rstrip('/')}/api/orchestrator/v1/auth/callback"
     return AuthConfig(
@@ -366,7 +364,6 @@ def _assemble(bundle: dict, providers: list[_Provider], *, public_url: str, redi
         redirect_uri=redirect_uri,
         secure_cookies=redirect_uri.startswith("https://"),
         session_ttl=session_ttl,
-        admins=frozenset(admin_set),
         key=_derive_key(session_secret or "\n".join(p.client_secret for p in providers)),
     )
 
