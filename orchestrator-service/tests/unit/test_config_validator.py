@@ -28,7 +28,7 @@ def test_a_prune_block_with_only_last_is_reported_as_disabled():
 
 def test_last_next_to_an_enabled_prune_is_only_reported_as_removed():
     for options in ({"prune": {"enabled": True, "last": True}}, {"prune": True, "prune_last": True},
-                    {"prune": {"dry_run": True, "last": False}}):
+                    {"prune": {"enabled": True, "last": False}}):
         (warning,) = [w for w in _warnings(options) if "prune.last was removed" in w]
         assert "is disabled" not in warning
 
@@ -37,22 +37,25 @@ def test_a_prune_without_last_is_not_reported():
     assert _warnings({"prune": {"enabled": True, "protection": ["x"]}}) == []
 
 
-@pytest.mark.parametrize("datasource,rule,effective", [
-    ("s3", {}, False),
+# (datasource, its block in config.cue, whether prune can delete anything)
+@pytest.mark.parametrize("datasource,block,effective", [
+    ("s3", {"bucket": "b"}, False),
     ("configmap-app", {}, False),
     ("helm", {}, False),
     ("linux_server-web", {}, False),
-    ("redis", {"redis_data_structure": "JSON"}, False),
+    ("redis", {"data_structure": "JSON"}, False),
     ("mongo-primary", {"update_strategy": "STRATEGY_FILE"}, False),
     ("mongo-primary", {"update_strategy": "STRATEGY_DOCUMENT"}, False),
     ("redis", {}, True),
     ("mongo", {"update_strategy": "STRATEGY_KEY_VALUE"}, True),
     ("zookeeper", {}, True),
-    ("vercel", {}, True),
 ])
-def test_prune_is_reported_only_where_the_sink_replaces_a_whole_object(datasource, rule, effective):
+def test_prune_is_reported_only_where_the_sink_replaces_a_whole_object(monkeypatch, datasource, block, effective):
+    kind, _, tag = datasource.partition("-")
+    bundle = {"datasources": [{kind: {**({"tag": tag} if tag else {}), **block}}]}
+    monkeypatch.setattr("app.pipeline.datasource_settings._bundle", lambda: bundle)
     result = config_validator.Result()
-    config_validator._prune_without_effect({"prune": True, **rule}, datasource, "bundle.json: the rule", result)
+    config_validator._prune_without_effect({"prune": True}, datasource, "bundle.json: the rule", result)
     assert (result.warnings == []) is effective
     if not effective:
         assert "prune has no effect" in result.warnings[0] and "on every write" in result.warnings[0]
@@ -90,7 +93,7 @@ def test_the_same_datasource_on_two_platforms_or_two_datasources_on_one_is_fine(
 def test_a_bundle_json_with_a_repeated_rule_is_refused(monkeypatch):
     from unittest.mock import MagicMock
 
-    monkeypatch.setattr("app.schema_registry.manager.get_schema_manager", lambda: MagicMock(_tenant_configs={}))
+    monkeypatch.setattr("app.schema_registry.manager.get_schema_manager", lambda: MagicMock(registration=lambda t: {}))
     content = json.dumps({"rules": _rules(("github", "mongo"), ("github", "mongo"))})
 
     result = config_validator.validate("bundle.json", content)
@@ -101,7 +104,7 @@ def test_a_bundle_json_with_a_repeated_rule_is_refused(monkeypatch):
 def test_a_repeated_rule_in_config_cue_is_reported_too(monkeypatch):
     from unittest.mock import MagicMock
 
-    monkeypatch.setattr("app.schema_registry.manager.get_schema_manager", lambda: MagicMock(_tenant_configs={}))
+    monkeypatch.setattr("app.schema_registry.manager.get_schema_manager", lambda: MagicMock(registration=lambda t: {}))
     monkeypatch.setattr("app.pipeline.datasource_settings._bundle",
                         lambda: {"rules": _rules(("github", "mongo"), ("github", "mongo"))})
 
@@ -178,3 +181,51 @@ def test_a_removed_option_is_a_warning_and_a_former_name_a_migration():
 def test_two_rules_for_one_platform_and_datasource_are_an_error():
     rule = {"platform": "github", "datasource": "mongo"}
     assert "repeats github/mongo" in _result("bundle.json", [rule, rule]).errors[0]
+
+
+# ── the tenant is where a file lives, never something it says ─────────────────
+
+def test_a_bundle_json_rule_with_a_tenant_id_is_an_error_that_says_where_the_tenant_comes_from():
+    result = config_validator.validate(
+        "bundle.json", json.dumps([{"platform": "gitea", "datasource": "mongo", "tenant_id": "acme"}]), "acme")
+    assert result.errors == [
+        "bundle.json: the gitea/mongo rule: tenant_id cannot be set — the tenant is the one whose schema "
+        "repository holds this bundle.json (acme); delete the key"]
+
+
+def test_a_tenant_id_that_names_another_tenant_says_so():
+    result = config_validator.validate(
+        "bundle.json", json.dumps([{"platform": "gitea", "datasource": "mongo", "tenant_id": "evil"}]), "acme")
+    [error] = result.errors
+    assert "(it names tenant evil, which this file cannot act as)" in error
+
+
+def test_every_rule_that_writes_it_is_named(monkeypatch):
+    rules = [{"platform": "gitea", "datasource": "mongo", "tenant_id": "a"},
+             {"platform": "gitea", "datasource": "redis"},
+             {"platform": "gitea", "datasource": "s3", "tenant_id": "b"}]
+    result = config_validator.validate("bundle.json", json.dumps(rules), "acme")
+    assert [e.split(":")[1].strip() for e in result.errors] == ["the gitea/mongo rule", "the gitea/s3 rule"]
+
+
+def test_with_rules_in_config_cue_it_is_one_error_not_also_an_ignored_option(monkeypatch):
+    bundle = {"rules": [{"platform": "gitea", "datasource": "mongo", "repositories": ["acme/*"]}]}
+    monkeypatch.setattr("app.pipeline.datasource_settings._bundle", lambda: bundle)
+    result = config_validator.validate(
+        "bundle.json", json.dumps([{"platform": "gitea", "datasource": "mongo", "tenant_id": "acme"}]), "acme")
+    assert len(result.errors) == 1 and "tenant_id cannot be set" in result.errors[0]
+    assert not any("tenant_id" in w for w in result.warnings)
+
+
+def test_a_vartrack_json_with_a_tenant_id_is_an_error_not_a_warning():
+    result = config_validator.validate("vartrack.json", json.dumps({"tenant_id": "evil", "prune": True}))
+    assert result.errors == ["vartrack.json: tenant_id cannot be set — the tenant is the one that owns the "
+                             "pushed repository; delete the key"]
+    assert not any("tenant_id" in w for w in result.warnings)
+
+
+def test_files_without_it_are_clean():
+    assert config_validator.validate("vartrack.json", json.dumps({"prune": True})).errors == []
+    clean = config_validator.validate(
+        "bundle.json", json.dumps([{"platform": "gitea", "datasource": "mongo"}]), "acme")
+    assert clean.errors == []
