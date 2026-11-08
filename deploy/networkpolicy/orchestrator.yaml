@@ -1,0 +1,49 @@
+# The orchestrator's three listeners, and who may reach each:
+#   HTTP  8000   the gateway (CLI/UI proxying), the web UI, the watcher's health checks
+#   gRPC  50051  the gateway (webhooks, CLI API) and the watcher (self-heal)
+#   admin 9093   Prometheus only
+# Whoever gets through still has to present a signed grant (INTERNAL_AUTH_SECRET).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: vartrack-orchestrator-ingress
+  labels:
+    app.kubernetes.io/part-of: vartrack
+    app.kubernetes.io/component: orchestrator
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/part-of: vartrack
+      app.kubernetes.io/component: orchestrator
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/part-of: vartrack
+              app.kubernetes.io/component: gateway
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/part-of: vartrack
+              app.kubernetes.io/component: watcher
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/part-of: vartrack
+              app.kubernetes.io/component: ui
+      ports:
+        - protocol: TCP
+          port: 8000
+        - protocol: TCP
+          port: 50051
+    # prometheusSelector
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: monitoring
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: prometheus
+      ports:
+        - protocol: TCP
+          port: 9093

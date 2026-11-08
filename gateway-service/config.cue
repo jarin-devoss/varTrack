@@ -14,8 +14,7 @@ bundle: {
 			protocol:          "https"
 			token:             "ghp_PLACEHOLDER_TOKEN"
 			org_name:          "my-org"
-			verify_ssl:        true
-			timeout:           30
+			timeout:           "30s"
 			max_retries:       3
 			page_size:         30
 			event_type_header: "X-GitHub-Event"
@@ -55,10 +54,6 @@ bundle: {
 		branch:   "main"
 	}
 
-	orchestrator: {
-		// celery_broker:  "<url>"  — broker URL for the datasource you choose
-		// celery_backend: "<url>"  — backend URL for the datasource you choose
-		schema_cache_dir: "/tmp/schema_registry"
-		git_cache_dir:    "/tmp/vt_gitcache"
-	}
+	// The orchestrator's own settings (broker, schema and git caches) are its environment variables, not part
+	// of the bundle: docs/reference/environment-variables.md.
 }

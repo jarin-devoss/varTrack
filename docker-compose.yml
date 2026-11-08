@@ -70,6 +70,9 @@ services:
       ORCHESTRATOR_ADDR: "orchestrator-api:50051"
       GATEWAY_ADDR: ":5657"
       ADMIN_ADDR: ":9092"
+      # The permission engine, served to the orchestrator's web UI (see docs/operations/internal-auth.md).
+      # In production it needs INTERNAL_AUTH_SECRET and GATEWAY_TLS_CERT/KEY.
+      AUTHZ_ADDR: ":5658"
     volumes:
       - ${CONFIG_PATH:-./config.cue}:/app/config.cue:ro
     depends_on:
@@ -98,6 +101,8 @@ services:
       GIT_CACHE_DIR: /app/git_cache
       ADMIN_HOST: "0.0.0.0"
       ADMIN_PORT: "9093"
+      # What a signed-in web UI user may see and do is the gateway's permission engine's to say.
+      GATEWAY_AUTHZ_ADDR: "gateway:5658"
       # Web UI sign-in with your Git platforms is set in config.cue (bundle.ui):
       # see docs/configuration/auth.md#web-ui-sign-in-with-your-git-platform
       CORS_ORIGINS: ${CORS_ORIGINS:-}

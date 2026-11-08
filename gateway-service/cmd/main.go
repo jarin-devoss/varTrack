@@ -13,11 +13,13 @@ import (
 
 	"gateway-service/internal"
 	"gateway-service/internal/auth"
+	"gateway-service/internal/authz"
 	"gateway-service/internal/config"
-	"gateway-service/internal/middlewares"
+	"gateway-service/internal/grantclient"
 	"gateway-service/internal/secrets"
 
 	pb "vartrack/libs/gen/vartrack/v1/services"
+	"vartrack/libs/grants"
 
 	mon "gateway-service/internal/monitoring"
 
@@ -99,14 +101,17 @@ func run() error {
 		return fmt.Errorf("load config from %s: %w", env.ConfigPath, err)
 	}
 
+	// 2b. A `github` platform whose API is not GitHub's rejects every caller token the CLI API
+	// shows it. Say so now, not at the first `vt` call.
+	go checkPlatformAPIs(ctx, bundleService)
+
 	// 3. Connect to orchestrator with resilience.
 	transportCreds, err := buildTransportCredentials(env)
 	if err != nil {
 		return fmt.Errorf("build transport credentials: %w", err)
 	}
 
-	conn, err := grpc.NewClient(
-		env.GetOrchestratorAddr(),
+	dialOpts := []grpc.DialOption{
 		grpc.WithTransportCredentials(transportCreds),
 		grpc.WithKeepaliveParams(keepalive.ClientParameters{
 			Time:                20 * time.Second,
@@ -117,7 +122,23 @@ func run() error {
 		// Propagate W3C TraceContext + Baggage from gateway spans into gRPC metadata
 		// so orchestrator spans become children of gateway spans in Jaeger.
 		grpc.WithStatsHandler(otelgrpc.NewClientHandler()),
-	)
+	}
+	// Every call to the orchestrator carries a short-lived signed grant that says
+	// who is asking and what the call is for; the orchestrator trusts that, not the
+	// network the call came from.
+	if env.InternalAuthEnabled() {
+		minter, mintErr := grants.NewMinter(env.InternalAuthSecret, 0)
+		if mintErr != nil {
+			return fmt.Errorf("internal auth: %w", mintErr)
+		}
+		dialOpts = append(dialOpts, grpc.WithChainUnaryInterceptor(grantclient.UnaryInterceptor(minter)))
+		slog.Info("gateway: calls to the orchestrator are signed")
+	} else {
+		slog.Warn("gateway: INTERNAL_AUTH_SECRET is not set — calls to the orchestrator are not signed, " +
+			"which only works against an orchestrator running open (development)")
+	}
+
+	conn, err := grpc.NewClient(env.GetOrchestratorAddr(), dialOpts...)
 	if err != nil {
 		return fmt.Errorf("connect to orchestrator: %w", err)
 	}
@@ -144,19 +165,17 @@ func run() error {
 
 	// 4. Wire router.
 	routerOpts := []internal.RouterOption{internal.WithProduction(env.IsProduction())}
-	if env.RedisURL != "" {
-		ns, nsErr := middlewares.NewRedisNonceStore(env.RedisURL)
-		if nsErr != nil {
-			slog.Warn("gateway: Redis nonce store unavailable — using in-process memory store",
-				"error", nsErr)
-		} else {
-			routerOpts = append(routerOpts, internal.WithNonceStore(ns))
-			slog.Info("gateway: distributed Redis nonce store enabled")
-		}
+	nonceStore, err := nonceStoreFor(ctx, bundleService, env.IsProduction())
+	if err != nil {
+		return err
+	}
+	if nonceStore != nil {
+		routerOpts = append(routerOpts, internal.WithNonceStore(nonceStore))
 	}
 	// The CLI API (/v1/cli/*): callers show their own Git token, and the
 	// rule's Git platform says what they may do; config.cue's
 	// ui.auth.admins may do anything. auth.opa, when set, decides further.
+	var engine *authz.Engine
 	{
 		bundle := bundleService.GetBundle()
 		authCfg := bundle.GetAuth()
@@ -170,12 +189,27 @@ func run() error {
 		if opaErr != nil {
 			return fmt.Errorf("load auth config: %w", opaErr)
 		}
-		authz := auth.NewGitAuthorizer(bundleService, bundle.GetUi().GetAuth().GetAdmins())
-		routerOpts = append(routerOpts, internal.WithCLIAuth(pb.NewCLIServiceClient(conn), authz, opa))
+		// The one permission engine: the CLI API asks it in-process, the
+		// orchestrator's web UI asks it through the Authz service below.
+		admins, adminErr := authz.NormalizeAdmins(bundle.GetUi().GetAuth().GetAdmins(), bundleService.PlatformNames())
+		if adminErr != nil {
+			return fmt.Errorf("load auth config: %w", adminErr)
+		}
+		engine = authz.New(bundleService, admins, authz.WithPolicy(opa), authz.WithCacheTTL(env.AuthzCacheTTL))
+		routerOpts = append(routerOpts, internal.WithCLIAuth(pb.NewCLIServiceClient(conn), engine, opa))
 		slog.Info("gateway: CLI API enabled — Git permissions", "opa", opa != nil,
-			"admins", len(bundle.GetUi().GetAuth().GetAdmins()))
+			"admins", len(admins), "cache_ttl", env.AuthzCacheTTL)
 	}
 	r := internal.NewRouter(bundleService, grpcClient, conn, routerOpts...)
+
+	// 4a. Serve the permission engine to the orchestrator's web UI.
+	authzSrv, err := startAuthzServer(env, engine)
+	if err != nil {
+		return err
+	}
+	if authzSrv != nil {
+		defer authzSrv.GracefulStop()
+	}
 
 	// 4b. Start OPA policy reloader when the policy comes from a file.
 	// Interval is controlled by OPA_RELOAD_INTERVAL (e.g. "5m", "30m").

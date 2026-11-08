@@ -77,9 +77,12 @@ func TestDropRemovedOptionsNamesWhatItDropped(t *testing.T) {
 
 func TestTheRenamedOptionsComeFromTheProtos(t *testing.T) {
 	// The old names are stated on the options in the protos, not in a table
-	// here. These are the four there are; a new rename adds its old_names to the
+	// here. These are the five there are; a new rename adds its old_names to the
 	// option, and this list.
-	wantRule := map[string]string{"env_as_branch": "branch_as_env", "env_as_pr": "pr_as_env", "env_as_tags": "tag_as_env"}
+	wantRule := map[string]string{
+		"env_as_branch": "branch_as_env", "env_as_pr": "pr_as_env", "env_as_tags": "tag_as_env",
+		"zk_path_template": "destination_template",
+	}
 	wantS3 := map[string]string{"env_as_prefix": "prefix_as_env"}
 	for name, pair := range map[string][2]map[string]string{
 		"rule": {renamedRuleOptions, wantRule},
@@ -133,5 +136,72 @@ func TestDropRemovedOptionsSaysWhatItDroppedAndWhy(t *testing.T) {
 	}
 	if _, still := bundle["watcher_state_datasource"]; still {
 		t.Error("watcher_state_datasource is still in the bundle")
+	}
+}
+
+func TestATenantIDInAConfigCueRuleIsDroppedNotRefused(t *testing.T) {
+	// The tenant is where a file lives, never something it says: tenant_id is no rule option. A config.cue
+	// that still writes it must load (the gateway and the watcher would not start otherwise), without the key.
+	in := []byte(`{
+		"rules": [
+			{"platform": "gitea", "datasource": "mongo", "tenant_id": "acme", "prune": {"enabled": true}},
+			{"platform": "gitea", "datasource": "redis"}
+		]
+	}`)
+	normalized, err := normalizeSecretRefs(in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b := &pb_models.Bundle{}
+	if err := protojson.Unmarshal(normalized, b); err != nil {
+		t.Fatalf("a rule with the removed tenant_id was refused: %v", err)
+	}
+	if rules := b.GetRules(); len(rules) != 2 || !rules[0].GetPrune().GetEnabled() {
+		t.Errorf("the rest of the rule should be kept: %v", rules)
+	}
+	if _, found := removedRuleOptions["tenant_id"]; !found {
+		t.Error("tenant_id is not listed as a removed rule option")
+	}
+}
+
+func TestARuleThatSetDryRunStillLoadsAndWrites(t *testing.T) {
+	// dry_run (the rule's, and prune's) was removed from the proto: a dry run is started, not configured.
+	in := []byte(`{
+		"rules": [
+			{"platform": "gitea", "datasource": "mongo", "dry_run": true, "prune": {"enabled": true, "dry_run": true, "protection": ["a.*"]}},
+			{"platform": "gitea", "datasource": "redis", "prune": {"dry_run": true}}
+		]
+	}`)
+	normalized, err := normalizeSecretRefs(in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b := &pb_models.Bundle{}
+	if err := protojson.Unmarshal(normalized, b); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	rules := b.GetRules()
+	if p := rules[0].GetPrune(); !p.GetEnabled() || len(p.GetProtection()) != 1 {
+		t.Errorf("the rest of the prune block should be kept: %v", p)
+	}
+	if rules[1].GetPrune().GetEnabled() {
+		t.Error("a prune block with only dry_run is a disabled block")
+	}
+}
+
+func TestDropRemovedOptionsNamesTheDryRunsAndSaysWhatToDoInstead(t *testing.T) {
+	bundle := map[string]interface{}{"rules": []interface{}{
+		map[string]interface{}{"dry_run": true, "prune": map[string]interface{}{"enabled": true, "dry_run": true}},
+	}}
+	got := dropRemovedOptions(bundle)
+	if len(got) != 2 || got[0] != "rules[0].dry_run" || got[1] != "rules[0].prune.dry_run" {
+		t.Fatalf("dropped = %v", got)
+	}
+	rule := bundle["rules"].([]interface{})[0].(map[string]interface{})
+	if _, ok := rule["dry_run"]; ok {
+		t.Error("dry_run was not dropped")
+	}
+	if _, ok := rule["prune"].(map[string]interface{})["dry_run"]; ok {
+		t.Error("prune.dry_run was not dropped")
 	}
 }

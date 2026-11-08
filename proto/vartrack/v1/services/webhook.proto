@@ -102,6 +102,9 @@ message ProcessWebhookResponse {
 // Schema registry webhooks
 // ────────────────────────────────────────────
 
+// A schema push carries no tenant, on purpose: the orchestrator derives it from `repo`, as the
+// tenant whose registered schema repository that is. A repository no tenant registered is refused
+// (NOT_FOUND). Nothing a request says can choose the tenant a schema push refreshes.
 message ProcessSchemaWebhookRequest {
   // The git platform name (e.g., "github")
   string platform = 1 [

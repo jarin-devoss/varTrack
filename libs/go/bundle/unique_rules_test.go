@@ -52,7 +52,7 @@ func TestADuplicateRuleStopsTheBundleLoading(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, strict := range []bool{true, false} { // the watcher refuses it too
-		_, err := Load(file, Options{Strict: strict})
+		_, err := Load(file, Options{Strict: strict, Fragment: true})
 		if err == nil || !strings.Contains(err.Error(), "repeats github/mongo") || !strings.Contains(err.Error(), "mongo-db") {
 			t.Fatalf("Load(strict=%v) error = %v, want the duplicate rule named with a way out", strict, err)
 		}

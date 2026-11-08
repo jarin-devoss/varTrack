@@ -37,13 +37,13 @@ func TestSecretShorthandFollowsTheProtoNotTheFieldName(t *testing.T) {
 	}{
 		{"github token", b.GetPlatforms()[0].GetGithub().GetToken().GetValue(), "ghp_x"},
 		{"github secret file", b.GetPlatforms()[0].GetGithub().GetSecret().GetFile(), "/run/secrets/hook"},
-		{"mongo password", ds[0].GetMongo().GetPassword(), "mongo-pw"},
+		{"mongo password", ds[0].GetMongo().GetPassword().GetValue(), "mongo-pw"},
 		{"redis password", ds[1].GetRedis().GetPassword().GetValue(), "redis-pw"},
 		{"s3 access key", ds[2].GetS3().GetAccessKeyId().GetValue(), "AKIA"},
 		{"s3 secret ref", ds[2].GetS3().GetSecretAccessKey().GetRef().GetPath(), "aws"},
 		{"linux key in a nested message", ds[3].GetLinuxServer().GetSshKey().GetPrivateKey().GetValue(), "-----BEGIN"},
 		{"linux username", ds[3].GetLinuxServer().GetUsername(), "deploy"},
-		{"vault token", b.GetSecretManagers()[0].GetVault().GetTokenAuth().GetToken(), "root"},
+		{"vault token", b.GetSecretManagers()[0].GetVault().GetTokenAuth().GetToken().GetValue(), "root"},
 	}
 	for _, c := range checks {
 		if c.got != c.want {

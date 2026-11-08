@@ -1,0 +1,28 @@
+# The watcher only calls out (to the orchestrator); nothing needs to reach it
+# except Prometheus, for its health and metrics port.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: vartrack-watcher-ingress
+  labels:
+    app.kubernetes.io/part-of: vartrack
+    app.kubernetes.io/component: watcher
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/part-of: vartrack
+      app.kubernetes.io/component: watcher
+  policyTypes:
+    - Ingress
+  ingress:
+    # prometheusSelector
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: monitoring
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: prometheus
+      ports:
+        - protocol: TCP
+          port: 9091

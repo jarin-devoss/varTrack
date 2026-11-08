@@ -6,6 +6,12 @@ managed:
   override:
     - file_option: go_package_prefix
       value: vartrack/libs/gen
+    # The validation rules the protos declare (buf.validate) are run by protovalidate, which registers its own
+    # copy of buf/validate/validate.proto: a second generated copy here would panic at start-up
+    # ("file buf/validate/validate.proto is already registered"), so the stubs use that module's package.
+    - file_option: go_package
+      path: buf/validate/validate.proto
+      value: buf.build/gen/go/bufbuild/protovalidate/protocolbuffers/go/buf/validate;validate
     # Route google/rpc protos to the canonical Go module package.
     - file_option: go_package
       path: google/rpc/status.proto

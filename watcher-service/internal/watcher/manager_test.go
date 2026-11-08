@@ -18,6 +18,8 @@ type fakeOrchestrator struct {
 	states   []healer.GitState // answered in turn; the last one repeats
 	checkErr error
 	healErr  error
+	// details are what Check says is drifted, in turn; the last repeats. Default: one environment.
+	details  []string
 	checks   atomic.Int32
 	heals    atomic.Int32
 	reasons  []string
@@ -51,6 +53,7 @@ func (f *fakeOrchestrator) ListTargets(context.Context) ([]healer.WatchTarget, e
 
 func (f *fakeOrchestrator) Check(_ context.Context, req healer.HealRequest) (healer.GitState, string, error) {
 	n := int(f.checks.Add(1)) - 1
+	call := n
 	f.mu.Lock()
 	if f.checked == nil {
 		f.checked = map[string]int{}
@@ -67,7 +70,11 @@ func (f *fakeOrchestrator) Check(_ context.Context, req healer.HealRequest) (hea
 	if n >= len(f.states) {
 		n = len(f.states) - 1
 	}
-	return f.states[n], "redis/production differs from Git", nil
+	detail := "redis/production differs from Git"
+	if len(f.details) > 0 {
+		detail = f.details[min(call, len(f.details)-1)]
+	}
+	return f.states[n], detail, nil
 }
 
 func (f *fakeOrchestrator) Heal(_ context.Context, req healer.HealRequest) error {
@@ -345,5 +352,52 @@ func TestALeaderThatLosesTheLockAndWinsItAgainWatchesAgain(t *testing.T) {
 		if n := mgr.ActiveCount(); n != 0 {
 			t.Fatalf("round %d: %d loops still running after Run returned", round, n)
 		}
+	}
+}
+
+func TestADifferentDriftIsNotHeldBackByTheGrace(t *testing.T) {
+	orch := &fakeOrchestrator{
+		states:  []healer.GitState{healer.GitStateDrifted},
+		details: []string{"redis/production differs", "redis/production differs", "redis/production, redis/staging differ"},
+	}
+	run(t, orch, time.Hour)
+	if orch.heals.Load() != 2 {
+		t.Errorf("healed %d times, want twice: once for production, and again at once when staging differed too", orch.heals.Load())
+	}
+}
+
+func TestCheckNowHealsAtOnceWhateverAnEarlierHealAsked(t *testing.T) {
+	orch := &fakeOrchestrator{states: []healer.GitState{healer.GitStateDrifted}}
+	mgr := newManager(orch, nil)
+	mgr.healGrace = time.Hour
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() { _ = mgr.Run(ctx); close(done) }()
+	defer func() { cancel(); <-done }()
+
+	eventually(t, "the first heal", func() bool { return orch.heals.Load() == 1 })
+	time.Sleep(30 * time.Millisecond) // polls pass; the grace holds them back
+	if orch.heals.Load() != 1 {
+		t.Fatalf("healed %d times before being asked, want 1", orch.heals.Load())
+	}
+	results, watched := mgr.CheckNow(ctx, "gitea", "redis", "acme")
+	if !watched || len(results) != 1 {
+		t.Fatalf("CheckNow = %v, %v, want one result", results, watched)
+	}
+	if !results[0].Healed || results[0].State != healer.GitStateDrifted || orch.heals.Load() != 2 {
+		t.Errorf("result %+v, heals %d: want a heal asked for now", results[0], orch.heals.Load())
+	}
+}
+
+func TestCheckNowOfARuleNobodyWatchesSaysSo(t *testing.T) {
+	orch := &fakeOrchestrator{}
+	mgr := newManager(orch, nil)
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() { _ = mgr.Run(ctx); close(done) }()
+	defer func() { cancel(); <-done }()
+	eventually(t, "the loop", func() bool { return mgr.ActiveCount() == 1 })
+	if _, watched := mgr.CheckNow(ctx, "gitea", "no-such-datasource", ""); watched {
+		t.Error("a rule that is not watched reported as watched")
 	}
 }

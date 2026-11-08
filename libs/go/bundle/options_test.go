@@ -24,10 +24,10 @@ func TestStrictRejectsAFieldTheProtoDoesNotDeclareAndLenientIgnoresIt(t *testing
 }
 `)
 
-	if _, err := Load(file, Options{Strict: true}); err == nil || !strings.Contains(err.Error(), "not_a_setting") {
+	if _, err := Load(file, Options{Strict: true, Fragment: true}); err == nil || !strings.Contains(err.Error(), "not_a_setting") {
 		t.Errorf("strict: err = %v, want the unknown field named", err)
 	}
-	b, err := Load(file, Options{})
+	b, err := Load(file, Options{Fragment: true})
 	if err != nil {
 		t.Fatalf("lenient: %v", err)
 	}
@@ -44,12 +44,12 @@ func TestWhatIsNotACUEBundleIsRefusedEitherWay(t *testing.T) {
 	} {
 		file := writeCUE(t, body)
 		for _, strict := range []bool{true, false} {
-			if _, err := Load(file, Options{Strict: strict}); err == nil {
+			if _, err := Load(file, Options{Strict: strict, Fragment: true}); err == nil {
 				t.Errorf("%s (strict=%v): loaded", name, strict)
 			}
 		}
 	}
-	if _, err := Load(filepath.Join(t.TempDir(), "missing.cue"), Options{}); err == nil {
+	if _, err := Load(filepath.Join(t.TempDir(), "missing.cue"), Options{Fragment: true}); err == nil {
 		t.Error("a missing file loaded")
 	}
 }

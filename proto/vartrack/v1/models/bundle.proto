@@ -6,6 +6,7 @@ import "vartrack/v1/models/platform.proto";
 import "vartrack/v1/models/datasource.proto";
 import "vartrack/v1/models/rule.proto";
 import "vartrack/v1/models/schema_registry.proto";
+import "vartrack/v1/models/tenant.proto";
 import "vartrack/v1/models/secret_manager.proto";
 import "vartrack/v1/models/monitoring.proto";
 import "vartrack/v1/models/auth/oidc.proto";
@@ -30,10 +31,9 @@ message Bundle {
     (google.api.field_behavior) = REQUIRED
   ];
 
-  SchemaRegistry schema_registry = 4 [
-    (buf.validate.field).required = true,
-    (google.api.field_behavior) = REQUIRED
-  ];
+  // The one schema repository every rule shares. Optional: a tenant declares its own in tenants[].schema_repo,
+  // and the gateway runs without this block (it only says so when a schema push arrives with none).
+  SchemaRegistry schema_registry = 4 [(google.api.field_behavior) = OPTIONAL];
 
   repeated SecretManager secret_managers = 5 [
     (google.api.field_behavior) = OPTIONAL
@@ -106,4 +106,9 @@ message Bundle {
   optional UIConfig ui = 16 [
     (google.api.field_behavior) = OPTIONAL
   ];
+
+  // The tenants the operator declares. With none, one implicit tenant "default" covers every
+  // repository, so a single-tenant install is unchanged; with any, every tenant of a rule's
+  // `tenants` and every push must belong to one of them.
+  repeated Tenant tenants = 17 [(google.api.field_behavior) = OPTIONAL];
 }

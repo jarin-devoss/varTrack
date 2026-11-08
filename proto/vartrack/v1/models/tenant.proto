@@ -1,0 +1,54 @@
+syntax = "proto3";
+
+package vartrack.v1;
+
+import "vartrack/v1/models/schema_registry.proto";
+import "vartrack/v1/utils/secret_ref.proto";
+import "buf/validate/validate.proto";
+import "google/api/field_behavior.proto";
+
+// A tenant is a team an operator declared in config.cue. It owns repositories, a schema
+// repository, the destinations it may write and the places its presets may come from. What
+// a request says about a tenant (a header, a body field) is only ever checked against this:
+// the tenant of a push is the one whose repositories it came from, the tenant of a schema
+// push is the one whose schema repository it is, and a person acts for a tenant they can
+// show Git access to.
+message Tenant {
+  // The tenant's name: letters, digits, "-" and "_", starting with a letter or digit, up to
+  // 63 characters. Appears in task records, Redis keys and URLs, so it has one shape.
+  string name = 1 [
+    (buf.validate.field).string.pattern = "^[A-Za-z0-9][A-Za-z0-9_-]{0,62}$",
+    (google.api.field_behavior) = REQUIRED
+  ];
+
+  // The repositories ("owner/name" patterns) whose pushes are this tenant's. No repository
+  // may belong to two tenants.
+  repeated string repositories = 2 [(google.api.field_behavior) = OPTIONAL];
+
+  // The tenant's schema repository: where its bundle.json, CUE schemas and presets live.
+  // A push to it refreshes this tenant and no other. Its token is the tenant's own.
+  optional SchemaRegistry schema_repo = 3 [(google.api.field_behavior) = OPTIONAL];
+
+  // Where the tenant may write, per datasource. A sync to a destination outside these is
+  // refused before anything is written. Once any tenant lists destinations for a datasource,
+  // every tenant writes only what it lists there, and the sets may not overlap. A datasource
+  // no tenant lists is open to all (a single-tenant install is unchanged).
+  repeated TenantDestination destinations = 4 [(google.api.field_behavior) = OPTIONAL];
+
+  // Repositories ("owner/name") besides the tenant's own and its schema repository that its
+  // presets may be read from. A preset anywhere else is refused.
+  repeated string presets = 5 [(google.api.field_behavior) = OPTIONAL];
+
+  // The credential used to read those presets. Never the platform's own.
+  optional SecretRef presets_token = 6 [(google.api.field_behavior) = OPTIONAL];
+}
+
+// TenantDestination is the part of one datasource a tenant may write.
+message TenantDestination {
+  // The datasource's name: "mongo", "redis-cfg", …
+  string datasource = 1 [(google.api.field_behavior) = REQUIRED];
+
+  // Glob patterns on the resolved destination: a collection, a key prefix, a znode path, a
+  // file path, an object prefix.
+  repeated string paths = 2 [(google.api.field_behavior) = REQUIRED];
+}

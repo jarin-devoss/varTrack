@@ -22,7 +22,7 @@ import (
 	"gateway-service/internal/protoutil"
 	"gateway-service/internal/secrets"
 
-	validate "vartrack/libs/gen/buf/validate"
+	validate "buf.build/gen/go/bufbuild/protovalidate/protocolbuffers/go/buf/validate"
 	pb_models "vartrack/libs/gen/vartrack/v1/models"
 	pb_gt "vartrack/libs/gen/vartrack/v1/models/platforms"
 )
@@ -71,7 +71,7 @@ func (g *Gitea) Open(ctx context.Context, config *pb_models.Platform, resolver s
 	}
 
 	tlsConfig := &tls.Config{
-		InsecureSkipVerify: !gtConfig.GetVerifySsl(), //nolint:gosec
+		InsecureSkipVerify: gtConfig.GetInsecureSkipVerify(), //nolint:gosec
 	}
 
 	httpTimeout := protoutil.DurationOrDefault(gtConfig.GetTimeout(), 30e9 /* 30s */)

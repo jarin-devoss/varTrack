@@ -10,6 +10,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"gateway-service/internal/degraded"
 	pb "vartrack/libs/gen/vartrack/v1/services"
 
 	"golang.org/x/sync/errgroup"
@@ -34,6 +35,11 @@ type HealthHandler struct {
 	secretManagers map[string]SecretManagerPinger
 	smMu           sync.RWMutex
 
+	// dependencies are what the gateway needs besides the orchestrator and the secret managers
+	// (the nonce store): each is asked on every readiness probe, and one that does not answer
+	// makes the gateway not ready.
+	dependencies map[string]func(context.Context) error
+
 	available          atomic.Bool
 	terminateRequested atomic.Bool
 }
@@ -44,6 +50,7 @@ func NewHealthHandler(conn GRPCConnChecker, client pb.OrchestratorClient) *Healt
 		conn:           conn,
 		client:         client,
 		secretManagers: make(map[string]SecretManagerPinger),
+		dependencies:   make(map[string]func(context.Context) error),
 	}
 	h.available.Store(true)
 	return h
@@ -54,6 +61,14 @@ func (h *HealthHandler) RegisterSecretManager(name string, sm SecretManagerPinge
 	h.smMu.Lock()
 	defer h.smMu.Unlock()
 	h.secretManagers[name] = sm
+}
+
+// RegisterDependency adds a named dependency to the readiness check: check returns an error when it
+// cannot be reached.
+func (h *HealthHandler) RegisterDependency(name string, check func(context.Context) error) {
+	h.smMu.Lock()
+	defer h.smMu.Unlock()
+	h.dependencies[name] = check
 }
 
 // SetUnavailable marks the server as shutting down.
@@ -149,16 +164,37 @@ func (h *HealthHandler) Readiness(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	h.smMu.RLock()
+	deps := make(map[string]func(context.Context) error, len(h.dependencies))
+	for k, v := range h.dependencies {
+		deps[k] = v
+	}
+	h.smMu.RUnlock()
+	for name, check := range deps {
+		depCtx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
+		err := check(depCtx)
+		cancel()
+		if err != nil {
+			slog.Warn("readiness check: dependency unavailable", "dependency", name, "error", err)
+			writeHealthJSON(w, http.StatusServiceUnavailable, "NOT_READY",
+				fmt.Sprintf("%s unavailable: %v", name, err))
+			return
+		}
+	}
+
 	writeHealthJSON(w, http.StatusOK, "READY", "")
 }
 
 type healthResponse struct {
 	Status string `json:"status"`
 	Detail string `json:"detail,omitempty"`
+	// Degraded lists the weaker modes the operator allowed and that are in use, with why: a gateway
+	// running in one is ready, and says so every time it is asked.
+	Degraded map[string]string `json:"degraded,omitempty"`
 }
 
 func writeHealthJSON(w http.ResponseWriter, httpStatus int, status, detail string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(httpStatus)
-	_ = json.NewEncoder(w).Encode(healthResponse{Status: status, Detail: detail})
+	_ = json.NewEncoder(w).Encode(healthResponse{Status: status, Detail: detail, Degraded: degraded.Active()})
 }

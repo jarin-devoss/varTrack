@@ -1,6 +1,7 @@
 package middlewares
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -28,8 +29,13 @@ func DefaultReplayProtectionConfig() ReplayProtectionConfig {
 type NonceStore interface {
 	// CheckAndSet returns true and records the nonce if it is new within the
 	// window.  Returns false without storing if the nonce was already seen.
-	CheckAndSet(nonce string, window time.Duration) bool
+	// It returns an error wrapping ErrNonceStoreUnavailable when it cannot tell: the
+	// nonce is then neither new nor a replay, and the caller must not treat it as either.
+	CheckAndSet(nonce string, window time.Duration) (bool, error)
 }
+
+// ErrNonceStoreUnavailable: the store that remembers delivery ids cannot be asked.
+var ErrNonceStoreUnavailable = errors.New("the nonce store is unavailable")
 
 // memoryNonceStore is the default in-process nonce store.
 type memoryNonceStore struct {
@@ -41,7 +47,7 @@ func newMemoryNonceStore() *memoryNonceStore {
 	return &memoryNonceStore{seenNonces: make(map[string]time.Time)}
 }
 
-func (m *memoryNonceStore) CheckAndSet(nonce string, window time.Duration) bool {
+func (m *memoryNonceStore) CheckAndSet(nonce string, window time.Duration) (bool, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -53,10 +59,10 @@ func (m *memoryNonceStore) CheckAndSet(nonce string, window time.Duration) bool 
 		}
 	}
 	if _, exists := m.seenNonces[nonce]; exists {
-		return false
+		return false, nil
 	}
 	m.seenNonces[nonce] = now
-	return true
+	return true, nil
 }
 
 // ReplayProtector validates event timestamps and tracks delivery nonces to
@@ -82,10 +88,11 @@ func NewReplayProtectorWithStore(cfg ReplayProtectionConfig, store NonceStore) *
 }
 
 // CheckNonce verifies that *nonce* has not been seen within the replay window.
-// Returns false (replay detected) if the nonce was seen before.
-func (rp *ReplayProtector) CheckNonce(nonce string) bool {
+// Returns false (replay detected) if the nonce was seen before, and an error wrapping
+// ErrNonceStoreUnavailable when the store cannot say.
+func (rp *ReplayProtector) CheckNonce(nonce string) (bool, error) {
 	if nonce == "" {
-		return true // no nonce — skip nonce check
+		return true, nil // no nonce — skip nonce check
 	}
 	return rp.store.CheckAndSet(nonce, rp.config.Window)
 }

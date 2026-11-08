@@ -2,6 +2,7 @@ syntax = "proto3";
 
 package vartrack.v1;
 
+import "vartrack/v1/utils/secret_ref.proto";
 import "buf/validate/validate.proto";
 
 message SchemaRegistry {
@@ -19,4 +20,8 @@ message SchemaRegistry {
   // Must match a name in bundle.secret_managers. If empty, the platform's
   // SecretRef fields must be inline strings.
   optional string secret_manager = 4;
+
+  // The credential used to read the schema repository. A tenant's own, never the
+  // platform's.
+  optional SecretRef token = 5;
 }

@@ -30,8 +30,10 @@ type Manager struct {
 	metrics      ManagerMetrics
 
 	// healGrace: after a heal is requested, a "drifted" answer within this
-	// long is the drift that heal is about to fix — the sync it queued may
-	// not have started yet — not a reason to queue another.
+	// long that names the same drift is the drift that heal is about to fix —
+	// the sync it queued may not have started yet — not a reason to queue
+	// another. A different drift (another environment now differs) is new
+	// and is healed at once.
 	healGrace time.Duration
 
 	// firstRetry is the first wait between asks while no answer has come.
@@ -46,6 +48,31 @@ type Manager struct {
 type loop struct {
 	target Target
 	cancel context.CancelFunc
+	// now carries a request to check at once, instead of at the next poll.
+	now chan checkNow
+}
+
+// checkNow asks a loop to look now, and where to answer.
+type checkNow struct {
+	reply chan CheckResult
+}
+
+// CheckResult is what one loop found when it was asked to look now.
+type CheckResult struct {
+	Watcher string          `json:"watcher"`
+	Tenant  string          `json:"tenant"`
+	State   healer.GitState `json:"state"`
+	Detail  string          `json:"detail"`
+	// Healed is whether this check asked the orchestrator for a heal.
+	Healed bool `json:"healed"`
+	// Error is why it could not tell or heal, when it could not.
+	Error string `json:"error,omitempty"`
+}
+
+// healAsked is the heal a loop last asked for, and the drift it was for.
+type healAsked struct {
+	at     time.Time
+	detail string
 }
 
 // ManagerMetrics is satisfied by *monitoring.WatcherMetrics.
@@ -171,12 +198,13 @@ func (m *Manager) reconcile(ctx context.Context, targets []Target) {
 			continue
 		}
 		loopCtx, cancel := context.WithCancel(ctx)
-		m.loops[t.Key()] = &loop{target: t, cancel: cancel}
+		l := &loop{target: t, cancel: cancel, now: make(chan checkNow, 1)}
+		m.loops[t.Key()] = l
 		slog.Info("watcher: registered", "watcher", t.Name, "tenant", t.Tenant)
 		m.wg.Add(1)
 		go func() {
 			defer m.wg.Done()
-			m.runOne(loopCtx, t)
+			m.runOne(loopCtx, t, l.now)
 		}()
 	}
 	if len(m.loops) == 0 {
@@ -195,55 +223,97 @@ func (m *Manager) stopAll() {
 	m.wg.Wait()
 }
 
-func (m *Manager) runOne(ctx context.Context, t Target) {
+// CheckNow makes the loops of platform/datasource (of one tenant when tenant is not empty) check and, when
+// they drifted, heal now, whatever a heal asked for earlier, and returns what each found. It is how a person or a
+// test says "look now" instead of waiting for the next poll. It reports false when no loop watches that rule.
+func (m *Manager) CheckNow(ctx context.Context, platform, datasource, tenant string) ([]CheckResult, bool) {
+	m.mu.Lock()
+	var asked []*loop
+	for _, l := range m.loops {
+		if l.target.Request.Platform == platform && l.target.Request.Datasource == datasource && (tenant == "" || l.target.Tenant == tenant) {
+			asked = append(asked, l)
+		}
+	}
+	m.mu.Unlock()
+	if len(asked) == 0 {
+		return nil, false
+	}
+	replies := make([]chan CheckResult, len(asked))
+	for i, l := range asked {
+		replies[i] = make(chan CheckResult, 1)
+		select {
+		case l.now <- checkNow{reply: replies[i]}:
+		case <-ctx.Done():
+			return nil, true
+		}
+	}
+	results := make([]CheckResult, 0, len(asked))
+	for i, l := range asked {
+		select {
+		case r := <-replies[i]:
+			results = append(results, r)
+		case <-ctx.Done():
+			results = append(results, CheckResult{Watcher: l.target.Name, Tenant: l.target.Tenant, Error: "timed out waiting for the check"})
+		}
+	}
+	return results, true
+}
+
+func (m *Manager) runOne(ctx context.Context, t Target, now <-chan checkNow) {
 	slog.Info("watcher: starting", "watcher", t.Name, "tenant", t.Tenant, "poll_interval", m.pollInterval)
 	m.metrics.SetWatcherUp(t.Name, true)
 	defer m.metrics.SetWatcherUp(t.Name, false)
 
 	ticker := time.NewTicker(m.pollInterval)
 	defer ticker.Stop()
-	var lastHeal time.Time
+	var asked healAsked
+	m.poll(ctx, t, &asked, false)
 	for {
-		m.poll(ctx, t, &lastHeal)
 		select {
 		case <-ctx.Done():
 			slog.Info("watcher: stopping", "watcher", t.Name, "tenant", t.Tenant)
 			return
 		case <-ticker.C:
+			m.poll(ctx, t, &asked, false)
+		case req := <-now:
+			// asked to look now: a heal asked for earlier does not hold this one back
+			req.reply <- m.poll(ctx, t, &asked, true)
 		}
 	}
 }
 
-// poll asks the orchestrator about t once, and heals it when it drifted.
-func (m *Manager) poll(ctx context.Context, t Target, lastHeal *time.Time) {
+// poll asks the orchestrator about t once, and heals it when it drifted. force heals whatever an earlier heal asked.
+func (m *Manager) poll(ctx context.Context, t Target, last *healAsked, force bool) CheckResult {
 	t0 := time.Now()
 	pollCtx, pollSpan := mon.StartPollSpan(ctx, t.Name, t.Name)
 	state, detail, err := m.orch.Check(pollCtx, t.Request)
 	m.metrics.ObservePollDuration(t.Name, time.Since(t0))
 	pollSpan.End(err)
 
+	result := CheckResult{Watcher: t.Name, Tenant: t.Tenant, State: state, Detail: detail}
 	switch {
 	case err != nil:
 		slog.Warn("watcher: could not ask the orchestrator — checking again next poll",
 			"watcher", t.Name, "error", err)
-		return
+		result.Error = err.Error()
+		return result
 	case state == healer.GitStateInSync:
 		slog.Debug("watcher: in sync", "watcher", t.Name, "detail", detail)
-		*lastHeal = time.Time{}
-		return
+		*last = healAsked{}
+		return result
 	case state == healer.GitStateSyncing:
 		slog.Info("watcher: sync in progress — checking again next poll", "watcher", t.Name, "detail", detail)
-		return
+		return result
 	case state != healer.GitStateDrifted:
 		// Never synced, or the sink could not be read: no evidence of drift.
 		slog.Info("watcher: the orchestrator cannot tell — not healing", "watcher", t.Name, "detail", detail)
-		return
+		return result
 	}
 
-	if !lastHeal.IsZero() && time.Since(*lastHeal) < m.healGrace {
+	if !force && !last.at.IsZero() && time.Since(last.at) < m.healGrace && detail == last.detail {
 		slog.Info("watcher: still drifted — waiting for the heal already requested",
-			"watcher", t.Name, "requested", lastHeal.UTC().Format(time.RFC3339))
-		return
+			"watcher", t.Name, "requested", last.at.UTC().Format(time.RFC3339))
+		return result
 	}
 
 	m.metrics.IncDriftDetected(t.Name)
@@ -257,8 +327,11 @@ func (m *Manager) poll(ctx context.Context, t Target, lastHeal *time.Time) {
 	if err != nil {
 		m.metrics.IncHealFailed(t.Name)
 		slog.Error("watcher: heal failed — trying again next poll", "watcher", t.Name, "error", err)
-		return
+		result.Error = err.Error()
+		return result
 	}
 	m.metrics.IncHealTriggered(t.Name)
-	*lastHeal = time.Now()
+	*last = healAsked{at: time.Now(), detail: detail}
+	result.Healed = true
+	return result
 }

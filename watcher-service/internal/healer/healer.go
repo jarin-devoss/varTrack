@@ -35,6 +35,7 @@ import (
 
 	"watcher-service/internal/config"
 	pb "vartrack/libs/gen/vartrack/v1/services"
+	"vartrack/libs/grants"
 )
 
 // correlationIDKey is the context key for the X-Correlation-ID value.
@@ -98,11 +99,26 @@ type Healer struct {
 func NewHealer(addr string, timeout time.Duration, env *config.Env) *Healer {
 	creds := buildCredentials(env)
 
-	conn, err := grpc.NewClient(addr,
+	dialOpts := []grpc.DialOption{
 		grpc.WithTransportCredentials(creds),
 		grpc.WithBlock(),
-		grpc.WithTimeout(5*time.Second),
-	)
+		grpc.WithTimeout(5 * time.Second),
+	}
+	// Every call to the orchestrator carries a short-lived signed grant; the
+	// orchestrator refuses a Watcher call without one.
+	if env != nil && env.InternalAuthEnabled() {
+		minter, mintErr := grants.NewMinter(env.InternalAuthSecret, 0)
+		if mintErr != nil {
+			slog.Error("healer: cannot sign calls to the orchestrator", "err", mintErr)
+		} else {
+			dialOpts = append(dialOpts, grpc.WithChainUnaryInterceptor(signCalls(minter)))
+		}
+	} else {
+		slog.Warn("healer: INTERNAL_AUTH_SECRET is not set — calls to the orchestrator are not signed, " +
+			"which only works against an orchestrator running open (development)")
+	}
+
+	conn, err := grpc.NewClient(addr, dialOpts...)
 	if err != nil {
 		slog.Error("healer: failed to dial orchestrator", "addr", addr, "err", err)
 		// Return a healer with a nil conn; Heal/Ping will surface the error.
@@ -224,6 +240,23 @@ const (
 	// GitStateSyncing: a sync is still writing; look again on the next poll.
 	GitStateSyncing
 )
+
+// String is the verdict in words: "unknown", "in_sync", "drifted" or "syncing".
+func (s GitState) String() string {
+	switch s {
+	case GitStateInSync:
+		return "in_sync"
+	case GitStateDrifted:
+		return "drifted"
+	case GitStateSyncing:
+		return "syncing"
+	default:
+		return "unknown"
+	}
+}
+
+// MarshalText makes a verdict read as its words in JSON, not as a number.
+func (s GitState) MarshalText() ([]byte, error) { return []byte(s.String()), nil }
 
 // Check asks the orchestrator whether the datasource's live state matches the
 // desired state in Git (Watcher.CheckDatasource). An orchestrator without that

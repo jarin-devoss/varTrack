@@ -11,7 +11,6 @@
 //
 //   mongo        → "dot" only                    (document store, natural JSON)
 //   s3           → "dot" only
-//   vercel       → "dot" only
 //   helm         → "dot" only
 //   redis        → "dot" (HASH) | "flat" (STRING)
 //   zookeeper    → "slash" | "slash_dot"
@@ -32,7 +31,7 @@ package vartrack.v1;
 // Only populate the fields relevant to the sinks used in your rule.
 message SinkKeyFormat {
 
-  // mongo, s3, vercel, helm — only "dot" is valid; omit or leave "dot".
+  // mongo, s3, helm — only "dot" is valid; omit or leave "dot".
   // Writing this field with any value other than "dot" will raise a
   // ValueError at MongoSink / S3Sink construction time.
   string mongo = 1;         // "dot"  (only valid value)

@@ -1,11 +1,11 @@
-// Example: Full production bundle — GitHub + GitLab platforms, MongoDB primary/DR,
+// Example: Full production bundle — GitHub + Gitea platforms, MongoDB primary/DR,
 // ZooKeeper, Redis config store, Vault secrets, multiple environments.
 //
 // Architecture:
 //   GitHub (main org)  → POST /v1/webhooks/mongo-primary  → MongoDB primary AZ-A
 //                      → POST /v1/webhooks/mongo-dr       → MongoDB DR AZ-B
 //                      → POST /v1/webhooks/zookeeper      → ZooKeeper quorum
-//   GitLab (internal)  → POST /v1/webhooks/redis-cfg      → Redis config DB
+//   Gitea (internal)   → POST /v1/webhooks/redis-cfg      → Redis config DB
 bundle: {
 	platforms: [
 		{
@@ -14,24 +14,19 @@ bundle: {
 				protocol:    "https"
 				token:       "ghp_xxxxxxxxxxxxxxxxxxxx"
 				org_name:    "acme-corp"
-				verify_ssl:  true
 				timeout:     "30s"
 				max_retries: 3
 			}
 		},
 		{
-			// Internal GitLab instance.
-			github: {
-				endpoint:          "https://gitlab.acme.internal"
-				protocol:          "https"
-				token:             "glpat-xxxxxxxxxxxxxxxxxxxx"
-				org_name:          "platform-team"
-				verify_ssl:        true
-				timeout:           "30s"
-				max_retries:       3
-				event_type_header: "X-Gitlab-Event"
-				push_event_name:   "Push Hook"
-				pr_event_name:     "Merge Request Hook"
+			// Internal Gitea instance.
+			gitea: {
+				endpoint:    "https://gitea.acme.internal"
+				protocol:    "https"
+				token:       "gta_xxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+				org_name:    "platform-team"
+				timeout:     "30s"
+				max_retries: 3
 			}
 		},
 	]
@@ -72,7 +67,7 @@ bundle: {
 			}
 		},
 		{
-			// Redis config store (GitLab rules write here).
+			// Redis config store (Gitea rules write here).
 			redis: {
 				tag:      "redis-cfg"
 				hosts:    ["redis-config.acme.internal:6379"]
@@ -118,6 +113,7 @@ bundle: {
 		{
 			platform:   "github"
 			datasource: "mongo-primary"
+			repositories: ["acme-corp/configs"]
 			self_heal:  true
 			// Production never prunes, whatever the tenant's bundle.json or a
 			// repo's vartrack.json says: force is applied after both.
@@ -126,16 +122,19 @@ bundle: {
 		{
 			platform:   "github"
 			datasource: "mongo-dr"
+			repositories: ["acme-corp/configs"]
 			self_heal:  true
 		},
 		{
 			platform:   "github"
 			datasource: "zookeeper"
+			repositories: ["acme-corp/configs"]
 			self_heal:  true
 		},
 		{
-			platform:   "github"  // GitLab platform is also declared as "github" type.
+			platform:   "gitea"
 			datasource: "redis-cfg"
+			repositories: ["acme-corp/configs"]
 			self_heal:  false     // No drift healing for Redis config — push-only.
 		},
 	]

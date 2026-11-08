@@ -3,7 +3,7 @@ module gateway-service
 go 1.26.0
 
 require (
-	cuelang.org/go v0.15.3
+	buf.build/gen/go/bufbuild/protovalidate/protocolbuffers/go v1.36.11-20260209202127-80ab13bee0bf.1
 	github.com/go-playground/webhooks/v6 v6.4.0
 	github.com/google/uuid v1.6.0
 	github.com/hashicorp/vault/api v1.23.0
@@ -32,8 +32,13 @@ require (
 )
 
 require (
+	buf.build/go/protovalidate v1.1.3 // indirect
+	cel.dev/expr v0.25.2 // indirect
+	cuelang.org/go v0.15.3 // indirect
+	github.com/antlr4-go/antlr/v4 v4.13.1 // indirect
 	github.com/decred/dcrd/dcrec/secp256k1/v4 v4.4.1 // indirect
 	github.com/goccy/go-json v0.10.6 // indirect
+	github.com/google/cel-go v0.27.0 // indirect
 	github.com/lestrrat-go/blackmagic v1.0.4 // indirect
 	github.com/lestrrat-go/dsig v1.4.0 // indirect
 	github.com/lestrrat-go/dsig-secp256k1 v1.0.0 // indirect
@@ -45,6 +50,7 @@ require (
 	github.com/valyala/fastjson v1.6.10 // indirect
 	github.com/vektah/gqlparser/v2 v2.5.37 // indirect
 	go.opentelemetry.io/otel/log v1.47.0 // indirect
+	golang.org/x/exp v0.0.0-20250813145105-42675adae3e6 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20260928230214-8a89bd6388cc // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260928230214-8a89bd6388cc // indirect
 )

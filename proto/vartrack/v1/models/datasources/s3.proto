@@ -11,9 +11,10 @@ import "google/protobuf/duration.proto";
 
 message S3Config {
   optional string tag = 1 [(google.api.field_behavior) = OPTIONAL];
+  // An S3-compatible server (MinIO, Ceph …). Unset: AWS S3 itself, which needs none.
   string endpoint = 2 [
     (buf.validate.field).string.uri = true,
-    (google.api.field_behavior) = REQUIRED
+    (google.api.field_behavior) = OPTIONAL
   ];
   optional string region = 3 [(google.api.field_behavior) = OPTIONAL];
   string bucket = 4 [
@@ -24,11 +25,14 @@ message S3Config {
   optional SecretRef access_key_id = 6 [(google.api.field_behavior) = OPTIONAL];
   optional SecretRef secret_access_key = 7 [(google.api.field_behavior) = OPTIONAL];
   optional SecretRef session_token = 8 [(google.api.field_behavior) = OPTIONAL];
-  bool use_iam_role = 9 [(google.api.field_behavior) = OPTIONAL];
+  bool use_iam_role = 9 [(google.api.field_behavior) = OPTIONAL, (vartrack.v1.config) = {unused_reason: "the s3 sink does not read it yet, so set in config.cue it has no effect"}];
   // The key prefix is the environment. Formerly env_as_prefix, which is still read.
   bool prefix_as_env = 10 [
     (google.api.field_behavior) = OPTIONAL,
-    (vartrack.v1.config) = {old_names: ["env_as_prefix"]}
+    (vartrack.v1.config) = {
+      old_names: ["env_as_prefix"],
+      unused_reason: "the s3 sink does not read it yet, so set in config.cue it has no effect"
+    }
   ];
   // How the config is stored under the prefix:
   //   STRATEGY_KEY_VALUE  one object per key
@@ -38,7 +42,7 @@ message S3Config {
   Strategy update_strategy = 11 [(buf.validate.field).enum.defined_only = true];
   bool one_file_per_key = 12 [(google.api.field_behavior) = OPTIONAL];
   optional string file_pattern = 13 [(google.api.field_behavior) = OPTIONAL];
-  map<string, string> object_metadata = 14 [(google.api.field_behavior) = OPTIONAL];
+  map<string, string> object_metadata = 14 [(google.api.field_behavior) = OPTIONAL, (vartrack.v1.config) = {unused_reason: "the s3 sink does not read it yet, so set in config.cue it has no effect"}];
   optional string content_type = 15 [(google.api.field_behavior) = OPTIONAL];
   optional string server_side_encryption = 16 [
     (buf.validate.field).string = {in: ["AES256", "aws:kms", ""]},
@@ -46,7 +50,7 @@ message S3Config {
   ];
   optional string kms_key_id = 17 [(google.api.field_behavior) = OPTIONAL];
   bool enable_versioning = 18 [(google.api.field_behavior) = OPTIONAL];
-  optional string version_id = 19 [(google.api.field_behavior) = OPTIONAL];
+  optional string version_id = 19 [(google.api.field_behavior) = OPTIONAL, (vartrack.v1.config) = {unused_reason: "the s3 sink does not read it yet, so set in config.cue it has no effect"}];
   bool force_path_style = 20 [(google.api.field_behavior) = OPTIONAL];
   google.protobuf.Duration timeout = 21 [
     (buf.validate.field).duration.gte = {seconds: 1},
@@ -54,12 +58,19 @@ message S3Config {
   ];
   int32 max_concurrency = 22 [
     (buf.validate.field).int32 = {gte: 1, lte: 100},
-    (google.api.field_behavior) = OPTIONAL
+    (google.api.field_behavior) = OPTIONAL, (vartrack.v1.config) = {unused_reason: "the s3 sink does not read it yet, so set in config.cue it has no effect"}
   ];
   int64 part_size = 23 [
     (buf.validate.field).int64.gte = 5242880,
-    (google.api.field_behavior) = OPTIONAL
+    (google.api.field_behavior) = OPTIONAL, (vartrack.v1.config) = {unused_reason: "the s3 sink does not read it yet, so set in config.cue it has no effect"}
   ];
-  bool verify_ssl = 24 [(google.api.field_behavior) = OPTIONAL];
-  optional string ssl_ca_cert = 25 [(google.api.field_behavior) = OPTIONAL];
+  // The endpoint's certificate is always checked unless this is set (it was `verify_ssl`).
+  bool insecure_skip_verify = 26 [(google.api.field_behavior) = OPTIONAL];
+  reserved 24;
+  reserved "verify_ssl";
+  // A CA bundle to check the endpoint against: the path of a PEM file the service reads.
+  optional string ssl_ca_cert = 25 [
+    (google.api.field_behavior) = OPTIONAL,
+    (vartrack.v1.config) = {path_or_content: "path"}
+  ];
 }

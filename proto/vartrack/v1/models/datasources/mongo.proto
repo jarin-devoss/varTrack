@@ -3,6 +3,8 @@ syntax = "proto3";
 package vartrack.v1;
 
 import "vartrack/v1/enums/strategy.proto";
+import "vartrack/v1/options.proto";
+import "vartrack/v1/utils/secret_ref.proto";
 import "buf/validate/validate.proto";
 
 message MongoConfig {
@@ -14,7 +16,8 @@ message MongoConfig {
   string endpoint = 2 [(buf.validate.field).string.uri = true];
   optional string token = 3;
   optional string username = 4;
-  optional string password = 5;
+  // A credential: a plain string, {value}, {file} or {ref}, like every other password in the bundle.
+  optional SecretRef password = 5;
 
   string host = 6;
   int32 port = 7 [(buf.validate.field).int32 = {gte: 1, lte: 65535}];
@@ -28,18 +31,19 @@ message MongoConfig {
   //   STRATEGY_FILE                 one document per file, as it parsed: nested, or flat for .env / .properties
   Strategy update_strategy = 12 [(buf.validate.field).enum.defined_only = true];
 
-  string auth_source = 13;
-  optional string auth_mechanism = 14;
+  string auth_source = 13 [(vartrack.v1.config) = {unused_reason: "the mongo sink does not read it yet, so set in config.cue it has no effect"}];
+  optional string auth_mechanism = 14 [(vartrack.v1.config) = {unused_reason: "the mongo sink does not read it yet, so set in config.cue it has no effect"}];
   bool ssl = 15;
-  optional string ssl_cert_path = 16;
-  optional string ssl_key_path = 17;
+  optional string ssl_cert_path = 16 [(vartrack.v1.config) = {unused_reason: "the mongo sink does not read it yet, so set in config.cue it has no effect"}];
+  optional string ssl_key_path = 17 [(vartrack.v1.config) = {unused_reason: "the mongo sink does not read it yet, so set in config.cue it has no effect"}];
   optional string ssl_ca_path = 18;
   bool ssl_allow_invalid_certificates = 19;
 
-  int32 buffer_size = 20 [(buf.validate.field).int32.gte = 1];
-  int32 max_pool_size = 21 [(buf.validate.field).int32.gte = 1];
+  int32 buffer_size = 20 [(buf.validate.field).int32.gte = 1, (vartrack.v1.config) = {unused_reason: "the mongo sink does not read it yet, so set in config.cue it has no effect"}];
+  int32 max_pool_size = 21 [(buf.validate.field).int32.gte = 1, (vartrack.v1.config) = {unused_reason: "the mongo sink does not read it yet, so set in config.cue it has no effect"}];
+  // How long to wait to reach the server, in milliseconds, before a write or a read fails. 0 keeps the driver's own 20 s connect and 30 s server-selection waits.
   int32 connect_timeout_ms = 22 [(buf.validate.field).int32.gte = 0];
-  optional string replica_set = 23;
+  optional string replica_set = 23 [(vartrack.v1.config) = {unused_reason: "the mongo sink does not read it yet, so set in config.cue it has no effect"}];
 
   option (buf.validate.message).cel = {
     id: "mongo.auth_consistency",

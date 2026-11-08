@@ -18,6 +18,7 @@ package middlewares
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"time"
 
@@ -38,6 +39,13 @@ func NewRedisNonceStore(redisURL string) (*RedisNonceStore, error) {
 	if err != nil {
 		return nil, err
 	}
+	return NewRedisNonceStoreWithOptions(opts)
+}
+
+// NewRedisNonceStoreWithOptions connects with options built field by field (see config.NonceRedisOptions),
+// so a password can hold any character. Returns an error if the connection ping fails: the caller decides
+// whether that stops the service; this never answers with a store that is not there.
+func NewRedisNonceStoreWithOptions(opts *redis.Options) (*RedisNonceStore, error) {
 	// Use DB 1 for nonce data, separate from any Celery or cache usage.
 	opts.DB = 1
 	opts.DialTimeout = 2 * time.Second
@@ -55,10 +63,16 @@ func NewRedisNonceStore(redisURL string) (*RedisNonceStore, error) {
 	return &RedisNonceStore{client: client}, nil
 }
 
+// Ping reports whether Redis answers: readiness asks it.
+func (r *RedisNonceStore) Ping(ctx context.Context) error {
+	return r.client.Ping(ctx).Err()
+}
+
 // CheckAndSet atomically checks whether *nonce* is new and records it.
-// Returns true (allow) when the nonce is new; false (block) when it's a replay.
-// On Redis error, returns true and logs a warning to avoid blocking traffic.
-func (r *RedisNonceStore) CheckAndSet(nonce string, window time.Duration) bool {
+// Returns true when the nonce is new; false when it's a replay. When Redis cannot be asked it returns
+// ErrNonceStoreUnavailable: "could not find out" is not "new", and a webhook that cannot be checked is
+// refused (the sender retries), never let through.
+func (r *RedisNonceStore) CheckAndSet(nonce string, window time.Duration) (bool, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
 	defer cancel()
 
@@ -68,10 +82,10 @@ func (r *RedisNonceStore) CheckAndSet(nonce string, window time.Duration) bool {
 	//   - Returns true (was set = new nonce) or false (already exists = replay)
 	ok, err := r.client.SetNX(ctx, key, 1, window).Result()
 	if err != nil {
-		slog.Warn("gateway: Redis nonce store error — allowing request", "error", err)
-		return true // fail-open to avoid blocking all traffic
+		slog.Error("gateway: Redis nonce store error — refusing the webhook", "error", err)
+		return false, fmt.Errorf("%w: %v", ErrNonceStoreUnavailable, err)
 	}
-	return ok
+	return ok, nil
 }
 
 // Close releases the Redis connection.

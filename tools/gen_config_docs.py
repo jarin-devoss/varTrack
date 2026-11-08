@@ -29,6 +29,7 @@ import sys
 import tempfile
 from pathlib import Path
 
+from google.api import field_behavior_pb2
 from google.protobuf import descriptor_pb2
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -39,9 +40,6 @@ PAGES_WITH_LISTS = [
     ROOT / "docs" / "configuration" / "schema-registry.md",
     ROOT / "docs" / "configuration" / "index.md",
 ]
-
-# Fields that are not options a person writes.
-SKIP = {"last_applied_at"}
 
 # Field descriptor numbers in a FileDescriptorProto's source code info.
 _MESSAGE_TYPE, _FIELD = 4, 2
@@ -55,6 +53,11 @@ def _image() -> descriptor_pb2.FileDescriptorSet:
         image = descriptor_pb2.FileDescriptorSet()
         image.ParseFromString(out.read_bytes())
         return image
+
+
+def _output_only(field: descriptor_pb2.FieldDescriptorProto) -> bool:
+    """Set by varTrack, never by a config file: not an option a person writes, so not in the reference."""
+    return field_behavior_pb2.OUTPUT_ONLY in field.options.Extensions[field_behavior_pb2.field_behavior]
 
 
 def _clean(comment: str) -> str:
@@ -78,7 +81,7 @@ def _rule_fields(image: descriptor_pb2.FileDescriptorSet) -> list[tuple[descript
             comments[path[3]] = loc.leading_comments
     message = proto.message_type[index]
     return [(field, _clean(comments.get(i, ""))) for i, field in enumerate(message.field)
-            if field.name not in SKIP]
+            if not _output_only(field)]
 
 
 def _type(name: str) -> str:
@@ -95,7 +98,7 @@ def _type(name: str) -> str:
     if name in rule_options.STRING_MAPS:
         return "object (string → string)"
     if name == "prune":
-        return "boolean, or object (`enabled`, `dry_run`, `protection`)"
+        return "boolean, or object (`enabled`, `protection`)"
     if name == "sync_mode":
         return "string: `AUTO`, `GIT_UPSERT_ALL`, `GIT_SMART_REPAIR`, `LIVE_STATE`"
     return " or ".join(shown) or "—"
