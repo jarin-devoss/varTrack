@@ -22,14 +22,18 @@ mv vt /usr/local/bin/vt
 
 ## Authentication
 
-`vt` authenticates with your Git token — a GitHub or Gitea personal access token. What it may do is what that token may do in the rule's repositories: push access syncs, read access validates and dry-runs ([Authentication & Authorization](../configuration/auth.md)).
+`vt` authenticates with your Git token — a GitHub or Gitea personal access token. What it may do is what that token may do in the rule's repositories: push access to the branch that feeds the environment syncs (branch protection counts), read access validates and dry-runs ([Authentication & Authorization](../configuration/auth.md)). The web UI asks the same permission engine, so it never allows what `vt` refuses.
 
 ```bash
 vt login --server https://gateway.example.com --token "$GIT_TOKEN"
 
+# With rules on several Git platforms, say which one the token is for
+vt login --server https://gateway.example.com --token "$GIT_TOKEN" --platform gitea
+
 # Or skip login entirely — set env vars
 export VARTRACK_SERVER=https://gateway.example.com
 export VARTRACK_TOKEN=<your Git token>
+export VARTRACK_PLATFORM=gitea   # only with several platforms
 ```
 
 ---
@@ -74,7 +78,7 @@ vt sync --file configs/app.yaml --datasource mongo --env staging --json
 | `--datasource` | — | Target datasource name (**required**) |
 | `--platform` | — | Platform of the rule (for example `github`, `gitea-internal`); needed only when rules on several platforms write to the datasource |
 | `--env` | — | Deployment environment (**required**) |
-| `--tenant` | from context | Tenant ID |
+| `--tenant` | from context | Tenant to act for. Left out, the one tenant your Git access reaches is used; with several, `vt` asks you to name one. A tenant you cannot reach is refused |
 | `--dry-run` | false | Validate without writing |
 | `--wait` | false | Block until task completes |
 | `--timeout` | 5m | Max wait time |
@@ -104,7 +108,7 @@ vt validate --file configs/app.yaml --datasource mongo --tenant myapp
 | `--file` | — | Path to the config file (**required**) |
 | `--datasource` | — | Datasource name (selects the schema) |
 | `--platform` | — | Platform of the rule; needed only when rules on several platforms write to the datasource |
-| `--tenant` | from context | Tenant ID |
+| `--tenant` | from context | Tenant to act for. Left out, the one tenant your Git access reaches is used; with several, `vt` asks you to name one. A tenant you cannot reach is refused |
 | `--format` | auto | File format override |
 | `--json` | false | Print result as JSON |
 
@@ -202,6 +206,7 @@ vt version
 |---|---|
 | `VARTRACK_SERVER` | Gateway base URL |
 | `VARTRACK_TOKEN` | Your Git token — skips `vt login` |
+| `VARTRACK_PLATFORM` | Git platform the token is for — needed with several platforms |
 | `VARTRACK_TENANT` | Tenant ID |
 | `VARTRACK_CONTEXT` | Named context to activate |
 

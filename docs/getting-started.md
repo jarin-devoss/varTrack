@@ -167,7 +167,7 @@ Push a change to a tracked repository, then check MongoDB:
 mongosh vartrack --eval 'db["production-config"].find().pretty()'
 ```
 
-You should see your config values written as key-value documents.
+You should see one document for the file, with your config values nested under `data` (the default `STRATEGY_DOCUMENT`; set `update_strategy: "STRATEGY_KEY_VALUE"` for one document per key instead).
 
 ---
 
@@ -197,7 +197,7 @@ vt login --server http://localhost:5657 --token "$TOKEN"
 vt sync --file app-settings.yaml --datasource mongo-primary --env staging --wait   # the live demo's rule tracks app-settings.yaml
 ```
 
-`demo-admin` administers the demo repositories, so it can sync anywhere; `demo-viewer` can only read them, so it can validate and dry-run but not sync ([the example OPA policy](https://github.com/jarin-devoss/varTrack/blob/main/examples/policies/vartrack_authz.rego) adds: writers never sync production or `configs/secrets/*`). The same token, pasted under *API token for the Playground* on the UI's sign-in page, drives the Playground.
+`demo-admin` administers the demo repositories, so it can sync anywhere; `demo-viewer` can only read them, so it can validate and dry-run but not sync ([the example OPA policy](https://github.com/jarin-devoss/varTrack/blob/main/examples/policies/vartrack_authz.rego) adds: writers never sync production or `configs/secrets/*`). The same token, pasted into the *Git token* card on the UI's Playground page, drives the Playground.
 
 [:octicons-arrow-right-24: Full CLI reference](cli/index.md)
 

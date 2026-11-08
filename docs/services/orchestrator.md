@@ -62,7 +62,8 @@ docker run \
 | `GIT_CACHE_DIR` | `/tmp/vt_gitcache` | Directory of the bare Git mirrors, one per repository. Give the API and every worker the same directory (a shared volume) to clone once per host |
 | `GIT_CACHE_MAX_ENTRIES` | `20` | Mirrors kept; past that the least recently used are removed, never one in use |
 | `SCHEMA_CACHE_DIR` | `/tmp/schema_registry` | CUE schema clone directory |
-| `ORCHESTRATOR_ADDR` | `:50051` | gRPC listen address |
+| `ORCHESTRATOR_HTTP_ADDR` | `0.0.0.0:8000` | HTTP listen address (formerly `ORCHESTRATOR_ADDR`, still read for one release) |
+| `GRPC_PORT` | `50051` | gRPC listen port |
 | `UI_DEFAULT_TENANT` | `default` | Tenant the web UI reads when no tenant is registered at all |
 | `UI_COMPARE_TTL_SECONDS` | `10` | How long a sink comparison is answered as is before it is refreshed in the background |
 | `UI_AUTH_PLATFORMS` | — | Web UI sign-in when the bundle has no `ui.auth` block; see [Web UI sign-in](../configuration/auth.md#web-ui-sign-in-with-your-git-platform) |

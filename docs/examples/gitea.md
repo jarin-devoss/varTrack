@@ -21,7 +21,6 @@ bundle: {
       token:       "gta_xxxxxxxxxxxxxxxxxxxxxxxxxxxx"  // personal access token
       secret:      "my-webhook-secret"                // HMAC signing secret
       org_name:    "my-org"
-      verify_ssl:  true
       timeout:     "30s"
       max_retries: 3
       page_size:   50
@@ -29,7 +28,7 @@ bundle: {
   }]
 
   datasources: [
-    { mongo: { endpoint: "mongodb://mongo:27017", database: "vartrack" } },
+    { mongo: { endpoint: "mongodb://mongo:27017", database: "vartrack", collection: "variables" } },
     { redis: { tag: "broker",  hosts: ["redis:6379"], database: 0 } },
     { redis: { tag: "results", hosts: ["redis:6379"], database: 1 } },
   ]
@@ -46,10 +45,7 @@ bundle: {
       main:    "production"
       develop: "staging"
     }
-    prune: {
-      enabled: true
-      dry_run: false
-    }
+    prune: true
   }]
 
   global_tags: {

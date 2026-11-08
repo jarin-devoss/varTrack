@@ -51,8 +51,9 @@ in the same key space, and warns once with a `SharedKeySpace` event.
 
 ## How do I try a change without writing anything?
 
-`vt sync --dry-run …` (or `dry_run: true` in the rule) reads, validates and reports what would
-be written. `prune: {enabled: true, dry_run: true}` reports what prune would delete.
+`vt sync --dry-run …` (or the *Dry run* button in the web UI, or the dry-run webhook) reads, validates and reports what would
+be written, and which keys a prune would delete. A dry run is something you start, not a setting of a rule (the `dry_run` rule
+option was removed: a rule that set it never wrote).
 
 ## Where are secrets kept?
 
@@ -71,5 +72,5 @@ platform. Without `ui.auth`, the UI shows every rule.
 ## Can I run several gateways, workers and watchers?
 
 Yes. Workers and gateways scale out; one watcher leads at a time. Set
-`gateway_nonce_datasource` and `watcher_leader_election_datasource` — see
+`gateway_nonce_datasource` (required in production) and `watcher_leader_election_datasource` — see
 [High availability](operations/high-availability.md).
