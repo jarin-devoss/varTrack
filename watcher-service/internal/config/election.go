@@ -44,7 +44,7 @@ type ElectionConfig struct {
 //
 // It returns nil, with no error, when no election datasource is named, when it
 // is not found, or when its type is not supported (MongoDB, S3, Helm,
-// ConfigMap, Vercel and linux_server do not expose the atomic primitives safe
+// ConfigMap and linux_server do not expose the atomic primitives safe
 // leader election needs): the watcher then runs standalone. It returns an
 // error when the bundle cannot be read, or the election datasource's password
 // cannot be had — starting without the election it was told to use would let
@@ -53,9 +53,11 @@ func LeaderElection(configPath string) (*ElectionConfig, error) {
 	if configPath == "" {
 		return nil, nil
 	}
-	// Lenient: the watcher reads only this part of the bundle, and must keep
-	// working when another service's settings change.
-	b, err := bundle.Load(configPath, bundle.Options{})
+	// Strict, like the gateway and the orchestrator: all three are built from one
+	// proto, so a field this one does not know is a typo or a release mismatch, and
+	// either should stop the watcher at startup rather than leave it reading a
+	// bundle the other services read differently.
+	b, err := bundle.Load(configPath, bundle.Options{Strict: true})
 	if err != nil {
 		return nil, fmt.Errorf("load bundle %s: %w", configPath, err)
 	}
@@ -113,7 +115,7 @@ func LeaderElection(configPath string) (*ElectionConfig, error) {
 func sinkType(datasource string) string {
 	for _, prefix := range []string{
 		"mongo", "redis", "zookeeper", "s3",
-		"configmap", "helm", "linux_server", "vercel",
+		"configmap", "helm", "linux_server",
 	} {
 		if datasource == prefix ||
 			len(datasource) > len(prefix)+1 && datasource[:len(prefix)+1] == prefix+"-" {

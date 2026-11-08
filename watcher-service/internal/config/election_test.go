@@ -8,13 +8,16 @@ import (
 	"testing"
 )
 
-// cue writes a config.cue holding the datasources and the election setting.
+// cue writes a config.cue holding the datasources and the election setting, and the platform and rule a
+// bundle has to have (the loader refuses one that has none).
 func cue(t *testing.T, election, datasources string) string {
 	t.Helper()
 	body := "bundle: {\n"
 	if election != "" {
 		body += "\twatcher_leader_election_datasource: \"" + election + "\"\n"
 	}
+	body += "\tplatforms: [{gitea: {endpoint: \"http://gitea:3000\"}}]\n"
+	body += "\trules: [{platform: \"gitea\", datasource: \"mongo\", repositories: [\"acme/configs\"]}]\n"
 	body += "\tdatasources: [" + datasources + "]\n}\n"
 	file := filepath.Join(t.TempDir(), "config.cue")
 	if err := os.WriteFile(file, []byte(body), 0o600); err != nil {
@@ -110,7 +113,7 @@ func TestNoElectionWhenNoneIsConfiguredOrItCannotBeUsed(t *testing.T) {
 	for name, file := range map[string]string{
 		"none named":             cue(t, "", redis),
 		"a datasource not found": cue(t, "redis-elsewhere", redis),
-		"an unsupported type":    cue(t, "mongo", `{mongo: {endpoint: "mongodb://mongo:27017", database: "v"}}`),
+		"an unsupported type":    cue(t, "mongo", `{mongo: {endpoint: "mongodb://mongo:27017", database: "v", collection: "c"}}`),
 	} {
 		t.Run(name, func(t *testing.T) {
 			cfg, err := LeaderElection(file)
@@ -130,9 +133,9 @@ func TestABundleThatCannotBeReadStopsTheWatcher(t *testing.T) {
 	}
 }
 
-func TestTheWatcherIgnoresSettingsOfOtherServices(t *testing.T) {
-	// The gateway reads strictly; the watcher reads only election, and must keep
-	// working when a rule gets a setting it does not know.
+func TestTheWatcherRefusesWhatTheGatewayRefuses(t *testing.T) {
+	// One proto, one reading: a setting the proto does not declare stops the gateway,
+	// and stops the watcher the same way, instead of being read differently by each.
 	file := filepath.Join(t.TempDir(), "config.cue")
 	body := `bundle: {
 	watcher_leader_election_datasource: "redis"
@@ -144,8 +147,8 @@ func TestTheWatcherIgnoresSettingsOfOtherServices(t *testing.T) {
 		t.Fatal(err)
 	}
 	cfg, err := LeaderElection(file)
-	if err != nil || cfg == nil {
-		t.Fatalf("cfg=%v err=%v", cfg, err)
+	if err == nil || cfg != nil || !strings.Contains(err.Error(), "a_setting_from_the_future") {
+		t.Fatalf("cfg=%v err=%v, want the unknown setting named", cfg, err)
 	}
 }
 

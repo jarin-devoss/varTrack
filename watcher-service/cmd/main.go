@@ -128,7 +128,7 @@ func run() error {
 
 	// ── 5. Admin HTTP server ──────────────────────────────────────────────────
 	var unavailable atomic.Bool
-	adminSrv := newAdminServer(env.AdminAddr, metrics, manager, &unavailable)
+	adminSrv := newAdminServer(env.AdminAddr, metrics, manager, &unavailable, env.InternalAuthSecret)
 	go func() {
 		slog.Info("watcher: admin server listening", "addr", env.AdminAddr)
 		if err := adminSrv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
@@ -213,6 +213,7 @@ func newAdminServer(
 	metrics *mon.WatcherMetrics,
 	mgr *watcher.Manager,
 	unavailable *atomic.Bool,
+	secret string,
 ) *http.Server {
 	mux := http.NewServeMux()
 
@@ -241,6 +242,9 @@ func newAdminServer(
 			"active_watchers": mgr.ActiveCount(),
 		})
 	})
+
+	// POST /admin/check — look at a rule now and heal it if it drifted (needs an admin grant).
+	mux.Handle("/admin/check", checkHandler(mgr, secret))
 
 	// GET /metrics — Prometheus text format
 	mux.HandleFunc("/metrics", func(w http.ResponseWriter, r *http.Request) {

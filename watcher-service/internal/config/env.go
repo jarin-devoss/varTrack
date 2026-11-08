@@ -14,6 +14,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"vartrack/libs/grants"
 )
 
 // Env holds all environment variables consumed by the watcher-service.
@@ -33,7 +35,19 @@ type Env struct {
 	TLSCAFile   string // TLS_CA_FILE
 	TLSCertFile string // TLS_CERT_FILE
 	TLSKeyFile  string // TLS_KEY_FILE
+
+	// InternalAuthSecret signs the grants the watcher presents to the orchestrator
+	// (INTERNAL_AUTH_WATCH_SECRET, else INTERNAL_AUTH_SECRET; each also readable
+	// from a *_FILE). Sensitive: never logged. Empty means calls are unsigned,
+	// which only works against an orchestrator running open (development).
+	InternalAuthSecret string
+	// InternalAuthInsecure is the explicit development switch: production refuses
+	// to start without a secret unless it is set.
+	InternalAuthInsecure bool
 }
+
+// InternalAuthEnabled reports whether the watcher signs its calls to the orchestrator.
+func (e *Env) InternalAuthEnabled() bool { return e.InternalAuthSecret != "" }
 
 // LoadEnv reads and validates environment variables.
 // Returns an error if any required variable is missing or invalid.
@@ -60,6 +74,30 @@ func LoadEnv() (*Env, error) {
 	}
 	if env.ConfigPath == "" {
 		return nil, fmt.Errorf("CONFIG_PATH must not be empty")
+	}
+
+	// The key the orchestrator verifies the watcher's grants with: its own
+	// INTERNAL_AUTH_WATCH_SECRET when it has one, else the shared secret.
+	for _, name := range []string{"INTERNAL_AUTH_WATCH_SECRET", "INTERNAL_AUTH_SECRET"} {
+		secret, serr := grants.LoadSecret(EnvOr(name, ""), EnvOr(name+"_FILE", ""))
+		if serr != nil {
+			return nil, serr
+		}
+		if secret != "" {
+			env.InternalAuthSecret = secret
+			break
+		}
+	}
+	switch strings.ToLower(strings.TrimSpace(EnvOr("INTERNAL_AUTH_INSECURE", ""))) {
+	case "1", "true", "yes":
+		env.InternalAuthInsecure = true
+	}
+	if env.InternalAuthSecret != "" && len(env.InternalAuthSecret) < grants.MinSecretLength {
+		return nil, fmt.Errorf("INTERNAL_AUTH_SECRET must be at least %d characters", grants.MinSecretLength)
+	}
+	if env.IsProduction() && env.InternalAuthSecret == "" && !env.InternalAuthInsecure {
+		return nil, fmt.Errorf("production mode requires INTERNAL_AUTH_SECRET (or INTERNAL_AUTH_WATCH_SECRET) " +
+			"to sign calls to the orchestrator; set INTERNAL_AUTH_INSECURE=true only to run without it on purpose")
 	}
 
 	// Production requires mTLS to the orchestrator.
@@ -160,7 +198,7 @@ func EnvInt(key string, defaultVal int) int {
 // IsProduction reports whether the APP_ENV is set to "production".
 func (e *Env) IsProduction() bool { return e.AppEnv == "production" }
 
-// LogValue implements slog.LogValuer — masks no secrets (watcher has none).
+// LogValue implements slog.LogValuer. The signing secret is never logged; only whether it is set.
 func (e *Env) LogValue() slog.Value {
 	return slog.GroupValue(
 		slog.String("app_env", e.AppEnv),
@@ -172,6 +210,7 @@ func (e *Env) LogValue() slog.Value {
 		slog.Duration("poll_interval", e.PollInterval),
 		slog.Bool("tls_ca_set", e.TLSCAFile != ""),
 		slog.Bool("tls_cert_set", e.TLSCertFile != ""),
+		slog.Bool("internal_auth", e.InternalAuthEnabled()),
 	)
 }
 
