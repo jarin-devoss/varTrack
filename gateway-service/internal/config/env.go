@@ -9,6 +9,9 @@ import (
 	"net"
 	"os"
 	"strings"
+	"time"
+
+	"vartrack/libs/grants"
 )
 
 // Env holds the shared environment variables consumed by all VarTrack services.
@@ -26,11 +29,28 @@ type Env struct {
 	GatewayTlsCert   string // GATEWAY_TLS_CERT — inbound TLS cert for the HTTP server
 	GatewayTlsKey    string // GATEWAY_TLS_KEY — inbound TLS key for the HTTP server
 
-	// RedisURL is optional.  When set, delivery nonces are persisted to Redis
-	// so that multi-replica gateway deployments share the same nonce window
-	// and correctly block cross-replica replay attacks.
-	// Resolved from the CUE bundle datasource tagged by global_tags.gateway_nonce_redis.
-	RedisURL string
+	// InternalAuthSecret signs the grants the gateway presents to the orchestrator
+	// (INTERNAL_AUTH_SECRET, or the file named by INTERNAL_AUTH_SECRET_FILE).
+	// Sensitive: never logged. Empty means the gateway sends the caller as plain
+	// gRPC metadata, which is only for development against an orchestrator that
+	// runs without internal authentication.
+	InternalAuthSecret string
+	// InternalAuthInsecure is the explicit development switch (INTERNAL_AUTH_INSECURE):
+	// production refuses to start without a secret unless it is set.
+	InternalAuthInsecure bool
+
+	// AuthzAddr is where the permission engine is served to the orchestrator's web UI
+	// (AUTHZ_ADDR, e.g. ":5658"). Empty serves nothing: the CLI API still asks the
+	// engine in-process, but a web UI with sign-in on then cannot ask it and answers 503.
+	AuthzAddr string
+	// AuthzSecret verifies the "authz" grants the orchestrator presents
+	// (INTERNAL_AUTH_AUTHZ_SECRET, or the file named by INTERNAL_AUTH_AUTHZ_SECRET_FILE;
+	// INTERNAL_AUTH_SECRET when neither is set). Sensitive: never logged.
+	AuthzSecret string
+	// AuthzCacheTTL is how long the engine keeps what a Git platform said
+	// (AUTHZ_CACHE_TTL, a duration; default 60s, "0" turns the cache off). It is also how
+	// long a revoked permission keeps working.
+	AuthzCacheTTL time.Duration
 }
 
 func (e *Env) GetOrchestratorAddr() string { return e.OrchestratorAddr }
@@ -45,6 +65,9 @@ func (e *Env) GetTLSKey() string  { return e.GatewayTlsKey }
 func (e *Env) IsProduction() bool {
 	return e.AppEnv == "production"
 }
+
+// InternalAuthEnabled reports whether the gateway signs its calls to the orchestrator.
+func (e *Env) InternalAuthEnabled() bool { return e.InternalAuthSecret != "" }
 
 // LogValue implements slog.LogValuer to mask sensitive fields automatically.
 func (e *Env) LogValue() slog.Value {
@@ -66,6 +89,7 @@ func (e *Env) LogValue() slog.Value {
 		slog.String("grpc_tls_key", boolToSet(e.GRPCTlsKey != "")),
 		slog.String("gateway_tls_cert", boolToSet(e.GatewayTlsCert != "")),
 		slog.String("gateway_tls_key", boolToSet(e.GatewayTlsKey != "")),
+		slog.String("internal_auth", boolToSet(e.InternalAuthEnabled())),
 	)
 }
 
@@ -119,12 +143,39 @@ func LoadEnv() (*Env, error) {
 
 	env.AppEnv = strings.ToLower(strings.TrimSpace(env.AppEnv))
 
+	secret, err := grants.LoadSecret(EnvOr("INTERNAL_AUTH_SECRET", ""), EnvOr("INTERNAL_AUTH_SECRET_FILE", ""))
+	if err != nil {
+		return nil, err
+	}
+	env.InternalAuthSecret = secret
+	authzSecret, err := grants.LoadSecret(EnvOr("INTERNAL_AUTH_AUTHZ_SECRET", ""), EnvOr("INTERNAL_AUTH_AUTHZ_SECRET_FILE", ""))
+	if err != nil {
+		return nil, err
+	}
+	if authzSecret == "" {
+		authzSecret = secret
+	}
+	env.AuthzSecret = authzSecret
+	env.AuthzAddr = EnvOr("AUTHZ_ADDR", "")
+	env.AuthzCacheTTL = 60 * time.Second
+	if raw := strings.TrimSpace(EnvOr("AUTHZ_CACHE_TTL", "")); raw != "" {
+		ttl, err := time.ParseDuration(raw)
+		if err != nil && raw == "0" {
+			ttl, err = 0, nil
+		}
+		if err != nil || ttl < 0 {
+			return nil, fmt.Errorf("AUTHZ_CACHE_TTL=%q is not a duration such as 60s (or 0 to turn the cache off)", raw)
+		}
+		env.AuthzCacheTTL = ttl
+	}
+	switch strings.ToLower(strings.TrimSpace(EnvOr("INTERNAL_AUTH_INSECURE", ""))) {
+	case "1", "true", "yes":
+		env.InternalAuthInsecure = true
+	}
+
 	if err := env.validate(); err != nil {
 		return nil, err
 	}
-
-	// Resolve Redis URL from the CUE bundle datasource (no REDIS_URL env var).
-	env.RedisURL = RedisURLFromBundle(env.ConfigPath)
 
 	return env, nil
 }
@@ -250,6 +301,29 @@ func (e *Env) validate() error {
 		if e.GatewayTlsCert == "" || e.GatewayTlsKey == "" {
 			return fmt.Errorf("production mode requires GATEWAY_TLS_CERT and GATEWAY_TLS_KEY for inbound TLS")
 		}
+	}
+
+	// The orchestrator only acts on a signed grant: a gateway that cannot sign one
+	// is not in front of anything in production.
+	if e.InternalAuthSecret != "" && len(e.InternalAuthSecret) < grants.MinSecretLength {
+		return fmt.Errorf("INTERNAL_AUTH_SECRET must be at least %d characters", grants.MinSecretLength)
+	}
+	if e.AuthzSecret != "" && len(e.AuthzSecret) < grants.MinSecretLength {
+		return fmt.Errorf("INTERNAL_AUTH_AUTHZ_SECRET must be at least %d characters", grants.MinSecretLength)
+	}
+	if e.AuthzAddr != "" {
+		if _, _, err := net.SplitHostPort(e.AuthzAddr); err != nil {
+			return fmt.Errorf("AUTHZ_ADDR=%q is not a valid host:port address: %w", e.AuthzAddr, err)
+		}
+		// The service takes Git tokens: in production it answers only to the orchestrator.
+		if e.IsProduction() && e.AuthzSecret == "" && !e.InternalAuthInsecure {
+			return fmt.Errorf("production mode requires INTERNAL_AUTH_SECRET (or INTERNAL_AUTH_AUTHZ_SECRET) " +
+				"to serve AUTHZ_ADDR; set INTERNAL_AUTH_INSECURE=true only to run it open on purpose")
+		}
+	}
+	if e.IsProduction() && e.InternalAuthSecret == "" && !e.InternalAuthInsecure {
+		return fmt.Errorf("production mode requires INTERNAL_AUTH_SECRET (or INTERNAL_AUTH_SECRET_FILE) " +
+			"to sign calls to the orchestrator; set INTERNAL_AUTH_INSECURE=true only to run without it on purpose")
 	}
 
 	if e.GRPCTlsCa != "" {

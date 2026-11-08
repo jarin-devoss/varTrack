@@ -6,12 +6,16 @@ import (
 	"crypto/x509"
 	"fmt"
 	"log/slog"
+	"net"
 	"os"
 	"sync"
 	"time"
 
+	"gateway-service/internal/authz"
 	"gateway-service/internal/config"
+	"gateway-service/internal/models"
 
+	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
 )
@@ -146,4 +150,75 @@ func shutdownGRPCConnection(ctx context.Context, conn interface{ Close() error }
 		slog.Warn("gRPC connection drain timed out; forcing close")
 		return ctx.Err()
 	}
+}
+
+// checkPlatformAPIs logs, for each platform that can say whether its API is the one its type
+// names, when it is not. It never stops the gateway: webhooks work without it.
+func checkPlatformAPIs(ctx context.Context, bundle *models.Bundle) {
+	checkCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	for _, name := range bundle.PlatformNames() {
+		platform, err := bundle.GetPlatform(checkCtx, name, "")
+		if err != nil {
+			continue
+		}
+		checker, ok := platform.(interface{ CheckAPI(context.Context) error })
+		if !ok {
+			continue
+		}
+		if err := checker.CheckAPI(checkCtx); err != nil {
+			slog.Warn("gateway: platform "+name+": "+err.Error(), "platform", name)
+		}
+	}
+}
+
+// startAuthzServer serves the permission engine on AUTHZ_ADDR, for the orchestrator's
+// web UI. It returns nil when AUTHZ_ADDR is unset.
+//
+// In production the listener is TLS with the gateway's own certificate and, when
+// GRPC_TLS_CA is set, demands a client certificate that CA signed (mTLS), like the
+// orchestrator's gRPC port; every call must in any case carry a signed "authz" grant.
+func startAuthzServer(env *config.Env, engine *authz.Engine) (*grpc.Server, error) {
+	if env.AuthzAddr == "" || engine == nil {
+		return nil, nil
+	}
+	srv := authz.NewServer(engine, env.AuthzSecret)
+	opts := []grpc.ServerOption{srv.ServerOption()}
+	switch {
+	case env.IsProduction():
+		cert, err := tls.LoadX509KeyPair(env.GatewayTlsCert, env.GatewayTlsKey)
+		if err != nil {
+			return nil, fmt.Errorf("authz server: load TLS keypair: %w", err)
+		}
+		tlsCfg := &tls.Config{Certificates: []tls.Certificate{cert}, MinVersion: tls.VersionTLS12}
+		if env.GRPCTlsCa != "" {
+			caPEM, err := os.ReadFile(env.GRPCTlsCa)
+			if err != nil {
+				return nil, fmt.Errorf("authz server: read CA %s: %w", env.GRPCTlsCa, err)
+			}
+			pool := x509.NewCertPool()
+			if !pool.AppendCertsFromPEM(caPEM) {
+				return nil, fmt.Errorf("authz server: no certificate in %s", env.GRPCTlsCa)
+			}
+			tlsCfg.ClientCAs = pool
+			tlsCfg.ClientAuth = tls.RequireAndVerifyClientCert
+		}
+		opts = append(opts, grpc.Creds(credentials.NewTLS(tlsCfg)))
+	case env.AuthzSecret == "":
+		slog.Warn("gateway: the permission engine is served WITHOUT authentication and without TLS " +
+			"(no INTERNAL_AUTH_SECRET): anyone who can reach AUTHZ_ADDR can ask it about a token. Development only.")
+	}
+	lis, err := net.Listen("tcp", env.AuthzAddr)
+	if err != nil {
+		return nil, fmt.Errorf("authz server: listen on %s: %w", env.AuthzAddr, err)
+	}
+	gs := grpc.NewServer(opts...)
+	srv.Register(gs)
+	go func() {
+		if err := gs.Serve(lis); err != nil {
+			slog.Error("authz server stopped", "error", err)
+		}
+	}()
+	slog.Info("gateway: permission engine served", "addr", env.AuthzAddr, "signed_grants", env.AuthzSecret != "")
+	return gs, nil
 }
