@@ -9,6 +9,9 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
+	"regexp"
+	"strconv"
 	"time"
 )
 
@@ -17,7 +20,16 @@ type Client struct {
 	baseURL    string
 	token      string
 	tenantID   string
+	platform   string
 	httpClient *http.Client
+}
+
+// WithPlatform says which Git platform the token is for; the gateway then asks that
+// platform and no other. Empty leaves it to the rule a request names, or to the
+// only platform the gateway has.
+func (c *Client) WithPlatform(platform string) *Client {
+	c.platform = platform
+	return c
 }
 
 // New returns a configured Client.
@@ -119,9 +131,29 @@ type TaskListResponse struct {
 	NextCursor string         `json:"next_cursor,omitempty"`
 }
 
+// tenantName is the shape of a tenant name: letters, digits, "-" and "_", starting with a
+// letter or digit, at most 63 characters. The gateway and the orchestrator check the same
+// shape, so a name that is not one never reaches a query, a path or a key.
+var tenantName = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_-]{0,62}$`)
+
+// CheckTenant returns an error for a tenant name that is not the right shape. An empty name
+// is fine: the gateway's default applies.
+func CheckTenant(name string) error {
+	if name == "" || tenantName.MatchString(name) {
+		return nil
+	}
+	if len(name) > 40 {
+		name = name[:40] + "…"
+	}
+	return fmt.Errorf("tenant %q is not a tenant name: letters, digits, '-' and '_' only, up to 63 characters", name)
+}
+
 func (c *Client) Sync(ctx context.Context, req SyncRequest) (*SyncResponse, error) {
 	if req.TenantID == "" {
 		req.TenantID = c.tenantID
+	}
+	if err := CheckTenant(req.TenantID); err != nil {
+		return nil, err
 	}
 	var resp SyncResponse
 	if err := c.post(ctx, "/v1/cli/sync", req, &resp); err != nil {
@@ -133,6 +165,9 @@ func (c *Client) Sync(ctx context.Context, req SyncRequest) (*SyncResponse, erro
 func (c *Client) Validate(ctx context.Context, req ValidateRequest) (*ValidateResponse, error) {
 	if req.TenantID == "" {
 		req.TenantID = c.tenantID
+	}
+	if err := CheckTenant(req.TenantID); err != nil {
+		return nil, err
 	}
 	var resp ValidateResponse
 	if err := c.post(ctx, "/v1/cli/validate", req, &resp); err != nil {
@@ -146,6 +181,9 @@ func (c *Client) ValidateConfig(ctx context.Context, req ValidateConfigRequest) 
 	if req.TenantID == "" {
 		req.TenantID = c.tenantID
 	}
+	if err := CheckTenant(req.TenantID); err != nil {
+		return nil, err
+	}
 	var resp ValidateConfigResponse
 	if err := c.post(ctx, "/v1/cli/validate-config", req, &resp); err != nil {
 		return nil, err
@@ -155,7 +193,7 @@ func (c *Client) ValidateConfig(ctx context.Context, req ValidateConfigRequest) 
 
 func (c *Client) GetTask(ctx context.Context, taskID string) (*TaskResponse, error) {
 	var resp TaskResponse
-	if err := c.get(ctx, "/v1/cli/tasks/"+taskID, &resp); err != nil {
+	if err := c.get(ctx, "/v1/cli/tasks/"+url.PathEscape(taskID), &resp); err != nil {
 		return nil, err
 	}
 	return &resp, nil
@@ -165,7 +203,12 @@ func (c *Client) ListTasks(ctx context.Context, tenantID string, limit int) (*Ta
 	if tenantID == "" {
 		tenantID = c.tenantID
 	}
-	path := fmt.Sprintf("/v1/cli/tasks?tenant_id=%s&limit=%d", tenantID, limit)
+	if err := CheckTenant(tenantID); err != nil {
+		return nil, err
+	}
+	// Built, not formatted: a tenant such as "demo&limit=1" must stay one value.
+	query := url.Values{"tenant_id": {tenantID}, "limit": {strconv.Itoa(limit)}}
+	path := "/v1/cli/tasks?" + query.Encode()
 	var resp TaskListResponse
 	if err := c.get(ctx, path, &resp); err != nil {
 		return nil, err
@@ -204,6 +247,9 @@ func (c *Client) setHeaders(req *http.Request) {
 	}
 	if c.tenantID != "" {
 		req.Header.Set("X-Tenant-ID", c.tenantID)
+	}
+	if c.platform != "" {
+		req.Header.Set("X-Git-Platform", c.platform)
 	}
 }
 

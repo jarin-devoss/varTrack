@@ -19,7 +19,11 @@ type Context struct {
 	OIDCIssuer   string `yaml:"oidc_issuer,omitempty"`
 	OIDCClientID string `yaml:"oidc_client_id,omitempty"`
 	TenantID     string `yaml:"tenant_id,omitempty"`
-	Insecure     bool   `yaml:"insecure,omitempty"`
+	// Platform is the Git platform (a name in the gateway's config.cue) the token
+	// is for. The gateway shows a token to one platform only, so a token for a
+	// bundle with several platforms needs it.
+	Platform string `yaml:"platform,omitempty"`
+	Insecure bool   `yaml:"insecure,omitempty"`
 }
 
 // Config is the top-level configuration file model.

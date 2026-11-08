@@ -69,6 +69,7 @@ Examples:
 			icon := map[string]string{
 				"ok":     "✓",
 				"warn":   "⚠",
+				"none":   "○",
 				"failed": "✗",
 			}[resp.Status]
 
