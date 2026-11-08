@@ -28,7 +28,6 @@ bundle: {
 				protocol:    "https"
 				token:       "ghp_xxxxxxxxxxxxxxxxxxxx"
 				org_name:    "my-org"
-				verify_ssl:  true
 				timeout:     "30s"
 				max_retries: 3
 			}
@@ -65,6 +64,7 @@ bundle: {
 		{
 			platform:   "github"
 			datasource: "mongo"
+			repositories: ["acme-corp/configs"]
 			self_heal:  true
 		},
 	]

@@ -23,7 +23,6 @@ bundle: {
 				token:       "gta_xxxxxxxxxxxxxxxxxxxxxxxxxxxx" // Gitea personal access token
 				secret:      "my-webhook-secret"               // HMAC secret for signature verification
 				org_name:    "my-org"
-				verify_ssl:  true
 				timeout:     "30s"
 				max_retries: 3
 				page_size:   50
@@ -68,10 +67,7 @@ bundle: {
 				main:    "production"
 				develop: "staging"
 			}
-			prune: {
-				enabled: true
-				dry_run: false
-			}
+			prune: true
 		},
 	]
 

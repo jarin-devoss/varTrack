@@ -12,6 +12,7 @@ bundle: {
 		{
 			github: {
 				endpoint:        "https://github.example.com"
+				protocol:        "https"
 				token:           "ghp_xxxxxxxxxxxxxxxxxxxx"
 				secret:          "my-webhook-secret"
 				push_event_name: "push"
