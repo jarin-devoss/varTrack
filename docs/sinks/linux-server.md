@@ -56,8 +56,15 @@ max_connections=50
 ## Host keys
 
 ```cue
-host_key_verification: "strict"     // "strict" (default), "accept-new", "off"
-known_hosts_file:      "/etc/vartrack/known_hosts"
+linux_server: {
+  host:       "app-01.example.com"
+  username:   "deploy"
+  password:   {file: "/run/secrets/ssh-password"}
+  file_paths: ["/etc/myapp/app.env"]
+
+  host_key_verification: "strict"     // "strict" (default), "accept-new", "off"
+  known_hosts_file:      "/etc/vartrack/known_hosts"
+}
 ```
 
 | Mode | Behaviour |
@@ -72,20 +79,31 @@ known_hosts_file:      "/etc/vartrack/known_hosts"
 
 ```cue
 linux_server: {
-  // …connection, file_paths…
+  host:       "app-01.example.com"
+  username:   "deploy"
+  password:   {file: "/run/secrets/ssh-password"}
+  file_paths: ["/etc/myapp/app.env"]
+
   file_mode:           "0640"
   file_owner:          "app:app"          // chown; usually needs use_sudo
   create_directories:  true               // default; false fails when the directory is missing
   backup_before_write: true
   backup_suffix:       ".bak"             // default
   validation_command:          "nginx -t -c {file}"
-  rollback_on_validation_fail: true
+  validate_after_rename:       false          // default; true checks the file in place instead (see below)
+  rollback_on_validation_fail: true           // only with validate_after_rename
   post_write_commands:         ["systemctl reload nginx"]
   continue_on_command_error:   false
 }
 ```
 
-In order: missing directories are created, the previous file is copied to `{file}{backup_suffix}` when `backup_before_write` is on, the new file is written, then `file_mode` and `file_owner` are applied. `validation_command` runs next — `{file}` is the written file — and when it fails the sync fails; with `rollback_on_validation_fail` the previous file is put back first. Last, `post_write_commands` run in order: a failing one fails the sync unless `continue_on_command_error` is on.
+In order: missing directories are created, the previous file is copied to `{file}{backup_suffix}` when `backup_before_write` is on, and the new content is written to a temp file next to the target (`.<name>.vt-<id>.tmp`, in the same directory so the rename stays on one filesystem). The temp file gets the mode and owner of the file it replaces, then `file_mode` and `file_owner` are applied. `validation_command` runs on the temp file — `{file}` is the temp file, `{target}` the path it is going to — and when it fails the sync fails and the target is untouched. Then one rename puts the new file in place, so a service reading (or reloading on change) sees the old file or the new one, never half of either. Last, `post_write_commands` run in order: a failing one fails the sync unless `continue_on_command_error` is on.
+
+A write that dies between its steps leaves the old file and at most a temp file, which the next write of that path removes.
+
+Over SFTP the rename is OpenSSH's `posix-rename`; a server without it is refused with an error naming `use_sftp: false`, which replaces the file with `mv -f` over a shell. varTrack does not fall back to remove-then-rename, which has a moment with no file.
+
+A `validation_command` that needs the file at its final path (an include path, a path inside the file) can set `validate_after_rename: true`: the file is replaced first and validated in place, and `rollback_on_validation_fail` then puts the previous file back when it fails. A reader can see the new file before it is validated in that mode.
 
 ## Transfer, sudo and connection
 

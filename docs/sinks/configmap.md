@@ -11,7 +11,7 @@ datasources: [{
   configmap: {
     tag:        ""
     namespace:  "default"
-    kubeconfig: "/path/to/kubeconfig"    // optional — uses in-cluster config if omitted
+    kubeconfig_path: "/path/to/kubeconfig"    // optional — uses in-cluster config if omitted
   }
 }]
 ```

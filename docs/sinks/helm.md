@@ -11,7 +11,7 @@ datasources: [{
   helm: {
     tag:        ""
     namespace:  "default"
-    kubeconfig: "/path/to/kubeconfig"   // optional — uses in-cluster config if absent
+    kubeconfig_path: "/path/to/kubeconfig"   // optional — uses in-cluster config if absent
   }
 }]
 ```
@@ -57,7 +57,7 @@ datasources: [{
 | `INSTALL_OR_UPGRADE` | `helm upgrade --install --create-namespace RELEASE CHART --set …` — installs the release the first time, upgrades it after |
 | `FULL_UPGRADE` | `helm upgrade RELEASE CHART --set …` — chart and values; the release must already exist |
 | `VALUES_ONLY` | `helm upgrade RELEASE CHART --reuse-values --set …` — sets varTrack's values on the existing release and keeps its other values; the release must already exist |
-| unset | No Helm command: the values are written to a values file (`helm_values_file_path` in the rule, default `values.yaml`) for other tooling to apply |
+| unset | No Helm command: the values are written to a values file (`helm_values_file_path` in the rule, default `values.yaml`) for other tooling to apply; the file is replaced in one rename, so a reader never sees a half-written one |
 
 `chart_version` adds `--version` and `chart_repo` adds `--repo`. Values go in as `--set` flags; `helm_values_mode: "file"` in the rule passes them as a values file instead.
 

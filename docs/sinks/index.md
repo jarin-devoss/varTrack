@@ -14,7 +14,6 @@ A sink is a datasource that varTrack writes config values into. One push can fan
 | [S3](s3.md) | Config files as objects, audit storage, batch pipelines |
 | [Kubernetes ConfigMap](configmap.md) | App config for Kubernetes workloads |
 | [Helm](helm.md) | Helm values files, chart config driven by Git |
-| [Vercel](vercel.md) | Frontend environment variables synced from Git |
 | [Linux Server](linux-server.md) | Write config files directly to remote servers via SSH |
 
 ---
@@ -42,8 +41,8 @@ Use `tag` to run two MongoDB instances side by side:
 
 ```cue
 datasources: [
-  { mongo: { tag: "primary",  endpoint: "mongodb://mongo-primary:27017",  database: "app" } },
-  { mongo: { tag: "replica",  endpoint: "mongodb://mongo-replica:27017",  database: "app" } },
+  { mongo: { tag: "primary",  endpoint: "mongodb://mongo-primary:27017",  database: "app", collection: "variables" } },
+  { mongo: { tag: "replica",  endpoint: "mongodb://mongo-replica:27017",  database: "app", collection: "variables" } },
 ]
 
 rules: [
