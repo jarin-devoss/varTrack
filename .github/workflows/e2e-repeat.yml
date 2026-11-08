@@ -1,0 +1,69 @@
+name: e2e-repeat
+
+# The e2e regression, several times in a row on fresh volumes. A suite that fails one run in a few (a
+# worker holding old schemas, a task that finishes late) passes the PR's single run most of the time; run
+# again and again, it shows. A failure here is a bug to find, never a run to retry.
+on:
+  schedule:
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+    inputs:
+      runs:
+        description: "How many times to run the regression, each on fresh volumes"
+        default: "3"
+
+permissions:
+  contents: read
+
+jobs:
+  repeat:
+    name: e2e x N
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5 # v4.1.0
+
+      - name: Build the stack
+        working-directory: e2e
+        run: docker compose build
+
+      - name: Run the regression N times
+        working-directory: e2e
+        env:
+          RUNS: ${{ inputs.runs || '3' }}
+        run: |
+          set -euo pipefail
+          case "$RUNS" in ''|*[!0-9]*) echo "runs must be a number, got '$RUNS'" >&2; exit 1 ;; esac
+          for i in $(seq 1 "$RUNS"); do
+            echo "::group::run $i of $RUNS"
+            docker compose down -v --remove-orphans
+            rm -f results/benchmark.json
+            docker compose up --detach
+            # exits with the test runner's status: non-zero when a suite failed
+            docker compose wait e2e-demo
+            python3 check_results.py results/benchmark.json
+            cp results/benchmark.json "results/benchmark-$i.json"
+            echo "::endgroup::"
+          done
+
+      - name: Dump every service's logs
+        if: failure()
+        working-directory: e2e
+        run: |
+          docker compose ps -a
+          docker compose logs --no-color --timestamps
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: e2e-repeat-results
+          path: e2e/results/
+          retention-days: 7
+
+      - name: Tear down
+        if: always()
+        working-directory: e2e
+        run: docker compose down -v --remove-orphans
