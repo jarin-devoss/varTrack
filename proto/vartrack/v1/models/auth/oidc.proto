@@ -84,11 +84,10 @@ message RBACConfig {
 //
 // All three layers must approve a request for it to proceed.
 message AuthConfig {
-  // OIDC provider — required to enable the CLI API.
-  OIDCConfig oidc = 1 [
-    (buf.validate.field).required = true,
-    (google.api.field_behavior) = REQUIRED
-  ];
+  // No longer supported: the gateway refuses a config that sets it. The CLI API authorizes with the caller's
+  // Git token and the Git platform's permissions (docs/configuration/auth.md); the web UI signs in through
+  // ui.auth. The field stays so that setting it is an error that says so, not a typo.
+  OIDCConfig oidc = 1 [(google.api.field_behavior) = OPTIONAL];
 
   // Casbin RBAC — role-to-permission mapping.
   // When omitted built-in defaults apply (operator can sync, viewer can validate).

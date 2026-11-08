@@ -11,7 +11,6 @@
 //
 //   mongo        → "dot" only                    (document store, natural JSON)
 //   s3           → "dot" only
-//   vercel       → "dot" only
 //   helm         → "dot" only
 //   redis        → "dot" (HASH) | "flat" (STRING)
 //   zookeeper    → "slash" | "slash_dot"
@@ -53,7 +52,7 @@ type SinkKeyFormat struct {
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	// mongo, s3, vercel, helm — only "dot" is valid; omit or leave "dot".
+	// mongo, s3, helm — only "dot" is valid; omit or leave "dot".
 	// Writing this field with any value other than "dot" will raise a
 	// ValueError at MongoSink / S3Sink construction time.
 	Mongo string `protobuf:"bytes,1,opt,name=mongo,proto3" json:"mongo,omitempty"` // "dot"  (only valid value)

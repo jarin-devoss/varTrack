@@ -3,6 +3,7 @@ syntax = "proto3";
 package vartrack.v1;
 
 import "vartrack/v1/utils/secret_ref.proto";
+import "vartrack/v1/options.proto";
 import "buf/validate/validate.proto";
 import "google/api/field_behavior.proto";
 import "google/protobuf/duration.proto";
@@ -18,9 +19,11 @@ message GitHub {
     (buf.validate.field).string.uri = true,
     (google.api.field_behavior) = REQUIRED
   ];
+  // How repositories are cloned. Only "ssh" changes anything: any other value, or none, clones over the scheme
+  // of `endpoint`.
   string protocol  = 3 [
     (buf.validate.field).string = {in: ["ssh", "http", "https"]},
-    (google.api.field_behavior) = REQUIRED
+    (google.api.field_behavior) = OPTIONAL
   ];
 
   // --- Credentials (inline string or external ref) ---
@@ -33,7 +36,11 @@ message GitHub {
   optional string org_name = 8 [(google.api.field_behavior) = OPTIONAL];
 
   // --- Reliability & Performance ---
-  bool  verify_ssl  = 9  [(google.api.field_behavior) = OPTIONAL];
+  // The server's certificate is always checked unless this is set (it was `verify_ssl`,
+  // whose unset value meant "do not check").
+  bool  insecure_skip_verify = 40 [(google.api.field_behavior) = OPTIONAL];
+  reserved 9;
+  reserved "verify_ssl";
 
   // Per-request HTTP timeout. Uses Duration instead of raw int32 seconds
   // for unambiguous semantics and sub-second precision.

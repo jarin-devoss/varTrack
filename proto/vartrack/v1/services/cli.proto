@@ -179,7 +179,13 @@ message GetCliTaskRequest {
 message ListCliTasksRequest {
   string tenant_id = 1 [(google.api.field_behavior) = OPTIONAL];
   int32  limit     = 2 [(google.api.field_behavior) = OPTIONAL];
+  // Where the previous page ended (its next_cursor); empty for the first page.
   string cursor    = 3 [(google.api.field_behavior) = OPTIONAL];
+  // The rules the caller may read, each as "platform/datasource". The
+  // orchestrator skips every other task inside its scan, so a page of `limit`
+  // holds `limit` readable tasks. Always set by the gateway; a call without it
+  // lists nothing.
+  repeated string rules = 4 [(google.api.field_behavior) = OPTIONAL];
 }
 
 message ListCliTasksResponse {

@@ -1,0 +1,148 @@
+syntax = "proto3";
+
+package vartrack.v1;
+
+import "google/api/field_behavior.proto";
+import "google/protobuf/empty.proto";
+
+// Authz is varTrack's one permission engine, served by the gateway.
+//
+// Who may do what is decided here and nowhere else: the gateway's CLI handlers
+// call the engine in-process, and the orchestrator's web UI calls it through this
+// service. Git is the source of truth: the engine asks the rule's Git platform who
+// the token belongs to, what they may do in the rule's repositories and, for a sync,
+// whether they may push to the branch that feeds the environment. An optional
+// policy (auth.opa) can then refuse more; it never grants more than Git does.
+//
+// The orchestrator supplies facts (the rule, the environment, the repository an
+// environment was synced from) and obeys the answer. It decides nothing itself.
+//
+// Every call carries a signed grant for the "authz" audience (authorization
+// metadata); the platform tokens in Identity are request fields, never metadata.
+service Authz {
+  // Identify says who a token belongs to on its platform, and whether that
+  // person is one of the admins in config.cue's ui.auth.admins.
+  rpc Identify(IdentifyRequest) returns (Who);
+
+  // Decide answers one question: may this caller take this action on this rule?
+  rpc Decide(DecideRequest) returns (Decision);
+
+  // ReadableRules judges many rules at once for one caller: the rules they may
+  // read, with what they may do. The caller filters its lists by this set before
+  // it counts a page.
+  rpc ReadableRules(ReadableRulesRequest) returns (ReadableRulesResponse);
+
+  // Forget drops what the engine remembers about a caller's tokens (sign-out, or a
+  // platform connected anew).
+  rpc Forget(ForgetRequest) returns (google.protobuf.Empty);
+}
+
+// Identity is a token and the Git platform that issued it.
+message Identity {
+  // The platform's name in config.cue ("gitea", "github", "gitea-team").
+  string platform = 1 [(google.api.field_behavior) = REQUIRED];
+  // The caller's token on that platform. Sensitive: never logged, never echoed.
+  string token = 2 [(google.api.field_behavior) = REQUIRED];
+}
+
+// RuleFacts is what the engine needs to know of a rule: where it syncs from.
+// The orchestrator sends the rule as it reads it from the tenant's schema
+// repository, because the gateway's own bundle does not hold every tenant's rules.
+message RuleFacts {
+  string platform   = 1 [(google.api.field_behavior) = REQUIRED];
+  string datasource = 2 [(google.api.field_behavior) = REQUIRED];
+  // The repositories the rule covers, as "owner/name" names and glob patterns,
+  // with enabled overrides already folded in.
+  repeated string repositories         = 3;
+  repeated string exclude_repositories = 4;
+  // branch -> environment: a push to the branch syncs the environment.
+  map<string, string> branch_map = 5;
+  // Branch names are environment names.
+  bool branch_as_env = 6;
+  // The environments the caller wants judged for "may sync at all" (ReadableRules).
+  repeated string envs = 7;
+  // The tenants the rule allows: any declared tenant when empty.
+  repeated string tenants = 8;
+  // The rule's own branch: what feeds an environment no branch_map entry and no branch_as_env
+  // names, that is "default" and the environments file_path_map lists. Self-heal reads it too.
+  string branch = 9;
+  // The environments the rule's file_path_map names (its keys): they are fed by the rule's branch.
+  repeated string file_path_envs = 10;
+}
+
+message IdentifyRequest {
+  Identity identity = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+message Who {
+  string platform = 1 [(google.api.field_behavior) = OUTPUT_ONLY];
+  string login    = 2 [(google.api.field_behavior) = OUTPUT_ONLY];
+  bool   admin    = 3 [(google.api.field_behavior) = OUTPUT_ONLY];
+}
+
+message DecideRequest {
+  // The caller's identities: one per platform they signed in to. A CLI call has one.
+  repeated Identity identities = 1 [(google.api.field_behavior) = REQUIRED];
+  // read, dry_run, sync, validate or list.
+  string action = 2 [(google.api.field_behavior) = REQUIRED];
+  // The rule asked about. Left out, the engine takes the rule of its own bundle
+  // for rule_platform and datasource below.
+  RuleFacts rule = 3 [(google.api.field_behavior) = OPTIONAL];
+  // With no rule: name the one in the gateway's bundle.
+  string rule_platform   = 4 [(google.api.field_behavior) = OPTIONAL];
+  string rule_datasource = 5 [(google.api.field_behavior) = OPTIONAL];
+  string env             = 6 [(google.api.field_behavior) = OPTIONAL];
+  // The repository the environment was last synced from; for "read" it decides
+  // whether the environment is visible, never what the caller may do to the rule.
+  string source_repo = 7 [(google.api.field_behavior) = OPTIONAL];
+  string tenant_id   = 8 [(google.api.field_behavior) = OPTIONAL];
+  string file_path   = 9 [(google.api.field_behavior) = OPTIONAL];
+  // "cli" or "ui": the way in, for a policy that wants to tell them apart.
+  string via = 10 [(google.api.field_behavior) = OPTIONAL];
+  // What the action is about, as the policy sees it: "datasource" (the default) or
+  // "config" for a vartrack.json / bundle.json that names no rule.
+  string resource = 11 [(google.api.field_behavior) = OPTIONAL];
+}
+
+message Decision {
+  bool   allowed = 1 [(google.api.field_behavior) = OUTPUT_ONLY];
+  // Why not, in words for the caller; empty when allowed.
+  string reason = 2 [(google.api.field_behavior) = OUTPUT_ONLY];
+  // "git" (the platform's answer), "policy" (auth.opa) or "rule" (nothing syncs
+  // that environment, or no such rule); empty when allowed.
+  string denied_by = 3 [(google.api.field_behavior) = OUTPUT_ONLY];
+  string login     = 4 [(google.api.field_behavior) = OUTPUT_ONLY];
+  string platform  = 5 [(google.api.field_behavior) = OUTPUT_ONLY];
+  bool   admin     = 6 [(google.api.field_behavior) = OUTPUT_ONLY];
+  // admin, write, read or none: what the caller may do in the rule's repositories.
+  string permission = 7 [(google.api.field_behavior) = OUTPUT_ONLY];
+  // The branch the engine judged a sync on: the one a re-sync must read.
+  string branch = 8 [(google.api.field_behavior) = OUTPUT_ONLY];
+  // The tenant the caller was judged to act for: declared in config.cue, one the rule allows
+  // and one the caller's Git access reaches. What a grant carries, never the requested name.
+  string tenant = 9 [(google.api.field_behavior) = OUTPUT_ONLY];
+}
+
+message ReadableRulesRequest {
+  repeated Identity identities = 1 [(google.api.field_behavior) = REQUIRED];
+  repeated RuleFacts rules     = 2 [(google.api.field_behavior) = REQUIRED];
+  string tenant_id             = 3 [(google.api.field_behavior) = OPTIONAL];
+}
+
+message RulePermission {
+  // The position of the rule in the request.
+  int32  index      = 1 [(google.api.field_behavior) = OUTPUT_ONLY];
+  string permission = 2 [(google.api.field_behavior) = OUTPUT_ONLY];
+  // Whether the caller may sync at least one of the rule's environments.
+  bool can_sync = 3 [(google.api.field_behavior) = OUTPUT_ONLY];
+}
+
+message ReadableRulesResponse {
+  // Only the rules the caller may read, in request order.
+  repeated RulePermission rules = 1 [(google.api.field_behavior) = OUTPUT_ONLY];
+  bool admin = 2 [(google.api.field_behavior) = OUTPUT_ONLY];
+}
+
+message ForgetRequest {
+  repeated Identity identities = 1 [(google.api.field_behavior) = REQUIRED];
+}

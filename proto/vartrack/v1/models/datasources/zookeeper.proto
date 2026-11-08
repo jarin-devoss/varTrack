@@ -4,46 +4,56 @@ package vartrack.v1;
 
 import "vartrack/v1/enums/strategy.proto";
 import "vartrack/v1/utils/secret_ref.proto";
+import "vartrack/v1/options.proto";
 import "buf/validate/validate.proto";
 import "google/api/field_behavior.proto";
 import "google/protobuf/duration.proto";
 
 message ZooKeeperConfig {
+  // The sink writes one znode per key: a document or a whole file has no znode to be.
+  option (buf.validate.message).cel = {
+    id: "zookeeper.key_value_only",
+    message: "a ZooKeeper datasource stores one znode per key: update_strategy is STRATEGY_KEY_VALUE or unset",
+    expression: "this.update_strategy == 0 || this.update_strategy == 1"
+  };
+
   optional string tag = 1 [(google.api.field_behavior) = OPTIONAL];
   repeated string hosts = 2 [
     (buf.validate.field).repeated.min_items = 1,
     (google.api.field_behavior) = REQUIRED
   ];
+  // Every path the sink writes is under this one. Optional: a rule's destination_template can be the whole
+  // path, and the sink reads an unset base_path as "".
   string base_path = 3 [
     (buf.validate.field).string.min_len = 1,
-    (google.api.field_behavior) = REQUIRED
+    (google.api.field_behavior) = OPTIONAL
   ];
-  bool env_as_path = 4 [(google.api.field_behavior) = OPTIONAL];
+  bool env_as_path = 4 [(google.api.field_behavior) = OPTIONAL, (vartrack.v1.config) = {unused_reason: "the zookeeper sink does not read it yet, so set in config.cue it has no effect"}];
   optional string username = 5 [(google.api.field_behavior) = OPTIONAL];
   optional SecretRef password = 6 [(google.api.field_behavior) = OPTIONAL];
-  optional string auth_scheme = 7 [(google.api.field_behavior) = OPTIONAL];
+  optional string auth_scheme = 7 [(google.api.field_behavior) = OPTIONAL, (vartrack.v1.config) = {unused_reason: "the zookeeper sink does not read it yet, so set in config.cue it has no effect"}];
   google.protobuf.Duration session_timeout = 8 [
     (buf.validate.field).duration.gte = {seconds: 1},
     (google.api.field_behavior) = OPTIONAL
   ];
   google.protobuf.Duration connection_timeout = 9 [
     (buf.validate.field).duration.gte = {seconds: 1},
-    (google.api.field_behavior) = OPTIONAL
+    (google.api.field_behavior) = OPTIONAL, (vartrack.v1.config) = {unused_reason: "the zookeeper sink does not read it yet, so set in config.cue it has no effect"}
   ];
   // One znode per key: STRATEGY_KEY_VALUE (or unset) only.
   Strategy update_strategy = 10 [(buf.validate.field).enum.defined_only = true];
   int32 max_retries = 11 [
     (buf.validate.field).int32.gte = 0,
-    (google.api.field_behavior) = OPTIONAL
+    (google.api.field_behavior) = OPTIONAL, (vartrack.v1.config) = {unused_reason: "the zookeeper sink does not read it yet, so set in config.cue it has no effect"}
   ];
   google.protobuf.Duration retry_backoff = 12 [(google.api.field_behavior) = OPTIONAL];
-  bool world_readable = 13 [(google.api.field_behavior) = OPTIONAL];
-  optional string acl_scheme = 14 [(google.api.field_behavior) = OPTIONAL];
-  optional string acl_id = 15 [(google.api.field_behavior) = OPTIONAL];
-  bool ephemeral = 16 [(google.api.field_behavior) = OPTIONAL];
-  bool sequential = 17 [(google.api.field_behavior) = OPTIONAL];
+  bool world_readable = 13 [(google.api.field_behavior) = OPTIONAL, (vartrack.v1.config) = {unused_reason: "the zookeeper sink does not read it yet, so set in config.cue it has no effect"}];
+  optional string acl_scheme = 14 [(google.api.field_behavior) = OPTIONAL, (vartrack.v1.config) = {unused_reason: "the zookeeper sink does not read it yet, so set in config.cue it has no effect"}];
+  optional string acl_id = 15 [(google.api.field_behavior) = OPTIONAL, (vartrack.v1.config) = {unused_reason: "the zookeeper sink does not read it yet, so set in config.cue it has no effect"}];
+  bool ephemeral = 16 [(google.api.field_behavior) = OPTIONAL, (vartrack.v1.config) = {unused_reason: "the zookeeper sink does not read it yet, so set in config.cue it has no effect"}];
+  bool sequential = 17 [(google.api.field_behavior) = OPTIONAL, (vartrack.v1.config) = {unused_reason: "the zookeeper sink does not read it yet, so set in config.cue it has no effect"}];
   string encoding = 18 [
     (buf.validate.field).string = {in: ["json", "plain", "base64", ""]},
-    (google.api.field_behavior) = OPTIONAL
+    (google.api.field_behavior) = OPTIONAL, (vartrack.v1.config) = {unused_reason: "the zookeeper sink does not read it yet, so set in config.cue it has no effect"}
   ];
 }
