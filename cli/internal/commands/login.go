@@ -20,6 +20,7 @@ func newLoginCmd() *cobra.Command {
 		oidcIssuer   string
 		oidcClientID string
 		tenantID     string
+		platform     string
 		insecure     bool
 		callbackPort int
 	)
@@ -102,6 +103,7 @@ Examples:
 				OIDCIssuer:   oidcIssuer,
 				OIDCClientID: oidcClientID,
 				TenantID:     tenantID,
+				Platform:     platform,
 				Insecure:     insecure,
 			}
 
@@ -123,6 +125,8 @@ Examples:
 	cmd.Flags().StringVar(&oidcIssuer, "oidc-issuer", "", "OIDC provider issuer URL")
 	cmd.Flags().StringVar(&oidcClientID, "oidc-client-id", "", "OIDC client ID")
 	cmd.Flags().StringVar(&tenantID, "tenant", os.Getenv("VARTRACK_TENANT"), "Default tenant ID for this context")
+	cmd.Flags().StringVar(&platform, "platform", os.Getenv("VARTRACK_PLATFORM"),
+		"Git platform the token is for (a platform name in the gateway's config); needed when it has several")
 	cmd.Flags().BoolVar(&insecure, "insecure", false, "Skip TLS certificate verification")
 	cmd.Flags().IntVar(&callbackPort, "callback-port", 8085, "Local port for OIDC redirect callback")
 

@@ -55,6 +55,7 @@ func newConfigSetContextCmd() *cobra.Command {
 	var (
 		server   string
 		tenantID string
+		platform string
 		insecure bool
 	)
 
@@ -79,6 +80,9 @@ func newConfigSetContextCmd() *cobra.Command {
 			if tenantID != "" {
 				ctx.TenantID = tenantID
 			}
+			if platform != "" {
+				ctx.Platform = platform
+			}
 			if cmd.Flags().Changed("insecure") {
 				ctx.Insecure = insecure
 			}
@@ -90,6 +94,7 @@ func newConfigSetContextCmd() *cobra.Command {
 
 	cmd.Flags().StringVar(&server, "server", "", "Gateway server URL")
 	cmd.Flags().StringVar(&tenantID, "tenant", "", "Default tenant ID")
+	cmd.Flags().StringVar(&platform, "platform", "", "Git platform the token is for")
 	cmd.Flags().BoolVar(&insecure, "insecure", false, "Skip TLS verification")
 	return cmd
 }

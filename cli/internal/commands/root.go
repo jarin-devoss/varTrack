@@ -62,13 +62,14 @@ token for non-interactive CI environments.`,
 // buildClient constructs a gateway client from the active context.
 // Env var VARTRACK_TOKEN overrides the stored token (for CI/CD).
 // Env var VARTRACK_SERVER overrides the stored server URL.
+// Env var VARTRACK_PLATFORM overrides the Git platform the token is for.
 func buildClient() (*client.Client, error) {
 	token := os.Getenv("VARTRACK_TOKEN")
 	server := os.Getenv("VARTRACK_SERVER")
 
 	if token != "" && server != "" {
 		tenantID := os.Getenv("VARTRACK_TENANT")
-		return client.New(server, token, tenantID, false), nil
+		return client.New(server, token, tenantID, false).WithPlatform(os.Getenv("VARTRACK_PLATFORM")), nil
 	}
 
 	ctx, err := cfg.ActiveCtx()
@@ -82,5 +83,9 @@ func buildClient() (*client.Client, error) {
 	if server == "" {
 		server = ctx.Server
 	}
-	return client.New(server, token, ctx.TenantID, ctx.Insecure), nil
+	platform := os.Getenv("VARTRACK_PLATFORM")
+	if platform == "" {
+		platform = ctx.Platform
+	}
+	return client.New(server, token, ctx.TenantID, ctx.Insecure).WithPlatform(platform), nil
 }
