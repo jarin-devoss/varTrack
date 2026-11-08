@@ -24,7 +24,6 @@
 | Linux server | Full remote file path | `"/etc/app/{env}.env"` | `/etc/app/production.env` |
 | Helm | Release name | `"app-{env}"` | `app-production` |
 | ConfigMap | ConfigMap name | `"myapp-{env}"` | `myapp-production` |
-| Vercel | Environment variable prefix | `"{env}_"` | `production_` |
 
 ---
 

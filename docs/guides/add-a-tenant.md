@@ -46,20 +46,32 @@ vt validate-config bundle.json --tenant payments
 
 The schema files and `bundle.json` formats are in [Schema registry](../configuration/schema-registry.md).
 
-## 2. Register the tenant with the orchestrator
+## 2. Declare the tenant in `config.cue`
 
-Set these on the orchestrator API **and** every Celery worker, then restart them:
+The tenant is yours to declare, not something a request can create. Add it to `config.cue`'s
+[`tenants`](../configuration/bundle.md#tenants), with the repositories whose pushes are its own
+and its schema repository:
 
-```bash
-SCHEMA_TENANT_PAYMENTS_REPO=https://github.com/payments/schemas.git
-SCHEMA_TENANT_PAYMENTS_BRANCH=main          # default: main
-SCHEMA_TENANT_PAYMENTS_TOKEN=ghp_xxx        # read access to the schema repository
+```cue
+tenants: [{
+  name:         "payments"
+  repositories: ["payments/*"]
+  schema_repo: {
+    platform: "github"
+    repo:     "payments/schemas"
+    branch:   "main"
+    token:    {ref: {path: "payments/git", key: "token"}}   // read access to the schema repository
+  }
+}]
 ```
 
-The tenant ID is the part of the name between `SCHEMA_TENANT_` and the field, lower-cased:
-`PAYMENTS` → `payments`. The orchestrator clones the repository on first use into
-`SCHEMA_CACHE_DIR`; give the API and the workers the same directory (a shared volume) so they
-clone once.
+Restart the orchestrator API and its workers. The orchestrator clones the schema repository on
+first use into `SCHEMA_CACHE_DIR`; give the API and the workers the same directory (a shared
+volume) so they clone once.
+
+> Earlier releases registered a tenant with `SCHEMA_TENANT_PAYMENTS_REPO`, `_BRANCH` and
+> `_TOKEN`. Those variables are still read for this release, with a warning; a tenant declared
+> in `config.cue` wins over one of the same name from the environment.
 
 ## 3. Let the tenant layer its rules
 
@@ -77,17 +89,17 @@ rules: [{
 }]
 ```
 
-A `config.cue` rule that no tenant's `bundle.json` names still syncs, as its first tenant's
-(`default` when `tenants` is empty).
+A `config.cue` rule that no tenant's `bundle.json` names still syncs, as its first tenant's;
+with none listed, as the declared tenant whose `repositories` the rule covers (`default` when
+there is none).
 
 ## 4. Keep the settings fresh
 
 A changed `bundle.json`, schema or preset is picked up when the tenant's clone is next
 refreshed: every `SCHEMA_TTL_SECONDS` (300 s by default).
 
-A push webhook refreshes at once, but only for the schema repository named in `config.cue`'s
-`schema_registry` block (`POST /webhooks/schema-registry` on the gateway); other tenants'
-repositories follow the TTL. If a refresh fails, the rules already loaded stay in use and the
+A push webhook (`POST /webhooks/schema-registry` on the gateway) refreshes at once the tenant
+whose `schema_repo` the push came from; a push from any other repository is refused. If a refresh fails, the rules already loaded stay in use and the
 orchestrator logs `schema repo of tenant payments could not be refreshed; using the rules
 already loaded`.
 

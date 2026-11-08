@@ -15,13 +15,13 @@ varTrack tries each strategy in order and uses the first one that produces a mat
 | Priority | Strategy | Example |
 |---|---|---|
 | 1 | `branch_map[branch]` | `main` → `production` |
-| 2 | `file_path_map[file_path]` | `configs/prod/**` → `production` |
+| 2 | `file_path_map` | `production` → `configs/prod.yaml` |
 | 3 | `pr_as_env: true` | PR #42 → `pr-42` |
 | 4 | `branch_as_env: true` | branch `develop` → `develop` |
 | 5 | `tag_as_env: true` | tag `v1.2.3` → `v1.2.3` |
 | 6 | fallback | always → `default` |
 
-`pr_as_env`, `branch_as_env` and `tag_as_env` used to be called `env_as_pr`, `env_as_branch` and `env_as_tags` (and the S3 option `prefix_as_env` was `env_as_prefix`). The old names still work in `config.cue`, `bundle.json` and `vartrack.json`; varTrack logs a warning with the new name.
+`pr_as_env`, `branch_as_env` and `tag_as_env` used to be called `env_as_pr`, `env_as_branch` and `env_as_tags` (the S3 option `prefix_as_env` was `env_as_prefix`, and ZooKeeper's `zk_path_template` is now `destination_template`). The old names still work in `config.cue`, `bundle.json` and `vartrack.json`; varTrack logs a warning with the new name.
 
 ---
 
@@ -49,22 +49,25 @@ The web UI's Environments page lists every resolved environment with the branch 
 
 ---
 
-## `file_path_map` — path glob mapping
+## `file_path_map` — one file per environment
 
-Map file paths (glob patterns) to environment names:
+Map each environment to the file that holds its settings, as `{env: path}`:
 
 ```cue
 rules: [{
   platform:   "github"
   datasource: "mongo"
   file_path_map: {
-    "configs/production/**": "production"
-    "configs/staging/**":    "staging"
+    production: "configs/production.yaml"
+    staging:    "configs/staging.yaml"
   }
 }]
 ```
 
-A push that changes `configs/production/app.yaml` resolves to `production`.
+A push that changes `configs/production.yaml` resolves to `production`. The path is the file's exact
+path in the repository, not a pattern. The same map says which file to read for an environment when a
+sync is started by hand (`vt sync --revision`, the web UI's *Sync*). A map written the other way round,
+`{path: env}`, is not read that way: the log says so, and the push resolves by the rules below it.
 
 ---
 

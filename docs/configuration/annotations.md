@@ -10,7 +10,7 @@ Marks a field whose value is a Vault path at ETL time instead of a real value. B
 
 ### Syntax
 
-```cue
+```cue notest
 // default secret manager
 "db.password": string @secret()
 
@@ -88,7 +88,7 @@ Marks a field for **structured change logging**. Every time a value changes betw
 
 ### Syntax
 
-```cue
+```cue notest
 app_port:      int    @logger()
 database.host: string @logger()
 ```
@@ -113,7 +113,7 @@ field changed  datasource=mongo  env=production  field=database.host
 
 You can annotate a field with both. The change is logged but the values are **never revealed** — only `changed=true` is recorded:
 
-```cue
+```cue notest
 "database.password": string @secret() @logger()
 ```
 
@@ -126,7 +126,7 @@ field changed  datasource=mongo  env=production  field=database.password
 
 ## Full schema example
 
-```cue
+```cue notest
 // app.yaml.cue at the root of the schema repo — checks every file named app.yaml
 "app.port":          string & =~"^[0-9]+$"   @logger()
 "log.level":         "debug" | "info" | "warn" | "error"

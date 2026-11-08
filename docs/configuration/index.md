@@ -15,7 +15,7 @@ files combine into the rule a sync runs with.
 | [CUE schemas](schema-registry.md) (`*.cue`) | The same schema repository | The tenant | orchestrator, before a file is written | As `bundle.json` |
 | [`vartrack.json`](per-repo-overrides.md) | A **config repository** (the one that is pushed): `vartrack.json`, `.github/vartrack.json`, `.gitea/vartrack.json` or `.gitlab/vartrack.json`, the first found | The repository's owners | orchestrator | On every sync, at the pushed commit |
 | [Presets](schema-registry.md#presets-extends) | Any repository a file names in `extends` | Whoever owns that repository | orchestrator | With the file that extends them |
-| `SCHEMA_TENANT_<ID>_REPO` / `_BRANCH` / `_TOKEN` | The environment of the orchestrator API and its workers | The team that runs varTrack | orchestrator | When it starts |
+| [`tenants`](bundle.md#tenants) in `config.cue` (before it, `SCHEMA_TENANT_<ID>_REPO` / `_BRANCH` / `_TOKEN`, deprecated) | `config.cue`, or the environment of the orchestrator API and its workers | The team that runs varTrack | orchestrator | When it starts |
 | `~/.config/vt/config.yaml` | The machine that runs `vt` | Each user (`vt login`, `vt config`) | `vt` | On every command |
 
 ```mermaid
@@ -112,7 +112,7 @@ Which option may be set in which file is listed for every option in the
         pr_event_name:   "pull_request"
         secret:          {file: "/run/secrets/github-webhook"}
       }}]
-      datasources: [{mongo: {endpoint: "mongodb://mongo:27017", database: "vartrack"}}]
+      datasources: [{mongo: {endpoint: "mongodb://mongo:27017", database: "vartrack", collection: "variables"}}]
       rules: [{
         platform:     "github"
         datasource:   "mongo"

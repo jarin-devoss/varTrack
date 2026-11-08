@@ -42,6 +42,26 @@ bundle: {
 
 ---
 
+## What the loader checks
+
+Every service reads `config.cue` through one loader and refuses a config it cannot accept; `vartrack-bundle check config.cue` says why, and CI runs it. In order:
+
+1. **Names.** A field the protos do not have, a typo, is refused.
+2. **Shorthands.** `"30s"`, `prune: true` and a secret written as a plain string are read as what they stand for.
+3. **The rules the protos declare.** Ranges (`redis.database` is 0 to 15), lengths, allowed values, and the rules that tie fields together: a Mongo `username` needs its `password`; a Mongo needs a `collection` unless `env_as_collection` is on; `host_key_verification: "accept-new"` needs `known_hosts_file`; a ZooKeeper datasource is `STRATEGY_KEY_VALUE` or unset.
+
+A rule on a field applies when the config **sets** the field, or when the field is required: at least one platform, datasource and rule, a rule's `repositories`, a datasource's `hosts`. A field you leave out is its default, and is not held to a rule. Every broken rule is listed at once, each with the path of the field:
+
+```text
+the config breaks 2 rules its protos declare:
+  - datasources[1].redis.database: value must be greater than or equal to 0 and less than or equal to 15
+  - datasources[2].mongo: Password is required when username is provided
+```
+
+The rules about a rule as a whole (`file_name` or `file_path_map`, `{env}` in a `destination_template` needing an environment strategy) are about the *merged* rule, `config.cue`'s layer with the tenant's `bundle.json` and a repository's `vartrack.json` laid over it, so they are not asked of `config.cue` on its own.
+
+---
+
 ## `platforms`
 
 Declares which Git platforms send webhooks to varTrack.
@@ -58,7 +78,6 @@ platforms: [{
     secret:          "my-secret"              // webhook HMAC secret
     token:           "ghp_xxx"               // PAT for cloning + repo listing
     org_name:        "my-org"                 // optional — scope to one org
-    verify_ssl:      true
     timeout:         "30s"
   }
 }]
@@ -98,10 +117,9 @@ datasources: [{
 ```cue
 datasources: [{
   redis: {
-    host:     "redis"
-    port:     6379
+    hosts:    ["redis:6379"]
     password: "secret"
-    db:       0
+    database: 0
   }
 }]
 ```
@@ -186,8 +204,13 @@ rules: [{
   }
 
   // Validation
-  strict_validation: false                    // true: a file the CUE schema rejects fails the sync
+  strict_validation: false                    // true: a file the CUE schema rejects, or no schema checks, fails the sync
                                               // (default: the failure is logged and the file is synced)
+  schema_map: [                               // which schema checks which path; the first match wins
+    {match: "services/api/**/*.yaml", schema: "api/settings.cue"},
+    {match: "legacy/**",              schema: "none"},        // on purpose not checked
+  ]
+  schema_from_file: false                     // true: a file's top-level $schema may name its schema (never over schema_map)
 
   // Drift detection
   self_heal:     true                         // auto-repair on drift
@@ -207,7 +230,9 @@ rules: [{
 
 **`drift_ignore`** lists glob patterns of keys the application changes itself, such as a feature-flag counter or a rotated token. The drift check still shows them, as `ignored`, but never counts them as drift and the watcher does not heal them; a sync still writes them.
 
-**`strict_validation`** decides what a failed CUE schema check does. Off (the default), the failure is logged as a warning and the file is synced; on, the file is not written and the sync fails. A repository can turn it on in its `vartrack.json`.
+**`strict_validation`** decides what a failed CUE schema check does. Off (the default), the failure is logged as a warning and the file is synced; on, the file is not written and the sync fails. On also means every file is checked: a file no schema covers fails too, unless a `schema_map` entry maps it to `none`. A repository can turn it on in its `vartrack.json`.
+
+**`schema_map`** sends file paths to CUE schemas, and **`schema_from_file`** lets a file name its own; [Which schema a file gets](schema-registry.md#which-schema-a-file-gets) has the lookup order and what each miss means.
 
 ---
 
@@ -219,7 +244,7 @@ A repository can change some of its rule's settings with a `vartrack.json`, and 
 
 ## `schema_registry`
 
-Points varTrack to a Git repo containing CUE schemas for validation:
+Optional: a tenant declares its own schema repository in [`tenants`](#tenants), and this block is the one every rule shares. It points varTrack to a Git repo containing CUE schemas for validation:
 
 ```cue
 schema_registry: {
@@ -234,6 +259,58 @@ varTrack checks every file a sync reads against the tenant's CUE schema for it b
 The schema repo can also hold `bundle.json` (or `rules.json`): the tenant's rule settings, laid over the rules here. It only holds what the tenant adds or changes — nothing has to be repeated or kept in sync. See the [Schema Registry reference](schema-registry.md) for how a rule is built from the layers, the full repo structure, the `bundle.json` format, tenant env vars, and caching behaviour.
 
 ---
+
+## `tenants`
+
+A tenant is a team you declare here. Without a `tenants` block there is one implicit tenant, `default`, that covers every repository, and nothing below applies.
+
+```cue
+tenants: [
+  {
+    name:         "payments"
+    repositories: ["payments/*"]        // pushes from these repositories are payments'
+    schema_repo: {                      // its bundle.json, CUE schemas and presets
+      platform: "github"
+      repo:     "payments/schemas"
+      branch:   "main"
+      token:    {ref: {path: "payments/git", key: "token"}}
+    }
+    destinations: [{datasource: "redis", paths: ["payments:*"]}]
+  },
+  {name: "search", repositories: ["search/app", "search/infra"]},
+]
+```
+
+| Field | Meaning |
+|---|---|
+| `name` | Letters, digits, `-` and `_`, starting with a letter or digit, up to 63 characters. |
+| `repositories` | `owner/name` patterns. A push is the tenant of the repository it came from; no repository may belong to two tenants. |
+| `schema_repo` | The tenant's schema repository (`platform`, `repo`, `branch`, `token`). A push to it refreshes this tenant and no other, and it is read with this tenant's own `token`. |
+| `destinations` | What the tenant may write, per datasource: `datasource` and glob `paths`. Two tenants may not both be allowed one destination of a datasource. |
+| `presets` / `presets_token` | Repositories, besides the tenant's own and its schema repository, its presets may be read from, and the credential for them. |
+
+A rule's `tenants` lists the tenants whose `bundle.json` may layer it; once tenants are declared, each name in it must be one of them. A rule that lists none belongs to the declared tenant whose `repositories` it covers (else `default`). A push that no declared tenant owns is refused (`403` on the HTTP route, `PERMISSION_DENIED` over gRPC), and a tenant named in a header or a grant is checked against the repository the push came from, never used in its place.
+
+The loader refuses a `tenants` block with a bad name, a repeated name, a repository or a schema repository that belongs to two tenants, overlapping destinations on one datasource, or a rule that names a tenant nobody declared.
+
+---
+
+## TLS to your Git platforms, Vault and S3
+
+The server's certificate is **always checked**, by every service, unless the setting says otherwise. The
+setting is named for the unsafe choice, so leaving it out is the safe one:
+
+| Setting | On | Meaning |
+|---|---|---|
+| `insecure_skip_verify: true` | `platforms[]` (`github`, `gitea`), `secret_managers[].vault`, `datasources[].s3` | Do not check the server's certificate. Leave it out to check |
+| `ssl_ca` | `vault` | The CA certificate **as content** (PEM) |
+| `ssl_ca_file` | `vault` | The CA certificate **as a path** to a PEM file the service reads. Give this or `ssl_ca`, never both |
+| `ssl_ca_cert` | `s3` | A CA bundle, **as a path** |
+
+A field is either a path or content, never both: `ssl_ca` holding a file name is refused (older configs that did
+that are read as `ssl_ca_file`, with a log line). `verify_ssl: false` is the former spelling of
+`insecure_skip_verify: true`, and still loads; `verify_ssl: true` was the default and says nothing now. A Vault,
+Gitea or GitHub behind a self-signed certificate therefore needs its CA, or `insecure_skip_verify: true`.
 
 ## `secret_managers`
 
@@ -277,7 +354,7 @@ A rule used to carry its own Vault settings in a `secrets` block. That block was
 
 Credential fields in the bundle — a platform's `token` and `secret`, a datasource's `password`, `private_key`, `access_key_id`, `secret_access_key`, the web UI's `client_id` and `client_secret` — accept three forms:
 
-```cue
+```cue notest
 // 1. Plain string — value written directly in the bundle
 token: "ghp_xxx"
 
@@ -291,7 +368,11 @@ password: {file: "/run/secrets/db.env", key: "DB_PASSWORD"}    // one key of the
 token: {ref: {path: "vartrack/github", key: "token"}}
 ```
 
-Two credentials take only a plain string: a MongoDB datasource's `password`, and a Vault secret manager's own credentials (`token_auth.token`, `app_role_auth.secret_id`, …).
+A Vault secret manager's own login credentials (`token_auth.token`, `app_role_auth.secret_id`, `userpass_auth.password`) take a string or a `{file: …}`, never a `{ref: …}`: Vault cannot log in with a secret it would first have to read from itself, and the loader refuses it.
+
+```cue
+secret_managers: [{vault: {endpoint: "https://vault:8200", token_auth: {token: {file: "/run/secrets/vault-token"}}}}]
+```
 
 A `{ref: …}` is read from an entry of `secret_managers`. A rule's `secret_manager` names the entry for everything that rule uses — its platform's credentials and its datasource's — and for its `@secret()` fields:
 
@@ -320,7 +401,7 @@ secret_managers: [{
     mount_point: "secret"
     kv_version:  2
     token_auth: {
-      token: {file: "/run/secrets/vault-token"}   // Docker secret or K8s secret volume
+      token: "hvs.xxxx"   // Vault's own login is a plain string; mount the bundle as a secret
     }
   }
 }]
