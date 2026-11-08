@@ -26,7 +26,7 @@ from __future__ import annotations
 import json
 import logging
 from collections.abc import Collection
-from typing import Any
+from typing import Any, TYPE_CHECKING
 
 from app.pipeline.sinks.base import BaseSink
 from app.pipeline.sinks.labels import VarTrackLabels
@@ -35,6 +35,9 @@ from app.pipeline.sinks.key_formatter import (
     resolve_destination,
 )
 from app.utils.enums.sync_mode import SyncMode
+
+if TYPE_CHECKING:
+    from app.pipeline.sinks.settings import Settings
 
 logger = logging.getLogger(__name__)
 
@@ -49,6 +52,7 @@ class RedisSink(BaseSink):
         self,
         *,
         name: str = "redis",
+        settings: "Settings | None" = None,
         rule_config: dict | None = None,
         tenant_id: str = "default",
         **_kwargs: Any,
@@ -58,9 +62,12 @@ class RedisSink(BaseSink):
         except ImportError as exc:
             raise RuntimeError("redis-py is required: pip install redis") from exc
 
-        cfg   = rule_config or {}
-        hosts = cfg.get("redis_hosts", ["localhost:6379"])
-        password = cfg.get("redis_password")
+        from app.pipeline.sinks.settings import Settings
+
+        s     = settings or Settings.of("redis")
+        rule  = rule_config or {}
+        hosts = s.get("hosts") or ["localhost:6379"]
+        password = s.secret("password")
 
         if len(hosts) > 1:
             startup_nodes = []
@@ -80,21 +87,25 @@ class RedisSink(BaseSink):
             self._redis = redislib.Redis(
                 host=host, port=int(port or 6379),
                 password=password,
-                db=int(cfg.get("redis_db", 0)),
+                db=int(s.get("database", 0)),
                 decode_responses=True,
+                # without these the client waits for ever on a server that hangs; None keeps that
+                socket_connect_timeout=float(s.seconds("connection_timeout") or 0) or None,
+                socket_timeout=float(s.seconds("read_timeout") or 0) or None,
             )
+        self._clustered      = len(hosts) > 1
         self._tenant_id      = tenant_id
-        self._prefix         = cfg.get("redis_key_prefix", "")
+        self._prefix         = s.get("key_prefix", "")
         # destination_template: prefix template, e.g. "{tenant}:{env}".
-        # Takes precedence over redis_key_prefix when set.
-        self._dest_tpl = cfg.get("destination_template", "")
-        self._structure      = cfg.get("redis_data_structure", "HASH").upper()
-        self._hash_key  = cfg.get("redis_hash_key", "vartrack")
-        self._ttl       = cfg.get("redis_ttl_seconds")
+        # Takes precedence over key_prefix when set.
+        self._dest_tpl = rule.get("destination_template", "")
+        self._structure      = self.structure_of(s)
+        self._hash_key  = s.get("hash_key", "vartrack")
+        self._ttl       = s.seconds("ttl")
 
         # HASH → DOT,  STRING → FLAT.  Caller can override via key_format.
         default_fmt = "dot" if self._structure == "HASH" else "flat"
-        fmt_name    = cfg.get("key_format", default_fmt)
+        fmt_name    = rule.get("key_format", default_fmt)
         self._key_format = key_format_from_str(fmt_name)
         validate_sink_format(_SINK_KIND, self._key_format)
 
@@ -121,59 +132,82 @@ class RedisSink(BaseSink):
         prefix = self._key_prefix(datasource, env)
         formatted = format_keys(flat_data, self._key_format)
 
+        # The data, its expiry and the labels that stamp it go to Redis as one MULTI/EXEC: they all happen
+        # or (when the connection dies before EXEC) none does, never the data without the stamp.
+        pipe = self._redis.pipeline(transaction=not self._clustered)
         if self._structure == "HASH":
-            written = self._write_hash(formatted, prefix)
+            written = self._queue_hash(pipe, formatted, prefix)
         elif self._structure == "JSON":
-            written = self._write_json(flat_data, prefix)
+            written = self._queue_json(pipe, flat_data, prefix)
         else:
-            written = self._write_strings(formatted, prefix)
-
-        # Stamp meta hash with VarTrack labels
-        self._redis.hset(f"{prefix}:{_META_KEY}", mapping=labels.as_redis_meta())
+            written = self._queue_strings(pipe, formatted, prefix)
+        pipe.hset(f"{prefix}:{_META_KEY}", mapping=labels.as_redis_meta())
+        self._execute(pipe)
 
         return {"written": written}
 
-    def _write_hash(self, data: dict[str, str], prefix: str) -> int:
+    def _queue_hash(self, pipe: Any, data: dict[str, str], prefix: str) -> int:
         if data:
-            self._redis.hset(f"{prefix}:{self._hash_key}", mapping=data)
+            pipe.hset(f"{prefix}:{self._hash_key}", mapping=data)
         return len(data)
 
-    def _write_json(self, data: dict[str, str], prefix: str) -> int:
-        key = f"{prefix}:json"
-        self._redis.set(key, json.dumps(data), ex=self._ttl if self._ttl else None)
+    def _queue_json(self, pipe: Any, data: dict[str, str], prefix: str) -> int:
+        pipe.set(f"{prefix}:json", json.dumps(data), ex=self._ttl if self._ttl else None)
         return 1
 
-    def _write_strings(self, data: dict[str, str], prefix: str) -> int:
-        pipe = self._redis.pipeline(transaction=False)
+    def _queue_strings(self, pipe: Any, data: dict[str, str], prefix: str) -> int:
         for k, v in data.items():
             rk = f"{prefix}:{k}"
             pipe.set(rk, v)
             if self._ttl:
                 pipe.expire(rk, self._ttl)
-        pipe.execute()
         return len(data)
 
-    @classmethod
-    def prunes_keys(cls, rule_config: dict) -> bool:
-        # The JSON structure is one string holding everything: written whole.
-        return str(rule_config.get("redis_data_structure", "HASH")).upper() != "JSON"
+    def _execute(self, pipe: Any) -> None:
+        """Run the queued commands and look at every reply: a command Redis refused (the key holds another
+        type, a script flag, memory) is an error of the write, not something to find out later.
+
+        EXEC is not a rollback: Redis runs the commands that are accepted and reports the ones that are not,
+        so a refusal here can leave the others applied. The sync then fails and a retry writes the same
+        values again, which is idempotent. A Redis Cluster cannot run one MULTI over keys in different hash
+        slots (the data and the stamp are two keys), so there the same commands are one pipeline instead."""
+        replies = pipe.execute(raise_on_error=False)
+        failed = [r for r in replies if isinstance(r, Exception)]
+        if failed:
+            raise RuntimeError(
+                f"Redis refused {len(failed)} of {len(replies)} commands of the write: "
+                f"{'; '.join(str(f) for f in failed[:3])}"
+            )
+
+    @staticmethod
+    def structure_of(settings: Any) -> str:
+        """HASH (the default), STRING or JSON."""
+        return str(settings.get("data_structure") or "HASH").upper()
 
     @classmethod
-    def key_space(cls, rule_config: dict, tenant_id: str, env: str) -> str:
-        prefix = cls._prefix_of(rule_config, tenant_id, rule_config.get("datasource", ""), env)
-        if str(rule_config.get("redis_data_structure", "HASH")).upper() == "HASH":
-            return f"{prefix}:{rule_config.get('redis_hash_key', 'vartrack')}"
+    def prunes_keys(cls, settings: Any, rule_config: dict) -> bool:
+        # The JSON structure is one string holding everything: written whole.
+        return cls.structure_of(settings) != "JSON"
+
+    @classmethod
+    def key_space(cls, settings: Any, rule_config: dict, tenant_id: str, env: str) -> str:
+        datasource = rule_config.get("datasource") or settings.name
+        prefix = cls._prefix_of(rule_config.get("destination_template", ""), settings.get("key_prefix", ""),
+                                tenant_id, datasource, env)
+        if cls.structure_of(settings) == "HASH":
+            return f"{prefix}:{settings.get('hash_key', 'vartrack')}"
         return prefix
 
     @classmethod
-    def store(cls, rule_config: dict) -> str:
-        return cls._store_of(rule_config.get("redis_hosts"), rule_config.get("redis_db"))
+    def store(cls, settings: Any, rule_config: dict) -> str:
+        return cls._store_of(settings.get("hosts"), settings.get("database"))
 
     def delete_keys(self, keys: "Collection[str]", *, datasource: str, env: str) -> int:
         if not keys:
             return 0
         prefix = self._key_prefix(datasource, env)
         formatted = list(format_keys(dict.fromkeys(keys, ""), self._key_format))
+        # one HDEL / DEL: Redis runs a single command whole, so the prune is already one step
         if self._structure == "HASH":
             return int(self._redis.hdel(f"{prefix}:{self._hash_key}", *formatted))
         return int(self._redis.delete(*[f"{prefix}:{k}" for k in formatted]))
@@ -185,19 +219,15 @@ class RedisSink(BaseSink):
             pass
 
     @staticmethod
-    def _prefix_of(rule_config: dict, tenant_id: str, datasource: str, env: str) -> str:
-        # destination_template takes precedence over redis_key_prefix.
-        tpl = rule_config.get("destination_template", "")
-        if tpl:
-            return resolve_destination(tpl, tenant=tenant_id, env=env)
-        return rule_config.get("redis_key_prefix", "") or f"{tenant_id}:{datasource}:{env}"
+    def _prefix_of(template: str, key_prefix: str, tenant_id: str, datasource: str, env: str) -> str:
+        # destination_template (the rule's) takes precedence over key_prefix (the datasource's).
+        if template:
+            return resolve_destination(template, tenant=tenant_id, env=env)
+        return key_prefix or f"{tenant_id}:{datasource}:{env}"
 
     def _key_prefix(self, datasource: str, env: str) -> str:
         """Compute the Redis key prefix for a given datasource/env."""
-        return self._prefix_of(
-            {"destination_template": self._dest_tpl, "redis_key_prefix": self._prefix},
-            self._tenant_id, datasource, env,
-        )
+        return self._prefix_of(self._dest_tpl, self._prefix, self._tenant_id, datasource, env)
 
     def read_values(
         self,

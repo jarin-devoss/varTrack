@@ -23,11 +23,11 @@ top-level ``_vartrack`` block so the values file is self-documenting:
 from __future__ import annotations
 
 import logging
-import os
 from typing import Any
 
 from app.pipeline.sinks.strategies.helm.base import HelmWriteStrategy
 from app.pipeline.transformer import unflatten
+from app.utils import atomic_file
 
 logger = logging.getLogger(__name__)
 
@@ -75,9 +75,8 @@ class ValuesFileStrategy(HelmWriteStrategy):
                         len(data_keys), self._path)
             return {"written": len(data_keys), "dry_run": True}
 
-        os.makedirs(os.path.dirname(os.path.abspath(self._path)), exist_ok=True)
-        with open(self._path, "w", encoding="utf-8") as fh:
-            fh.write(content)
+        # replaced, not rewritten: helm (or anything watching the file) never reads a half-written values file
+        atomic_file.write_atomic(self._path, content)
 
         logger.info("ValuesFileStrategy: wrote %d keys to %s", len(data_keys), self._path)
         return {"written": len(data_keys)}

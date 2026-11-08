@@ -48,7 +48,14 @@ class MongoWriteStrategy(ABC):
 
     DocumentStrategy  — as FileStrategy, always nested:
                         data: {database: {host: ...}}.
+
+    transactional     — the strategy's write is several operations that have to stand or fall together
+                        (the file's document, and the documents of another shape it replaces). The
+                        sink runs it in a session transaction when the server has them, and the
+                        strategy puts the session on each operation (``session=``).
     """
+
+    transactional = False
 
     @abstractmethod
     def upsert(
@@ -60,9 +67,11 @@ class MongoWriteStrategy(ABC):
         file_path: str,
         meta: dict,
         data: Any = None,
+        session: Any = None,
     ) -> Written:
         """Write flat_data (*data*: the file in the shape it parsed to). Returns the
-        number of docs written and of other-shape docs replaced."""
+        number of docs written and of other-shape docs replaced. *session*: the transaction
+        the operations belong to, when the sink opened one."""
 
     @abstractmethod
     def repair(
@@ -74,6 +83,7 @@ class MongoWriteStrategy(ABC):
         file_path: str,
         meta: dict,
         data: Any = None,
+        session: Any = None,
     ) -> Written:
         """Re-write docs that are missing or out of sync. Returns the count repaired
         and the other-shape docs replaced."""

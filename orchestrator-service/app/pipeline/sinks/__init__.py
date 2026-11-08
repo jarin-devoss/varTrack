@@ -18,7 +18,6 @@ from app.pipeline.sinks.s3           import S3Sink           # noqa: F401
 from app.pipeline.sinks.zookeeper    import ZookeeperSink    # noqa: F401
 from app.pipeline.sinks.configmap    import ConfigmapSink    # noqa: F401
 from app.pipeline.sinks.linux_server import LinuxServerSink  # noqa: F401
-from app.pipeline.sinks.vercel       import VercelSink       # noqa: F401
 from app.pipeline.sinks.helm         import HelmSink         # noqa: F401
 
 # ── Sink registry: datasource name → sink class ───────────────────────────────
@@ -30,7 +29,6 @@ SINK_REGISTRY: dict[str, type[BaseSink]] = {
     "configmap":    ConfigmapSink,
     "helm":         HelmSink,
     "linux_server": LinuxServerSink,
-    "vercel":       VercelSink,
     "zookeeper":    ZookeeperSink,
 }
 
@@ -58,7 +56,6 @@ def create_sink(datasource: str, rule_config: dict, tenant_id: str) -> BaseSink:
         "configmap"    → ConfigmapSink
         "helm"         → HelmSink
         "linux_server" → LinuxServerSink
-        "vercel"       → VercelSink
         "zookeeper"    → ZookeeperSink
 
     Parameters
@@ -85,6 +82,7 @@ def create_sink(datasource: str, rule_config: dict, tenant_id: str) -> BaseSink:
             f"No sink registered for datasource {datasource!r}. "
             f"Known datasources: {sorted(SINK_REGISTRY)}"
         )
-    # The datasource's own settings in config.cue win over the rule's copies.
-    from app.pipeline.datasource_settings import with_datasource_settings
-    return cls(rule_config=with_datasource_settings(datasource, rule_config), tenant_id=tenant_id)
+    # The sink is built from its datasource's typed settings (config.cue's block, parsed with the
+    # protos) and the rule's own options; the two do not overlap.
+    from app.pipeline.sinks.settings import for_rule
+    return cls(settings=for_rule(rule_config, datasource), rule_config=rule_config, tenant_id=tenant_id)

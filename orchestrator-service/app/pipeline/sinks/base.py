@@ -37,7 +37,7 @@ def update_strategy(value: str | int | None) -> str:
 
 
 class Unreadable(str):
-    """A value the sink holds but never gives back — a Vercel sensitive
+    """A value the sink holds but never gives back — a write-only sensitive
     variable. read_values returns UNREADABLE for such a key, so a comparison
     does not take it for missing."""
 
@@ -128,27 +128,24 @@ class BaseSink(IFactory, ABC):
     def close(self) -> None:
         """Release any held connections / file handles."""
 
+    # Whether this sink can put back what a sync wrote before a later file of the same sync failed: it
+    # snapshots a file before writing it (snapshot_file_data) and restores the snapshot (restore_file_data).
+    # Only a store that can read a file's whole previous state cheaply does; the others keep what they
+    # wrote, and stage_sync says so (status "partial") instead of pretending otherwise.
+    can_restore: bool = False
+
     def delete_file_data(self, datasource: str, env: str, file_path: str) -> int:
         """
-        Delete previously written data for a specific file + env, used for
-        transactional rollback when a later file in the same batch fails.
+        Delete previously written data for a specific file + env: how a sink that can_restore takes back a
+        file that did not exist before the sync.
 
-        Override in concrete sinks that support deletion (e.g. MongoSink).
-        Default implementation is a no-op that logs a warning — rollback is
-        best-effort for sinks that do not implement this method.
-
-        Returns
-        -------
-        int
-            Number of records deleted (0 for the default no-op).
+        A sink that cannot restore has nothing to put here, and stage_sync never asks it to: calling it is a
+        bug, not a best effort that quietly does nothing.
         """
-        import logging as _logging
-        _logging.getLogger(__name__).warning(
-            "%s does not implement delete_file_data — "
-            "rollback skipped for datasource=%s env=%s file=%s",
-            type(self).__name__, datasource, env, file_path,
+        raise NotImplementedError(
+            f"{type(self).__name__} cannot take back what a sync wrote (can_restore is False): "
+            f"datasource={datasource} env={env} file={file_path}"
         )
-        return 0
 
     # Set by the drift check (app.ui.views): a read that fails raises instead of
     # coming back empty, which would read as "every key is missing".
@@ -165,16 +162,17 @@ class BaseSink(IFactory, ABC):
     object_name: str = "object"
 
     @classmethod
-    def prunes_keys(cls, rule_config: dict) -> bool:
+    def prunes_keys(cls, settings: Any, rule_config: dict) -> bool:
         """True when this rule's sink keeps each key as its own entry (Redis
-        hash or strings, Vercel, ZooKeeper, Mongo key-value): stale keys are
+        hash or strings, ZooKeeper, Mongo key-value): stale keys are
         deleted one by one. A sink that replaces a whole object on every
         write (a ConfigMap, a file, an S3 object, a Mongo document) owns that
-        object and has nothing to prune. Reads the rule only — no connection."""
+        object and has nothing to prune. Reads the datasource's settings and the
+        rule only — no connection."""
         return False
 
     @classmethod
-    def key_space(cls, rule_config: dict, tenant_id: str, env: str) -> str:
+    def key_space(cls, settings: Any, rule_config: dict, tenant_id: str, env: str) -> str:
         """Which key space env's keys land in, within the sink's store. Two
         environments with the same key space in the same store share their
         keys, so one's stale key may be the other's live one. Only sinks whose
@@ -182,7 +180,7 @@ class BaseSink(IFactory, ABC):
         raise NotImplementedError(f"{cls.__name__} does not prune single keys")
 
     @classmethod
-    def store(cls, rule_config: dict) -> str:
+    def store(cls, settings: Any, rule_config: dict) -> str:
         """Which store the rule's datasource writes to (its servers, database,
         project): two datasources with the same store and key space write the
         same keys, however they are named. "" when the key space already says

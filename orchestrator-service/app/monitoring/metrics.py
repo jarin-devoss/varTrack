@@ -113,6 +113,14 @@ class OrchestratorMetrics:
             registry=self._registry,
         )
 
+        self._dependency_up = Gauge(
+            "vartrack_dependency_up",
+            "1 when the dependency (config.cue, git, secrets, schemas:<tenant>, redis) is usable, "
+            "0 when it is not; a stale last-good value counts as 1 and shows in readiness.",
+            ["dependency"],
+            registry=self._registry,
+        )
+
         # ── ETL pipeline stage metrics ─────────────────────────────────────────
 
         self._etl_stage_duration_seconds = Histogram(
@@ -134,11 +142,45 @@ class OrchestratorMetrics:
             registry=self._registry,
         )
 
-        # ── MongoDB sink metrics ───────────────────────────────────────────────
+        # ── Sink metrics: every datasource's writes, named by the sink that made them ──
+
+        self._sink_write_duration_seconds = Histogram(
+            "orch_sink_write_duration_seconds",
+            "Write duration of one file, by sink, in seconds.",
+            ["sink", "sync_mode"],   # sink: mongo | redis | zookeeper | s3 | linux_server | configmap | helm
+            buckets=[.005, .01, .025, .05, .1, .25, .5, 1, 2.5, 5],
+            registry=self._registry,
+        )
+        self._sink_keys_written_total = Counter(
+            "orch_sink_keys_written_total",
+            "Total keys written, by sink and datasource.",
+            ["sink", "datasource"],
+            registry=self._registry,
+        )
+        self._sink_keys_pruned_total = Counter(
+            "orch_sink_keys_pruned_total",
+            "Total keys pruned (stale keys removed), by sink and datasource.",
+            ["sink", "datasource"],
+            registry=self._registry,
+        )
+        self._sink_errors_total = Counter(
+            "orch_sink_errors_total",
+            "Total sink write/prune/rollback errors, by sink.",
+            ["sink", "operation"],   # write | prune | rollback
+            registry=self._registry,
+        )
+        self._sink_not_rolled_back_total = Counter(
+            "orch_sink_not_rolled_back_total",
+            "Files a failed sync left written because the sink cannot take a write back (or tried and failed).",
+            ["sink"],
+            registry=self._registry,
+        )
+
+        # ── MongoDB sink metrics (the former names, fed by the Mongo sink only; to be removed) ──
 
         self._mongo_write_duration_seconds = Histogram(
             "orch_mongo_write_duration_seconds",
-            "MongoDB write operation duration in seconds.",
+            "MongoDB write operation duration in seconds. Deprecated: orch_sink_write_duration_seconds{sink=\"mongo\"}.",
             ["sync_mode"],   # GIT_UPSERT_ALL | GIT_SMART_REPAIR
             buckets=[.005, .01, .025, .05, .1, .25, .5, 1, 2.5, 5],
             registry=self._registry,
@@ -252,6 +294,9 @@ class OrchestratorMetrics:
     def set_queue_depth(self, queue: str, depth: float) -> None:
         self._task_queue_depth.labels(queue).set(depth)
 
+    def set_dependency_up(self, dependency: str, up: bool) -> None:
+        self._dependency_up.labels(dependency).set(1 if up else 0)
+
     # ── ETL pipeline methods ──────────────────────────────────────────────────
 
     def observe_etl_stage(self, stage: str, seconds: float) -> None:
@@ -262,6 +307,34 @@ class OrchestratorMetrics:
 
     def inc_etl_keys(self, count: int) -> None:
         self._etl_keys_total.inc(count)
+
+    # ── Sink methods ──────────────────────────────────────────────────────────
+    # The orch_mongo_* series are the former names of these, kept for one release and fed by the Mongo sink only.
+
+    def observe_sink_write(self, sink: str, sync_mode: str, seconds: float) -> None:
+        self._sink_write_duration_seconds.labels(sink, sync_mode).observe(seconds)
+        if sink == "mongo":
+            self.observe_mongo_write(sync_mode, seconds)
+
+    def inc_sink_written(self, sink: str, datasource: str, sync_mode: str, count: int) -> None:
+        if count > 0:
+            self._sink_keys_written_total.labels(sink, datasource).inc(count)
+            if sink == "mongo":
+                self.inc_mongo_written(datasource, sync_mode, count)
+
+    def inc_sink_pruned(self, sink: str, datasource: str, count: int) -> None:
+        if count > 0:
+            self._sink_keys_pruned_total.labels(sink, datasource).inc(count)
+            if sink == "mongo":
+                self.inc_mongo_pruned(datasource, count)
+
+    def inc_sink_error(self, sink: str, operation: str) -> None:
+        self._sink_errors_total.labels(sink, operation).inc()
+        if sink == "mongo":
+            self.inc_mongo_error(operation)
+
+    def inc_sink_not_rolled_back(self, sink: str) -> None:
+        self._sink_not_rolled_back_total.labels(sink).inc()
 
     # ── MongoDB methods ───────────────────────────────────────────────────────
 
