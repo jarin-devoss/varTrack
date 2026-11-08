@@ -83,7 +83,35 @@ class OrchestratorServicer:
         _t0 = time.perf_counter()
         span = start_grpc_span("ProcessWebhook")
 
+        # The grant says which platform and datasource the gateway authorised;
+        # a call for anything else is refused.
+        from app.api import tokens
+        grant = tokens.current_grant()
+        if grant is not None and (
+            (grant.platform and grant.platform != request.platform)
+            or (grant.datasource and grant.datasource != request.datasource)
+        ):
+            context.set_code(grpc.StatusCode.PERMISSION_DENIED)
+            context.set_details("the grant was issued for another platform or datasource")
+            span.set_attr("error", "grant_mismatch").end()
+            return _empty_webhook_response()
+
         rule_config = self._resolve_rule(request.platform, request.datasource)
+        if rule_config is not None:
+            # The payload is the sender's claim; the rule is the operator's decision.
+            import json
+            from app.pipeline.repo_scope import RepositoryNotAllowed, check_repository
+            try:
+                check_repository(rule_config, json.loads(request.raw_payload))
+            except RepositoryNotAllowed as exc:
+                logger.warning("ProcessWebhook refused platform=%s datasource=%s: %s",
+                               request.platform, request.datasource, exc)
+                context.set_code(grpc.StatusCode.PERMISSION_DENIED)
+                context.set_details(str(exc))
+                span.set_attr("error", "repository_not_allowed").end()
+                return _empty_webhook_response()
+            except ValueError:
+                pass    # not JSON: the task reports it
         if rule_config is None:
             context.set_code(grpc.StatusCode.NOT_FOUND)
             context.set_details(
@@ -100,6 +128,24 @@ class OrchestratorServicer:
                     pass
             return _empty_webhook_response()
 
+        # The tenant of a push is the one whose repositories it came from: not a header, not a
+        # field of the payload, and not whoever the rule's first tenant happens to be.
+        import json
+        from app import tenants
+        from app.pipeline.repo_scope import pushed_repositories
+        try:
+            pushed = pushed_repositories(json.loads(request.raw_payload))
+        except ValueError:
+            pushed = []
+        tenant = tenants.tenant_of_push(rule_config, pushed)
+        if tenant is None:
+            logger.warning("ProcessWebhook refused platform=%s datasource=%s: no tenant owns %s",
+                           request.platform, request.datasource, ", ".join(pushed) or "the repository")
+            context.set_code(grpc.StatusCode.PERMISSION_DENIED)
+            context.set_details(f"no declared tenant owns {', '.join(pushed) or 'the repository this push names'}")
+            span.set_attr("error", "no_tenant").end()
+            return _empty_webhook_response()
+
         task = process_webhook_task.apply_async(
             kwargs={
                 "platform": request.platform,
@@ -108,7 +154,7 @@ class OrchestratorServicer:
                 "headers": dict(request.headers),
                 "received_at": _proto_ts_to_float(request.received_at),
                 "rule_config": rule_config,
-                "tenant_id": rule_config.get("tenant_id", "default"),
+                "tenant_id": tenant,
             },
             queue="webhooks",
         )
@@ -137,6 +183,16 @@ class OrchestratorServicer:
             request.platform, request.repo, request.branch,
         )
 
+        # The push says which repository it came from; the tenant is whoever registered that
+        # repository as their schema repository, and a repository nobody registered is not one.
+        from app.schema_registry.manager import get_schema_manager
+        tenant = get_schema_manager().tenant_for_repo(request.repo)
+        if tenant is None:
+            logger.warning("ProcessSchemaWebhook refused: %s is no tenant's schema repository", request.repo)
+            context.set_code(grpc.StatusCode.NOT_FOUND)
+            context.set_details(f"{request.repo} is not a registered schema repository")
+            return _schema_response(task_id="", message="not a registered schema repository")
+
         task = refresh_schema_task.apply_async(
             kwargs={
                 "platform": request.platform,
@@ -144,6 +200,7 @@ class OrchestratorServicer:
                 "branch": request.branch,
                 "raw_payload": request.raw_payload,
                 "headers": dict(request.headers),
+                "tenant_id": tenant,
             },
             queue="schema",
         )
@@ -291,6 +348,10 @@ def create_server(
     # OTel gRPC server interceptor: extracts W3C TraceContext from inbound gRPC
     # metadata so orchestrator spans become children of the gateway's spans.
     interceptors = []
+    # First in line: a call without a valid grant never reaches anything else.
+    from app.grpc_server.auth_interceptor import DependencyInterceptor, GrantInterceptor
+    interceptors.append(GrantInterceptor())
+    interceptors.append(DependencyInterceptor())
     try:
         from opentelemetry.instrumentation.grpc import server_interceptor as otel_server_interceptor
         interceptors.append(otel_server_interceptor())

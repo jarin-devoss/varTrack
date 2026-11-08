@@ -21,7 +21,14 @@ Design:
   • When DEBUG=true the /debug/pprof endpoint returns a Python traceback
     dump (all threads).
 
-ADMIN_PORT env var (default 9090) controls the bind address.
+Access:
+  • Binds to ADMIN_HOST, which is loopback (127.0.0.1) unless set otherwise.
+  • Health probes (/healthz, /health/*) are always open.
+  • With INTERNAL_AUTH_SECRET set, everything else (/metrics, /circuit-breaker,
+    /debug/pprof) needs an "admin" grant: Authorization: Bearer <grant>, minted
+    with python -m app.api.tokens mint --audience admin.
+
+ADMIN_PORT env var (default 9090) controls the port.
 ADMIN_ENABLE_PPROF env var (default: equals DEBUG) controls /debug/pprof.
 """
 from __future__ import annotations
@@ -36,6 +43,10 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 from typing import Any
 
 logger = logging.getLogger(__name__)
+
+# Open to every caller: the probes an orchestrator or load balancer makes.
+_OPEN_PATHS = frozenset({"/healthz", "/health/liveness", "/health/readiness"})
+_LOOPBACK   = frozenset({"127.0.0.1", "::1", "localhost"})
 
 # ── Startup timestamp + graceful-shutdown flag ───────────────────────────────
 _started_at: float = time.time()
@@ -60,6 +71,9 @@ class _AdminHandler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:
         path = self.path.split("?")[0].rstrip("/") or "/"
 
+        if path not in _OPEN_PATHS and not self._authorized():
+            return
+
         if path in ("/healthz", "/health/liveness"):
             self._liveness()
         elif path == "/health/readiness":
@@ -72,6 +86,22 @@ class _AdminHandler(BaseHTTPRequestHandler):
             self._pprof()
         else:
             self._not_found()
+
+    # ── Access ────────────────────────────────────────────────────────────────
+
+    def _authorized(self) -> bool:
+        """True when the caller may see the non-probe endpoints. While internal
+        authentication is off (development) everyone may; once it is on, only a
+        valid admin grant. Writes the 401 itself when it returns False."""
+        from app.api import tokens
+        if not tokens.enforced():
+            return True
+        try:
+            tokens.verify(tokens.bearer(self.headers.get("Authorization")), tokens.AUDIENCE_ADMIN)
+            return True
+        except tokens.GrantError:
+            self._json(401, {"detail": "an admin grant is required: Authorization: Bearer <grant>"})
+            return False
 
     # ── Endpoints ─────────────────────────────────────────────────────────────
 
@@ -98,9 +128,12 @@ class _AdminHandler(BaseHTTPRequestHandler):
         redis_ok   = _check_redis_backend()
         grpc_ok    = _check_grpc_thread()
 
-        if circuit_ok and broker_ok and redis_ok and grpc_ok:
+        from app import dependencies
+
+        extra = dependencies.readiness()
+        if circuit_ok and broker_ok and redis_ok and grpc_ok and "unavailable" not in extra:
             self._json(200, {"status": "READY", "broker": "ok", "redis": "ok",
-                             "grpc": "ok", "circuit": breaker.state.value})
+                             "grpc": "ok", "circuit": breaker.state.value, **extra})
         else:
             self._json(503, {
                 "status":  "NOT_READY",
@@ -108,6 +141,7 @@ class _AdminHandler(BaseHTTPRequestHandler):
                 "redis":   "ok" if redis_ok   else "unreachable",
                 "grpc":    "ok" if grpc_ok    else "dead",
                 "circuit": breaker.state.value,
+                **extra,
             })
 
     def _metrics(self) -> None:
@@ -227,7 +261,7 @@ def _check_grpc_thread() -> bool:
 class AdminServer:
     """Thin wrapper around HTTPServer.  Runs in a daemon thread."""
 
-    def __init__(self, host: str = "0.0.0.0", port: int = 9090) -> None:
+    def __init__(self, host: str = "127.0.0.1", port: int = 9090) -> None:
         self._host = host
         self._port = port
         self._server: HTTPServer | None = None
@@ -238,6 +272,14 @@ class AdminServer:
         global _started_at
         _started_at = time.time()
 
+        if self._host not in _LOOPBACK:
+            from app.api import tokens
+            if not tokens.enforced():
+                logger.warning(
+                    "admin server listens on %s without authentication: /metrics, /circuit-breaker and "
+                    "/debug/pprof are open to anyone who can reach it. Set INTERNAL_AUTH_SECRET, or keep "
+                    "ADMIN_HOST on loopback.", self._host,
+                )
         self._server = HTTPServer((self._host, self._port), _AdminHandler)
         self._thread = threading.Thread(
             target=self._server.serve_forever,
@@ -272,7 +314,7 @@ def get_admin_server() -> AdminServer:
             if _admin_server is None:
                 from app.config import settings
                 _admin_server = AdminServer(
-                    host=getattr(settings, "ADMIN_HOST", "0.0.0.0"),
+                    host=getattr(settings, "ADMIN_HOST", "127.0.0.1"),
                     port=getattr(settings, "ADMIN_PORT", 9090),
                 )
     return _admin_server

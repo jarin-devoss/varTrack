@@ -8,7 +8,7 @@ Resolution order (last wins):
   2. CUE bundle at CONFIG_PATH — overrides supported fields
 
 The CUE bundle is parsed with:
-  cue export --out json <CONFIG_PATH>  →  JSON  →  extract "bundle" key
+  vartrack-bundle export <CONFIG_PATH>  →  the bundle as JSON (see _load_cue_bundle)
 
 Celery broker / result-backend
 ───────────────────────────────
@@ -39,7 +39,7 @@ CUE → settings mappings
   global_tags["schema_cache_dir"]     → SCHEMA_CACHE_DIR  (Path)
   global_tags["schema_ttl"]           → SCHEMA_TTL_SECONDS (int)
 
-HOST and PORT are derived from ORCHESTRATOR_ADDR.
+HOST and PORT are derived from ORCHESTRATOR_HTTP_ADDR.
 DEBUG and CORS_ORIGINS are env-var-only.
 """
 from __future__ import annotations
@@ -48,6 +48,7 @@ import json
 import logging
 import os
 import re
+import shutil
 import subprocess
 from pathlib import Path
 from typing import Any
@@ -113,42 +114,78 @@ _load_dotenv()
 
 # ── CUE bundle loader ─────────────────────────────────────────────────────────
 
+class BundleError(RuntimeError):
+    """config.cue cannot be loaded: it is not valid, a service would refuse it, or the
+    program that reads it is missing. The message says why."""
+
+
+def _bundle_binary() -> str:
+    return os.getenv("VARTRACK_BUNDLE_BINARY", "") or shutil.which("vartrack-bundle") or ""
+
+
 def _load_cue_bundle(config_path: str) -> dict[str, Any]:
     """
-    Parse the CUE file at *config_path* and return the bundle dict.
-    Returns an empty dict on any failure so callers fall back to env vars.
+    The bundle in the CUE file at *config_path*, as the gateway and the watcher read it.
+
+    config.cue is read once, by one program (``vartrack-bundle``, built from libs/go/bundle):
+    the same CUE evaluation, shorthands, renamed options and strict parse against the protos
+    those services use. This is the bundle object it prints, with its fields under the proto's
+    names. A file it refuses is refused by every service, so this process never works from a
+    reading the gateway would not accept. It raises BundleError when the file cannot be loaded;
+    it never answers with an empty bundle.
     """
-    cue_bin = os.getenv("CUE_BINARY", "cue")   # internal — not a _Settings field
+    binary = _bundle_binary()
+    if not binary:
+        raise BundleError(
+            "vartrack-bundle is not installed (or set VARTRACK_BUNDLE_BINARY): it reads config.cue for "
+            "the orchestrator exactly as the gateway does. Build it with `go build ./cmd/vartrack-bundle` "
+            "in libs/go; the orchestrator image ships it")
     try:
-        result = subprocess.run(
-            [cue_bin, "export", "--out", "json", config_path],
-            capture_output=True,
-            text=True,
-            timeout=15,
-        )
-    except FileNotFoundError:
-        logger.warning("CUE binary %r not found — using env vars only", cue_bin)
-        return {}
-    except subprocess.TimeoutExpired:
-        logger.warning("CUE export timed out for %s — using env vars only", config_path)
-        return {}
-
+        result = subprocess.run([binary, "export", config_path], capture_output=True, text=True, timeout=30)
+    except subprocess.TimeoutExpired as exc:
+        raise BundleError(f"vartrack-bundle timed out reading {config_path}") from exc
+    except OSError as exc:
+        raise BundleError(f"vartrack-bundle cannot run: {exc}") from exc
     if result.returncode != 0:
-        logger.warning(
-            "CUE export failed (rc=%d) for %s: %s — using env vars only",
-            result.returncode, config_path, result.stderr.strip(),
-        )
-        return {}
-
+        raise BundleError(f"{config_path}: {result.stderr.strip() or 'vartrack-bundle failed'}")
     try:
         data = json.loads(result.stdout)
     except json.JSONDecodeError as exc:
-        logger.warning("CUE export produced invalid JSON (%s) — using env vars only", exc)
-        return {}
+        raise BundleError(f"vartrack-bundle printed invalid JSON for {config_path}: {exc}") from exc
+    # The protos this process carries must accept it too: a vartrack-bundle built from other
+    # protos than these stubs is a mismatched install, and it is better said here than found later.
+    try:
+        from google.protobuf import json_format
+        from vartrack.v1.models import bundle_pb2
 
-    from app.pipeline.renamed_options import upgrade_bundle
+        json_format.Parse(result.stdout, bundle_pb2.Bundle(), ignore_unknown_fields=False)
+    except ImportError:
+        logger.warning("the protobuf stubs are not generated: %s was not checked against them", config_path)
+    except json_format.ParseError as exc:
+        raise BundleError(f"{config_path} does not match this orchestrator's protos "
+                          f"(is vartrack-bundle from the same release?): {exc}") from exc
+    return data
 
-    return upgrade_bundle(data.get("bundle", data), config_path)
+
+def load_bundle(config_path: str, previous: dict[str, Any] | None = None) -> dict[str, Any]:
+    """The bundle at *config_path*. For a bundle that is re-read while the service runs: when it
+    cannot be loaded now, *previous* (the last good one) keeps serving, said at ERROR and shown by
+    readiness as stale, so a bad edit does not stop syncs. With no earlier reading there is nothing
+    to keep, and it raises BundleUnavailable: an empty bundle would read as "no rules, no
+    datasources, no secret managers", which is a different thing from "cannot be read"."""
+    from app import dependencies
+
+    try:
+        bundle = _load_cue_bundle(config_path)
+    except BundleError as exc:
+        if previous is not None:
+            logger.error("config.cue cannot be loaded, keeping what was loaded before: %s", exc)
+            dependencies.stale("config.cue", str(exc))
+            return previous
+        dependencies.down("config.cue", str(exc))
+        raise dependencies.BundleUnavailable(str(exc)) from exc
+    dependencies.up("config.cue")
+    return bundle
 
 
 # ── Datasource URI builders ───────────────────────────────────────────────────
@@ -321,12 +358,36 @@ def _bundle_overrides(bundle: dict[str, Any]) -> dict[str, Any]:
     return overrides
 
 
+def _secret_env(name: str) -> str:
+    """A secret from the environment: the variable itself, else the contents of
+    the file named by <name>_FILE (trailing whitespace removed). "" when neither
+    is set. A file that is named but cannot be read is an error, never an empty
+    secret: failing open would silently turn authentication off."""
+    value = os.getenv(name, "").strip()
+    if value:
+        return value
+    path = os.getenv(f"{name}_FILE", "").strip()
+    if not path:
+        return ""
+    try:
+        return Path(path).read_text(encoding="utf-8").strip()
+    except OSError as exc:
+        raise RuntimeError(f"{name}_FILE={path!r} cannot be read: {exc}") from exc
+
+
 # ── Settings ──────────────────────────────────────────────────────────────────
 
 class _Settings:
     # ── HTTP server ───────────────────────────────────────────────────────────
-    # HOST and PORT are split from ORCHESTRATOR_ADDR.
-    _addr: str              = os.getenv("ORCHESTRATOR_ADDR", "0.0.0.0:8000")
+    # HOST and PORT are split from ORCHESTRATOR_HTTP_ADDR. (ORCHESTRATOR_ADDR was this listener's
+    # address too, while for the gateway and the watcher it is the orchestrator's gRPC address to
+    # dial: a shared environment file made one value mean two things. It is still read here for one
+    # release, and named when it is.)
+    _addr: str              = os.getenv("ORCHESTRATOR_HTTP_ADDR") or os.getenv("ORCHESTRATOR_ADDR") or "0.0.0.0:8000"
+    if not os.getenv("ORCHESTRATOR_HTTP_ADDR") and os.getenv("ORCHESTRATOR_ADDR"):
+        logger.warning("ORCHESTRATOR_ADDR is read as the HTTP listen address here, but it is the orchestrator's "
+                       "gRPC address for the gateway and the watcher: set ORCHESTRATOR_HTTP_ADDR instead "
+                       "(ORCHESTRATOR_ADDR will stop being read here in the next release)")
     _host, _, _port         = _addr.rpartition(":")
     HOST: str               = _host or "0.0.0.0"
     PORT: int               = int(_port) if _port else 8000
@@ -355,7 +416,9 @@ class _Settings:
     # ── Admin server (separate port for health / metrics / pprof) ────────────
     # ADMIN_PORT is intentionally a different port from PORT (8000) so
     # Prometheus scrape and health probes never share bandwidth with webhook traffic.
-    ADMIN_HOST: str = os.getenv("ADMIN_HOST", "0.0.0.0")
+    # Loopback by default: the admin listener is for the host's own probes. Publish
+    # it only deliberately (ADMIN_HOST) and then guard it with INTERNAL_AUTH_SECRET.
+    ADMIN_HOST: str = os.getenv("ADMIN_HOST", "127.0.0.1")
     ADMIN_PORT: int = int(os.getenv("ADMIN_PORT", "9090"))
 
     # ── TLS / mTLS ────────────────────────────────────────────────────────────
@@ -376,6 +439,42 @@ class _Settings:
     # ── Environment ───────────────────────────────────────────────────────────
     APP_ENV: str = os.getenv("APP_ENV", "development")
 
+    # ── Internal authentication ───────────────────────────────────────────────
+    # Every call to the orchestrator's HTTP API, gRPC port and admin listener must
+    # carry a signed grant (app/api/tokens.py). The gateway mints the grants for
+    # webhooks and CLI calls, the watcher mints its own, and an operator mints
+    # one for the admin scrape.
+    #
+    #   INTERNAL_AUTH_SECRET          signs/verifies sync grants (min 32 chars);
+    #                                 also the fallback for the two below
+    #   INTERNAL_AUTH_WATCH_SECRET    optional separate key for the watcher
+    #   INTERNAL_AUTH_ADMIN_SECRET    optional separate key for the admin listener
+    #   INTERNAL_AUTH_AUTHZ_SECRET    optional separate key for the questions this
+    #                                 service asks the gateway's permission engine
+    #   <each>_FILE                   read the secret from a file instead
+    #   INTERNAL_AUTH_INSECURE=true   the explicit development switch: run with
+    #                                 no verification. Production refuses to start
+    #                                 without a secret unless this is set.
+    INTERNAL_AUTH_SECRET:       str  = _secret_env("INTERNAL_AUTH_SECRET")
+    INTERNAL_AUTH_WATCH_SECRET: str  = _secret_env("INTERNAL_AUTH_WATCH_SECRET")
+    INTERNAL_AUTH_ADMIN_SECRET: str  = _secret_env("INTERNAL_AUTH_ADMIN_SECRET")
+    INTERNAL_AUTH_AUTHZ_SECRET: str  = _secret_env("INTERNAL_AUTH_AUTHZ_SECRET")
+    INTERNAL_AUTH_INSECURE:     bool = os.getenv("INTERNAL_AUTH_INSECURE", "").lower() in ("1", "true", "yes")
+
+    # ── The permission engine ─────────────────────────────────────────────────
+    # What the signed-in web UI user may see and do is decided by the gateway's
+    # permission engine, the one the CLI API asks too; this service only asks and
+    # obeys (app/authz_client.py). With sign-in on and no engine address, the UI
+    # answers 503 rather than deciding for itself.
+    #
+    #   GATEWAY_AUTHZ_ADDR     host:port of the gateway's AUTHZ_ADDR listener
+    #   GATEWAY_AUTHZ_CA_FILE  CA that signed the gateway's certificate (TLS_CA_FILE
+    #                          when unset); client certificate: TLS_CERT_FILE/TLS_KEY_FILE
+    #   GATEWAY_AUTHZ_TIMEOUT  seconds to wait for an answer
+    GATEWAY_AUTHZ_ADDR:    str   = os.getenv("GATEWAY_AUTHZ_ADDR", "")
+    GATEWAY_AUTHZ_CA_FILE: str   = os.getenv("GATEWAY_AUTHZ_CA_FILE", "")
+    GATEWAY_AUTHZ_TIMEOUT: float = float(os.getenv("GATEWAY_AUTHZ_TIMEOUT", "10"))
+
     # ── Build / monitoring metadata ───────────────────────────────────────────
     APP_VERSION: str = os.getenv("APP_VERSION", "dev")
     GIT_COMMIT:  str = os.getenv("GIT_COMMIT",  "unknown")
@@ -394,12 +493,23 @@ class _Settings:
         if not config_path:
             return
 
-        if not Path(config_path).exists():
-            logger.warning("CONFIG_PATH=%r not found — skipping CUE overrides", config_path)
-            return
-
         logger.info("Applying CUE bundle overrides from: %s", config_path)
-        bundle = _load_cue_bundle(config_path)
+        try:
+            if not Path(config_path).exists():
+                raise BundleError(f"CONFIG_PATH={config_path!r} does not exist")
+            bundle = _load_cue_bundle(config_path)
+        except BundleError as exc:
+            from app import dependencies
+
+            # A CONFIG_PATH that is set but cannot be read is not "no config": the service does
+            # not start on environment variables alone unless the operator said it may.
+            if self.APP_ENV == "production" or not dependencies.allowed("config"):
+                raise
+            logger.error("config.cue cannot be loaded, using environment variables only "
+                         "(VARTRACK_ALLOW_DEGRADED=config): %s", exc)
+            dependencies.down("config.cue", str(exc))
+            dependencies.mode_on("config", str(exc))
+            return
         if not bundle:
             return
 
