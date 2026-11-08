@@ -31,7 +31,7 @@ from app.tasks.payload import PruneConfig
 
 
 def _prune_cfg() -> PruneConfig:
-    return PruneConfig(enabled=False, dry_run=False)
+    return PruneConfig(enabled=False)
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -143,6 +143,77 @@ class TestRunStageSync(unittest.TestCase):
 
         aborted = [r for r in results if r.status == "aborted"]
         self.assertTrue(aborted, "Un-attempted files must be marked 'aborted' after rollback")
+
+    # ── what a failed sync reports about the files it had already written ───────────────────────
+
+    def _two_files_second_fails(self, sink):
+        etl = _etl(_file("a.yaml"), _file("b.yaml"), _file("c.yaml"))
+        with self.assertLogs("app.pipeline.stage_sync", level="INFO") as logs:
+            results, _ = self._run(etl, sink_mock=sink)
+        return results, "\n".join(logs.output)
+
+    def test_a_sink_that_cannot_restore_says_the_earlier_file_stays_written(self):
+        """Six of the seven sinks keep a snapshot of nothing. The sync used to log "rollback: deleted file=…"
+        for them anyway (it called a base-class no-op); a deletion that did not happen is now never claimed."""
+        class Sink:                     # a store that writes, and cannot take a write back
+            can_restore = False
+            calls = 0
+
+            def write(self, **kw):
+                Sink.calls += 1
+                if Sink.calls == 2:
+                    raise RuntimeError("redis connection lost")
+                return {"written": 3, "pruned": 0}
+
+            def delete_file_data(self, *a):           # would be the no-op that claimed a deletion
+                raise AssertionError("stage_sync must not ask a sink that cannot restore to delete")
+
+            def close(self):
+                pass
+
+        results, log = self._two_files_second_fails(Sink())
+
+        self.assertEqual([r.status for r in results], ["partial", "error", "aborted"])
+        first = results[0]
+        self.assertEqual(first.written, 3)               # it really is in the store
+        self.assertIn("not rolled back", first.error)
+        self.assertIn("a.yaml stays written in production", first.error)
+        self.assertIn("b.yaml failed", first.error)
+        self.assertIn("rollback: not possible on Sink", log)
+        self.assertNotIn("deleted file=", log)           # the claim that was false
+        self.assertIn("b.yaml failed before it was reached", results[2].error)
+
+    def test_a_sink_that_can_restore_restores_and_the_file_is_reported_rolled_back(self):
+        sink = MagicMock()
+        sink.can_restore = True
+        sink.write.side_effect = [{"written": 3, "pruned": 0}, RuntimeError("mongo connection lost")]
+        sink.snapshot_file_data.return_value = [{"key": "old"}]
+
+        results, log = self._two_files_second_fails(sink)
+
+        self.assertEqual([r.status for r in results], ["rolled_back", "error", "aborted"])
+        sink.restore_file_data.assert_called_once_with("mongo", "production", "a.yaml", [{"key": "old"}])
+        self.assertEqual(results[0].written, 0)          # nothing of it is left in the store
+        self.assertIn("rolled back: b.yaml failed", results[0].error)
+        self.assertIn("rollback: restored file=a.yaml", log)
+
+    def test_a_restore_that_fails_is_a_partial_file_that_says_so(self):
+        sink = MagicMock()
+        sink.can_restore = True
+        sink.write.side_effect = [{"written": 3, "pruned": 0}, RuntimeError("boom")]
+        sink.restore_file_data.side_effect = ConnectionError("mongo went away")
+
+        results, _ = self._two_files_second_fails(sink)
+
+        self.assertEqual(results[0].status, "partial")
+        self.assertIn("rollback failed: a.yaml stays written in production (ConnectionError)", results[0].error)
+
+    def test_a_sink_that_can_restore_but_never_wrote_anything_before_has_nothing_to_report(self):
+        sink = MagicMock()
+        sink.can_restore = True
+        sink.write.side_effect = RuntimeError("down from the start")
+        results, _ = self._run(_etl(_file("a.yaml"), _file("b.yaml")), sink_mock=sink)
+        self.assertEqual([r.status for r in results], ["error", "aborted"])
 
     def test_write_failure_marks_failed_file_as_error(self):
         sink = MagicMock()

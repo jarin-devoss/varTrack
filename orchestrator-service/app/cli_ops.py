@@ -10,7 +10,7 @@ from __future__ import annotations
 import logging
 import re
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Collection, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -44,9 +44,13 @@ def detect_format(file_path: str, hint: Optional[str]) -> str:
 
 
 def resolve_tenant(*candidates: Optional[str]) -> str:
+    """The first non-blank candidate, else "default". Raises tenants.InvalidTenant for a name
+    that is not a tenant name."""
+    from app import tenants
+
     for c in candidates:
         if c and c.strip():
-            return c.strip()
+            return tenants.check_name(c.strip())
     return "default"
 
 
@@ -109,7 +113,12 @@ def file_at_revision(rule: dict[str, Any], env: str, revision: str) -> tuple[str
     path = (rule.get("file_path_map") or {}).get(env) or rule.get("file_name")
     if not path:
         raise ValueError(f"the {rule.get('datasource')} rule names no file for {env}")
-    content = GitExtractor().extract_file(repo_url, revision, path, token=rule.get("token"))
+    from app.dependencies import SourceUnavailable
+    from app.pipeline.git_credentials import credential_for
+    try:
+        content = GitExtractor().extract_file(repo_url, revision, path, token=credential_for(rule, repo_url))
+    except SourceUnavailable as exc:
+        raise ValueError(exc.reason) from exc
     if content is None:
         raise ValueError(f"{path} is not in {repo_url} at {revision}")
     return path, content
@@ -130,15 +139,16 @@ def validate_content(
     datasource's rule when a datasource is named, flattens it, and validates
     the keys against the tenant's CUE schema for the file.
 
-    Returns (status, messages, key_count); status is ok, warn (nothing could
-    be checked) or failed.
+    Returns (status, messages, key_count); status is ok, none (no schema checked
+    it, or the cue program is not installed) or failed. The messages say which schema
+    checked the file, and where the choice came from.
     """
     import json
 
     from app.parsers.loader import load_as
     from app.pipeline import transformer
     from app.pipeline.schema_utils import AmbiguousRule, rule_config_for_datasource
-    from app.pipeline.stage_etl import _DEFAULT_ROOT_KEY
+    from app.pipeline.stage_etl import _DEFAULT_ROOT_KEY, no_schema_reason, take_schema_key
     from app.pipeline.validator import CUEValidationError, Validator
     from app.schema_registry.manager import get_schema_manager
 
@@ -146,6 +156,7 @@ def validate_content(
         parsed = load_as(content, file_path, fmt)
     except Exception as exc:
         return "failed", [f"parse error: {exc}"], 0
+    file_schema = take_schema_key(parsed, file_path)     # the file's own $schema; never one of its keys
 
     rule: dict[str, Any] = {}
     messages: list[str] = []
@@ -175,17 +186,28 @@ def validate_content(
     )
 
     name = Path(file_path).name
-    schema_dir = get_schema_manager().tenant_schema_root(tenant_id)
+    manager = get_schema_manager()
+    schema_dir = manager.current_schema_root(tenant_id)
     validator = Validator(schema_dir=schema_dir if schema_dir and schema_dir.exists() else None)
-    if validator._find_schema(name) is None:
-        return "warn", messages + [f"no schema for {name} in tenant {tenant_id!r}; nothing was checked"], len(flat)
+    commit = manager.schema_commit(tenant_id) if hasattr(manager, "schema_commit") else ""
+    choice = validator.choose(file_path, rule, file_schema, tenant_id=tenant_id,
+                              commit=commit if isinstance(commit, str) else "")
+    if choice.error:
+        return "failed", messages + [choice.error], len(flat)
+    if choice.note:
+        messages = messages + [choice.note]
+    if choice.path is None:
+        if rule.get("strict_validation") and choice.source == "none":
+            return "failed", messages + [no_schema_reason(file_path, rule)], len(flat)
+        why = "mapped to \"none\"" if choice.source != "none" else f"no schema for {name} in tenant {tenant_id!r}"
+        return "none", messages + [f"{why}; nothing was checked"], len(flat)
     if not validator._is_cue_available():
-        return "warn", messages + ["the cue binary is not installed on the orchestrator; nothing was checked"], len(flat)
+        return "none", messages + ["the cue binary is not installed on the orchestrator; nothing was checked"], len(flat)
     try:
-        validator.validate(flat_data=flat, file_name=name, strict=True)
+        validator.validate(flat_data=flat, file_name=name, strict=True, schema_path=choice.path)
     except CUEValidationError as exc:
-        return "failed", messages + [str(exc)], len(flat)
-    return "ok", messages, len(flat)
+        return "failed", messages + [f"schema {choice.name} ({choice.source}): {exc}"], len(flat)
+    return "ok", messages + [f"checked against schema {choice.name} ({choice.source})"], len(flat)
 
 
 def _ledger_task(task_id: str) -> Optional[dict[str, Any]]:
@@ -255,18 +277,32 @@ def task_view(task_id: str) -> dict[str, Any]:
     return _view(task_id, _ledger_task(task_id), result, r.state)
 
 
-def list_tasks(tenant_id: str, limit: int = 20) -> list[dict[str, Any]]:
-    """Recent CLI-triggered tasks for a tenant, newest first, from the ledger."""
+def list_tasks_page(tenant_id: str, limit: int = 20, rules: Collection[str] | None = None,
+                    cursor: str = "") -> tuple[list[dict[str, Any]], str]:
+    """A page of recent CLI-triggered tasks for a tenant, newest first, from the
+    ledger, and the cursor of the next page ("" at the end).
+
+    *rules* are the "platform/datasource" of the rules the caller may read, as the
+    gateway's permission engine said; tasks of any other rule are skipped inside the
+    scan, so a page of ``limit`` holds ``limit`` readable tasks. None means every
+    rule; an empty collection, none. *cursor* is the previous page's. Raises
+    ValueError for a cursor that is not one."""
     from app.ui import ledger
 
-    tasks = []
-    for record in ledger.list_tasks(tenant_id, limit=ledger.MAX_TASKS):
-        if record.get("trigger") != "cli":
-            continue
-        tasks.append(_view(record.get("taskId", ""), record, None, "PENDING"))
-        if len(tasks) >= limit:
-            break
-    return tasks
+    try:
+        offset = int(cursor) if cursor else 0
+        if offset < 0:
+            raise ValueError
+    except ValueError:
+        raise ValueError(f"invalid cursor {cursor!r}") from None
+    records, following = ledger.page_tasks(tenant_id, rules=rules, trigger="cli", limit=limit, offset=offset)
+    views = [_view(record.get("taskId", ""), record, None, "PENDING") for record in records]
+    return views, "" if following is None else str(following)
+
+
+def list_tasks(tenant_id: str, limit: int = 20, rules: Collection[str] | None = None) -> list[dict[str, Any]]:
+    """The first page of list_tasks_page."""
+    return list_tasks_page(tenant_id, limit, rules)[0]
 
 
 def rule_file_for(rule: dict[str, Any], file_path: str) -> str:

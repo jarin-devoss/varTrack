@@ -7,8 +7,10 @@ from __future__ import annotations
 
 import re
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
+
+from app.api.deps import require_viewer_or_grant
 
 router = APIRouter()
 
@@ -24,7 +26,8 @@ class TaskStatusResponse(BaseModel):
     result:  dict | None = None
 
 
-@router.get("/tasks/{task_id}", response_model=TaskStatusResponse)
+@router.get("/tasks/{task_id}", response_model=TaskStatusResponse,
+            dependencies=[Depends(require_viewer_or_grant)])
 async def get_task(task_id: str) -> TaskStatusResponse:
     if not _UUID_RE.match(task_id):
         raise HTTPException(status_code=404, detail="Task not found")

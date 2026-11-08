@@ -5,7 +5,7 @@ Centralised environment resolution.
 
 Priority order (first match wins):
   1. branch_map[branch]          explicit mapping
-  2. file_path_map[file_path]    file-path exact match
+  2. file_path_map               the env whose file is the pushed one ({env: path})
   3. branch_as_env               branch name IS the env
   4. pr_as_env                   "pr-{number}"
   5. tag_as_env                  tag name IS the env
@@ -54,6 +54,25 @@ import logging
 logger = logging.getLogger(__name__)
 
 
+_warned: set[str] = set()
+
+
+def _warn_once(message: str, *args: object) -> None:
+    text = message % args
+    if text not in _warned:
+        _warned.add(text)
+        logger.warning(text)
+
+
+def heal_branches(rule: dict) -> list[str]:
+    """The branches self-heal re-syncs for *rule*: every branch its branch_map names, else the rule's own
+    branch ("main" when it names none). The gateway's permission engine reads the same branch for an
+    environment no branch_map entry names (gateway-service/internal/authz.branchFor); the table in its
+    testdata/branch_for.json holds the cases, and tests/unit/test_branch_for_contract.py checks this against it."""
+    branches = list((rule.get("branch_map") or {}).keys())
+    return list(dict.fromkeys(branches)) or [str(rule.get("branch") or "main")]
+
+
 def resolve(
     branch: str | None = None,
     file_path: str | None = None,
@@ -81,11 +100,17 @@ def resolve(
         logger.debug("env_resolve via=branch_map branch=%s env=%s", branch, env)
         return env
 
-    # 2. File-path → env mapping (exact match)
-    if file_path and file_path in file_path_map:
-        env = file_path_map[file_path]
-        logger.debug("env_resolve via=file_path_map path=%s env=%s", file_path, env)
-        return env
+    # 2. The env whose file this is. file_path_map is {env: path}, the direction rule.proto
+    # declares and the file collector, `vt sync --revision` and the web UI read it in.
+    if file_path:
+        for env, path in sorted(file_path_map.items()):
+            if path == file_path:
+                logger.debug("env_resolve via=file_path_map path=%s env=%s", file_path, env)
+                return env
+        if file_path in file_path_map:
+            _warn_once("file_path_map has %r as a key, so it looks written {path: env}. It is {env: path}: "
+                       "write {%r: %r}. The push resolves by the other rules until it is changed.",
+                       file_path, file_path_map[file_path], file_path)
 
     # 3. branch_as_env — branch name itself is the env
     if branch_as_env and branch:

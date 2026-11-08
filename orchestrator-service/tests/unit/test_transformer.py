@@ -93,9 +93,17 @@ class TestEnvResolve(unittest.TestCase):
     def test_file_path_map(self):
         env = resolve(
             file_path="config/prod/values.yaml",
-            file_path_map={"config/prod/values.yaml": "prod"},
+            file_path_map={"prod": "config/prod/values.yaml", "dev": "config/dev/values.yaml"},
         )
         self.assertEqual(env, "prod")
+
+    def test_file_path_map_written_backwards_is_not_read_that_way(self):
+        # {path: env} is not what rule.proto says; the push falls through to the other rules.
+        env = resolve(
+            file_path="config/prod/values.yaml",
+            file_path_map={"config/prod/values.yaml": "prod"},
+        )
+        self.assertEqual(env, "default")
 
     def test_default_fallback(self):
         env = resolve()

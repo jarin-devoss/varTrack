@@ -6,6 +6,7 @@ from app.tasks.payload import (
     extract_ref, extract_branch, extract_commit,
     extract_tag, extract_pr_number, extract_repo_url
 )
+from app.pipeline.repo_scope import check_repository
 from app.pipeline.schema_utils import rule_from_bundle
 
 def run_stage_payload(
@@ -19,7 +20,10 @@ def run_stage_payload(
     Parse the raw webhook body and resolve the matching rule.
 
     Returns None if the rule cannot be resolved.
-    Raises json.JSONDecodeError if the payload is malformed.
+    Raises json.JSONDecodeError if the payload is malformed, and
+    RepositoryNotAllowed if the repository the payload names is not one the rule
+    covers (or is one it excludes): the payload is the sender's claim, the rule is
+    the operator's decision.
     """
     payload = json.loads(raw_payload)
 
@@ -29,6 +33,8 @@ def run_stage_payload(
         rule_config = rule_from_bundle(platform, datasource, tenant_id) or {}
     if not rule_config:
         return None
+
+    check_repository(rule_config, payload)
 
     # A rule covering several repositories (or a wildcard) has no repo_url
     # of its own: the pushed repository is the one to read.

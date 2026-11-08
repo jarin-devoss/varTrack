@@ -4,6 +4,8 @@ them to the gateway.
 """
 from __future__ import annotations
 
+import json
+
 import pytest
 
 from app import cli_ops, config_validator
@@ -81,15 +83,80 @@ def test_task_view_maps_celery_states(celery_state, want):
     assert cli_ops._view("t", None, None, celery_state)["state"] == want
 
 
-def test_list_tasks_keeps_only_cli_tasks(monkeypatch):
+class FakeLedger:
+    """A tenant's task list in Redis: ids newest first, the records beside them."""
+
+    def __init__(self, tasks):
+        self.tasks = tasks
+        self.ids = [t["taskId"] for t in tasks]
+
+    def lrange(self, key, start, stop):
+        return self.ids[start:stop + 1]
+
+    def mget(self, keys):
+        by_key = {f"vt:ui:task:{t['taskId']}": json.dumps(t) for t in self.tasks}
+        return [by_key.get(k) for k in keys]
+
+
+@pytest.fixture
+def ledger_of(monkeypatch):
     from app.ui import ledger
-    monkeypatch.setattr(ledger, "list_tasks", lambda tenant, limit: [
-        {"taskId": "a", "trigger": "cli", "state": "SUCCEEDED", "datasource": "mongo"},
-        {"taskId": "b", "trigger": "webhook", "state": "SUCCEEDED"},
-        {"taskId": "c", "trigger": "cli", "state": "RUNNING"},
-    ])
-    assert [t["task_id"] for t in cli_ops.list_tasks("default", limit=5)] == ["a", "c"]
-    assert [t["task_id"] for t in cli_ops.list_tasks("default", limit=1)] == ["a"]
+
+    def build(tasks):
+        monkeypatch.setattr(ledger, "_redis", lambda: FakeLedger(tasks))
+        return ledger
+    return build
+
+
+def _task(task_id, rule, trigger="cli"):
+    return {"taskId": task_id, "trigger": trigger, "state": "SUCCEEDED", "rule": rule,
+            "datasource": rule.split("/", 1)[1]}
+
+
+def test_list_tasks_keeps_only_cli_tasks(ledger_of):
+    ledger_of([_task("a", "gitea/mongo"), _task("b", "gitea/mongo", trigger="webhook"), _task("c", "gitea/mongo")])
+    everything = {"gitea/mongo"}
+    assert [t["task_id"] for t in cli_ops.list_tasks("default", limit=5, rules=everything)] == ["a", "c"]
+    assert [t["task_id"] for t in cli_ops.list_tasks("default", limit=1, rules=everything)] == ["a"]
+
+
+def test_a_page_holds_limit_readable_tasks_however_many_unreadable_ones_come_first(ledger_of):
+    # Seven tasks of a rule the caller may not read sit in front of three they may.
+    ledger_of([_task(f"x{i}", "gitea/secret") for i in range(7)] + [_task(f"r{i}", "gitea/mongo") for i in range(3)])
+    page, following = cli_ops.list_tasks_page("default", limit=2, rules={"gitea/mongo"})
+    assert [t["task_id"] for t in page] == ["r0", "r1"]
+    page, following = cli_ops.list_tasks_page("default", limit=2, rules={"gitea/mongo"}, cursor=following)
+    assert [t["task_id"] for t in page] == ["r2"] and following == ""
+
+
+def test_the_cursor_walks_the_whole_list_without_repeating_or_skipping(ledger_of):
+    ledger_of([_task(f"t{i}", "gitea/mongo") for i in range(5)])
+    seen, cursor = [], ""
+    for _ in range(10):
+        page, cursor = cli_ops.list_tasks_page("default", limit=2, rules={"gitea/mongo"}, cursor=cursor)
+        seen += [t["task_id"] for t in page]
+        if not cursor:
+            break
+    assert seen == [f"t{i}" for i in range(5)]
+
+
+def test_no_readable_rules_lists_nothing(ledger_of):
+    ledger_of([_task("a", "gitea/mongo")])
+    assert cli_ops.list_tasks("default", rules=set()) == []
+
+
+def test_a_task_recorded_before_it_named_its_platform_matches_by_datasource(ledger_of):
+    ledger_of([{"taskId": "old", "trigger": "cli", "state": "SUCCEEDED", "datasource": "mongo"}])
+    assert [t["task_id"] for t in cli_ops.list_tasks("default", rules={"/mongo"})] == ["old"]
+    assert cli_ops.list_tasks("default", rules={"gitea/mongo"}) == []
+
+
+def test_a_cursor_that_is_not_one_is_refused(ledger_of):
+    ledger_of([])
+    with pytest.raises(ValueError, match="invalid cursor"):
+        cli_ops.list_tasks_page("default", cursor="abc")
+    with pytest.raises(ValueError, match="invalid cursor"):
+        cli_ops.list_tasks_page("default", cursor="-3")
 
 
 # ── CLIService ───────────────────────────────────────────────────────────────
@@ -146,15 +213,35 @@ def test_list_tasks_uses_the_metadata_tenant(monkeypatch):
     from vartrack.v1.services import cli_pb2
     seen = {}
 
-    def fake_list(tenant, limit):
-        seen.update(tenant=tenant, limit=limit)
-        return [cli_ops._view("a", {"state": "RUNNING"}, None, "PENDING")]
+    def fake_list(tenant, limit, rules, cursor):
+        seen.update(tenant=tenant, limit=limit, rules=rules, cursor=cursor)
+        return [cli_ops._view("a", {"state": "RUNNING"}, None, "PENDING")], "7"
 
-    monkeypatch.setattr(cli_ops, "list_tasks", fake_list)
-    resp = CLIServicer().ListTasks(cli_pb2.ListCliTasksRequest(limit=0), FakeContext(**{"x-tenant-id": "acme"}))
-    assert seen == {"tenant": "acme", "limit": 20}
+    monkeypatch.setattr(cli_ops, "list_tasks_page", fake_list)
+    resp = CLIServicer().ListTasks(
+        cli_pb2.ListCliTasksRequest(limit=0, rules=["gitea/mongo", "/redis"], cursor="3"),
+        FakeContext(**{"x-tenant-id": "acme"}))
+    assert seen == {"tenant": "acme", "limit": 20, "rules": {"gitea/mongo", "/redis"}, "cursor": "3"}
     assert [t.task_id for t in resp.tasks] == ["a"]
     assert resp.tasks[0].tenant_id == "acme"
+    assert resp.next_cursor == "7"
+
+
+def test_a_list_call_that_names_no_rules_lists_none(monkeypatch):
+    from vartrack.v1.services import cli_pb2
+    seen = {}
+    monkeypatch.setattr(cli_ops, "list_tasks_page", lambda tenant, limit, rules, cursor: seen.update(rules=rules) or ([], ""))
+    CLIServicer().ListTasks(cli_pb2.ListCliTasksRequest(), FakeContext())
+    assert seen["rules"] == set()
+
+
+def test_a_bad_cursor_is_an_invalid_argument():
+    import grpc
+    from vartrack.v1.services import cli_pb2
+    ctx = FakeContext()
+    with pytest.raises(_Aborted):
+        CLIServicer().ListTasks(cli_pb2.ListCliTasksRequest(cursor="nope", rules=["gitea/mongo"]), ctx)
+    assert ctx.code == grpc.StatusCode.INVALID_ARGUMENT
 
 
 def test_task_view_summarises_a_dry_run():

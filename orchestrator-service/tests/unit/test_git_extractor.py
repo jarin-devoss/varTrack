@@ -14,6 +14,7 @@ from unittest.mock import MagicMock, patch
 for _m in ("vartrack_core", "pymongo", "git", "gitpython"):
     sys.modules.setdefault(_m, MagicMock())
 
+from app.dependencies import SourceUnavailable  # noqa: E402
 from app.utils.git.mirror import MirrorError, clean_path  # noqa: E402
 
 SHA = "a" * 40
@@ -122,28 +123,44 @@ class TestExtractFile(_Base):
     def test_returns_none_for_missing_file(self):
         self.assertIsNone(self.use(FakeMirrors()).extract_file(URL, "refs/heads/main", "nonexistent.yaml"))
 
-    def test_unreachable_repository_returns_none(self):
+    def test_unreachable_repository_is_an_error_not_a_missing_file(self):
         mirrors = FakeMirrors(resolves=MirrorError("git ls-remote failed"))
-        self.assertIsNone(self.use(mirrors).extract_file(URL, "main", "c.yaml"))
+        with self.assertRaises(SourceUnavailable) as caught:
+            self.use(mirrors).extract_file(URL, "main", "c.yaml")
+        self.assertIn(URL, str(caught.exception))
+        self.assertIn("git ls-remote failed", str(caught.exception))
 
     def test_a_read_error_is_raised_not_taken_for_a_deletion(self):
         mirrors = FakeMirrors({"c.yaml": MirrorError("commit not in mirror")})
         with self.assertRaises(MirrorError):
             self.use(mirrors).extract_file(URL, "main", "c.yaml")
 
-    def test_a_failed_batch_file_is_none_and_the_rest_are_read(self):
+    def test_a_batch_file_that_cannot_be_read_fails_the_batch(self):
         mirrors = FakeMirrors({"bad.yaml": MirrorError("boom"), "ok.yaml": b"ok"})
-        out = self.use(mirrors).extract_changed_files(URL, "main", ["bad.yaml", "ok.yaml"])
-        self.assertEqual([(f.path, f.content) for f in out], [("bad.yaml", None), ("ok.yaml", "ok")])
+        with self.assertRaises(SourceUnavailable) as caught:
+            self.use(mirrors).extract_changed_files(URL, "main", ["bad.yaml", "ok.yaml"])
+        self.assertIn("bad.yaml", str(caught.exception))
 
-    def test_an_unreachable_repository_gives_none_for_the_whole_batch(self):
+    def test_an_unreachable_repository_fails_the_whole_batch(self):
         mirrors = FakeMirrors(resolves=MirrorError("down"))
-        out = self.use(mirrors).extract_changed_files(URL, "main", ["a", "b"])
-        self.assertEqual([(f.path, f.content) for f in out], [("a", None), ("b", None)])
+        with self.assertRaises(SourceUnavailable):
+            self.use(mirrors).extract_changed_files(URL, "main", ["a", "b"])
+
+    def test_a_missing_file_in_a_batch_is_still_none(self):
+        mirrors = FakeMirrors({"gone.yaml": None, "ok.yaml": b"ok"})
+        out = self.use(mirrors).extract_changed_files(URL, "main", ["gone.yaml", "ok.yaml"])
+        self.assertEqual([(f.path, f.content) for f in out], [("gone.yaml", None), ("ok.yaml", "ok")])
 
     def test_oserror_is_treated_as_unreachable(self):
         mirrors = FakeMirrors(resolves=OSError("no such file"))
-        self.assertIsNone(self.use(mirrors).extract_file(URL, "main", "deleted.yaml"))
+        with self.assertRaises(SourceUnavailable):
+            self.use(mirrors).extract_file(URL, "main", "deleted.yaml")
+
+    def test_a_password_in_the_error_is_hidden(self):
+        mirrors = FakeMirrors(resolves=MirrorError("fatal: unable to access 'https://oauth2:s3cret@host/o/r.git'"))
+        with self.assertRaises(SourceUnavailable) as caught:
+            self.use(mirrors).extract_file(URL, "main", "c.yaml")
+        self.assertNotIn("s3cret", str(caught.exception))
 
     def test_empty_batch_touches_nothing(self):
         mirrors = FakeMirrors()
@@ -179,6 +196,35 @@ class TestToken(_Base):
             sha = self.use(mirrors).get_commit_sha(URL, "main")
         self.assertEqual(sha, SHA)
         self.assertEqual(mirrors.calls, [("resolve", "refs/heads/main")])
+
+
+    def test_a_cached_head_is_what_self_heal_gets_but_not_what_a_sync_asks_for(self):
+        """The head of a branch is remembered for two minutes (self-heal asks every few minutes and need not ask git
+        each time). A Sync a person presses right after a push has to read that push, not the commit from before it."""
+        class Cache:
+            def __init__(self):
+                self.values = {}
+
+            def get(self, key):
+                return self.values.get(key)
+
+            def set(self, key, value, ttl=None):
+                self.values[key] = value
+
+        cache = Cache()
+        mirrors = FakeMirrors()
+        with patch("app.utils.redis_cache.get_cache", return_value=cache):
+            extractor = self.use(mirrors)
+            assert extractor.get_commit_sha(URL, "main") == SHA                 # asks git, remembers it
+            cache.values = {k: "0" * 40 for k in cache.values}                  # ...and the branch moves on
+            assert extractor.get_commit_sha(URL, "main") == "0" * 40            # the cached head, as before
+            assert extractor.get_commit_sha(URL, "main", fresh=True) == SHA     # a sync reads git again
+            assert extractor.get_commit_sha(URL, "main") == SHA                 # and what it read is remembered
+
+    def test_a_fresh_head_does_not_need_the_cache_to_work(self):
+        mirrors = FakeMirrors()
+        with patch("app.utils.redis_cache.get_cache", return_value=None):
+            assert self.use(mirrors).get_commit_sha(URL, "main", fresh=True) == SHA
 
 
 class TestPathTraversal(_Base):

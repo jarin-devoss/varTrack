@@ -48,6 +48,25 @@ logger = logging.getLogger(__name__)
 
 _DEFAULT_ROOT_KEY = "vartrack"
 
+# A file in one of these formats may carry a top-level "$schema": an editor's hint, or (with the rule's
+# schema_from_file) the file's own choice of schema. It is never config: it is taken out before the file is flattened.
+_SCHEMA_KEY = "$schema"
+_TREE_FORMATS = (".json", ".yaml", ".yml", ".toml")
+
+
+def take_schema_key(parsed, file_path: str):
+    """Remove and return the top-level ``$schema`` of a JSON, YAML or TOML file (None when it has none)."""
+    if isinstance(parsed, dict) and file_path.lower().endswith(_TREE_FORMATS) and _SCHEMA_KEY in parsed:
+        return parsed.pop(_SCHEMA_KEY)
+    return None
+
+
+def no_schema_reason(file_path: str, rule_config: dict) -> str:
+    """Why a strict_validation rule fails a file that no schema checks, and how to fix it."""
+    rule = f"{rule_config.get('platform', '?')}/{rule_config.get('datasource', '?')}"
+    return (f"strict_validation: no schema checks {file_path} (rule {rule}): add a schema_map entry for it, "
+            f"or map it to \"none\" to leave it unchecked on purpose")
+
 
 def _record_metric(outcome: str, key_count: int = 0) -> None:
     """Increment ETL file/key counters; silently ignored if metrics unavailable."""
@@ -65,7 +84,7 @@ def _record_metric(outcome: str, key_count: int = 0) -> None:
 def run_stage_etl(ctx: PayloadContext, datasource: str, tenant_id: str) -> ETLResult:
     from app.pipeline import env_resolver, transformer
     from app.pipeline.env_slice import resolve_env_slice, detect_pattern
-    from app.pipeline.validator import Validator, CUEValidationError
+    from app.pipeline.validator import Validator, CUEValidationError, CUEUnavailable
     from app.pipeline.secret_resolver import effective_secrets, parse_secret_fields, resolve_secrets, mask_secrets
     from app.pipeline.change_logger import parse_logger_fields
     from app.schema_registry.manager import get_schema_manager
@@ -85,10 +104,13 @@ def run_stage_etl(ctx: PayloadContext, datasource: str, tenant_id: str) -> ETLRe
         revision=ctx.commit_sha,
     )
 
-    schema_dir = get_schema_manager().tenant_schema_root(tenant_id)
+    schemas    = get_schema_manager()
+    schema_dir = schemas.current_schema_root(tenant_id)
     validator  = Validator(schema_dir=schema_dir if schema_dir.exists() else None)
 
     result = ETLResult()
+    commit = schemas.schema_commit(tenant_id)
+    result.schema_commit = commit if isinstance(commit, str) else ""
 
     for file_path, content in raw_files:
         try:
@@ -107,6 +129,7 @@ def run_stage_etl(ctx: PayloadContext, datasource: str, tenant_id: str) -> ETLRe
 
             # ── 1. Parse raw content ──────────────────────────────────────────
             parsed = parse_file(content, file_path)
+            file_schema = take_schema_key(parsed, file_path)   # never synced as a key
 
             # ── 2. Extract root_key subtree ───────────────────────────────────
             # When parsed is a list (e.g. multi-doc YAML or JSON array at root),
@@ -178,32 +201,60 @@ def run_stage_etl(ctx: PayloadContext, datasource: str, tenant_id: str) -> ETLRe
             #
             # When dry_run=True the resolved values are immediately masked with
             # "***" so that real secrets never appear in the dry-run report.
-            _schema_path = validator._find_schema(Path(file_path).name)
+            # The schema is chosen once per file: the rule's schema_map, the file's own $schema when the rule
+            # allows it, then its name. An explicit choice that cannot be honoured fails the file here, before
+            # anything is written, so a placeholder the missing schema would have resolved never reaches a store.
+            choice = validator.choose(file_path, rule_config, file_schema,
+                                      tenant_id=tenant_id, commit=result.schema_commit)
+            if choice.error:
+                logger.warning("schema error file=%s: %s", file_path, choice.error)
+                result.errors.append(file_path)
+                result.error_reasons[file_path] = choice.error
+                _record_metric("error")
+                continue
+            _schema_path = choice.path
             _secret_fields: dict = {}
             _logger_fields: frozenset = frozenset()
             if _schema_path is not None:
                 _secret_fields = parse_secret_fields(_schema_path)
                 _logger_fields = parse_logger_fields(_schema_path)
-            _secrets_cfg = effective_secrets(rule_config) if _secret_fields else {}
-            if _secrets_cfg:
-                flat_data = resolve_secrets(flat_data, _secret_fields, _secrets_cfg)
-                if rule_config.get("dry_run"):
+            if _secret_fields:
+                # With no secret manager defined this raises SecretUnavailable: a @secret field
+                # is never left holding the file's own value.
+                flat_data = resolve_secrets(flat_data, _secret_fields, effective_secrets(rule_config))
+                if ctx.dry_run:
                     flat_data = mask_secrets(flat_data, _secret_fields)
 
             # ── 6. Validate the final (remapped) output ───────────────────────
+            # ok = checked and passed, warn = checked and failed without strict_validation, failed = the same
+            # with it, none = nothing checked the file. A file nothing checked is never reported ok.
             validation_status = "ok"
-            try:
-                validator.validate(
-                    flat_data=flat_data,
-                    file_name=Path(file_path).name,
-                    strict=strict_validate,
-                )
-            except CUEValidationError as ve:
-                logger.warning("validation failed file=%s: %s", file_path, ve)
-                validation_status = "failed" if strict_validate else "warn"
-                if strict_validate:
-                    result.skipped.append(file_path)
+            validation_error  = ""
+            if _schema_path is None:
+                validation_status = "none"
+                if strict_validate and choice.source == "none":
+                    # strict_validation says every file is checked; "none" in schema_map is the way to say not.
+                    result.errors.append(file_path)
+                    result.error_reasons[file_path] = no_schema_reason(file_path, rule_config)
                     continue
+            else:
+                try:
+                    checked = validator.validate(
+                        flat_data=flat_data,
+                        file_name=Path(file_path).name,
+                        strict=True,
+                        schema_path=_schema_path,
+                    )
+                    validation_status = "ok" if checked else "none"
+                except CUEValidationError as ve:
+                    logger.warning("validation failed file=%s: %s", file_path, ve)
+                    validation_error = str(ve)
+                    if strict_validate:
+                        # Not written, and not a quiet skip: the rule asked for strict validation.
+                        result.errors.append(file_path)
+                        result.error_reasons[file_path] = f"strict_validation: {ve}"
+                        continue
+                    validation_status = "none" if isinstance(ve, CUEUnavailable) else "warn"
 
             result.files.append(ETLFile(
                 file_path=file_path,
@@ -211,19 +262,24 @@ def run_stage_etl(ctx: PayloadContext, datasource: str, tenant_id: str) -> ETLRe
                 flat_data=flat_data,
                 root_key=root_key or "(whole file)",
                 validation=validation_status,
+                error=validation_error,
+                schema=choice.name,
+                schema_source=choice.source,
+                schema_note=choice.note,
                 logger_fields=_logger_fields,
                 secret_fields=frozenset(_secret_fields.keys()),
                 data=transformer.file_shape(parsed, flat_data, variables_map),
             ))
 
-            outcome = "ok" if validation_status == "ok" else "validation_failed"
+            outcome = "ok" if validation_status in ("ok", "none") else "validation_failed"
             _record_metric(outcome, len(flat_data))
 
-        except Exception:
+        except Exception as exc:
             # Route unexpected exceptions to result.errors (not result.skipped)
             # so the task layer can distinguish "nothing to sync" from crashes.
             logger.exception("etl error file=%s", file_path)
             result.errors.append(file_path)
+            result.error_reasons[file_path] = f"{type(exc).__name__}: {exc}"
             _record_metric("error")
 
     for _ in result.skipped:
@@ -249,7 +305,7 @@ def run_stage_etl_content(
     """
     from app.pipeline import transformer
     from app.pipeline.env_slice import resolve_env_slice, detect_pattern
-    from app.pipeline.validator import Validator, CUEValidationError
+    from app.pipeline.validator import Validator, CUEValidationError, CUEUnavailable
     from app.pipeline.secret_resolver import effective_secrets, parse_secret_fields, resolve_secrets, mask_secrets
     from app.pipeline.change_logger import parse_logger_fields
     from app.schema_registry.manager import get_schema_manager
@@ -261,12 +317,15 @@ def run_stage_etl_content(
     strict_validate = rule_config.get("strict_validation", False)
 
     # The tenant's schemas, as for a webhook sync — a CLI push is validated too.
-    schema_dir = get_schema_manager().tenant_schema_root(tenant_id)
+    schema_dir = get_schema_manager().current_schema_root(tenant_id)
     validator  = Validator(schema_dir=schema_dir if schema_dir and schema_dir.exists() else None)
     result     = ETLResult()
+    commit     = get_schema_manager().schema_commit(tenant_id)
+    result.schema_commit = commit if isinstance(commit, str) else ""
 
     try:
         parsed = load_as(content, file_path, fmt)
+        file_schema = take_schema_key(parsed, file_path)   # never synced as a key
 
         if root_key and isinstance(parsed, dict):
             if root_key in parsed:
@@ -304,32 +363,48 @@ def run_stage_etl_content(
 
         flat_data = dict(sorted(flat_data.items()))
 
-        _schema_path   = validator._find_schema(Path(file_path).name)
+        choice = validator.choose(file_path, rule_config, file_schema,
+                                  tenant_id=tenant_id, commit=result.schema_commit)
+        if choice.error:
+            logger.warning("schema error file=%s: %s", file_path, choice.error)
+            result.errors.append(file_path)
+            result.error_reasons[file_path] = choice.error
+            return result
+        _schema_path   = choice.path
         _secret_fields: dict      = {}
         _logger_fields: frozenset = frozenset()
         if _schema_path is not None:
             _secret_fields = parse_secret_fields(_schema_path)
             _logger_fields = parse_logger_fields(_schema_path)
 
-        _secrets_cfg = effective_secrets(rule_config) if _secret_fields else {}
-        if _secrets_cfg:
-            flat_data = resolve_secrets(flat_data, _secret_fields, _secrets_cfg)
-            if rule_config.get("dry_run"):
+        if _secret_fields:
+            flat_data = resolve_secrets(flat_data, _secret_fields, effective_secrets(rule_config))
+            if ctx.dry_run:
                 flat_data = mask_secrets(flat_data, _secret_fields)
 
         # Validated strictly so a failure is seen: with strict_validation the
         # file is not written, without it the sync goes on and reports "warn".
         validation_status = "ok"
         validation_error  = ""
-        try:
-            validator.validate(flat_data=flat_data, file_name=Path(file_path).name, strict=True)
-        except CUEValidationError as exc:
-            validation_status = "failed" if strict_validate else "warn"
-            validation_error  = str(exc)
-            logger.warning("validation failed file=%s: %s", file_path, exc)
-            if strict_validate:
-                result.skipped.append(file_path)
+        if _schema_path is None:
+            validation_status = "none"
+            if strict_validate and choice.source == "none":
+                result.errors.append(file_path)
+                result.error_reasons[file_path] = no_schema_reason(file_path, rule_config)
                 return result
+        else:
+            try:
+                checked = validator.validate(flat_data=flat_data, file_name=Path(file_path).name, strict=True,
+                                             schema_path=_schema_path)
+                validation_status = "ok" if checked else "none"
+            except CUEValidationError as exc:
+                validation_error = str(exc)
+                logger.warning("validation failed file=%s: %s", file_path, exc)
+                if strict_validate:
+                    result.errors.append(file_path)
+                    result.error_reasons[file_path] = f"strict_validation: {exc}"
+                    return result
+                validation_status = "none" if isinstance(exc, CUEUnavailable) else "warn"
 
         result.files.append(ETLFile(
             file_path=file_path,
@@ -338,13 +413,17 @@ def run_stage_etl_content(
             root_key=root_key,
             validation=validation_status,
             error=validation_error,
+            schema=choice.name,
+            schema_source=choice.source,
+            schema_note=choice.note,
             logger_fields=_logger_fields,
             secret_fields=frozenset(_secret_fields.keys()),
             data=transformer.file_shape(parsed, flat_data, variables_map),
         ))
 
-    except Exception:
+    except Exception as exc:
         logger.exception("etl_content error file=%s", file_path)
         result.errors.append(file_path)
+        result.error_reasons[file_path] = f"{type(exc).__name__}: {exc}"
 
     return result

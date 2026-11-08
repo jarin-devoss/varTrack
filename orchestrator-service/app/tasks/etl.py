@@ -20,13 +20,16 @@ import time
 from typing import Any
 
 from app.worker.celery import celery
-from app.tasks.payload import token_from_headers
 from app.tasks.result import ok, fail
 from app.pipeline.schema_utils import rules_from_bundle_all
+from app.dependencies import DependencyError
+from app.pipeline.env_resolver import heal_branches
+from app.pipeline.repo_scope import RepositoryNotAllowed
 from app.pipeline.stage_payload import run_stage_payload
 from app.pipeline.stage_etl import run_stage_etl
 from app.pipeline.stage_sync import run_stage_sync, sync_result_to_dict
 from app.pipeline.models import PayloadContext, ETLResult
+from app.ui import ledger
 from app.ui import recorder as ui_recorder
 from app.ui.ledger import TRIGGER_HEADER, trigger_from_headers
 
@@ -91,12 +94,19 @@ def _build_dry_run_report(
             "root_key":   f.root_key,
             "keys":       len(keys),
             "validation": f.validation,
+            "schema":     f.schema,
+            "schema_source": f.schema_source,
+            **({"schema_note": f.schema_note} if f.schema_note else {}),
             "sample":     dict(list(f.flat_data.items())[:5]),
         })
     for skipped in etl.skipped:
         files_report.append({"file": skipped, "status": "skipped"})
+    for failed in etl.errors:
+        files_report.append({"file": failed, "status": "error", "error": etl.failure(failed)})
 
-    return ok(task_id, "dry_run_complete", **{
+    outcome = fail if etl.errors else ok
+    return outcome(task_id, f"failed: {len(etl.errors)} file(s) could not be processed" if etl.errors
+                   else "dry_run_complete", **{
         "dry_run":     True,
         "received_at": received_at,
         "platform":    ctx.platform,
@@ -105,11 +115,23 @@ def _build_dry_run_report(
         "summary": {
             "total_files": len(etl.files),
             "skipped":     len(etl.skipped),
+            "errors":      len(etl.errors),
             "total_keys":  total_keys,
         },
         "files": files_report,
         "prune": {"would_delete": would_delete},
+        "schema_commit": etl.schema_commit,
     })
+
+
+def _failed_message(etl: Any) -> str:
+    """"failed: 2 file(s) could not be processed (a.yaml: ValueError: …; …)"."""
+    detail = "; ".join(f"{path}: {etl.failure(path)}" for path in etl.errors)
+    return f"failed: {len(etl.errors)} file(s) could not be processed ({detail})"
+
+
+def _error_files(etl: Any) -> list[dict[str, Any]]:
+    return [{"file": path, "status": "error", "error": etl.failure(path)} for path in etl.errors]
 
 
 # ── Tasks ──────────────────────────────────────────────────────────────────────
@@ -169,13 +191,17 @@ def process_webhook_task(
     try:
         # ── Stage 1 · PAYLOAD ─────────────────────────────────────────────────
         self.update_state(state="PROGRESS", meta={"stage": "payload", "progress": 0.05})
-        ctx = run_stage_payload(
-            raw_payload=raw_payload,
-            platform=platform,
-            rule_config=rule_config,
-            datasource=datasource,
-            tenant_id=tenant_id,
-        )
+        try:
+            ctx = run_stage_payload(
+                raw_payload=raw_payload,
+                platform=platform,
+                rule_config=rule_config,
+                datasource=datasource,
+                tenant_id=tenant_id,
+            )
+        except RepositoryNotAllowed as exc:
+            logger.warning("task=%s refused: %s (platform=%s datasource=%s)", task_id, exc, platform, datasource)
+            return fail(task_id, str(exc))
         if ctx is None:
             return fail(task_id, f"no rule for platform={platform} datasource={datasource}")
         if not ctx.repo_url or not ctx.ref:
@@ -197,18 +223,14 @@ def process_webhook_task(
         # schema-registry settings are never overridden.
         from app.pipeline.repo_overrides import RepoConfigError, apply_repo_overrides
         try:
-            ctx = apply_repo_overrides(ctx)
+            ctx = apply_repo_overrides(ctx, tenant_id)
         except RepoConfigError as exc:
             # An invalid vartrack.json: stop, and say why.
             logger.warning("process_webhook task=%s: %s", task_id, exc)
             return fail(task_id, str(exc))
 
-        # Rule-level dry_run: a rule stored in the schema bundle with
-        # dry_run=true acts as a permanent shadow rule — Stage 3 is never
-        # reached, even for normal webhook deliveries (not via /dry-run).
-        # The /dry-run endpoint sets dry_run=True on the task *and* injects
-        # it into rule_config, so both paths converge here.
-        dry_run = dry_run or bool(ctx.rule_config.get("dry_run", False))
+        # A dry run is the task's own argument (the UI's Dry run, the dry-run webhook): never the rule's.
+        ctx.dry_run = dry_run
 
         ui_task = ui_recorder.task_started(
             task_id,
@@ -221,6 +243,7 @@ def process_webhook_task(
             revision=ctx.commit_sha,
             dry_run=dry_run,
             parsed_payload=ctx.parsed_payload,
+            preview=dry_run and ledger.is_preview(headers),
         )
 
         # ── Stage 2 · ETL ─────────────────────────────────────────────────────
@@ -240,10 +263,18 @@ def process_webhook_task(
 
         _observe("etl", time.perf_counter() - _t_etl)
 
+        if etl.errors and not etl.files:
+            # Every file of the push failed: that is not "no files".
+            message = _failed_message(etl)
+            logger.error("stage=etl failed: %s", message)
+            ui_recorder.task_errored(ui_task, tenant=tenant_id, error=message)
+            return fail(task_id, message, dry_run=dry_run, files=_error_files(etl), errors=len(etl.errors),
+                        schema_commit=etl.schema_commit)
+
         if not etl.files and not etl.skipped:
             logger.info("stage=etl result=no_files")
             ui_recorder.task_finished(ui_task, tenant=tenant_id, message="no matching files in this push")
-            return ok(task_id, "no_files", **{"dry_run": dry_run, "files": []})
+            return ok(task_id, "no_files", **{"dry_run": dry_run, "files": [], "schema_commit": etl.schema_commit})
 
         logger.info(
             "stage=etl transformed=%d skipped=%d errors=%d",
@@ -253,7 +284,8 @@ def process_webhook_task(
         # Dry-run exits after ETL — no writes to any datasource.
         if dry_run:
             report = _build_dry_run_report(task_id, ctx, etl, received_at, datasource, tenant_id)
-            ui_recorder.task_finished(ui_task, tenant=tenant_id, dry_run_files=report.get("files", []))
+            ui_recorder.task_finished(ui_task, tenant=tenant_id, dry_run_files=report.get("files", []),
+                                      would_prune=(report.get("prune") or {}).get("would_delete", {}))
             return report
 
         # ── Stage 3 · SYNC ────────────────────────────────────────────────────
@@ -279,9 +311,11 @@ def process_webhook_task(
 
         _observe("sync", time.perf_counter() - _t_sync)
 
-        failed  = [r for r in sync_results if r.status not in ("ok", "empty")]
-        overall = "completed" if not failed else "completed_with_errors"
-        ui_recorder.task_finished(ui_task, tenant=tenant_id, etl=etl, results=sync_results)
+        failed  = [r for r in sync_results if r.status not in ("ok", "empty", "skipped")]
+        overall = "completed" if not failed else (
+            f"failed: {len(failed)} of {len(sync_results)} file(s): "
+            + "; ".join(f"{r.file_path}: {r.error or r.status}" for r in failed))
+        ui_recorder.task_finished(ui_task, tenant=tenant_id, etl=etl, results=sync_results, message=overall if failed else "")
 
         logger.info(
             "stage=sync written=%d errors=%d duration_ms=%.0f",
@@ -290,10 +324,21 @@ def process_webhook_task(
             (time.perf_counter() - _t0) * 1000,
         )
 
-        return ok(task_id, overall, **{
+        # A task that did not do what the push asked is not a success: the files that were written
+        # stay listed as written, the ones that were not say why.
+        return (fail if failed else ok)(task_id, overall, **{
             "files":  [sync_result_to_dict(r) for r in sync_results],
             "errors": len(failed),
+            "schema_commit": etl.schema_commit,
         })
+
+    except DependencyError as exc:
+        # Something the sync needs could not be read: the task failed, and says what and why.
+        span.end(exc)
+        message = f"{exc.dependency} unavailable: {exc.reason}"
+        logger.error("task=%s failed: %s", task_id, message)
+        ui_recorder.task_errored(ui_task, tenant=tenant_id, error=message)
+        return fail(task_id, message, dependency=exc.dependency)
 
     except SoftTimeLimitExceeded:
         span.end()
@@ -332,20 +377,38 @@ def refresh_schema_task(
     branch:      str,
     raw_payload: str,
     headers:     dict[str, str],
-    tenant_id:   str = "default",
+    tenant_id:   str = "",
 ) -> dict[str, Any]:
-    """Refresh schema registry when the schema repo receives a push."""
+    """Refresh the schema registry when a tenant's schema repository receives a push.
+
+    The push says which repository it came from; the tenant is the one an operator registered
+    that repository for. What is re-read is that registered repository, on its registered
+    branch and with its registered credential: the pushed repository is never cloned as
+    anyone's schema repository, and no token comes from the webhook's headers. *tenant_id*, when
+    the caller names one, must be that tenant."""
     task_id = self.request.id
-    logger.info("schema refresh task=%s tenant=%s repo=%s", task_id, tenant_id, repo)
 
     from app.schema_registry.manager import get_schema_manager
-    mgr        = get_schema_manager()
-    token      = token_from_headers(headers)
-    mgr.invalidate(tenant_id)
-    local_path = mgr.get_or_clone(tenant_id, repo, branch, token=token)
+    mgr    = get_schema_manager()
+    tenant = mgr.tenant_for_repo(repo)
+    if tenant is None:
+        logger.warning("schema refresh task=%s refused: %s is no tenant's schema repository", task_id, repo)
+        return fail(task_id, "schema_repository_not_registered", repo=repo)
+    if tenant_id and tenant_id != tenant:
+        logger.warning("schema refresh task=%s refused: %s is the schema repository of %s, not of %s",
+                       task_id, repo, tenant, tenant_id)
+        return fail(task_id, "schema_repository_belongs_to_another_tenant", repo=repo)
+    if branch and branch != mgr.registered_branch(tenant):
+        logger.info("schema refresh task=%s tenant=%s: push to %s, the registry follows %s — ignored",
+                    task_id, tenant, branch, mgr.registered_branch(tenant))
+        return ok(task_id, "schema_branch_not_followed", tenant_id=tenant, repo=repo, branch=branch)
+    logger.info("schema refresh task=%s tenant=%s repo=%s", task_id, tenant, repo)
+
+    mgr.invalidate(tenant)
+    local_path = mgr.get_or_clone(tenant)
     cue_files  = list(local_path.rglob("*.cue"))
     return ok(task_id, "schema_refreshed", **{
-        "tenant_id":  tenant_id,
+        "tenant_id":  tenant,
         "repo":       repo,
         "branch":     branch,
         "cue_files":  len(cue_files),
@@ -406,7 +469,8 @@ def sync_all_task(
         """Resolve the HEAD SHA for a rule's repo/branch (runs in thread pool)."""
         rule, branch = item
         repo_url = rule.get("repo_url", "")
-        token    = rule.get("token")
+        from app.pipeline.git_credentials import credential_for
+        token    = credential_for(rule, repo_url)
         try:
             sha = extractor.get_commit_sha(repo_url, branch, token=token)
             return rule, branch, sha
@@ -419,8 +483,7 @@ def sync_all_task(
     # heals both production and staging.
     work: list[tuple[dict, str]] = []
     for rule in heal_rules:
-        branches = list((rule.get("branch_map") or {}).keys()) or [rule.get("branch", "main")]
-        work.extend((rule, b) for b in dict.fromkeys(branches))
+        work.extend((rule, b) for b in heal_branches(rule))
 
     healed, errors = [], []
 
@@ -532,9 +595,6 @@ def process_cli_sync_task(
             what = f"platform {platform!r} and datasource {datasource!r}" if platform else f"datasource {datasource!r}"
             return fail(task_id, f"{what} not found in bundle for tenant {tenant_id!r}", tenant_id=tenant_id)
 
-        if dry_run:
-            rule_config = {**rule_config, "dry_run": True}
-
         platform = str(rule_config.get("platform", ""))
 
         if revision:
@@ -581,6 +641,7 @@ def process_cli_sync_task(
             pr_number=None,
             rule_config=rule_config,
             parsed_payload={},
+            dry_run=dry_run,
         )
 
         # Stage 2 — ETL directly on the provided content.
@@ -599,13 +660,15 @@ def process_cli_sync_task(
         _observe("etl", time.perf_counter() - _t_etl)
 
         if etl.errors:
-            ui_recorder.task_errored(ui_task, tenant=tenant_id, error=f"etl errors: {etl.errors}")
-            return fail(task_id, f"etl errors: {etl.errors}", tenant_id=tenant_id)
+            message = _failed_message(etl)
+            ui_recorder.task_errored(ui_task, tenant=tenant_id, error=message)
+            return fail(task_id, message, tenant_id=tenant_id)
 
         if dry_run:
             from app.pipeline.stage_sync import prune_candidates
             ui_recorder.task_finished(ui_task, tenant=tenant_id, dry_run_files=[
-                {"file": f.file_path, "env": f.env, "keys": len(f.flat_data), "validation": f.validation}
+                {"file": f.file_path, "env": f.env, "keys": len(f.flat_data), "validation": f.validation,
+                 "schema": f.schema, "schema_source": f.schema_source}
                 for f in etl.files
             ])
             return ok(
@@ -619,6 +682,9 @@ def process_cli_sync_task(
                         "env": f.env,
                         "keys": len(f.flat_data),
                         "validation": f.validation,
+                        "schema": f.schema,
+                        "schema_source": f.schema_source,
+                        **({"schema_note": f.schema_note} if f.schema_note else {}),
                     }
                     for f in etl.files
                 ],

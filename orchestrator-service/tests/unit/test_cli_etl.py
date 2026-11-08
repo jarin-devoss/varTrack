@@ -27,8 +27,11 @@ def test_load_as(content, path, fmt, want):
 
 
 class _NoSchemas:
-    def tenant_schema_root(self, tenant_id):
+    def current_schema_root(self, tenant_id):
         return Path("/nonexistent/schemas") / tenant_id
+
+    def schema_commit(self, tenant_id):
+        return ""
 
 
 def _ctx(rule):
@@ -47,7 +50,8 @@ def test_cli_etl_flattens_the_env_slice(monkeypatch):
     assert len(etl.files) == 1
     f = etl.files[0]
     assert f.flat_data == {"db.host": "stg.internal", "max_connections": "50"}
-    assert f.validation == "ok"
+    assert f.validation == "none"           # no schema checked it: never reported ok
+    assert (f.schema, f.schema_source) == ("none", "none")
 
 
 def test_cli_etl_takes_a_dotenv_file(monkeypatch):
@@ -76,7 +80,7 @@ def test_validate_content_without_a_schema_says_nothing_was_checked(monkeypatch)
     status, messages, keys = cli_ops.validate_content(
         file_path="configs/app.yaml", content="app:\n  a: 1\n  b: 2\nother: x\n", fmt="yaml",
         datasource="mongo", tenant_id="default")
-    assert status == "warn"
+    assert status == "none"          # nothing checked it: not "warn", and never "ok"
     assert keys == 2                      # only the rule's root_key subtree
     assert "no schema for app.yaml" in messages[-1]
 
@@ -88,7 +92,7 @@ def test_validate_content_uses_the_schema(monkeypatch, tmp_path):
     (tmp_path / "app.yaml.cue").write_text("max_connections: int\n")
 
     class _Schemas:
-        def tenant_schema_root(self, tenant_id):
+        def current_schema_root(self, tenant_id):
             return tmp_path
 
     monkeypatch.setattr(manager, "get_schema_manager", lambda *a, **k: _Schemas())
@@ -144,3 +148,24 @@ def test_the_cli_task_fails_instead_of_guessing_between_platforms(monkeypatch):
     result = _run_cli_task(monkeypatch, lookup)
 
     assert result["state"] == "FAILED" and "say which platform" in result["message"]
+
+
+def test_a_cli_task_a_schema_refuses_says_which_file_and_why(monkeypatch):
+    """The web UI shows the task's message: the reason a file was refused must be in it, as for a push."""
+    from types import SimpleNamespace
+    from unittest.mock import patch
+
+    from app.pipeline import stage_etl
+
+    refused = SimpleNamespace(
+        errors=["a.yaml"], files=[], skipped=[],
+        failure=lambda path: 'strict_validation: "observability.log_level": invalid value "VERBOSE"',
+    )
+    rule = {"platform": "gitea", "datasource": "mongo-primary", "file_name": "a.yaml"}
+    with patch.object(stage_etl, "run_stage_etl_content", return_value=refused),             patch("app.ui.recorder.task_started", return_value=None):
+        result = _run_cli_task(monkeypatch, lambda tenant, datasource, platform="": rule)
+
+    assert result["state"] == "FAILED"
+    assert result["message"] == (
+        'failed: 1 file(s) could not be processed (a.yaml: strict_validation: "observability.log_level": invalid value "VERBOSE")'
+    )
