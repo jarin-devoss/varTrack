@@ -6,7 +6,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"gateway-service/internal/auth"
+	"gateway-service/internal/authz"
 	"gateway-service/internal/handlers"
 	"gateway-service/internal/routes"
 	pb "vartrack/libs/gen/vartrack/v1/services"
@@ -45,7 +45,7 @@ func TestListTasksLimit(t *testing.T) {
 	for _, c := range cases {
 		t.Run(c.query, func(t *testing.T) {
 			orch := &taskLister{}
-			h := routes.CLIRoutes(handlers.NewCLIHandler(orch, auth.NewGitAuthorizer(noRules{}, nil), nil))
+			h := routes.CLIRoutes(handlers.NewCLIHandler(orch, authz.New(noRules{}, nil)))
 			req := httptest.NewRequest(http.MethodGet, "/tasks"+c.query, nil)
 			req.Header.Set("Authorization", "Bearer good")
 			rec := httptest.NewRecorder()

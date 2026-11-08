@@ -16,6 +16,7 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"gateway-service/internal/auth"
+	"gateway-service/internal/authz"
 	enums "vartrack/libs/gen/vartrack/v1/enums"
 	pbm "vartrack/libs/gen/vartrack/v1/models"
 	authpb "vartrack/libs/gen/vartrack/v1/models/auth"
@@ -31,6 +32,8 @@ type fakeCLIService struct {
 	synced    []*pb.SyncFileRequest
 	validated int
 	user      string
+	// listedRules is what the gateway said the caller may read in the last ListTasks.
+	listedRules []string
 }
 
 func (f *fakeCLIService) SyncFile(ctx context.Context, in *pb.SyncFileRequest, _ ...grpc.CallOption) (*pb.SyncFileResponse, error) {
@@ -53,8 +56,18 @@ func (f *fakeCLIService) GetTask(_ context.Context, in *pb.GetCliTaskRequest, _ 
 	}, nil
 }
 
+// ListTasks answers like the orchestrator: only the tasks of the rules it is told
+// the caller may read.
 func (f *fakeCLIService) ListTasks(_ context.Context, in *pb.ListCliTasksRequest, _ ...grpc.CallOption) (*pb.ListCliTasksResponse, error) {
-	return &pb.ListCliTasksResponse{Tasks: []*pb.CliTask{{TaskId: "task-1", Datasource: "mongo", TenantId: in.GetTenantId(), State: enums.TaskState_TASK_STATE_RUNNING}}}, nil
+	f.listedRules = in.GetRules()
+	resp := &pb.ListCliTasksResponse{}
+	for _, rule := range in.GetRules() {
+		if rule == "gitea/mongo" {
+			resp.Tasks = append(resp.Tasks, &pb.CliTask{TaskId: "task-1", Datasource: "mongo", Platform: "gitea",
+				TenantId: in.GetTenantId(), State: enums.TaskState_TASK_STATE_RUNNING})
+		}
+	}
+	return resp, nil
 }
 
 // fakeGit is a Git platform: a token is its holder's login, perms what
@@ -115,6 +128,10 @@ func (o oneRule) FindRule(platform, ds string) *pbm.Rule {
 	return nil
 }
 
+func (o oneRule) Rules() []*pbm.Rule {
+	return append(o.RulesForDatasource("mongo"), o.RulesForDatasource("multi")...)
+}
+
 func (o oneRule) GetPlatformForRule(context.Context, string, string) (models.Platform, error) {
 	return o.git, nil
 }
@@ -142,9 +159,9 @@ func TestCLIAuthChain(t *testing.T) {
 		"zed":  {},
 		"root": {},
 	}}
-	authz := auth.NewGitAuthorizer(oneRule{git}, []string{"gitea:root"})
+	engine := authz.New(oneRule{git}, []string{"gitea:root"}, authz.WithPolicy(opa))
 	cli := &fakeCLIService{}
-	srv := httptest.NewServer(http.StripPrefix("/v1/cli", routes.CLIRoutes(handlers.NewCLIHandler(cli, authz, opa))))
+	srv := httptest.NewServer(http.StripPrefix("/v1/cli", routes.CLIRoutes(handlers.NewCLIHandler(cli, engine))))
 	defer srv.Close()
 
 	tests := []struct {
@@ -233,9 +250,15 @@ func TestCLIAuthChain(t *testing.T) {
 	if code != 200 || len(tasks) != 1 || tasks[0].(map[string]interface{})["tenant_id"] != "acme" {
 		t.Errorf("GET /tasks = %d %v", code, list)
 	}
+	if got := strings.Join(cli.listedRules, ","); got != "gitea/mongo,/mongo,gitea/multi" {
+		t.Errorf("rules the gateway said rae may read = %q", got)
+	}
 	code, list = get("/tasks?tenant_id=acme&limit=5", "zed")
 	if tasks, _ := list["tasks"].([]interface{}); code != 200 || len(tasks) != 0 {
 		t.Errorf("GET /tasks without read access = %d %v, want no tasks", code, list)
+	}
+	if len(cli.listedRules) != 0 {
+		t.Errorf("rules the gateway said zed may read = %v, want none", cli.listedRules)
 	}
 	if code, _ := get("/tasks/task-1", "mallory"); code != 401 {
 		t.Errorf("GET /tasks with a rejected token = %d, want 401", code)
@@ -259,9 +282,9 @@ func platformBody(datasource, platform, env string) string {
 // or not, so it syncs the same rule.
 func TestTheSyncGoesToTheRuleThePermissionWasCheckedOn(t *testing.T) {
 	git := fakeGit{perms: map[string]models.RepoPermission{"wes": {Read: true, Write: true}}}
-	authz := auth.NewGitAuthorizer(oneRule{git}, nil)
+	engine := authz.New(oneRule{git}, nil)
 	cli := &fakeCLIService{}
-	srv := httptest.NewServer(http.StripPrefix("/v1/cli", routes.CLIRoutes(handlers.NewCLIHandler(cli, authz, nil))))
+	srv := httptest.NewServer(http.StripPrefix("/v1/cli", routes.CLIRoutes(handlers.NewCLIHandler(cli, engine))))
 	defer srv.Close()
 
 	post := func(body string) int {
@@ -283,4 +306,35 @@ func TestTheSyncGoesToTheRuleThePermissionWasCheckedOn(t *testing.T) {
 	if len(cli.synced) != 2 || cli.synced[0].GetPlatform() != "gitea" || cli.synced[1].GetPlatform() != "gitea-team" {
 		t.Errorf("forwarded platforms = %v, want gitea (the only rule) and gitea-team (named)", cli.synced)
 	}
+}
+
+// An orchestrator that ignores the readable rules it is sent (an older release,
+// deployed out of step with the gateway) must not make the gateway show other
+// people's tasks.
+func TestAnOrchestratorThatIgnoresTheReadableRulesShowsNothingExtra(t *testing.T) {
+	git := fakeGit{perms: map[string]models.RepoPermission{"zed": {}}}
+	engine := authz.New(oneRule{git}, nil)
+	cli := &ignoresRules{}
+	srv := httptest.NewServer(http.StripPrefix("/v1/cli", routes.CLIRoutes(handlers.NewCLIHandler(cli, engine))))
+	defer srv.Close()
+
+	req, _ := http.NewRequest(http.MethodGet, srv.URL+"/v1/cli/tasks?limit=5", nil)
+	req.Header.Set("Authorization", "Bearer zed")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	var body map[string]interface{}
+	_ = json.NewDecoder(resp.Body).Decode(&body)
+	if tasks, _ := body["tasks"].([]interface{}); resp.StatusCode != 200 || len(tasks) != 0 {
+		t.Errorf("status %d, tasks %v: a caller with no read access was shown tasks", resp.StatusCode, body["tasks"])
+	}
+}
+
+// ignoresRules answers every list with the same tasks, whoever may read them.
+type ignoresRules struct{ pb.CLIServiceClient }
+
+func (ignoresRules) ListTasks(context.Context, *pb.ListCliTasksRequest, ...grpc.CallOption) (*pb.ListCliTasksResponse, error) {
+	return &pb.ListCliTasksResponse{Tasks: []*pb.CliTask{{TaskId: "t", Datasource: "mongo", Platform: "gitea"}}}, nil
 }
