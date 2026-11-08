@@ -22,13 +22,16 @@ export interface VarTrackApi {
   /** Every rule the viewer may see, of every tenant, and what a connection would show more. */
   listRules(): Promise<RuleList>;
   /** `tenant` is needed only when the rule name exists in several tenants. */
-  getRule(name: string, tenant?: string): Promise<RuleView>;
+  /** *fresh* reads the sinks now instead of answering from the last read (what Refresh asks for). */
+  getRule(name: string, tenant?: string, options?: { fresh?: boolean }): Promise<RuleView>;
   listKeys(rule: string, env: string, tenant?: string): Promise<KeyEntry[]>;
   listEvents(query?: EventQuery): Promise<VtEvent[]>;
   listTasks(query?: TaskQuery): Promise<Task[]>;
   getTask(taskId: string): Promise<Task>;
   /** Re-read the rule's file from Git and write it to the chosen environments. */
   sync(req: SyncRequest): Promise<{ taskIds: string[] }>;
+  /** Forget an environment no branch feeds any more (an administrator's action). */
+  forgetEnvironment(rule: string, env: string, tenant?: string): Promise<void>;
   validate(req: ValidateRequest): Promise<ValidateResult>;
   /** Push raw file content through the pipeline, as `vt sync` does. */
   cliSync(req: CliSyncRequest): Promise<{ taskId: string }>;

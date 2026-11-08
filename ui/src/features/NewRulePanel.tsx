@@ -65,8 +65,7 @@ export function draftToRule(d: Draft, bundle?: BundleView): Rule {
     destinationTemplate: d.destinationTemplate.trim(),
     syncMode: d.syncMode,
     selfHeal: d.selfHeal,
-    dryRun: false,
-    prune: { enabled: d.prune, dryRun: false, protection: list(d.protection) },
+    prune: { enabled: d.prune, protection: list(d.protection) },
     secretManager: d.secretManager || undefined,
   };
 }

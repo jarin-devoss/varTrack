@@ -103,7 +103,7 @@ export function DashboardPage() {
         )}
       </Panel>
 
-      <SyncPanel open={!!syncing} rule={syncing?.rule ?? null} initialEnvs={syncing ? [syncing.env] : undefined} onClose={() => setSyncing(null)} onStarted={rules.reload} />
+      <SyncPanel open={!!syncing} rule={syncing?.rule ?? null} initialEnvs={syncing ? [syncing.env] : undefined} onClose={() => setSyncing(null)} onChanged={rules.reload} />
     </div>
   );
 }
@@ -167,7 +167,7 @@ function TenantFacts({ bundle, rules, error }: { bundle?: BundleView; rules: Rul
       <div>
         <dt>Schema registry</dt>
         <dd className="mono">
-          {bundle.schemaRegistry ? `${bundle.schemaRegistry.repo}@${bundle.schemaRegistry.branch}` : <span className="muted">none</span>}
+          {bundle.schemaRepos.length ? bundle.schemaRepos.map(s => `${s.repo}@${s.branch}`).join(', ') : <span className="muted">none</span>}
         </dd>
       </div>
     </dl>

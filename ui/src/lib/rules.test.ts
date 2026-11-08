@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { ruleHref, envHref } from '../features/links';
 import { makeRule, makeTarget } from '../test/builders';
 import { EMPTY_FACETS, facetCounts, filterRules, matchesSearch } from './filters';
-import { isPinned, ruleKey, tenantsOf } from './rules';
+import { isPinned, keyDiffers, prunes, ruleKey, syncableEnvs, tenantsOf } from './rules';
 
 // The same platform/datasource can exist in two tenants, so a rule is identified by all three.
 const acme = makeRule({ tenant: 'acme', targets: [makeTarget({ env: 'production' })] });
@@ -74,5 +74,55 @@ describe('tenant filter', () => {
   it('finds a rule by its tenant in the search box', () => {
     expect(matchesSearch(corp, 'corp')).toBe(true);
     expect(matchesSearch(acme, 'corp')).toBe(false);
+  });
+});
+
+describe('which environments can be synced', () => {
+  const targets = [
+    makeTarget({ env: 'default', fedBy: 'main' }),
+    makeTarget({ env: 'team-a', fedBy: 'main' }),
+    makeTarget({ env: 'main', notFed: 'nothing feeds main in the redis rule' }),
+  ];
+
+  it('offers the environments a branch feeds, and not the ones nothing feeds', () => {
+    expect(syncableEnvs(targets)).toEqual(['default', 'team-a']);
+  });
+
+  it('offers every environment when the API says nothing about them (an older orchestrator)', () => {
+    expect(syncableEnvs([makeTarget({ env: 'a' }), makeTarget({ env: 'b' })])).toEqual(['a', 'b']);
+  });
+
+  it('offers none when every environment is unfed', () => {
+    expect(syncableEnvs([makeTarget({ env: 'x', notFed: 'nothing feeds x' })])).toEqual([]);
+  });
+});
+
+describe('whether a key differs from Git', () => {
+  it('a synced key does not, and a changed, missing or unmanaged one does', () => {
+    expect(keyDiffers({ state: 'synced', gitValue: '1', liveValue: '1' })).toBe(false);
+    for (const state of ['drifted', 'missing', 'unmanaged'] as const) {
+      expect(keyDiffers({ state, gitValue: '1', liveValue: '2' }), state).toBe(true);
+    }
+  });
+
+  it('a key matching drift_ignore differs only when its values do', () => {
+    expect(keyDiffers({ state: 'ignored', gitValue: 'true', liveValue: 'true' })).toBe(false);
+    expect(keyDiffers({ state: 'ignored', gitValue: 'true', liveValue: 'false' })).toBe(true);
+  });
+});
+
+describe('whether a sync prunes', () => {
+  const on = { enabled: true, protection: [] };
+
+  it('a rule that prunes prunes on every sync that writes', () => {
+    expect(prunes(on, false)).toBe(true);
+  });
+
+  it('a dry run of it deletes nothing', () => {
+    expect(prunes(on, true)).toBe(false);
+  });
+
+  it('a rule whose prune is a dry run only reports, and a rule that does not prune does not', () => {
+    expect(prunes({ ...on, enabled: false }, false)).toBe(false);
   });
 });

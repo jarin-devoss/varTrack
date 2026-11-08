@@ -143,14 +143,15 @@ describe('live API mapping', () => {
 
 describe('rule definition', () => {
   it('renders the rule as CUE with only configured fields', () => {
-    const cue = toCue(makeRule({ prune: { enabled: true, dryRun: false, protection: ['feature_flags.*', 'secrets.*'] } }));
+    const cue = toCue(makeRule({ prune: { enabled: true, protection: ['feature_flags.*', 'secrets.*'] } }));
     expect(cue).toContain('platform:             "github"');
     expect(cue).toMatch(/branch_map:\s+\{/);
     expect(cue).toContain('main:    "production"');
     expect(cue).toContain('protection: ["feature_flags.*", "secrets.*"]');
     expect(cue).not.toContain('branch_as_env');
     const byPath = makeRule({ fileName: undefined, branchMap: {}, filePathMap: { 'deploy/prod/*.yaml': 'production' } });
-    expect(toCue(byPath)).toMatch(/"deploy\/prod\/\*\.yaml":\s+"production"/);
+    // The page lists path → env; the config says env → path.
+    expect(toCue(byPath)).toMatch(/production:\s+"deploy\/prod\/\*\.yaml"/);
   });
 
   it('explains how each environment was resolved', () => {

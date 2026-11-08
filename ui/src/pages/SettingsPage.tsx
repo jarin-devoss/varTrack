@@ -22,8 +22,8 @@ const ENDPOINTS: { screen: string; method: string; path: string; service: string
   { screen: 'Events', method: 'GET', path: '/v1/ui/events', service: 'orchestrator', status: 'available' },
   { screen: 'Tasks, task page', method: 'GET', path: '/v1/ui/tasks[/{task_id}]', service: 'orchestrator', status: 'available' },
   { screen: 'Tenant, datasources', method: 'GET', path: '/v1/ui/bundle', service: 'orchestrator', status: 'available' },
-  { screen: 'Playground: validate', method: 'POST', path: '/v1/cli/validate', service: 'gateway (needs auth in the bundle)', status: 'available' },
-  { screen: 'Playground: dry run, sync', method: 'POST', path: '/v1/cli/sync', service: 'gateway (needs auth in the bundle)', status: 'available' },
+  { screen: 'Playground: validate', method: 'POST', path: '/v1/cli/validate', service: 'gateway (needs your Git token)', status: 'available' },
+  { screen: 'Playground: dry run, sync', method: 'POST', path: '/v1/cli/sync', service: 'gateway (needs your Git token)', status: 'available' },
 ];
 
 const AVAILABILITY: Record<Availability, { label: string; color: string }> = {
@@ -36,9 +36,28 @@ export function SettingsPage() {
   usePageTitle('Settings');
   const { section } = useParams();
   const { hash } = useLocation();
+  // A link to a section scrolls to it. The panels above it load their data after the page opens and change its height, which would
+  // push the section out of view again: keep it in view while the page settles, until the person scrolls themselves.
   useEffect(() => {
     const id = section ?? hash.slice(1);
-    if (id) document.getElementById(id)?.scrollIntoView({ block: 'start' });
+    if (!id) return;
+    const show = () => document.getElementById(id)?.scrollIntoView({ block: 'start' });
+    show();
+    let settling = true;
+    const stop = () => { settling = false; };
+    const watcher = new ResizeObserver(() => settling && show());
+    watcher.observe(document.body);
+    const giveUp = window.setTimeout(stop, 3000);
+    window.addEventListener('wheel', stop, { passive: true });
+    window.addEventListener('touchmove', stop, { passive: true });
+    window.addEventListener('keydown', stop);
+    return () => {
+      watcher.disconnect();
+      window.clearTimeout(giveUp);
+      window.removeEventListener('wheel', stop);
+      window.removeEventListener('touchmove', stop);
+      window.removeEventListener('keydown', stop);
+    };
   }, [section, hash]);
 
   return (
@@ -102,8 +121,8 @@ function ConnectionSection() {
           </label>
         </div>
         <p className="field__hint">
-          The defaults are the dev server's proxy paths (<code>/api/gateway</code> and so on). The bearer token is set on the sign-in page and
-          kept for this tab only.
+          The defaults are the dev server's proxy paths (<code>/api/gateway</code> and so on). The Git token the Playground sends is set on the Playground page (or the sign-in page, without single sign-on)
+          and kept for this tab only.
         </p>
         {result && <ServiceRows services={result} />}
         <div className="row row--wrap">
@@ -208,7 +227,7 @@ function BundleSection() {
                       ))}
                     </div>
                   </td>
-                  <td className="mono" style={{ fontSize: 12.5, whiteSpace: 'nowrap' }}>{d.rules.join(', ') || <span className="muted">—</span>}</td>
+                  <td className="mono" style={{ fontSize: 12.5, whiteSpace: 'nowrap' }}>{d.rules.map(r => (b.tenants.length > 1 ? `${r.tenant} · ${r.name}` : r.name)).join(', ') || <span className="muted">—</span>}</td>
                 </tr>
               ))}
             </tbody>
@@ -235,17 +254,17 @@ function BundleSection() {
               </dd>
             </div>
           ))}
-          {b.schemaRegistry && (
-            <div>
-              <dt>Schema registry</dt>
+          {b.schemaRepos.map(s => (
+            <div key={s.tenant}>
+              <dt>Schema repository</dt>
               <dd>
                 <span className="mono">
-                  {b.schemaRegistry.repo}@{b.schemaRegistry.branch}
+                  {s.repo}@{s.branch}
                 </span>
-                <div className="muted" style={{ fontSize: 12 }}>{b.schemaRegistry.files.length} CUE files</div>
+                <div className="muted" style={{ fontSize: 12 }}>{s.platform} · tenant {s.tenant}</div>
               </dd>
             </div>
-          )}
+          ))}
         </dl>
         <div style={{ marginTop: 16 }}>
           <Notice tone="info">

@@ -4,7 +4,7 @@ FROM node:22-alpine AS builder
 WORKDIR /src
 
 # Cache dependency installs separately from source code.
-COPY package.json package-lock.json ./
+COPY package.json package-lock.json .npmrc ./
 RUN npm ci --no-audit --no-fund
 
 COPY . .

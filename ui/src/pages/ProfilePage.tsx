@@ -122,28 +122,47 @@ export function ProfilePage() {
               </div>
             </dl>
             <p className="muted" style={{ fontSize: 13 }}>
-              Read from the token for display only; the gateway checks it and your role on every request.
+              {identity
+                ? 'Read from the token for display only; the gateway checks it and your role on every request.'
+                : 'A token is set for this tab; the gateway checks it and your role on every request.'}
+              {sso && ' The Playground sends it. It is kept in the memory of this tab only.'}
             </p>
             <div>
               <button
                 className="btn"
                 onClick={() => {
                   setPrefs(p => ({ connection: { ...p.connection, token: '' } }));
-                  navigate('/login');
+                  if (!sso) navigate('/login');
                 }}
               >
-                <Icon name="arrowLeft" size={14} /> Log out
+                <Icon name="arrowLeft" size={14} /> {sso ? 'Forget the token' : 'Log out'}
               </button>
             </div>
           </div>
         ) : (
           <div className="stack">
-            <p className="secondary">You're not signed in. Reading rules works without a token; syncing and validating through the gateway need one.</p>
-            <div>
-              <Link className="btn btn--primary" to="/login">
-                Sign in
-              </Link>
-            </div>
+            {sso ? (
+              <>
+                <p className="secondary">
+                  No token is set for this tab. You are signed in with your Git platform; the Playground (validate, dry run and sync through the gateway) also needs
+                  a personal access token from it.
+                </p>
+                <div>
+                  <Link className="btn" to="/playground">
+                    Open the Playground
+                  </Link>
+                </div>
+              </>
+            ) : (
+              <>
+                <p className="secondary">You're not signed in. Reading rules works without a token; syncing and validating through the gateway need one.</p>
+                <div>
+                  <Link className="btn btn--primary" to="/login">
+                    Sign in
+                  </Link>
+                </div>
+              </>
+            )}
           </div>
         )}
       </Panel>

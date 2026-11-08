@@ -178,7 +178,10 @@ export function TaskPage() {
                           </pre>
                         </details>
                       ) : (
-                        <span className="muted">{f.validation ? `validation: ${f.validation}` : '—'}</span>
+                        <span className="muted" title={f.schemaNote}>
+                          {f.validation ? `validation: ${f.validation}` : '—'}
+                          {f.schema ? ` · schema: ${f.schema} (${f.schemaSource ?? '?'})` : ''}
+                        </span>
                       )}
                     </td>
                   </tr>

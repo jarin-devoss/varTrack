@@ -55,7 +55,7 @@ export function FavoritesPage() {
           <RuleCard key={ruleKey(r)} rule={r} pinned onTogglePin={() => togglePin(r)} onSync={() => setSyncing(r)} showTenant={tenants.length > 1} />
         ))}
       </div>
-      <SyncPanel open={!!syncing} rule={syncing} onClose={() => setSyncing(null)} onStarted={rules.reload} />
+      <SyncPanel open={!!syncing} rule={syncing} onClose={() => setSyncing(null)} onChanged={rules.reload} />
     </div>
   );
 }
