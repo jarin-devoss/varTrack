@@ -8,7 +8,6 @@ export type SinkType =
   | 's3'
   | 'configmap'
   | 'helm'
-  | 'vercel'
   | 'linux_server';
 
 export type SyncMode = 'AUTO' | 'GIT_UPSERT_ALL' | 'GIT_SMART_REPAIR' | 'LIVE_STATE';
@@ -16,17 +15,24 @@ export type SyncMode = 'AUTO' | 'GIT_UPSERT_ALL' | 'GIT_SMART_REPAIR' | 'LIVE_ST
 export type TaskState = 'PENDING' | 'RUNNING' | 'SUCCEEDED' | 'FAILED' | 'RETRYING';
 
 /** Drift state of one environment target, as reported by the watcher. */
-export type DriftState = 'in_sync' | 'drifted' | 'healing' | 'heal_failed' | 'not_watched' | 'unknown';
+export type DriftState = 'in_sync' | 'drifted' | 'healing' | 'heal_failed' | 'not_watched' | 'unknown' | 'missing';
 
 /** Per-file outcome of a sync task (orchestrator SyncResult.status). */
-export type FileStatus = 'ok' | 'empty' | 'validation_failed' | 'error' | 'skipped' | 'aborted';
+export type FileStatus =
+  | 'ok'
+  | 'empty'
+  | 'validation_failed'
+  | 'error'
+  | 'skipped'
+  | 'aborted'
+  | 'partial'
+  | 'rolled_back';
 
 /** What started a task. */
 export type TaskTrigger = 'webhook' | 'cli' | 'self_heal' | 'ui';
 
 export interface PruneConfig {
   enabled: boolean;
-  dryRun: boolean;
   protection: string[];
 }
 
@@ -51,7 +57,6 @@ export interface Rule {
   selfHeal: boolean;
   /** Pushes and self-heal skip the rule; syncs started by hand still run. */
   suspended?: boolean;
-  dryRun: boolean;
   prune: PruneConfig;
   secretManager?: string;
 }
@@ -88,6 +93,10 @@ export interface Target {
   driftMessage?: string;
   lastPolledAt?: string;
   lastSync?: SyncSummary;
+  /** The branch whose files land in this environment: what a Sync or Dry run reads. */
+  fedBy?: string;
+  /** Why no branch feeds this environment any more (an earlier version of the rule wrote it): it cannot be synced. */
+  notFed?: string;
 }
 
 export interface RuleView extends Rule {
@@ -107,7 +116,12 @@ export interface FileResult {
   error?: string;
   /** Dry-run only. */
   keys?: number;
+  /** ok, warn, failed, or none (no schema checked the file). */
   validation?: string;
+  /** The schema that checked it (its path in the schema repository, or "none") and where the choice came from. */
+  schema?: string;
+  schemaSource?: string;
+  schemaNote?: string;
   sample?: Record<string, string>;
 }
 
@@ -129,6 +143,8 @@ export interface Task {
   createdAt: string;
   finishedAt?: string;
   files: FileResult[];
+  /** A dry run's report of what a sync would delete, per environment (empty when nothing, or when the rule does not prune). */
+  wouldPrune?: Record<string, string[]>;
   /** Live mode: task looked up by id carries only what the server returns. */
   partial?: boolean;
 }
@@ -164,7 +180,7 @@ export interface VtEvent {
   message: string;
 }
 
-/** unreadable: write-only in the sink (a Vercel sensitive variable); ignored: matches the rule's drift_ignore. */
+/** unreadable: write-only in the sink (a write-only sensitive value); ignored: matches the rule's drift_ignore. */
 export type KeyState = 'synced' | 'drifted' | 'missing' | 'unmanaged' | 'unreadable' | 'ignored';
 
 /** One flattened key of a target, Git value next to the live sink value. */
@@ -229,7 +245,8 @@ export interface BundleView {
   platforms: PlatformView[];
   datasources: DatasourceView[];
   secretManagers: { name: string; type: string; endpoint: string }[];
-  schemaRegistry?: { platform: string; repo: string; branch: string; files: string[] };
+  /** The schema repository of each tenant the viewer sees. */
+  schemaRepos: { tenant: string; platform: string; repo: string; branch: string }[];
 }
 
 export interface SyncRequest {
@@ -239,6 +256,8 @@ export interface SyncRequest {
   envs: string[];
   dryRun: boolean;
   prune: boolean;
+  /** A dry run started only to learn what a sync would delete: it is not listed among the tasks. */
+  preview?: boolean;
 }
 
 export interface ValidateRequest {

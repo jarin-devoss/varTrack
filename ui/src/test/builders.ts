@@ -22,8 +22,7 @@ export function makeRule(overrides: Partial<RuleView> = {}): RuleView {
     destinationTemplate: '{env}-config',
     syncMode: 'AUTO',
     selfHeal: true,
-    dryRun: false,
-    prune: { enabled: false, dryRun: false, protection: [] },
+    prune: { enabled: false, protection: [] },
     targets: [],
     ...overrides,
   };
