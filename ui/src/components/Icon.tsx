@@ -120,6 +120,12 @@ const PATHS = {
       <path d="M12 7v5l3 2" />
     </>
   ),
+  plusCircle: (
+    <>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 8v8M8 12h8" />
+    </>
+  ),
   minusCircle: (
     <>
       <circle cx="12" cy="12" r="9" />
@@ -358,7 +364,6 @@ export const SINK_ICON: Record<SinkType, IconName> = {
   s3: 'bucket',
   configmap: 'fileCog',
   helm: 'anchor',
-  vercel: 'triangle',
   linux_server: 'terminal',
 };
 
@@ -369,6 +374,5 @@ export const SINK_LABEL: Record<SinkType, string> = {
   s3: 'S3',
   configmap: 'ConfigMap',
   helm: 'Helm',
-  vercel: 'Vercel',
   linux_server: 'Linux server',
 };

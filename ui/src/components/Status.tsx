@@ -20,6 +20,7 @@ const DRIFT_ICON: Record<DriftState, IconName> = {
   heal_failed: 'xCircle',
   unknown: 'helpCircle',
   not_watched: 'pauseCircle',
+  missing: 'plusCircle',
 };
 
 const TASK_ICON: Record<TaskState, IconName> = {
@@ -37,6 +38,8 @@ const FILE_ICON: Record<FileStatus, IconName> = {
   error: 'xCircle',
   skipped: 'minusCircle',
   aborted: 'alertCircle',
+  partial: 'alertCircle',
+  rolled_back: 'refresh',
 };
 
 export function driftIcon(state: DriftState): IconName {

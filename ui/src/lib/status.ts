@@ -19,6 +19,7 @@ export const DRIFT: Record<DriftState, StatusMeta> = {
     description: 'Self-heal gave up after repeated attempts. The sink still differs from Git.',
   },
   unknown: { label: 'Unknown', tone: 'neutral', description: 'The watcher could not read the sink on its last poll.' },
+  missing: { label: 'Not synced yet', tone: 'neutral', description: 'The rule produces this environment and has not written it yet. Sync writes it.' },
   not_watched: {
     label: 'Not watched',
     tone: 'suspended',
@@ -40,7 +41,9 @@ export const FILE: Record<FileStatus, StatusMeta> = {
   validation_failed: { label: 'Invalid', tone: 'critical', description: 'Rejected by the CUE schema; nothing was written.' },
   error: { label: 'Error', tone: 'critical', description: 'The write failed.' },
   skipped: { label: 'Skipped', tone: 'neutral', description: 'The file did not match the rule.' },
-  aborted: { label: 'Rolled back', tone: 'serious', description: 'Aborted after an earlier file failed; changes were rolled back.' },
+  aborted: { label: 'Not reached', tone: 'serious', description: 'Not attempted: an earlier file of the sync failed.' },
+  partial: { label: 'Left written', tone: 'serious', description: 'Written, and not taken back: a later file failed and this datasource cannot restore. The next sync or self-heal writes the desired state.' },
+  rolled_back: { label: 'Rolled back', tone: 'serious', description: 'Written, then restored because a later file of the sync failed.' },
 };
 
 /** A dry run writes nothing: a file that passed was checked, not written. */
@@ -94,12 +97,13 @@ export function targetNote(t: Target): string {
   if (t.drift === 'unknown') return "watcher can't read the sink";
   if (t.lastSync?.state === 'FAILED') return 'last sync failed';
   if (t.lastSync?.state === 'RUNNING' || t.lastSync?.state === 'PENDING') return 'syncing';
+  if (t.drift === 'missing') return 'not synced yet';
   if (t.drift === 'not_watched') return 'not watched';
   return 'matches Git';
 }
 
 /** Worst first, for sorting and roll-ups. */
-export const DRIFT_SEVERITY: DriftState[] = ['heal_failed', 'drifted', 'unknown', 'healing', 'in_sync', 'not_watched'];
+export const DRIFT_SEVERITY: DriftState[] = ['heal_failed', 'drifted', 'unknown', 'healing', 'in_sync', 'missing', 'not_watched'];
 
 /**
  * Segment order of the drift bar. Chosen so that no two neighbouring
