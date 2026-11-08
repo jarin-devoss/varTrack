@@ -1,0 +1,60 @@
+[
+  {
+    "platform": "gitea",
+    "datasource": "redis-hash",
+    "file_name": "app-settings.yaml",
+    "branch_map": {
+      "main": "production",
+      "develop": "staging"
+    },
+    "destination_template": "ui-redis-hash-{env}",
+    "prune": {
+      "enabled": true,
+      "protection": [
+        "extra.keep.*"
+      ]
+    },
+    "drift_ignore": [
+      "features.*"
+    ]
+  },
+  {
+    "platform": "gitea",
+    "datasource": "redis-string",
+    "file_name": "app-settings.yaml",
+    "branch_as_env": true,
+    "destination_template": "ui-redis-string-{env}",
+    "strict_validation": true
+  },
+  {
+    "platform": "gitea",
+    "datasource": "zookeeper",
+    "file_name": "app-settings.yaml",
+    "key_format": "slash",
+    "destination_template": "/ui-zookeeper"
+  },
+  {
+    "platform": "gitea",
+    "datasource": "mongo-document",
+    "file_path_map": {
+      "team-a": "team-a/app-settings.yaml",
+      "team-b": "team-b/app-settings.yaml"
+    },
+    "branch": "develop",
+    "destination_template": "ui-mongo-document"
+  },
+  {
+    "platform": "gitea",
+    "datasource": "mongo",
+    "file_name": "app-settings.yaml",
+    "branch": "develop",
+    "destination_template": "ui-mongo"
+  },
+  {
+    "platform": "gitea",
+    "datasource": "mongo-primary",
+    "file_name": "app-settings.yaml",
+    "branch": "develop",
+    "destination_template": "ui-mongo-primary"
+  }
+]
