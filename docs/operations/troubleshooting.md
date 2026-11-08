@@ -33,6 +33,7 @@ Check the webhook delivery's status code first:
 | `413` | The body is larger than `max_webhook_body_bytes` (10 MiB by default) | Raise it in `config.cue` |
 | `429` | Rate limit | Retry later; check for a webhook loop |
 | `502` / `503` | The orchestrator could not be reached, or the gateway stopped trying for a while (circuit breaker) | Check the orchestrator API's health |
+| `503` `GW_REPLAY_PROTECTION_UNAVAILABLE` | The gateway cannot reach the Redis that remembers deliveries, so it cannot tell a replay from a new webhook and refuses it. The platform retries | Restore Redis; readiness shows `nonce_store unavailable` meanwhile |
 
 With a `202` and no task, or a task that synced nothing:
 
@@ -64,11 +65,48 @@ The task's error, and the `SyncFailed` or `ValidationFailed` event, say why:
 | `… preset local>…: no ….json at main in …` | A preset in `extends` cannot be read | Check the preset's name, branch (`#v2`) and the token's access |
 | a schema error, with `strict_validation` | The file does not match its CUE schema | Fix the file, or the schema; without `strict_validation` the failure is only logged |
 | `another sync of <datasource>/<env> is still running after 300s` | Two syncs of the same environment; the second waited five minutes for the first | Usually a sync stuck on a slow datasource; the lock is a lease of 600 s, so it frees itself |
-| `git_extractor: clone/fetch failed repo=…` | The orchestrator cannot reach the repository or its token is refused | Check the platform's `token` and that the orchestrator can reach the Git server |
-| `rolled back: <file> failed — …` | One file failed, and the files written before it in the same sync were restored | Fix the failing file and push again |
+| `git unavailable: cannot read <repo> at <ref>: …` | The orchestrator cannot clone or fetch the repository, or its token is refused. The task is `FAILED`, not "no files": nothing was written and nothing was pruned | Check the rule's platform `token` in `config.cue` (a rule reads its own repositories with it, and only from the server that platform names) and that the orchestrator can reach the Git server |
+| `failed: 1 file(s) could not be processed (app.yaml: ScannerError: …)` | A pushed file does not parse (or fails `strict_validation`). The other files of the push are still written, nothing is pruned, and the task is `FAILED` | Fix the file named, and push again |
+| `failed: 2 of 3 file(s): a.yaml: …; b.yaml: …` | Some files were written and some were not; each file's reason is listed, the written ones show as written | Fix the files named |
+| `secrets unavailable: database.password: cannot read vartrack/configs#database.password from secret manager 'default': …` | Vault (or the secret manager) cannot be read. The file is not written at all, rather than written with the placeholder the file holds; the datasource keeps its last value | Restore the secret manager; push again, or let the watcher heal |
+| `secrets unavailable: … is a @secret field, but config.cue defines no usable secret manager` | A schema marks a field `@secret` and `config.cue` has no secret manager the rule can use | Add one to `secret_managers`, or name it with the rule's `secret_manager` |
+| `schemas unavailable: tenant <t>: the schema repository … could not be cloned: …` | The tenant's schema repository cannot be read (or its token cannot be). Its rules fail with this reason instead of running as a tenant with no schemas; the clone is retried after `SCHEMA_TTL_SECONDS` | Check the tenant's `schema_repo` and its token |
+| `the config breaks N rules its protos declare: - datasources[1].redis.database: …` | `config.cue` sets a value a proto's rule refuses, or leaves out something a proto requires. Every service refuses it when it starts, and `vartrack-bundle check` prints the same list | Fix each line it names; the path says which field. [What the loader checks](../configuration/bundle.md#what-the-loader-checks) |
+| `config.cue unavailable: …` (`503` / gRPC `UNAVAILABLE`) | The orchestrator cannot read `config.cue`: `vartrack-bundle` fails or is missing. With a bundle it already read, it keeps using that one (readiness: `config.cue: stale`); with none, nothing is served | Fix `config.cue` (`vartrack-bundle export config.cue` prints the error) |
+| `cannot validate app.yaml: the 'cue' program is not installed` | The file has a CUE schema and the orchestrator has no `cue` binary. The file fails under `strict_validation`, and is written with a `warn` otherwise | Install `cue`; or accept writing unvalidated files with `VARTRACK_ALLOW_DEGRADED=schema_validation` |
+| `the sync lock for <datasource>/<env> cannot be taken: …` | Redis does not answer, so two syncs of one place cannot be kept apart. In production the sync stops; elsewhere it goes on without a lock | Restore Redis |
+| `schema <name> (schema_map[N], <glob>) is not in the schema repository of tenant <t> at <commit>` | A `schema_map` entry (or a file's `$schema` with `schema_from_file`) names a schema the tenant's schema repository does not have at the commit the task ran on. The file is not written, `strict_validation` or not. The orchestrator logged the same when it cloned or refreshed the schema repository | Push the schema, or fix the entry; `none` maps a path to "not checked" on purpose |
+| `strict_validation: no schema checks <file> (rule <platform>/<datasource>): add a schema_map entry …` | The rule is strict and no schema matches the file by `schema_map`, by name or as `default.cue`. Before, such a file was synced unchecked | Add a `schema_map` entry for it, or map it to `none` |
+| A file's `validation` is `none` | Nothing checked it: no schema was found, the path is mapped to `none`, or the `cue` program is not installed. It is never shown as `ok` | Map it to a schema if it should be checked |
+| `rolled back: <file> failed — …` | One file failed, and the files written before it in the same sync were restored (only a MongoDB datasource can: it snapshots a file before writing it) | Fix the failing file and push again |
+| `not rolled back: <file> stays written in <env> (… keeps no snapshot to restore); <file2> failed — …` | One file failed after earlier files were written to a datasource that cannot take a write back (Redis, ZooKeeper, S3, a file, a ConfigMap, Helm). Those files are reported `partial`: they are in the store, and the ledger counts them as desired state. The failed and unattempted files are not | Fix the failing file and push again; the next sync, or self-heal, writes the desired state over what was left |
+| `rollback failed: <file> stays written in <env> (<error>)` | The datasource could restore, tried, and could not (the store went away) | Restore the store and push again |
 
 A tenant whose `bundle.json` cannot be used has **no rules** until it is fixed; the
 orchestrator logs `bundle.json cannot be used — the tenant has no rules until it is fixed: …`.
+
+**Which schemas did a sync use?** A finished task reports `schema_commit`: the commit of the tenant's schema
+repository its files were validated against (`GET /v1/tasks/<id>`; `""` when the tenant has no schema repository).
+After a push to the schema repository, a sync whose `schema_commit` is still the old commit ran on stale schemas:
+every process keeps its own clone and refetches when the tenant's schema generation (a counter in Redis, advanced by
+a schema push or `POST /v1/tenants/<t>/schemas/warm`) differs from the one it was fetched at. If Redis cannot take the
+new generation, the orchestrator logs `schema generation of tenant <t> not published: other processes refresh on their
+TTL`, and clones are refetched only after `SCHEMA_TTL_SECONDS`.
+
+---
+
+## Sync is refused in the web UI
+
+| What the UI says | Meaning | Fix |
+|---|---|---|
+| `nothing feeds <env> in the <datasource> rule: no branch_map entry maps a branch to it, branch_as_env is off, and it is not default or a file_path_map environment` | The environment is in the store (an earlier version of the rule wrote it, for example before `branch_as_env` was turned off) but the rule as it is now produces nothing that lands in it. This is the answer for admins too: there is no branch to read, so nothing could be synced. Sync and Dry run are disabled on it, and its keys and history stay visible | Map a branch to it (`branch_map`), turn `branch_as_env` back on, or leave it: nothing writes it any more |
+| `<login> on <platform> may not push to <branch> of <repo> (the branch that feeds <env>)` | A Sync is judged as a direct push to the branch that feeds the environment, so branch protection counts. A rule with no environment strategy feeds `default` from the rule's own `branch` (`main` when unset) | Ask for push rights, or use Dry run |
+
+A page shows such an environment as *No longer synced by this rule*. It is not compared with the rule (its keys sit under a destination the rule no longer writes, so it would read drifted for ever), it does not count in the rule's status, and the watcher does not heal it. An administrator can drop it from varTrack's record with **Forget** on its box (or `DELETE /v1/ui/rules/{platform}/{datasource}/targets/{env}`); its events and tasks stay, and the keys in the store are left alone.
+
+An environment the rule produces and has never written (a new rule, or a `branch_map` entry just added) is listed on the rule's page as *Not synced yet*, with the branch that feeds it; **Sync** (or **Dry run**) writes it the first time. If Sync and Dry run have nothing to start, the panel says why: no branch feeds any environment of the rule, and a dry run, which writes nothing, still reads the branch that feeds the environment.
+
+Which branch feeds an environment is the same answer everywhere: a `branch_map` entry, else (for a `file_path_map` environment) the rule's own `branch`, else (with `branch_as_env`) the environment's own name, else (for `default`) the rule's own `branch`. Self-heal reads the same branches.
 
 ---
 
@@ -76,11 +114,15 @@ orchestrator logs `bundle.json cannot be used — the tenant has no rules until 
 
 | Log line | Meaning |
 |---|---|
-| `… sets mongo_uri, self_heal, which only config.cue sets — ignored` | A `bundle.json` set an option only `config.cue` sets |
+| `… sets endpoint, self_heal, which only config.cue sets — ignored` | A `bundle.json` set an option only `config.cue` sets (a datasource field such as `endpoint` belongs in the datasource's block) |
+| `… sets mongo_uri, which is not an option a tenant may set — ignored` | A key no rule option and no datasource field declares, such as an old flat connection name |
+| `… sets tenant_id, which no file may set — the tenant is the one whose schema repository holds this file (acme); ignored` | A `bundle.json` or `vartrack.json` wrote a `tenant_id`. The tenant is where a file lives, never something it says, so the key never did anything (when it names another tenant the line says so). `vt validate-config` fails the file; delete the key |
 | `repo_overrides: ignoring non-overridable keys [...]` | A `vartrack.json` set an option a repository may not set |
 | `bundle.json of tenant … : no rule in config.cue for <platform>/<datasource> — ignored` | A `bundle.json` rule names a rule `config.cue` does not have |
 | `<file>: <old> is now <new>; the old name still works` | An option under its former name (`env_as_branch` → `branch_as_env`) |
-| `<file>: <option> was removed and has no effect` | A removed option (`prune.last`, `retry_backoff`, `watcher_state_datasource`) |
+| `<file>: <option> was removed and has no effect` | A removed option (`prune.last`, `retry_backoff`, `watcher_state_datasource`, and `tenant_id` in a `config.cue` rule) |
+| `<file>: dry_run was removed and has no effect; a dry run is started, not configured …` | A rule set `dry_run: true`, which made it a "shadow rule" that never wrote. **The rule now writes on every push.** Delete the line, and check a change in CI with `vt sync --dry-run` (or the dry-run webhook) instead |
+| `<file>: prune.dry_run was removed …` | A prune block set `dry_run: true`, which reported deletes instead of running them. Delete the line: a dry run reports what a prune would delete, and a rule with `prune` off deletes nothing. A block that had only `dry_run` is now an empty, disabled block |
 
 Also check `force`: what `config.cue`'s `force` block sets wins over every other layer.
 [Rule options](../configuration/rule-options.md) lists which file may set which option, and
@@ -93,7 +135,7 @@ Also check `force`: what `config.cue`'s `force` block sets wins over every other
 | Cause | How to tell |
 |---|---|
 | Prune is off, or `force` turns it off | The rule's `prune`, after all layers |
-| The sink does not delete single keys | Prune applies to Redis, ZooKeeper, Vercel and MongoDB with `STRATEGY_KEY_VALUE`; whole-object sinks replace the object instead |
+| The sink does not delete single keys | Prune applies to Redis, ZooKeeper and MongoDB with `STRATEGY_KEY_VALUE`; whole-object sinks replace the object instead |
 | It is the environment's first sync | The first sync prunes nothing: varTrack deletes only keys it wrote before |
 | The key was changed outside varTrack | Kept, with a `PruneSkipped` event naming it |
 | A `protection` pattern matches it | Patterns of every layer add up |
@@ -133,8 +175,10 @@ See [Drift detection](../concepts/drift-detection.md).
 | Message | Fix |
 |---|---|
 | `401` from `vt` | The Git token is missing or refused: `vt login`, or `VARTRACK_TOKEN` in CI |
-| `403` | The token's account may not do this: syncing needs push access to the rule's repository, validating needs read access |
+| `403` | The token's account may not do this: syncing needs push access to the branch that feeds the environment (a protected branch counts), validating needs read access. The message says which branch and why; a web UI *Sync* is refused for the same reason |
 | `datasource … has rules on github, gitea; say which with --platform` | Rules on more than one platform write it: pass `--platform` |
+| `say which Git platform the token is for (--platform): …` | The request names no rule and the gateway has several platforms: `vt login --platform`, `VARTRACK_PLATFORM` or `--platform` |
+| `503 permissions are unavailable` from the web UI | The orchestrator cannot reach the gateway's permission engine: check `AUTHZ_ADDR` on the gateway and `GATEWAY_AUTHZ_ADDR` on the orchestrator, and that they share `INTERNAL_AUTH_SECRET` ([Internal authentication](internal-auth.md#the-permission-engine)) |
 | `limit must be a whole number from 0 to 2147483647` | `vt task list --limit` out of range |
 | The UI lists fewer rules than expected, with "hidden" counts | The signed-in account cannot read those repositories, or has not connected that platform — **Connect** signs in to it |
 

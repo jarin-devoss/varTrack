@@ -17,9 +17,23 @@ without it.
       without `TLS_CERT_FILE`/`TLS_KEY_FILE` it **falls back to plain gRPC** with only a log
       line (`MTLS_ENABLED=true but no cert available — gRPC falling back to insecure`): give it
       both, and `TLS_CA_FILE` to verify its clients.
+- [ ] **`INTERNAL_AUTH_SECRET` on the gateway, the orchestrator and the watcher** (the same
+      value, 32+ characters, preferably from `*_FILE`). Without it the orchestrator accepts
+      calls from anyone who can reach its HTTP API, gRPC port or admin port, which walks
+      around every check the gateway makes. With `APP_ENV=production` all three refuse to
+      start without it. See [Internal authentication](internal-auth.md).
+- [ ] **The web UI can reach the permission engine** if sign-in is on: `AUTHZ_ADDR` on the
+      gateway (TLS from `GATEWAY_TLS_CERT`/`KEY`, signed grants from `INTERNAL_AUTH_SECRET`),
+      `GATEWAY_AUTHZ_ADDR` on the orchestrator, and port `5658` open to the orchestrator
+      alone. Without it the UI answers `503` to everyone: it never decides for itself. The
+      admins are `ui.auth.admins` in the bundle; `UI_AUTH_ADMINS` is no longer read. See
+      [the permission engine](internal-auth.md#the-permission-engine).
 - [ ] **Admin ports stay internal.** They serve health, metrics, and on the gateway
-      `/debug/pprof/` and `POST /admin/opa/reload`.
-- [ ] **`CORS_ORIGINS`** on the orchestrator lists the web UI's origin; empty allows none.
+      `/debug/pprof/` and `POST /admin/opa/reload`. The orchestrator's admin listener binds
+      to loopback unless `ADMIN_HOST` says otherwise, and with `INTERNAL_AUTH_SECRET` set
+      needs an admin grant for everything but the health probes.
+- [ ] **`CORS_ORIGINS`** on the orchestrator lists the web UI's origin; empty allows none, and
+      a `*` is ignored in production.
 
 ## Secrets
 
@@ -38,10 +52,10 @@ without it.
 ## Writing safely
 
 - [ ] **`force` on production rules** for what no tenant or repository may change, e.g.
-      `force: {prune: {enabled: false}}` or `{dry_run: false}`.
+      `force: {prune: {enabled: false}}` or `{strict_validation: true}`.
 - [ ] **Map every branch you push to.** An unmapped branch is synced to the environment
       `default` ([Environment resolution](../concepts/environment-resolution.md)).
-- [ ] **Prune with a dry run first.** `prune: {enabled: true, dry_run: true}` reports what
+- [ ] **Prune with a dry run first.** A dry run (the UI's *Dry run*, `vt sync --dry-run`) reports what
       would be deleted; add `protection` patterns for keys other tools own.
 - [ ] **MongoDB shape decided.** Set `update_strategy` explicitly on each Mongo datasource;
       changing it later replaces the stored documents.
@@ -54,9 +68,14 @@ without it.
 - [ ] **Redis persistent** (AOF): it holds the sync ledger prune and drift work from, the
       locks, and the UI's history.
 - [ ] **Shared `GIT_CACHE_DIR` and `SCHEMA_CACHE_DIR`** for the API and the workers of a host.
-- [ ] **`gateway_nonce_datasource`** when the gateway has more than one replica, and
-      **`watcher_leader_election_datasource`** when the watcher has.
-      See [High availability](high-availability.md).
+- [ ] **`gateway_nonce_datasource`**: production requires it (the gateway does not start
+      without a Redis it can reach), and **`watcher_leader_election_datasource`** when the
+      watcher has more than one replica. See [High availability](high-availability.md).
+- [ ] **`VARTRACK_ALLOW_DEGRADED` is unset.** Each value is a weaker mode (config on
+      environment variables, no `cue` validation, plain TLS, an in-process replay store); the
+      last two are refused in production, and none should be needed. Whatever is on shows under
+      `degraded` in `/health/readiness`.
+- [ ] **Alert on `vartrack_dependency_up == 0`** and on readiness `degraded` being non-empty.
 
 ## Checks
 

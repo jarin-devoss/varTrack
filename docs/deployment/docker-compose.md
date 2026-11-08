@@ -60,13 +60,17 @@ bundle: {
     }
   }]
 
-  datasources: [{
-    mongo: {
+  datasources: [
+    {mongo: {
       endpoint:   "mongodb://vartrack:your-strong-password@mongo:27017"
       database:   "vartrack"
       collection: "variables"
-    }
-  }]
+    }},
+    {redis: {
+      hosts:    ["redis:6379"]
+      database: 0
+    }},
+  ]
 
   rules: [{
     platform:             "github"
@@ -84,13 +88,6 @@ bundle: {
   celery_broker_datasource:   "redis"
   celery_backend_datasource:  "redis"
 
-  datasources: [{
-    redis: {
-      host: "redis"
-      port: 6379
-      db:   0
-    }
-  }]
 }
 ```
 
@@ -176,6 +173,63 @@ curl http://localhost:8000/v1/tasks/<task-id>
 # Prometheus metrics
 curl http://localhost:8000/metrics
 ```
+
+!!! note "The end-to-end demo stack runs with internal authentication on"
+    `e2e/docker-compose.yml` sets `INTERNAL_AUTH_SECRET` on every service, so the orchestrator answers
+    `401` to a call without a signed grant, `/docs` and `/metrics` on port 8000 included (only the
+    health probes are open). Mint a grant from inside the stack and pass it:
+
+    ```bash
+    GRANT=$(docker compose -f e2e/docker-compose.yml exec -T orchestrator-api \
+              python -m app.api.tokens mint --audience sync --ttl 600)
+    curl -H "Authorization: Bearer $GRANT" http://localhost:8000/metrics
+    ```
+
+---
+
+## The end-to-end regression
+
+`e2e/docker-compose.yml` runs the whole product (Gitea, Vault, MongoDB, Redis, ZooKeeper, MinIO, an SSH target,
+the gateway, the orchestrator and the watcher) and then the 23 suites of `e2e/init/test_runner.py`:
+
+```bash
+cd e2e
+docker compose up --build --detach
+docker compose wait e2e-demo       # the exit code is the regression's: 0 only when every suite passed
+python3 check_results.py           # 23 suites, none failed, none skipped; prints the table
+```
+
+- **A suite that fails fails the run.** `e2e-demo` exits with the runner's status (`demo.sh` no longer turns a failure
+  into a warning), CI checks the report as well (`e2e/check_results.py`), and the report (`e2e/results/benchmark.json`)
+  is not kept in git, so a run that wrote nothing cannot pass on an old one.
+- **Suites wait for the task they started, never for the clock.** Each polls `GET /v1/tasks/{id}` until the task
+  reports it has finished (`E2E_TIMEOUT`, default 60 s, is only the ceiling for a hung one), then asserts what the
+  task says: its state, the files it synced and the **schema commit it validated against**, which has to be the
+  commit the suite pushed. A whole run takes about half a minute.
+- **A run does not depend on the one before it.** Every suite starts by emptying the destinations it writes to (its own
+  collection, key prefix, znode path, file or object prefix), so running the regression again on the same stack
+  passes. `docker compose down -v` is still the way to start from nothing.
+- **Nothing is retried.** A suite that fails one run in a few is a bug: the scheduled `e2e-repeat` workflow runs the
+  regression several times in a row on fresh volumes to find it.
+
+### The web UI in the demo
+
+The same stack serves the web UI on <http://localhost:8080> with sign-in through the demo's Gitea (<http://localhost:3000>).
+The demo creates four Gitea accounts, all with the password `VarTrack123`, to see the UI as each kind of person:
+
+| Account | What they are |
+|---|---|
+| `demo-admin` | a varTrack administrator (`ui.auth.admins` in `config.cue`): sees and syncs every rule |
+| `demo-writer` | can push to the config repository, except to its protected `main` branch |
+| `demo-viewer` | can read the config repository |
+| `demo-outsider` | can read none of it (the config repository is private): sees no rule |
+
+Open the UI, choose *Sign in with Gitea*, and sign in as one of them; Gitea asks for consent the first time.
+
+The demo is a test stack, so it lowers two timers: the watcher looks every `10s` (`POLL_INTERVAL`; the product default is `60s`) and the web UI re-reads a sink after `2` seconds (`UI_COMPARE_TTL_SECONDS`; the default is `10`), so that a test waits seconds, not minutes. Set `WATCHER_POLL_INTERVAL` to change the first.
+
+The UI has its own end-to-end suite, run against this stack by the `ui-e2e` job in CI. See
+[`ui/e2e/README.md`](https://github.com/jarin-devoss/varTrack/blob/main/ui/e2e/README.md) to run it.
 
 ---
 
