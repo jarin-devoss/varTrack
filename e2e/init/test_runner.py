@@ -5,9 +5,14 @@ VarTrack E2E Test Runner
 Runs 22 test suites across 8 sink configurations (MongoDB document,
 MongoDB file, ZooKeeper slash, Redis hash, Redis string, Linux server,
 S3/MinIO) plus CUE schema validation, HashiCorp Vault secret injection,
-dual-datasource @secret suites, self-heal drift correction, signature
-validation, dry-run verification, branch_map, structured prune, and
+dual-datasource @secret suites, self-heal drift correction, forged and unsigned
+calls refused, dry-run verification, branch_map, structured prune, and
 task status polling.
+
+Every suite waits for the task it started (GET /v1/tasks/{id}), never for the clock, and asserts what the
+task itself reports: its state, the files it synced, and the commit of the tenant's schema repository it
+validated against. A suite that cannot pass is a bug to fix, not to retry: the run exits 1 when any suite
+fails, and CI reads benchmark.json (23 suites, 0 failed, 0 skipped).
 
 Outputs a benchmark JSON report to /results/benchmark.json.
 
@@ -26,9 +31,10 @@ import re
 import sys
 import time
 import traceback
+import uuid
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
 
 import requests
 
@@ -66,12 +72,14 @@ except ImportError:
 
 # ── constants ─────────────────────────────────────────────────────────────────
 GITEA_ORG = "vartrack-demo"
+DEMO_TENANT = "demo"          # the tenant config.cue declares: the demo's repositories are its own
 CONFIG_REPO = "demo-configs"
 SCHEMA_REPO = "schemas"
 CONFIG_FILE = "app-settings.yaml"
 CONFIG_LOCAL = "/demo/configs/app-settings.yaml"
-WAIT_AFTER_WEBHOOK = 30  # seconds
-WAIT_AFTER_DRIFT = 20    # seconds
+# The ceiling on how long a suite waits for a task it started. A task finishes in well under a second;
+# this only turns a hung one into a failed run. E2E_TIMEOUT (seconds) overrides it.
+E2E_TIMEOUT = max(1, min(int(os.environ.get("E2E_TIMEOUT", "60")), 300))
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -102,11 +110,13 @@ _REDACT_URL_CREDS = re.compile(r'(://[^:@/\s]+:)[^@/\s]+(@)', re.IGNORECASE)
 _REDACT_KV = re.compile(r'((?:password|secret|token|key|passwd)\s*[=:]\s*)\S+', re.IGNORECASE)
 
 def _redact(text: object) -> str:
-    """Strip credential-like patterns from a string before printing."""
+    """Strip credential-like patterns from a string before printing: URL passwords, key=value secrets,
+    every bearer grant and the demo's own INTERNAL_AUTH_SECRET."""
+    import grant
     text = str(text)
     text = _REDACT_URL_CREDS.sub(r'\1***\2', text)
     text = _REDACT_KV.sub(r'\1***', text)
-    return text
+    return grant.redact(text)
 
 def warn(msg: str) -> None:
     print(f"{colour.YELLOW}  ⚠{colour.NC} {_redact(msg)}")
@@ -134,21 +144,28 @@ class GiteaClient:
         url = f"{self.base}/api/v1{path}"
         return requests.request(method, url, auth=self.auth, timeout=15, **kwargs)
 
-    def push_file(self, repo: str, filepath: str, content: bytes, message: str) -> None:
+    def push_file(self, repo: str, filepath: str, content: bytes, message: str) -> str:
+        """Create or update *filepath* on main and return the commit the branch is at afterwards. A file
+        that already holds exactly *content* is not committed again; the branch's head is then the answer.
+        Raises when Gitea refuses: a suite must not go on as if its push had landed."""
+        path = f"/repos/{GITEA_ORG}/{repo}/contents/{filepath}"
         b64 = base64.b64encode(content).decode()
-        existing = self._api("GET", f"/repos/{GITEA_ORG}/{repo}/contents/{filepath}")
+        existing = self._api("GET", path)
         if existing.ok:
-            sha = existing.json()["sha"]
-            self._api("PUT", f"/repos/{GITEA_ORG}/{repo}/contents/{filepath}",
-                      json={"message": message, "content": b64, "sha": sha})
+            if existing.json().get("content", "").replace("\n", "") == b64:
+                return self.get_head_sha(repo)
+            resp = self._api("PUT", path, json={"message": message, "content": b64, "sha": existing.json()["sha"]})
         else:
-            self._api("POST", f"/repos/{GITEA_ORG}/{repo}/contents/{filepath}",
-                      json={"message": message, "content": b64})
+            resp = self._api("POST", path, json={"message": message, "content": b64})
+        if not resp.ok:
+            raise RuntimeError(f"could not push {repo}/{filepath}: {resp.status_code} {resp.text[:160]}")
+        return resp.json()["commit"]["sha"]
 
-    def get_head_sha(self, repo: str) -> str:
-        r = self._api("GET", f"/repos/{GITEA_ORG}/{repo}/git/refs")
-        if r.ok and r.json():
-            return r.json()[0]["object"]["sha"]
+    def get_head_sha(self, repo: str, branch: str = "main") -> str:
+        """The commit *branch* is at (the first ref of the repository is not necessarily main's)."""
+        r = self._api("GET", f"/repos/{GITEA_ORG}/{repo}/branches/{branch}")
+        if r.ok:
+            return r.json()["commit"]["id"]
         return "0" * 40
 
     def ensure_branch(self, repo: str, branch: str, from_branch: str = "main") -> None:
@@ -158,33 +175,18 @@ class GiteaClient:
         if resp.status_code not in (201, 409):
             raise RuntimeError(f"could not create branch {branch}: {resp.status_code} {resp.text[:120]}")
 
-    def push_bundle(self, rules: list[dict]) -> None:
+    def push_bundle(self, rules: list[dict]) -> str:
+        """Put *rules* in the tenant's schema repository as bundle.json; returns the commit they are at."""
         content = json.dumps(rules, indent=2).encode()
-        self.push_file(SCHEMA_REPO, "bundle.json", content, "Update bundle.json for test suite")
+        return self.push_file(SCHEMA_REPO, "bundle.json", content, "Update bundle.json for test suite")
 
-    def push_schema_file(self, filepath: str, content: bytes, message: str) -> None:
+    def push_schema_file(self, filepath: str, content: bytes, message: str) -> str:
         """Push an arbitrary file to the schema repo (e.g. a .cue validation schema)."""
-        b64 = base64.b64encode(content).decode()
-        existing = self._api("GET", f"/repos/{GITEA_ORG}/{SCHEMA_REPO}/contents/{filepath}")
-        if existing.ok:
-            sha = existing.json()["sha"]
-            self._api("PUT", f"/repos/{GITEA_ORG}/{SCHEMA_REPO}/contents/{filepath}",
-                      json={"message": message, "content": b64, "sha": sha})
-        else:
-            self._api("POST", f"/repos/{GITEA_ORG}/{SCHEMA_REPO}/contents/{filepath}",
-                      json={"message": message, "content": b64})
+        return self.push_file(SCHEMA_REPO, filepath, content, message)
 
-    def push_config_file(self, content: bytes, message: str) -> None:
+    def push_config_file(self, content: bytes, message: str) -> str:
         """Push app-settings.yaml to the config repo (used for CUE rejection tests)."""
-        b64 = base64.b64encode(content).decode()
-        existing = self._api("GET", f"/repos/{GITEA_ORG}/{CONFIG_REPO}/contents/{CONFIG_FILE}")
-        if existing.ok:
-            sha = existing.json()["sha"]
-            self._api("PUT", f"/repos/{GITEA_ORG}/{CONFIG_REPO}/contents/{CONFIG_FILE}",
-                      json={"message": message, "content": b64, "sha": sha})
-        else:
-            self._api("POST", f"/repos/{GITEA_ORG}/{CONFIG_REPO}/contents/{CONFIG_FILE}",
-                      json={"message": message, "content": b64})
+        return self.push_file(CONFIG_REPO, CONFIG_FILE, content, message)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -205,12 +207,16 @@ class SuiteResult:
         self._t0 = time.monotonic()
         self.task_id: str | None = None
         self.error: str | None = None
+        # The commit of the schema repository the suite's rules were pushed at: every task of the suite
+        # has to report having validated against it.
+        self.schema_commit: str = ""
 
     def add_check(self, name: str, passed: bool, detail: str = "") -> None:
-        self.checks.append({"name": name, "passed": passed, "detail": detail})
+        at = datetime.now(timezone.utc).strftime("%H:%M:%S.%f")[:-3]   # UTC, like the services' logs
+        self.checks.append({"name": name, "passed": passed, "detail": _redact(detail) if detail else "", "at": at})
         sym = "✓" if passed else "✗"
         colour_code = colour.GREEN if passed else colour.RED
-        print(f"    {colour_code}{sym}{colour.NC} {_redact(name)}" + (f" — {_redact(detail)}" if detail else ""))
+        print(f"    {at} {colour_code}{sym}{colour.NC} {_redact(name)}" + (f" — {_redact(detail)}" if detail else ""))
 
     def finish(self, status: str) -> None:
         self.status = status
@@ -228,6 +234,7 @@ class SuiteResult:
             "duration_ms": round(self.duration_ms, 2),
             "status": self.status,
             "task_id": self.task_id,
+            "schema_commit": self.schema_commit,
             "error": self.error,
             "checks": self.checks,
         }
@@ -237,6 +244,25 @@ class SuiteResult:
 # Sink verifiers
 # ─────────────────────────────────────────────────────────────────────────────
 
+_ABSENT = object()
+
+
+def mongo_value(db, col_name: str, key: str):
+    """(found, value) of one config key, wherever the Mongo sink keeps it: a document of its own (STRATEGY_KEY_VALUE:
+    {key, value}), or nested under `data` in the environment's document (STRATEGY_DOCUMENT and STRATEGY_FILE, where
+    "database.password" is data.database.password)."""
+    doc = db[col_name].find_one({"key": key}, {"_id": 0})
+    if doc is not None:
+        return True, doc.get("value")
+    for document in db[col_name].find({"data": {"$exists": True}}, {"_id": 0, "data": 1}):
+        current = document.get("data")
+        for part in key.split("."):
+            current = current.get(part, _ABSENT) if isinstance(current, dict) else _ABSENT
+        if current is not _ABSENT:
+            return True, current
+    return False, None
+
+
 def verify_mongo(rule: dict, result: SuiteResult) -> None:
     if not HAS_MONGO:
         result.add_check("pymongo available", False, "not installed")
@@ -245,7 +271,7 @@ def verify_mongo(rule: dict, result: SuiteResult) -> None:
     db_name = rule.get("database", "vartrack")
     dest_tpl = rule.get("destination_template", "")
     env = rule.get("branch", "main") if not rule.get("branch_as_env") else rule.get("branch", "main")
-    tenant = rule.get("tenant_id", GITEA_ORG)
+    tenant = rule.get("tenant_id", DEMO_TENANT)
     safe_env = env.replace("/", "_")
 
     if dest_tpl:
@@ -284,7 +310,7 @@ def verify_mongo_per_file(rule: dict, result: SuiteResult) -> None:
         return
     uri = rule.get("mongo_uri", "mongodb://mongo:27017")
     db_name = rule.get("database", "vartrack")
-    tenant = rule.get("tenant_id", GITEA_ORG)
+    tenant = rule.get("tenant_id", DEMO_TENANT)
     env = rule.get("branch", "main").replace("/", "_")
     col_name = rule["destination_template"].format(tenant=tenant, env=env)
     strategy = rule.get("update_strategy", "")
@@ -320,7 +346,7 @@ def verify_zookeeper(rule: dict, result: SuiteResult) -> None:
         return
     hosts = ",".join(rule.get("zk_hosts", ["zookeeper:2181"]))
     dest_tpl = rule.get("destination_template", "")
-    tenant = rule.get("tenant_id", GITEA_ORG)
+    tenant = rule.get("tenant_id", DEMO_TENANT)
     env = rule.get("branch", "main")
 
     root = dest_tpl.format(tenant=tenant, env=env) if dest_tpl else f"/vartrack/{tenant}/default"
@@ -350,7 +376,7 @@ def verify_redis(rule: dict, result: SuiteResult) -> None:
     port = int(rule.get("redis_port", 6379))
     db = int(rule.get("redis_db", 0))
     dest_tpl = rule.get("destination_template", "")
-    tenant = rule.get("tenant_id", GITEA_ORG)
+    tenant = rule.get("tenant_id", DEMO_TENANT)
     env = rule.get("branch", "main")
     data_structure = rule.get("data_structure", "string")
 
@@ -377,39 +403,43 @@ def verify_redis(rule: dict, result: SuiteResult) -> None:
         result.add_check("Redis connection", False, _exc_type(exc))
 
 
-def verify_linux_server(rule: dict, result: SuiteResult) -> None:
-    if not HAS_SSH:
-        result.add_check("paramiko available", False, "not installed")
-        return
+def _ssh_client(rule: dict):
+    """An SSH connection to the demo's linux target (host key learned on first contact and then checked)."""
     host = os.environ.get("LINUX_TARGET_HOST", rule.get("ssh_host", "linux-target"))
     port = int(os.environ.get("LINUX_TARGET_PORT", rule.get("ssh_port", 22)))
     user = os.environ.get("LINUX_TARGET_USER", rule.get("ssh_user", "vartrack"))
     password = os.environ.get("LINUX_TARGET_PASS", rule.get("ssh_password", "VarTrack123"))
-    dest_tpl = rule.get("destination_template", "")
-    tenant = rule.get("tenant_id", GITEA_ORG)
-    env = rule.get("branch", "main")
+    # TOFU: fetch the host key on first contact and add it explicitly so
+    # that we can use RejectPolicy (avoids silent MITM acceptance).
+    _transport = paramiko.Transport((host, port))
+    try:
+        _transport.connect()
+        _host_key = _transport.get_remote_server_key()
+    finally:
+        _transport.close()
+    ssh = paramiko.SSHClient()
+    # paramiko looks a host up as "[host]:port" unless the port is 22.
+    known_as = host if port == 22 else f"[{host}]:{port}"
+    ssh.get_host_keys().add(known_as, _host_key.get_name(), _host_key)
+    ssh.set_missing_host_key_policy(paramiko.RejectPolicy())
+    ssh.connect(host, port=port, username=user, password=password, timeout=10)
+    return ssh
 
-    remote_path = (
-        dest_tpl.format(tenant=tenant, env=env)
-        if dest_tpl
-        else f"/tmp/vartrack/{tenant}/config.env"
-    )
+
+def _linux_path(rule: dict, env: str) -> str:
+    tenant = rule.get("tenant_id", DEMO_TENANT)
+    dest_tpl = rule.get("destination_template", "")
+    return dest_tpl.format(tenant=tenant, env=env) if dest_tpl else f"/tmp/vartrack/{tenant}/config.env"
+
+
+def verify_linux_server(rule: dict, result: SuiteResult) -> None:
+    if not HAS_SSH:
+        result.add_check("paramiko available", False, "not installed")
+        return
+    remote_path = _linux_path(rule, rule.get("branch", "main"))
 
     try:
-        # TOFU: fetch the host key on first contact and add it explicitly so
-        # that we can use RejectPolicy (avoids silent MITM acceptance).
-        _transport = paramiko.Transport((host, port))
-        try:
-            _transport.connect()
-            _host_key = _transport.get_remote_server_key()
-        finally:
-            _transport.close()
-        ssh = paramiko.SSHClient()
-        # paramiko looks a host up as "[host]:port" unless the port is 22.
-        known_as = host if port == 22 else f"[{host}]:{port}"
-        ssh.get_host_keys().add(known_as, _host_key.get_name(), _host_key)
-        ssh.set_missing_host_key_policy(paramiko.RejectPolicy())
-        ssh.connect(host, port=port, username=user, password=password, timeout=10)
+        ssh = _ssh_client(rule)
         result.add_check("SSH connection established", True)
         _, stdout, _ = ssh.exec_command(f"ls -la {remote_path} 2>&1")
         output = stdout.read().decode().strip()
@@ -433,7 +463,7 @@ def verify_s3(rule: dict, result: SuiteResult) -> None:
     access_key = os.environ.get("MINIO_ACCESS_KEY", rule.get("s3_access_key", "minioadmin"))
     secret_key = os.environ.get("MINIO_SECRET_KEY", rule.get("s3_secret_key", "minioadmin"))
     dest_tpl = rule.get("destination_template", "")
-    tenant = rule.get("tenant_id", GITEA_ORG)
+    tenant = rule.get("tenant_id", DEMO_TENANT)
     env = rule.get("branch", "main")
 
     prefix = (
@@ -471,7 +501,7 @@ def verify_vault(rule: dict, result: SuiteResult) -> None:
     uri = rule.get("mongo_uri", "mongodb://mongo:27017")
     db_name = rule.get("database", "vartrack")
     dest_tpl = rule.get("destination_template", "vault-test")
-    tenant = rule.get("tenant_id", GITEA_ORG)
+    tenant = rule.get("tenant_id", DEMO_TENANT)
     env = rule.get("branch", "main")
     col_name = dest_tpl.format(tenant=tenant, env=env) if "{" in dest_tpl else dest_tpl
     try:
@@ -483,24 +513,24 @@ def verify_vault(rule: dict, result: SuiteResult) -> None:
             count = db[col_name].count_documents({})
             result.add_check(f"Documents written (count={count})", count > 0, f"count={count}")
             if count > 0:
-                pwd_doc = db[col_name].find_one({"key": "database.password"}, {"_id": 0})
-                if pwd_doc:
-                    val = str(pwd_doc.get("value", ""))
+                found, pwd = mongo_value(db, col_name, "database.password")
+                if found:
+                    val = str(pwd)
                     not_placeholder = "placeholder" not in val.lower()
                     result.add_check("database.password resolved (not placeholder)", not_placeholder, "[value present]" if not_placeholder else "[placeholder]")
                     result.add_check("database.password matches Vault secret",
                                      val == "supersecret123", "[matched]" if val == "supersecret123" else "[mismatch]")
                 else:
-                    result.add_check("database.password document found", False,
-                                     "no doc with key=database.password")
-                api_doc = db[col_name].find_one({"key": "api.secret_key"}, {"_id": 0})
-                if api_doc:
-                    val = str(api_doc.get("value", ""))
+                    result.add_check("database.password found", False,
+                                     "not stored as a key document nor under data")
+                found, secret_key = mongo_value(db, col_name, "api.secret_key")
+                if found:
+                    val = str(secret_key)
                     result.add_check("api.secret_key matches Vault secret",
                                      val == "api-secret-xyz789", "[matched]" if val == "api-secret-xyz789" else "[mismatch]")
                 else:
-                    result.add_check("api.secret_key document found", False,
-                                     "no doc with key=api.secret_key")
+                    result.add_check("api.secret_key found", False,
+                                     "not stored as a key document nor under data")
         client.close()
     except Exception as exc:
         result.add_check("MongoDB vault check", False, _exc_type(exc))
@@ -519,9 +549,136 @@ SINK_VERIFIERS = {
 }
 
 
+# ── a suite starts with its own destinations empty ────────────────────────────
+
+def _destination_names(rule: dict, envs: tuple[str, ...]) -> list[str]:
+    """What the rule's destination template names, for each environment it can write."""
+    tenant = rule.get("tenant_id", DEMO_TENANT)
+    tpl = rule.get("destination_template", "")
+    return sorted({tpl.format(tenant=tenant, env=env.replace("/", "_")) for env in envs}) if tpl else []
+
+
+def reset_destination(rule: dict, envs: tuple[str, ...] = ("main", "default")) -> list[str]:
+    """Empty what *rule* writes to, so a suite finds in the store only what it wrote itself, whatever an
+    earlier run (or a self-heal between runs) left there. Only the rule's own destination is touched.
+    Returns what was removed. A store that cannot be reached is a warning here: the suite that needs it
+    fails on its own checks."""
+    datasource = rule.get("datasource", "")
+    removed: list[str] = []
+    names = _destination_names(rule, envs)
+    try:
+        if datasource.startswith("mongo") and HAS_MONGO:
+            client = MongoClient(rule.get("mongo_uri", "mongodb://mongo:27017"), serverSelectionTimeoutMS=5000)
+            db = client[rule.get("database", "vartrack")]
+            for name in names or [rule.get("collection", "variables")]:
+                if name in db.list_collection_names() and db[name].count_documents({}):
+                    db.drop_collection(name)
+                    removed.append(f"mongo {name}")
+            client.close()
+        elif datasource.startswith("zookeeper") and HAS_ZK:
+            zk = KazooClient(hosts=",".join(rule.get("zk_hosts", ["zookeeper:2181"])), timeout=10)
+            zk.start(timeout=10)
+            try:
+                for root in names or [f"/vartrack/{rule.get('tenant_id', DEMO_TENANT)}/default"]:
+                    if zk.exists(root):
+                        zk.delete(root, recursive=True)
+                        removed.append(f"zookeeper {root}")
+            finally:
+                zk.stop()
+        elif datasource.startswith("redis") and HAS_REDIS:
+            r = redis_lib.Redis(host=rule.get("redis_host", "redis"), port=int(rule.get("redis_port", 6379)),
+                                db=int(rule.get("redis_db", 0)), socket_timeout=5, decode_responses=True)
+            for prefix in names or [f"{rule.get('tenant_id', DEMO_TENANT)}:default"]:
+                keys = r.keys(f"{prefix}*")
+                if keys:
+                    r.delete(*keys)
+                    removed.append(f"redis {prefix}* ({len(keys)} keys)")
+            r.close()
+        elif datasource.startswith("linux_server") and HAS_SSH:
+            ssh = _ssh_client(rule)
+            try:
+                for env in envs:
+                    path = _linux_path(rule, env.replace("/", "_"))
+                    _, stdout, _ = ssh.exec_command(f"test -e {path} && rm -f {path} && echo removed")
+                    if "removed" in stdout.read().decode():
+                        removed.append(f"file {path}")
+            finally:
+                ssh.close()
+        elif datasource.startswith("s3") and HAS_BOTO:
+            s3 = boto3.client(
+                "s3",
+                endpoint_url=os.environ.get("MINIO_ENDPOINT", rule.get("s3_endpoint_url", "http://minio:9002")),
+                aws_access_key_id=os.environ.get("MINIO_ACCESS_KEY", rule.get("s3_access_key", "minioadmin")),
+                aws_secret_access_key=os.environ.get("MINIO_SECRET_KEY", rule.get("s3_secret_key", "minioadmin")),
+                region_name=rule.get("s3_region", "us-east-1"),
+                config=BotoConfig(signature_version="s3v4"),
+            )
+            bucket = rule.get("s3_bucket", "vartrack")
+            for prefix in [n.strip("/") for n in names]:
+                listed = s3.list_objects_v2(Bucket=bucket, Prefix=prefix).get("Contents", [])
+                for obj in listed:
+                    s3.delete_object(Bucket=bucket, Key=obj["Key"])
+                if listed:
+                    removed.append(f"s3 {bucket}/{prefix} ({len(listed)} objects)")
+    except Exception as exc:
+        warn(f"could not empty the destination of {datasource}: {_exc_type(exc)}")
+    if removed:
+        log(f"  emptied what an earlier run left: {', '.join(removed)}")
+    return removed
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Orchestrator helpers
 # ─────────────────────────────────────────────────────────────────────────────
+
+# ── the orchestrator, called the way the gateway calls it ─────────────────────
+
+class OrchestratorClient(str):
+    """The orchestrator's base URL, which signs every call it makes.
+
+    It is a str so the suites' ``f"{orchestrator}/v1/…"`` keep working; ``.get`` and ``.post`` add
+    ``Authorization: Bearer <grant>`` to the call, with a fresh grant for exactly that call (audience sync,
+    subject e2e-runner, platform gitea, the datasource of the URL when it has one, no tenant: the tenant of
+    a push is derived from the pushed repository). With no INTERNAL_AUTH_SECRET the orchestrator runs open
+    and nothing is added. Suite 18 uses ``.raw`` to send the calls that must be refused."""
+
+    secret: str = ""
+
+    def __new__(cls, url: str, secret: str = "") -> "OrchestratorClient":
+        obj = super().__new__(cls, url.rstrip("/"))
+        obj.secret = secret
+        return obj
+
+    def grant(self, *, datasource: str = "", tenant: str = "", platform: str = "gitea",
+              audience: str = "sync", secret: str | None = None, ttl: int = 60,
+              now: float | None = None) -> str:
+        import grant
+        return grant.mint(audience, secret=self.secret if secret is None else secret, subject="e2e-runner",
+                          tenant=tenant, platform=platform, datasource=datasource, ttl=ttl, now=now)
+
+    def headers(self, datasource: str = "", extra: dict | None = None) -> dict:
+        out = dict(extra or {})
+        if self.secret:
+            out["Authorization"] = f"Bearer {self.grant(datasource=datasource)}"
+        return out
+
+    def raw(self, method: str, path: str, *, headers: dict | None = None, timeout: int = 20, **kw):
+        """A call with exactly the headers given: nothing is signed for it."""
+        return requests.request(method, f"{self}{path}", headers=headers or {}, timeout=timeout, **kw)
+
+    def post(self, path: str, *, datasource: str = "", headers: dict | None = None, timeout: int = 20, **kw):
+        return self.raw("POST", path, headers=self.headers(datasource, headers), timeout=timeout, **kw)
+
+    def get(self, path: str, *, datasource: str = "", headers: dict | None = None, timeout: int = 20, **kw):
+        return self.raw("GET", path, headers=self.headers(datasource, headers), timeout=timeout, **kw)
+
+
+def _client(orchestrator: str) -> OrchestratorClient:
+    """*orchestrator* as a signing client (a plain URL signs with the demo secret from the environment)."""
+    if isinstance(orchestrator, OrchestratorClient):
+        return orchestrator
+    return OrchestratorClient(orchestrator, os.environ.get("INTERNAL_AUTH_SECRET", ""))
+
 
 def trigger_webhook(orchestrator: str, datasource: str, tenant: str,
                     commit_sha: str, gitea_url: str) -> str | None:
@@ -555,15 +712,11 @@ def trigger_webhook(orchestrator: str, datasource: str, tenant: str,
         },
     }
     try:
-        resp = requests.post(
-            f"{orchestrator}/v1/webhooks/{datasource}",
+        resp = _client(orchestrator).post(
+            f"/v1/webhooks/{datasource}",
+            datasource=datasource,
             json=payload,
-            headers={
-                "Content-Type": "application/json",
-                "X-GitHub-Event": "push",
-                "X-Tenant-ID": tenant,
-            },
-            timeout=20,
+            headers={"Content-Type": "application/json", "X-Gitea-Event": "push"},
         )
         if resp.ok:
             return resp.json().get("task_id")
@@ -596,47 +749,261 @@ def dry_run_webhook(orchestrator: str, datasource: str, tenant: str,
                         "removed": [], "modified": []},
     }
     try:
-        resp = requests.post(
-            f"{orchestrator}/v1/webhooks/{datasource}/dry-run",
+        resp = _client(orchestrator).post(
+            f"/v1/webhooks/{datasource}/dry-run",
+            datasource=datasource,
             json=payload,
-            headers={
-                "Content-Type": "application/json",
-                "X-GitHub-Event": "push",
-                "X-Tenant-ID": tenant,
-            },
-            timeout=20,
+            headers={"Content-Type": "application/json", "X-Gitea-Event": "push"},
         )
-        return resp.json() if resp.ok else None
-    except Exception:
+        if resp.ok:
+            return resp.json()
+        warn(f"Dry-run returned {resp.status_code}: {_detail(resp)}")
+        return None
+    except Exception as exc:
+        warn(f"Dry-run exception for {datasource}: {_exc_type(exc)}")
         return None
 
 
-def warm_schema(orchestrator: str, gitea_url: str, tenant_id: str) -> int:
+def warm_schema(orchestrator: str, tenant_id: str) -> dict:
+    """Have the orchestrator fetch the tenant's schema repository afresh, and say what it now holds:
+    {"rules_loaded", "schema_commit"}. Raises when it cannot: a suite must not run on schemas that were
+    never loaded. (The warm-up also drops the orchestrator's cached rules for the tenant, through the
+    product: nothing here reaches into its Redis.)"""
+    # The body names no repository: a tenant's schema repository is the operator's to declare
+    # (config.cue's tenants), and a request cannot choose or change it.
+    resp = _client(orchestrator).post(
+        f"/v1/tenants/{tenant_id}/schemas/warm",
+        headers={"Content-Type": "application/json"},
+        timeout=30,
+    )
+    if not resp.ok:
+        raise RuntimeError(f"schema warm-up of tenant {tenant_id} was refused: {resp.status_code} {_detail(resp)}")
+    body = resp.json()
+    return {"rules_loaded": body.get("rules_loaded", 0), "schema_commit": body.get("schema_commit", "")}
+
+
+# ── waiting for a task, and what it says ──────────────────────────────────────
+
+@dataclass
+class TaskOutcome:
+    """What a task reports when it has finished, or why it has not.
+
+    *state* is varTrack's own (SUCCEEDED or FAILED, from the task's result), or TIMEOUT / ERROR when the
+    task did not finish or could not be asked; *detail* then says what it was doing or what was refused."""
+    task_id: str
+    state: str
+    message: str = ""
+    files: list = field(default_factory=list)
+    schema_commit: str = ""
+    dry_run: bool = False
+    detail: str = ""
+    raw: dict = field(default_factory=dict)
+
+    @property
+    def finished(self) -> bool:
+        return self.state in ("SUCCEEDED", "FAILED")
+
+    def said(self) -> str:
+        return f"{self.state}: {self.message or self.detail}"[:240]
+
+
+def _outcome_from_result(task_id: str, finished: dict) -> TaskOutcome:
+    return TaskOutcome(
+        task_id=task_id,
+        state=str(finished.get("state", "")),
+        message=str(finished.get("message", "")),
+        files=list(finished.get("files") or []),
+        schema_commit=str(finished.get("schema_commit") or ""),
+        dry_run=bool(finished.get("dry_run")),
+        raw=finished,
+    )
+
+
+_POLL_INTERVALS = (0.05, 0.1, 0.2, 0.5, 1.0)
+
+
+def _detail(resp) -> str:
+    """The `detail` an orchestrator error carries, or the start of its body."""
     try:
-        resp = requests.post(
-            f"{orchestrator}/v1/tenants/{tenant_id}/schemas/warm",
-            json={"repo_url": f"{gitea_url}/{GITEA_ORG}/{SCHEMA_REPO}.git", "branch": "main"},
-            headers={"Content-Type": "application/json"},
-            timeout=30,
-        )
-        if resp.ok:
-            return resp.json().get("rules_loaded", 0)
+        return str(resp.json().get("detail", ""))[:200]
     except Exception:
-        pass
-    return 0
+        return resp.text[:200]
 
 
-def invalidate_rule_cache(tenant_id: str, platform: str, datasource: str) -> None:
-    """Delete the Redis rule cache entry so the next resolve_rule loads the fresh bundle."""
-    if not HAS_REDIS:
+def wait_for_task(orchestrator: str, task_id: str, *, timeout: float | None = None) -> TaskOutcome:
+    """Poll GET /v1/tasks/{id} until the task has finished, and return what it reports.
+
+    Finished is varTrack's own result state (SUCCEEDED or FAILED), never Celery's: a task whose function
+    returned is SUCCESS to Celery even when its sync failed. A refused poll (4xx) ends the wait at once, and
+    so does a task that raised. Only a task still running when *timeout* (E2E_TIMEOUT) runs out is a
+    TIMEOUT, and it says what the task was doing."""
+    client = _client(orchestrator)
+    limit = E2E_TIMEOUT if timeout is None else timeout
+    start = time.monotonic()
+    attempt = 0
+    last = "no answer yet"
+    while time.monotonic() - start < limit:
+        try:
+            resp = client.get(f"/v1/tasks/{task_id}", timeout=10)
+        except requests.RequestException as exc:
+            last = f"the poll failed ({_exc_type(exc)})"
+        else:
+            if resp.status_code == 500:            # the task raised
+                return TaskOutcome(task_id, "FAILED", message=_detail(resp), detail="the task raised")
+            if 400 <= resp.status_code < 500:
+                return TaskOutcome(task_id, "ERROR",
+                                   detail=f"polling the task was refused: {resp.status_code} {_detail(resp)}")
+            if resp.ok:
+                body = resp.json()
+                finished = body.get("result")
+                if isinstance(finished, dict) and finished.get("state") in ("SUCCEEDED", "FAILED"):
+                    return _outcome_from_result(task_id, finished)
+                if body.get("state") == "REVOKED":
+                    return TaskOutcome(task_id, "ERROR", detail="the task was revoked")
+                stage = finished.get("stage") if isinstance(finished, dict) else None
+                last = f"celery state {body.get('state')}" + (f", stage {stage}" if stage else "")
+            else:
+                last = f"HTTP {resp.status_code}"
+        time.sleep(_POLL_INTERVALS[min(attempt, len(_POLL_INTERVALS) - 1)])
+        attempt += 1
+    return TaskOutcome(task_id, "TIMEOUT", detail=f"still running after {limit:.0f}s ({last})")
+
+
+def ui_session(orchestrator: str, gitea_url: str, user: str = "demo-admin", password: str = "VarTrack123") -> requests.Session:
+    """A session on the orchestrator's UI API, signed in the way a person signs in: through Gitea's own login form and
+    consent page. The UI API (/v1/ui/*) takes a session, not a service grant, once the bundle has a `ui` block.
+
+    The browser would reach the orchestrator through the UI on :8080 and Gitea on :3000; in the compose network they
+    are orchestrator-api:8000 and gitea:3000, so the two addresses in the redirects are swapped for those."""
+    def csrf(html: str) -> str:
+        m = re.search(r'name="_csrf"\s+value="([^"]+)"', html)
+        if not m:
+            raise RuntimeError("Gitea's page has no CSRF token: the sign-in cannot go on")
+        return m.group(1)
+
+    orch = str(orchestrator).rstrip("/")
+    base = gitea_url.rstrip("/")
+
+    def absolute(location: str) -> str:
+        return location if location.startswith("http") else base + location
+
+    mine, gitea = requests.Session(), requests.Session()
+    url = mine.get(f"{orch}/v1/auth/login", params={"platform": "gitea", "return_to": "/"},
+                   allow_redirects=False, timeout=15).headers["Location"]
+    for _ in range(8):
+        if "/auth/callback" in url:
+            callback = url.split("/auth/callback", 1)[1]
+            done = mine.get(f"{orch}/v1/auth/callback{callback}", allow_redirects=False, timeout=15)
+            if "error=" in done.headers.get("Location", ""):
+                raise RuntimeError(f"the UI sign-in was refused: {done.headers['Location']}")
+            return mine
+        url = absolute(url.replace("http://localhost:3000", base))
+        page = gitea.get(url, allow_redirects=False, timeout=15)
+        if page.is_redirect:
+            url = absolute(page.headers["Location"])
+            continue
+        if 'name="user_name"' in page.text:
+            page = gitea.post(f"{gitea_url.rstrip('/')}/user/login", allow_redirects=False, timeout=15,
+                              data={"_csrf": csrf(page.text), "user_name": user, "password": password})
+            url = absolute(page.headers.get("Location", url))
+            continue
+        if 'name="granted"' in page.text:
+            form = {"_csrf": csrf(page.text), "granted": "true"}
+            for name in ("client_id", "state", "scope", "nonce", "redirect_uri"):
+                m = re.search(rf'name="{name}"\s+value="([^"]*)"', page.text)
+                if m:
+                    form[name] = m.group(1).replace("&amp;", "&")
+            url = absolute(gitea.post(f"{base}/login/oauth/grant", data=form, allow_redirects=False,
+                                      timeout=15).headers["Location"])
+            continue
+        raise RuntimeError(f"the UI sign-in stopped at {url}")
+    raise RuntimeError("the UI sign-in did not finish")
+
+
+def _files_summary(files: list) -> str:
+    if not files:
+        return "no files"
+    return "; ".join(
+        f"{f.get('file')}@{f.get('env')}: {f.get('status')} written={f.get('written', 0)}"
+        + (f" ({f['error']})" if f.get("error") else "")
+        for f in files)[:300]
+
+
+def check_schema_commit(result: "SuiteResult", outcome: TaskOutcome, label: str = "") -> None:
+    """The task validated against the schemas this suite pushed, not against an older copy a worker held."""
+    want = result.schema_commit
+    if not want:
         return
-    try:
-        r = redis_lib.Redis(host="redis", port=6379, db=0, socket_timeout=3, decode_responses=True)
-        key = f"rule:{tenant_id}:{platform}:{datasource}"
-        r.delete(key)
-        r.close()
-    except Exception:
-        pass
+    result.add_check(f"{label}Validated against the schemas pushed for this suite",
+                     outcome.schema_commit == want,
+                     f"task={outcome.schema_commit[:12] or '(none)'} pushed={want[:12]}")
+
+
+def check_synced(result: "SuiteResult", outcome: TaskOutcome, label: str = "") -> bool:
+    """The task finished SUCCEEDED, every file it synced is ok with keys written, and it ran on the
+    schemas the suite pushed. Returns whether the task finished at all (more to check if so)."""
+    result.add_check(f"{label}Task finished SUCCEEDED", outcome.state == "SUCCEEDED", outcome.said())
+    if not outcome.finished:
+        return False
+    synced = bool(outcome.files) and all(
+        f.get("status") == "ok" and f.get("written", 0) > 0 for f in outcome.files)
+    result.add_check(f"{label}Every file synced (status ok, keys written)", synced, _files_summary(outcome.files))
+    check_schema_commit(result, outcome, label)
+    return True
+
+
+def check_rejected(result: "SuiteResult", outcome: TaskOutcome, reason: str, label: str = "") -> None:
+    """The task finished FAILED for *reason* and synced nothing."""
+    result.add_check(f"{label}Task finished FAILED", outcome.state == "FAILED", outcome.said())
+    if not outcome.finished:
+        return
+    named = reason in outcome.message or any(reason in str(f.get("error", "")) for f in outcome.files)
+    result.add_check(f"{label}The failure names its reason ({reason})", named, outcome.message[:200])
+    result.add_check(f"{label}No file was synced", not any(f.get("status") == "ok" for f in outcome.files),
+                     _files_summary(outcome.files))
+    check_schema_commit(result, outcome, label)
+
+
+def sync_and_wait(result: "SuiteResult", orchestrator: str, datasource: str, tenant: str,
+                  commit_sha: str, gitea_url: str, label: str = "") -> TaskOutcome | None:
+    """Push webhook for *commit_sha*, wait for its task, check it synced. None when nothing was accepted."""
+    task_id = trigger_webhook(orchestrator, datasource, tenant, commit_sha, gitea_url)
+    result.add_check(f"{label}Webhook accepted (task_id returned)", task_id is not None, str(task_id))
+    if not task_id:
+        return None
+    result.task_id = task_id
+    outcome = wait_for_task(orchestrator, task_id)
+    check_synced(result, outcome, label)
+    return outcome
+
+
+def check_dry_run(result: "SuiteResult", rule: dict, orchestrator: str, gitea_url: str, commit_sha: str,
+                  tenant: str, datasource: str) -> TaskOutcome | None:
+    """A dry run previews the sync the push would run: the report's task SUCCEEDED, validated every file,
+    named the environment the real push writes, and ran on this suite's schemas. (The endpoint waits for
+    the task and returns its result as `report`; a task it stopped waiting for is polled here.)"""
+    dr = dry_run_webhook(orchestrator, datasource, tenant, commit_sha, gitea_url)
+    result.add_check("Dry-run response received", dr is not None)
+    if dr is None:
+        return None
+    result.task_id = dr.get("task_id")
+    report = dr.get("report")
+    outcome = (_outcome_from_result(dr["task_id"], report) if isinstance(report, dict)
+               else wait_for_task(orchestrator, dr["task_id"]))
+    result.add_check("Dry-run task finished SUCCEEDED", outcome.state == "SUCCEEDED", outcome.said())
+    if not outcome.finished:
+        return outcome
+    result.add_check("Dry-run flag set in the report", outcome.dry_run is True)
+    previewed = bool(outcome.files) and all(
+        f.get("validation") == "ok" and f.get("keys", 0) > 0 for f in outcome.files)
+    result.add_check("Dry-run previews every file (validated, keys found)", previewed,
+                     "; ".join(f"{f.get('file')}: {f.get('validation')} keys={f.get('keys')}" for f in outcome.files))
+    want_env = "main" if rule.get("branch_as_env") else "default"
+    result.add_check(f"Dry-run previews the environment the push writes ({want_env})",
+                     bool(outcome.files) and all(f.get("env") == want_env for f in outcome.files),
+                     ", ".join(str(f.get("env")) for f in outcome.files))
+    check_schema_commit(result, outcome, "Dry-run: ")
+    return outcome
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -652,24 +1019,32 @@ def run_suite(
     gitea: GiteaClient,
     gitea_url: str,
     extra_fn=None,
+    envs: tuple[str, ...] = ("main", "default"),
 ) -> SuiteResult:
     rule = rules[0]
     datasource = rule["datasource"]
-    tenant = rule.get("tenant_id", GITEA_ORG)
+    tenant = rule.get("tenant_id", DEMO_TENANT)
     result = SuiteResult(suite_id, name, setting_file, datasource)
     banner(f"Suite {suite_id:02d}: {name}")
 
     try:
-        # Push bundle to schema repo
-        gitea.push_bundle(rules)
-        time.sleep(2)
+        # What the suite finds in the store is what it wrote: start from an empty destination.
+        for r in rules:
+            reset_destination(r, envs)
+
+        # The suite's rules go to the tenant's schema repository. The commit they land at is what the
+        # warm-up has to hold and what every task of the suite has to report having validated against.
+        result.schema_commit = gitea.push_bundle(rules)
         commit_sha = gitea.get_head_sha(CONFIG_REPO)
         result.add_check("Gitea commit SHA resolved", commit_sha != "0" * 40, commit_sha[:12])
 
-        # Warm schema + invalidate Redis rule cache so fresh bundle is used
-        n_rules = warm_schema(orchestrator, gitea_url, tenant)
-        invalidate_rule_cache(tenant, rule.get("platform", "github"), datasource)
-        result.add_check("Schema registry warmed", True, f"rules={n_rules}")
+        # The orchestrator fetches the schemas afresh (and forgets the tenant's cached rules) so the bundle
+        # just pushed is the one used; it says which commit it now holds.
+        warmed = warm_schema(orchestrator, tenant)
+        result.add_check("Schema registry warmed at the pushed commit",
+                         warmed["schema_commit"] == result.schema_commit and warmed["rules_loaded"] > 0,
+                         f"rules={warmed['rules_loaded']} holds={warmed['schema_commit'][:12] or '(none)'} "
+                         f"pushed={result.schema_commit[:12]}")
 
         # Extra pre-test hook
         if extra_fn:
@@ -691,22 +1066,48 @@ def run_suite(
 
 
 def _default_etl_check(result, rule, orchestrator, gitea_url, commit_sha, tenant, datasource):
-    task_id = trigger_webhook(orchestrator, datasource, tenant, commit_sha, gitea_url)
-    result.add_check("Webhook accepted (task_id returned)", task_id is not None, str(task_id))
-    result.task_id = task_id
-
-    log(f"  Waiting {WAIT_AFTER_WEBHOOK}s for ETL...")
-    time.sleep(WAIT_AFTER_WEBHOOK)
+    outcome = sync_and_wait(result, orchestrator, datasource, tenant, commit_sha, gitea_url)
 
     verifier = SINK_VERIFIERS.get(datasource)
     if verifier:
         verifier(rule, result)
     else:
         result.add_check(f"Verifier for '{datasource}'", False, "no verifier registered")
+    return outcome
+
+
+def _variant(rules: list[dict], **changes) -> list[dict]:
+    """A copy of *rules* (never the shared ones) with the first rule's options changed: how a suite gets a
+    destination of its own, so what it finds in the store is what it wrote."""
+    out = json.loads(json.dumps(rules))
+    out[0].update(changes)
+    return out
+
+
+def _mongo_collection(rule: dict) -> str:
+    tpl = rule.get("destination_template", "")
+    env = rule.get("branch", "main").replace("/", "_")
+    return tpl.format(tenant=rule.get("tenant_id", DEMO_TENANT), env=env) if tpl else rule.get("collection", "variables")
+
+
+def verify_mongo_untouched(rule: dict, result: SuiteResult, what: str) -> None:
+    """The rule's collection holds no document (or does not exist): nothing was written there."""
+    if not HAS_MONGO:
+        result.add_check("pymongo available", False, "not installed")
+        return
+    col_name = _mongo_collection(rule)
+    try:
+        client = MongoClient(rule.get("mongo_uri", "mongodb://mongo:27017"), serverSelectionTimeoutMS=5000)
+        db = client[rule.get("database", "vartrack")]
+        count = db[col_name].count_documents({}) if col_name in db.list_collection_names() else 0
+        result.add_check(f"{what}: '{col_name}' has 0 documents", count == 0, f"count={count}")
+        client.close()
+    except Exception as exc:
+        result.add_check(f"{what}: MongoDB check", False, _exc_type(exc))
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Suite definitions (16 total)
+# Suite definitions (23 total)
 # ─────────────────────────────────────────────────────────────────────────────
 
 def suite_01_mongo_doc_basic(orchestrator, gitea, gitea_url, rules):
@@ -722,9 +1123,7 @@ def suite_02_mongo_doc_prune(orchestrator, gitea, gitea_url, rules):
         _default_etl_check(result, rule, orchestrator, gitea_url, commit_sha, tenant, datasource)
         # Second push (idempotent) — confirms prune doesn't wipe valid keys
         sha2 = gitea.get_head_sha(CONFIG_REPO)
-        tid2 = trigger_webhook(orchestrator, datasource, tenant, sha2, gitea_url)
-        result.add_check("Second webhook accepted", tid2 is not None, str(tid2))
-        time.sleep(WAIT_AFTER_WEBHOOK)
+        sync_and_wait(result, orchestrator, datasource, tenant, sha2, gitea_url, label="Second push: ")
         verify_mongo(rule, result)
 
     return run_suite(2, "MongoDB prune idempotency",
@@ -737,17 +1136,17 @@ def suite_03_mongo_file_strategy(orchestrator, gitea, gitea_url, rules):
                      "02_mongo_file.json", rules, orchestrator, gitea, gitea_url)
 
 
-
 def suite_04_mongo_dry_run(orchestrator, gitea, gitea_url, rules):
-    """MongoDB: dry-run returns report without writing."""
+    """MongoDB: a dry run reports the sync the push would run, and writes nothing."""
+    own = _variant(rules, destination_template="e2e-dry-run-{env}")
+
     def _fn(result, rule, orchestrator, gitea_url, commit_sha, tenant, datasource):
-        dr = dry_run_webhook(orchestrator, datasource, tenant, commit_sha, gitea_url)
-        result.add_check("Dry-run response received", dr is not None)
-        if dr:
-            result.add_check("Dry-run flag set", dr.get("dry_run") is True)
+        check_dry_run(result, rule, orchestrator, gitea_url, commit_sha, tenant, datasource)
+        # The dry run has finished (the endpoint waited for its task): nothing it could write is pending.
+        verify_mongo_untouched(rule, result, "Dry run wrote nothing")
 
     return run_suite(4, "MongoDB dry-run (no write)",
-                     "01_mongo_document.json", rules, orchestrator, gitea, gitea_url, extra_fn=_fn)
+                     "01_mongo_document.json", own, orchestrator, gitea, gitea_url, extra_fn=_fn)
 
 
 def suite_05_zk_slash_write(orchestrator, gitea, gitea_url, rules):
@@ -790,22 +1189,36 @@ def suite_10_s3_write(orchestrator, gitea, gitea_url, rules):
 
 def suite_11_multi_sink_parallel(orchestrator, gitea, gitea_url,
                                   mongo_rules, zk_rules, redis_rules):
-    """All three main sinks triggered simultaneously — stress test."""
+    """All three main sinks triggered at once; each task is waited for, and each sink has its own output."""
+    mongo_rules = _variant(mongo_rules, destination_template="e2e-parallel-{env}")
+    # (this rule does not map the branch to an environment, so its path ends in "default", as its settings file does)
+    zk_rules = _variant(zk_rules, destination_template="/e2e-parallel/{tenant}/default")
+    redis_rules = _variant(redis_rules, destination_template="e2e-parallel:{env}:config")
     result = SuiteResult(11, "Multi-sink parallel webhooks (mongo + zk + redis)",
                          "mixed", "multi")
     banner("Suite 11: Multi-sink parallel webhooks")
     try:
-        gitea.push_bundle(mongo_rules + zk_rules + redis_rules)
-        time.sleep(2)
+        for r in mongo_rules + zk_rules + redis_rules:
+            reset_destination(r)
+        result.schema_commit = gitea.push_bundle(mongo_rules + zk_rules + redis_rules)
         commit_sha = gitea.get_head_sha(CONFIG_REPO)
+        warmed = warm_schema(orchestrator, DEMO_TENANT)
+        result.add_check("Schema registry warmed at the pushed commit",
+                         warmed["schema_commit"] == result.schema_commit and warmed["rules_loaded"] > 0,
+                         f"rules={warmed['rules_loaded']} holds={warmed['schema_commit'][:12] or '(none)'} "
+                         f"pushed={result.schema_commit[:12]}")
 
+        started = []
         for ds, rules in [("mongo", mongo_rules), ("zookeeper", zk_rules), (redis_rules[0]["datasource"], redis_rules)]:
-            tenant = rules[0].get("tenant_id", GITEA_ORG)
+            tenant = rules[0].get("tenant_id", DEMO_TENANT)
             tid = trigger_webhook(orchestrator, ds, tenant, commit_sha, gitea_url)
             result.add_check(f"Webhook sent to {ds}", tid is not None, str(tid))
+            if tid:
+                started.append((ds, tid))
 
-        log(f"  Waiting {WAIT_AFTER_WEBHOOK}s for parallel ETL...")
-        time.sleep(WAIT_AFTER_WEBHOOK)
+        # All three are running at once; each is waited for by its own task.
+        for ds, tid in started:
+            check_synced(result, wait_for_task(orchestrator, tid), label=f"{ds}: ")
 
         verify_mongo(mongo_rules[0], result)
         verify_zookeeper(zk_rules[0], result)
@@ -814,6 +1227,7 @@ def suite_11_multi_sink_parallel(orchestrator, gitea, gitea_url,
         result.finish("pass" if all(c["passed"] for c in result.checks) else "fail")
     except Exception as exc:
         result.error = traceback.format_exc()
+        err(f"Suite 11 raised exception: {exc}")
         result.finish("fail")
 
     colour_code = colour.GREEN if result.status == "pass" else colour.RED
@@ -827,20 +1241,20 @@ def suite_12_health_and_metrics(orchestrator, gitea, gitea_url, _rules):
                          "n/a", "http")
     banner("Suite 12: Health & metrics")
     try:
-        r = requests.get(f"{orchestrator}/v1/health", timeout=5)
+        r = _client(orchestrator).get("/v1/health", timeout=5)
         result.add_check("/v1/health returns 200", r.status_code == 200, str(r.status_code))
 
-        r2 = requests.get(f"{orchestrator}/metrics", timeout=5)
+        r2 = _client(orchestrator).get("/metrics", timeout=5)
         result.add_check("/metrics returns 200", r2.status_code == 200, str(r2.status_code))
         if r2.ok:
             has_celery = "celery" in r2.text.lower() or "task" in r2.text.lower()
             result.add_check("/metrics contains task metrics", has_celery)
 
-        r3 = requests.get(f"{orchestrator}/docs", timeout=5)
+        r3 = _client(orchestrator).get("/docs", timeout=5)
         result.add_check("/docs (OpenAPI) reachable", r3.status_code == 200)
 
         result.finish("pass" if all(c["passed"] for c in result.checks) else "fail")
-    except Exception as exc:
+    except Exception:
         result.error = traceback.format_exc()
         result.finish("fail")
 
@@ -851,47 +1265,37 @@ def suite_12_health_and_metrics(orchestrator, gitea, gitea_url, _rules):
 
 def suite_13_cue_schema_valid(orchestrator, gitea, gitea_url, rules):
     """CUE schema present — valid config passes validation and writes to MongoDB."""
+    own = _variant(rules, destination_template="e2e-cue-valid-{env}")
+
     def _fn(result, rule, orchestrator, gitea_url, commit_sha, tenant, datasource):
-        task_id = trigger_webhook(orchestrator, datasource, tenant, commit_sha, gitea_url)
-        result.add_check("Webhook accepted (task_id returned)", task_id is not None, str(task_id))
-        result.task_id = task_id
-        log(f"  Waiting {WAIT_AFTER_WEBHOOK}s for ETL (CUE validation active)...")
-        time.sleep(WAIT_AFTER_WEBHOOK)
+        sync_and_wait(result, orchestrator, datasource, tenant, commit_sha, gitea_url)
         verify_mongo(rule, result)
         if HAS_MONGO:
             try:
-                dest_tpl = rule.get("destination_template", "")
-                tenant_id = rule.get("tenant_id", GITEA_ORG)
-                env = rule.get("branch", "main")
-                safe_env = env.replace("/", "_")
-                col_name = dest_tpl.format(tenant=tenant_id, env=safe_env) if dest_tpl else "variables"
+                col_name = _mongo_collection(rule)
                 client = MongoClient(rule.get("mongo_uri", "mongodb://mongo:27017"),
                                      serverSelectionTimeoutMS=5000)
                 db = client[rule.get("database", "vartrack")]
-                doc = db[col_name].find_one({"key": "observability.log_level"}, {"_id": 0})
-                if doc:
-                    val = str(doc.get("value", ""))
+                found, level = mongo_value(db, col_name, "observability.log_level")
+                if found:
+                    val = str(level)
                     result.add_check(f"CUE validated log_level='{val}' (allowed by schema)",
                                      val in ("DEBUG", "INFO", "WARN", "ERROR"), val)
                 else:
-                    result.add_check("observability.log_level document found", False,
+                    result.add_check("observability.log_level found", False,
                                      "key not written to collection")
                 client.close()
             except Exception as exc:
                 result.add_check("CUE log_level check", False, _exc_type(exc))
 
     return run_suite(13, "CUE schema validation (valid config passes)",
-                     "01_mongo_document.json", rules, orchestrator, gitea, gitea_url, extra_fn=_fn)
+                     "01_mongo_document.json", own, orchestrator, gitea, gitea_url, extra_fn=_fn)
 
 
 def suite_14_vault_secret_injection(orchestrator, gitea, gitea_url, rules):
     """Vault @secret fields resolved before writing to MongoDB."""
     def _fn(result, rule, orchestrator, gitea_url, commit_sha, tenant, datasource):
-        task_id = trigger_webhook(orchestrator, datasource, tenant, commit_sha, gitea_url)
-        result.add_check("Webhook accepted (task_id returned)", task_id is not None, str(task_id))
-        result.task_id = task_id
-        log(f"  Waiting {WAIT_AFTER_WEBHOOK}s for ETL (Vault secret injection)...")
-        time.sleep(WAIT_AFTER_WEBHOOK)
+        sync_and_wait(result, orchestrator, datasource, tenant, commit_sha, gitea_url)
         verify_vault(rule, result)
 
     return run_suite(14, "Vault secret injection → MongoDB",
@@ -900,37 +1304,34 @@ def suite_14_vault_secret_injection(orchestrator, gitea, gitea_url, rules):
 
 def suite_15_cue_strict_reject(orchestrator, gitea, gitea_url, rules,
                                 bad_config: bytes, orig_config: bytes):
-    """CUE strict_validation=true rejects invalid log_level — file skipped, no write."""
-    def _fn(result, rule, orchestrator, gitea_url, commit_sha, tenant, datasource):
-        gitea.push_config_file(bad_config, "e2e: invalid log_level for CUE strict test")
-        time.sleep(2)
-        commit_sha2 = gitea.get_head_sha(CONFIG_REPO)
-        task_id = trigger_webhook(orchestrator, datasource, tenant, commit_sha2, gitea_url)
-        result.add_check("Webhook accepted (task_id returned)", task_id is not None, str(task_id))
-        result.task_id = task_id
-        log(f"  Waiting {WAIT_AFTER_WEBHOOK}s for ETL (expecting strict CUE reject)...")
-        time.sleep(WAIT_AFTER_WEBHOOK)
-        dest_tpl = rule.get("destination_template", "cue-strict-test")
-        col_name = dest_tpl
-        try:
-            client = MongoClient(rule.get("mongo_uri", "mongodb://mongo:27017"),
-                                 serverSelectionTimeoutMS=5000)
-            db = client[rule.get("database", "vartrack")]
-            col_exists = col_name in db.list_collection_names()
-            count = db[col_name].count_documents({}) if col_exists else 0
-            result.add_check(
-                f"CUE strict reject: '{col_name}' has 0 documents (write blocked)",
-                count == 0, f"count={count}",
-            )
-            client.close()
-        except Exception as exc:
-            result.add_check("MongoDB strict-reject check", False, _exc_type(exc))
-        finally:
-            gitea.push_config_file(orig_config, "e2e: restore valid config after strict test")
-            time.sleep(2)
+    """CUE strict_validation=true rejects invalid log_level — the task FAILS naming it, and nothing is written.
 
-    return run_suite(15, "CUE strict_validation rejects invalid config",
-                     "10_cue_strict_mongo.json", rules, orchestrator, gitea, gitea_url, extra_fn=_fn)
+    The invalid config is pushed before the strict rule is: while the rule exists, the config repository
+    never holds a valid file for a self-heal to sync into the collection the suite then expects empty."""
+    try:
+        bad_sha = gitea.push_config_file(bad_config, "e2e: invalid log_level for CUE strict test")
+    except Exception:
+        failed = SuiteResult(15, "CUE strict_validation rejects invalid config", "10_cue_strict_mongo.json",
+                             rules[0]["datasource"])
+        failed.error = traceback.format_exc()
+        failed.add_check("The invalid config was pushed", False, "see the suite's error")
+        failed.finish("fail")
+        return failed
+
+    def _fn(result, rule, orchestrator, gitea_url, commit_sha, tenant, datasource):
+        task_id = trigger_webhook(orchestrator, datasource, tenant, bad_sha, gitea_url)
+        result.add_check("Webhook accepted (task_id returned)", task_id is not None, str(task_id))
+        if task_id:
+            result.task_id = task_id
+            # The task is finished when it says so: only then is "nothing written" a fact.
+            check_rejected(result, wait_for_task(orchestrator, task_id), "strict_validation")
+        verify_mongo_untouched(rule, result, "CUE strict reject (write blocked)")
+
+    try:
+        return run_suite(15, "CUE strict_validation rejects invalid config",
+                         "10_cue_strict_mongo.json", rules, orchestrator, gitea, gitea_url, extra_fn=_fn)
+    finally:
+        gitea.push_config_file(orig_config, "e2e: restore valid config after strict test")
 
 
 def suite_16_dual_mongo_secret(orchestrator, gitea, gitea_url, dual_rules):
@@ -939,25 +1340,29 @@ def suite_16_dual_mongo_secret(orchestrator, gitea, gitea_url, dual_rules):
                          "11_dual_mongo_secret.json", "mongo-primary+mongo-dr")
     banner("Suite 16: Dual MongoDB datasources with @secret injection")
     try:
-        gitea.push_bundle(dual_rules)
-        time.sleep(2)
+        for r in dual_rules:
+            reset_destination(r)
+        result.schema_commit = gitea.push_bundle(dual_rules)
         commit_sha = gitea.get_head_sha(CONFIG_REPO)
         result.add_check("Gitea commit SHA resolved", commit_sha != "0" * 40, commit_sha[:12])
 
-        tenant = dual_rules[0].get("tenant_id", GITEA_ORG)
-        n_rules = warm_schema(orchestrator, gitea_url, tenant)
-        result.add_check("Schema registry warmed", True, f"rules={n_rules}")
+        tenant = dual_rules[0].get("tenant_id", DEMO_TENANT)
+        warmed = warm_schema(orchestrator, tenant)
+        result.add_check("Schema registry warmed at the pushed commit",
+                         warmed["schema_commit"] == result.schema_commit and warmed["rules_loaded"] > 0,
+                         f"rules={warmed['rules_loaded']} holds={warmed['schema_commit'][:12] or '(none)'} "
+                         f"pushed={result.schema_commit[:12]}")
 
-        for rule in dual_rules:
-            invalidate_rule_cache(tenant, rule.get("platform", "github"), rule["datasource"])
-
+        started = []
         for rule in dual_rules:
             ds = rule["datasource"]
             tid = trigger_webhook(orchestrator, ds, tenant, commit_sha, gitea_url)
             result.add_check(f"Webhook accepted for {ds}", tid is not None, str(tid))
+            if tid:
+                started.append((ds, tid))
 
-        log(f"  Waiting {WAIT_AFTER_WEBHOOK}s for ETL (dual Vault injection)...")
-        time.sleep(WAIT_AFTER_WEBHOOK)
+        for ds, tid in started:
+            check_synced(result, wait_for_task(orchestrator, tid), label=f"{ds}: ")
 
         for rule in dual_rules:
             verify_vault(rule, result)
@@ -978,7 +1383,9 @@ def suite_16_dual_mongo_secret(orchestrator, gitea, gitea_url, dual_rules):
 # ─────────────────────────────────────────────────────────────────────────────
 
 def suite_17_self_heal_drift(orchestrator, gitea, gitea_url, rules):
-    """Self-heal: corrupt a value in MongoDB directly, trigger a heal cycle, verify it is restored."""
+    """Self-heal: corrupt a value in MongoDB directly, re-sync, verify the value is restored."""
+    own = _variant(rules, destination_template="e2e-self-heal-{env}")
+
     def _fn(result, rule, orchestrator, gitea_url, commit_sha, tenant, datasource):
         # First, do a normal write so there is something to corrupt.
         _default_etl_check(result, rule, orchestrator, gitea_url, commit_sha, tenant, datasource)
@@ -989,20 +1396,23 @@ def suite_17_self_heal_drift(orchestrator, gitea, gitea_url, rules):
 
         uri       = rule.get("mongo_uri", "mongodb://mongo:27017")
         db_name   = rule.get("database", "vartrack")
-        dest_tpl  = rule.get("destination_template", "")
-        tenant_id = rule.get("tenant_id", GITEA_ORG)
-        env       = rule.get("branch", "main")
-        safe_env  = env.replace("/", "_")
-        col_name  = dest_tpl.format(tenant=tenant_id, env=safe_env) if dest_tpl else rule.get("collection", "variables")
+        tenant_id = rule.get("tenant_id", DEMO_TENANT)
+        col_name  = _mongo_collection(rule)
 
         try:
             client = MongoClient(uri, serverSelectionTimeoutMS=5000)
             db     = client[db_name]
-            # Corrupt one key directly in the collection.
+            # Corrupt one key directly in the collection: its own document under STRATEGY_KEY_VALUE, else the value
+            # nested under `data` in the environment's document.
             update_res = db[col_name].update_one(
                 {"key": {"$exists": True}},
                 {"$set": {"value": "__DRIFT_INJECTED__"}},
             )
+            if update_res.modified_count == 0:
+                update_res = db[col_name].update_one(
+                    {"data.observability.log_level": {"$exists": True}},
+                    {"$set": {"data.observability.log_level": "__DRIFT_INJECTED__"}},
+                )
             corrupted = update_res.modified_count > 0
             result.add_check("Drift injected into MongoDB", corrupted,
                              f"modified={update_res.modified_count}")
@@ -1011,20 +1421,17 @@ def suite_17_self_heal_drift(orchestrator, gitea, gitea_url, rules):
             result.add_check("Drift injection", False, _exc_type(exc))
             return
 
-        log(f"  Waiting {WAIT_AFTER_DRIFT}s then triggering heal webhook...")
-        time.sleep(WAIT_AFTER_DRIFT)
-
-        # Re-trigger the webhook — self_heal=true should overwrite the injected value.
+        # Re-trigger the webhook — self_heal=true should overwrite the injected value. The re-sync is
+        # waited for by its task, not by a pause.
         heal_sha = gitea.get_head_sha(CONFIG_REPO)
-        tid = trigger_webhook(orchestrator, datasource, tenant_id, heal_sha, gitea_url)
-        result.add_check("Heal webhook accepted", tid is not None, str(tid))
-        time.sleep(WAIT_AFTER_WEBHOOK)
+        sync_and_wait(result, orchestrator, datasource, tenant_id, heal_sha, gitea_url, label="Heal: ")
 
         # Verify the corrupted key no longer has the injected value.
         try:
             client = MongoClient(uri, serverSelectionTimeoutMS=5000)
             db     = client[db_name]
-            drifted = db[col_name].find_one({"value": "__DRIFT_INJECTED__"})
+            drifted = (db[col_name].find_one({"value": "__DRIFT_INJECTED__"})
+                       or db[col_name].find_one({"data.observability.log_level": "__DRIFT_INJECTED__"}))
             result.add_check("Drift value removed (self-heal worked)", drifted is None,
                              "still present" if drifted else "cleared")
             client.close()
@@ -1032,57 +1439,153 @@ def suite_17_self_heal_drift(orchestrator, gitea, gitea_url, rules):
             result.add_check("Post-heal MongoDB check", False, _exc_type(exc))
 
     return run_suite(17, "Self-heal: drift correction via re-trigger",
-                     "01_mongo_document.json", rules, orchestrator, gitea, gitea_url, extra_fn=_fn)
+                     "01_mongo_document.json", own, orchestrator, gitea, gitea_url, extra_fn=_fn)
 
 
-def suite_18_invalid_signature(orchestrator, gitea, gitea_url, rules):
-    """Gateway rejects a webhook with a wrong HMAC signature."""
-    result = SuiteResult(18, "Invalid webhook signature → 401/403",
-                         "n/a", "gateway")
-    banner("Suite 18: Invalid webhook signature")
+def suite_18_unsigned_calls_refused(orchestrator, gitea, gitea_url, rules):
+    """The orchestrator refuses a call that is not signed properly, and a refused call changes nothing.
+
+    With internal authentication on, every route but the health probes needs a valid grant (a signed token
+    the gateway mints and the orchestrator verifies). This suite sends each kind of route the callers it must
+    turn away (no credential, the wrong scheme, a forged signature, an expired grant, a grant for another
+    service, for another datasource, for another tenant) and the one it must accept. It checks the exact
+    status and message of each, so a call refused for the wrong reason does not pass, and afterwards that
+    none of the refused calls left a task behind. The gateway's own HMAC check on a platform's webhook is
+    not what runs here: it needs the gateway in production mode, and is covered by the gateway's tests."""
+    result = SuiteResult(18, "Unsigned or forged calls to the orchestrator are refused",
+                         "n/a", "orchestrator")
+    banner("Suite 18: Unsigned or forged calls are refused")
     try:
-        rule      = rules[0]
-        datasource = rule["datasource"]
-        tenant    = rule.get("tenant_id", GITEA_ORG)
-        commit_sha = gitea.get_head_sha(CONFIG_REPO)
+        client = _client(orchestrator)
+        if not client.secret:
+            result.add_check("The orchestrator runs with internal authentication on", False,
+                             "INTERNAL_AUTH_SECRET is not set: it runs open, so nothing can be refused")
+            result.finish("fail")
+            colour_code = colour.RED
+            print(f"\n  {colour_code}→ Suite 18 FAIL ({result.duration_ms:.0f} ms){colour.NC}")
+            return result
 
-        payload = {
-            "ref": "refs/heads/main",
-            "before": "0" * 40,
-            "after": commit_sha,
-            "repository": {
-                "name": CONFIG_REPO,
-                "full_name": f"{GITEA_ORG}/{CONFIG_REPO}",
-                "owner": {"name": GITEA_ORG, "login": GITEA_ORG},
-                "clone_url": f"{gitea_url}/{GITEA_ORG}/{CONFIG_REPO}.git",
-                "html_url":  f"{gitea_url}/{GITEA_ORG}/{CONFIG_REPO}",
-                "default_branch": "main",
-            },
-            "pusher": {"name": "e2e-runner", "email": "e2e@vartrack.local"},
-            "commits": [{"id": commit_sha, "message": "bad-sig", "added": [CONFIG_FILE],
-                         "removed": [], "modified": []}],
-            "head_commit": {"id": commit_sha, "message": "bad-sig", "added": [CONFIG_FILE],
-                            "removed": [], "modified": []},
-        }
-        resp = requests.post(
-            f"{orchestrator}/v1/webhooks/{datasource}",
-            json=payload,
-            headers={
-                "Content-Type":         "application/json",
-                "X-GitHub-Event":       "push",
-                "X-Hub-Signature-256":  "sha256=0000000000000000000000000000000000000000000000000000000000000000",
-                "X-Tenant-ID":          tenant,
-            },
-            timeout=10,
-        )
-        rejected = resp.status_code in (401, 403, 400)
-        result.add_check("Invalid signature rejected", rejected, f"status={resp.status_code}")
-        result.add_check("No task_id returned", "task_id" not in resp.text)
+        datasource = rules[0]["datasource"]
+        other_datasource = "zookeeper" if datasource != "zookeeper" else "mongo"
+        real_sha = gitea.get_head_sha(CONFIG_REPO)
+        refused_sha = "0123456789abcdef0123456789abcdef01234567"     # a push no refused call may queue
+        task_probe = str(uuid.uuid4())
+
+        def push(sha: str) -> dict:
+            return {
+                "ref": "refs/heads/main", "before": "0" * 40, "after": sha,
+                "repository": {
+                    "name": CONFIG_REPO, "full_name": f"{GITEA_ORG}/{CONFIG_REPO}",
+                    "owner": {"name": GITEA_ORG, "login": GITEA_ORG},
+                    "clone_url": f"{gitea_url}/{GITEA_ORG}/{CONFIG_REPO}.git",
+                    "html_url": f"{gitea_url}/{GITEA_ORG}/{CONFIG_REPO}", "default_branch": "main",
+                },
+                "pusher": {"name": "e2e-runner", "email": "e2e@vartrack.local"},
+                "commits": [{"id": sha, "message": "unsigned-call", "added": [CONFIG_FILE],
+                             "removed": [], "modified": []}],
+                "head_commit": {"id": sha, "message": "unsigned-call", "added": [CONFIG_FILE],
+                                "removed": [], "modified": []},
+            }
+
+        GRANT_ONLY = "a signed grant is required"
+        EITHER = "a signed grant or a signed-in session is required"   # /v1/tasks takes a grant or a session
+        json_headers = {"Content-Type": "application/json", "X-Gitea-Event": "push"}
+
+        # route: (label, method, path, body for a refused call, body for the control, grant datasource, message kind)
+        routes = [
+            ("webhook", "POST", f"/v1/webhooks/{datasource}", push(refused_sha), push(real_sha), datasource, GRANT_ONLY),
+            ("dry-run", "POST", f"/v1/webhooks/{datasource}/dry-run", push(refused_sha), push(real_sha),
+             datasource, GRANT_ONLY),
+            ("schema warm-up", "POST", f"/v1/tenants/{DEMO_TENANT}/schemas/warm", None, None, "", GRANT_ONLY),
+            ("task status", "GET", f"/v1/tasks/{task_probe}", None, None, "", EITHER),
+            ("metrics", "GET", "/metrics", None, None, "", GRANT_ONLY),
+        ]
+
+        other_key = "another-secret-another-secret-0123456789"
+        callers = [
+            # name, headers for the call, the refusal's message for a grant-only route
+            ("no credential", lambda ds: {}, GRANT_ONLY),
+            ("a Basic header", lambda ds: {"Authorization": "Basic " + base64.b64encode(b"admin:admin").decode()},
+             GRANT_ONLY),
+            ("a grant signed with another key",
+             lambda ds: {"Authorization": f"Bearer {client.grant(datasource=ds, secret=other_key)}"},
+             "invalid grant: invalid signature"),
+            ("an expired grant",
+             lambda ds: {"Authorization": f"Bearer {client.grant(datasource=ds, now=time.time() - 3600)}"},
+             "invalid grant: token has expired"),
+            ("a grant for another service (watch)",
+             lambda ds: {"Authorization": f"Bearer {client.grant(datasource=ds, audience='watch')}"},
+             "invalid grant: wrong audience"),
+        ]
+
+        def detail_of(resp) -> str:
+            try:
+                return str(resp.json().get("detail", ""))
+            except Exception:
+                return resp.text[:120]
+
+        for label, method, path, bad_body, good_body, grant_ds, kind in routes:
+            for caller, make_headers, message in callers:
+                want = EITHER if kind == EITHER else message
+                kw = {"json": bad_body} if bad_body is not None else {}
+                resp = client.raw(method, path, headers={**json_headers, **make_headers(grant_ds)}, **kw)
+                got = detail_of(resp)
+                result.add_check(f"{label}: {caller} → 401",
+                                 resp.status_code == 401 and want in got and "task_id" not in resp.text,
+                                 f"status={resp.status_code} detail={got!r}")
+
+        # a valid grant that is for another datasource / another tenant is refused with 403
+        for label, method, path, body, grant_kw, want in [
+            ("webhook", "POST", f"/v1/webhooks/{datasource}", push(refused_sha),
+             {"datasource": other_datasource}, "the grant was issued for another datasource"),
+            ("dry-run", "POST", f"/v1/webhooks/{datasource}/dry-run", push(refused_sha),
+             {"datasource": other_datasource}, "the grant was issued for another datasource"),
+            ("schema warm-up", "POST", f"/v1/tenants/{DEMO_TENANT}/schemas/warm", None,
+             {"tenant": "payments"}, "the grant was issued for another tenant"),
+        ]:
+            headers = {**json_headers, "Authorization": f"Bearer {client.grant(**grant_kw)}"}
+            kw = {"json": body} if body is not None else {}
+            resp = client.raw(method, path, headers=headers, **kw)
+            got = detail_of(resp)
+            what = "datasource" if "datasource" in grant_kw else "tenant"
+            result.add_check(f"{label}: a valid grant for another {what} → 403",
+                             resp.status_code == 403 and want in got and "task_id" not in resp.text,
+                             f"status={resp.status_code} detail={got!r}")
+
+        # the control: the same calls, signed for exactly what they do, are accepted
+        control_task = None
+        for label, method, path, bad_body, good_body, grant_ds, kind in routes:
+            kw = {"json": good_body} if good_body is not None else {}
+            resp = client.raw(method, path, headers={**json_headers, **client.headers(grant_ds)}, **kw)
+            accepted = resp.status_code == 200
+            if label == "webhook" and accepted:
+                control_task = resp.json().get("task_id")
+                accepted = bool(control_task)
+            result.add_check(f"{label}: a valid grant for this call → 200", accepted,
+                             f"status={resp.status_code}")
+        result.task_id = control_task
+
+        # nothing a refused call carried was queued, and the task list can see what is queued
+        # (the UI API takes a session, since the bundle has a ui block: sign in as the admin, as a person would)
+        listing = ui_session(client, gitea_url).get(f"{client}/v1/ui/tasks", params={"limit": 500}, timeout=10)
+        tasks = listing.json().get("tasks", []) if listing.ok else []
+        seen = {t.get("revision") for t in tasks}
+        result.add_check("The task list is readable", listing.ok, f"status={listing.status_code}")
+        result.add_check("No refused call left a task behind", refused_sha not in seen,
+                         f"{len(tasks)} task(s) listed")
+        result.add_check("The accepted control call is in the task list",
+                         control_task is not None and any(t.get("taskId") == control_task for t in tasks),
+                         str(control_task))
+        if control_task:
+            # The control call queued a real sync: wait for it, so the next suite starts with nothing running.
+            outcome = wait_for_task(client, control_task)
+            result.add_check("The accepted control call's task finished SUCCEEDED",
+                             outcome.state == "SUCCEEDED", outcome.said())
 
         result.finish("pass" if all(c["passed"] for c in result.checks) else "fail")
     except Exception as exc:
         result.error = traceback.format_exc()
-        err(f"Suite 18 raised exception: {exc}")
+        err(f"Suite 18 raised exception: {_exc_type(exc)}")
         result.finish("fail")
 
     colour_code = colour.GREEN if result.status == "pass" else colour.RED
@@ -1092,6 +1595,8 @@ def suite_18_invalid_signature(orchestrator, gitea, gitea_url, rules):
 
 def suite_19_redis_dry_run(orchestrator, gitea, gitea_url, rules):
     """Redis dry-run must not write any keys."""
+    own = _variant(rules, destination_template="e2e-dry-run:{env}:config")
+
     def _fn(result, rule, orchestrator, gitea_url, commit_sha, tenant, datasource):
         if not HAS_REDIS:
             result.add_check("redis-py available", False, "not installed")
@@ -1103,7 +1608,7 @@ def suite_19_redis_dry_run(orchestrator, gitea, gitea_url, rules):
         dest_tpl = rule.get("destination_template", "")
         prefix   = dest_tpl.format(tenant=tenant, env="main") if dest_tpl else f"{tenant}:default"
 
-        # Capture key count before dry-run.
+        # Keys under this suite's own prefix before the dry run: none.
         try:
             r = redis_lib.Redis(host=host, port=port, db=db, socket_timeout=5, decode_responses=True)
             before_keys = len(r.keys(f"{prefix}*"))
@@ -1112,14 +1617,10 @@ def suite_19_redis_dry_run(orchestrator, gitea, gitea_url, rules):
             result.add_check("Redis pre-check", False, _exc_type(exc))
             return
 
-        dr = dry_run_webhook(orchestrator, datasource, tenant, commit_sha, gitea_url)
-        result.add_check("Dry-run response received", dr is not None)
-        if dr:
-            result.add_check("Dry-run flag set in response", dr.get("dry_run") is True)
+        # The dry run has finished when this returns (the endpoint waits for its task).
+        check_dry_run(result, rule, orchestrator, gitea_url, commit_sha, tenant, datasource)
 
-        time.sleep(5)
-
-        # Verify no new keys were written.
+        # Verify no keys were written.
         try:
             r = redis_lib.Redis(host=host, port=port, db=db, socket_timeout=5, decode_responses=True)
             after_keys = len(r.keys(f"{prefix}*"))
@@ -1127,11 +1628,13 @@ def suite_19_redis_dry_run(orchestrator, gitea, gitea_url, rules):
             result.add_check("Redis key count unchanged after dry-run",
                              after_keys == before_keys,
                              f"before={before_keys} after={after_keys}")
+            result.add_check(f"No key under the dry run's own prefix '{prefix}'", after_keys == 0,
+                             f"found {after_keys} key(s)")
         except Exception as exc:
             result.add_check("Redis post-check", False, _exc_type(exc))
 
     return run_suite(19, "Redis dry-run (no write)",
-                     "05_redis_hash.json", rules, orchestrator, gitea, gitea_url, extra_fn=_fn)
+                     "05_redis_hash.json", own, orchestrator, gitea, gitea_url, extra_fn=_fn)
 
 
 def suite_20_branch_map(orchestrator, gitea, gitea_url, rules):
@@ -1155,22 +1658,17 @@ def suite_20_branch_map(orchestrator, gitea, gitea_url, rules):
             "head_commit": {"id": commit_sha, "message": "branch-map test",
                             "added": [CONFIG_FILE], "removed": [], "modified": []},
         }
-        resp = requests.post(
-            f"{orchestrator}/v1/webhooks/{datasource}",
+        resp = _client(orchestrator).post(
+            f"/v1/webhooks/{datasource}",
+            datasource=datasource,
             json=develop_payload,
-            headers={
-                "Content-Type": "application/json",
-                "X-GitHub-Event": "push",
-                "X-Tenant-ID": tenant,
-            },
-            timeout=20,
+            headers={"Content-Type": "application/json", "X-Gitea-Event": "push"},
         )
         task_id = resp.json().get("task_id") if resp.ok else None
         result.add_check("Develop-branch webhook accepted", task_id is not None, str(task_id))
         result.task_id = task_id
-
-        log(f"  Waiting {WAIT_AFTER_WEBHOOK}s for branch-map ETL...")
-        time.sleep(WAIT_AFTER_WEBHOOK)
+        if task_id:
+            check_synced(result, wait_for_task(orchestrator, task_id))
 
         if not HAS_MONGO:
             result.add_check("pymongo available", False, "not installed")
@@ -1199,14 +1697,15 @@ def suite_20_branch_map(orchestrator, gitea, gitea_url, rules):
     mapped = json.loads(json.dumps(rules))
     mapped[0]["branch_map"] = {"develop": "staging"}
     return run_suite(20, "branch_map: develop → staging collection",
-                     "01_mongo_document.json", mapped, orchestrator, gitea, gitea_url, extra_fn=_fn)
+                     "01_mongo_document.json", mapped, orchestrator, gitea, gitea_url, extra_fn=_fn,
+                     envs=("staging",))
 
 
 def suite_21_structured_prune(orchestrator, gitea, gitea_url, rules):
     """Structured prune config: prune: {enabled: true, dry_run: false}."""
-    # Inject structured prune config into the rules copy.
-    modified = json.loads(json.dumps(rules))
-    modified[0]["prune"] = {"enabled": True, "dry_run": False}
+    # Structured prune config, and a destination of its own, in the rules copy.
+    modified = _variant(rules, destination_template="e2e-structured-prune-{env}",
+                        prune={"enabled": True, "dry_run": False})
 
     def _fn(result, rule, orchestrator, gitea_url, commit_sha, tenant, datasource):
         # First write.
@@ -1214,9 +1713,8 @@ def suite_21_structured_prune(orchestrator, gitea, gitea_url, rules):
 
         # Second write — confirms prune doesn't corrupt existing data.
         sha2 = gitea.get_head_sha(CONFIG_REPO)
-        tid2 = trigger_webhook(orchestrator, datasource, tenant, sha2, gitea_url)
-        result.add_check("Second webhook (structured prune) accepted", tid2 is not None, str(tid2))
-        time.sleep(WAIT_AFTER_WEBHOOK)
+        sync_and_wait(result, orchestrator, datasource, tenant, sha2, gitea_url,
+                      label="Second push (structured prune): ")
         verify_mongo(rule, result)
 
     return run_suite(21, "Structured prune config",
@@ -1224,7 +1722,9 @@ def suite_21_structured_prune(orchestrator, gitea, gitea_url, rules):
 
 
 def suite_22_task_status_polling(orchestrator, gitea, gitea_url, rules):
-    """Trigger a webhook then poll /v1/tasks/{task_id} until it reaches a terminal state."""
+    """Trigger a webhook then poll /v1/tasks/{task_id} until the task reports it has finished."""
+    own = _variant(rules, destination_template="e2e-task-status-{env}")
+
     def _fn(result, rule, orchestrator, gitea_url, commit_sha, tenant, datasource):
         task_id = trigger_webhook(orchestrator, datasource, tenant, commit_sha, gitea_url)
         result.add_check("Webhook accepted (task_id returned)", task_id is not None, str(task_id))
@@ -1232,30 +1732,105 @@ def suite_22_task_status_polling(orchestrator, gitea, gitea_url, rules):
         if not task_id:
             return
 
-        terminal = {"SUCCESS", "FAILURE", "REVOKED", "success", "failure", "revoked"}
-        final_state = None
-        for attempt in range(20):
-            time.sleep(3)
-            try:
-                r = requests.get(f"{orchestrator}/v1/tasks/{task_id}", timeout=5)
-                if r.ok:
-                    data  = r.json()
-                    state = data.get("state") or data.get("status", "")
-                    if state.upper() in {s.upper() for s in terminal}:
-                        final_state = state
-                        break
-            except Exception:
-                pass
-
-        result.add_check("Task reached terminal state via polling",
-                         final_state is not None, str(final_state) if final_state else "timed-out")
-        if final_state:
-            result.add_check("Task completed successfully",
-                             final_state.upper() in ("SUCCESS", "COMPLETED"),
-                             final_state)
+        # Polling is the point of this suite: the endpoint answers PENDING / PROGRESS until the task has
+        # a result, and the result's own state (not Celery's) says whether the sync succeeded.
+        outcome = wait_for_task(orchestrator, task_id)
+        result.add_check("Task reached a terminal state via polling", outcome.finished, outcome.said())
+        check_synced(result, outcome)
+        verify_mongo(rule, result)
 
     return run_suite(22, "Task status polling until terminal",
-                     "01_mongo_document.json", rules, orchestrator, gitea, gitea_url, extra_fn=_fn)
+                     "01_mongo_document.json", own, orchestrator, gitea, gitea_url, extra_fn=_fn)
+
+
+def _schema_map_documents(rule: dict) -> dict[str, dict]:
+    """The documents the schema_map suite's rule wrote, by the file they hold (an empty dict when none)."""
+    client = MongoClient(rule.get("mongo_uri", "mongodb://mongo:27017"), serverSelectionTimeoutMS=5000)
+    try:
+        col = client[rule.get("database", "vartrack")][rule["destination_template"]]
+        return {d["_vt_file"]: d for d in col.find({}, {"_id": 0}) if "_vt_file" in d}
+    finally:
+        client.close()
+
+
+def suite_23_schema_map(orchestrator, gitea, gitea_url, rules,
+                        schemas_dir: str = "/demo/schemas/cue/teams"):
+    """schema_map: one file name in two folders, each checked by its own schema; a mapping to a schema the
+    schema repository does not have fails the file naming it, strict_validation or not, and writes nothing."""
+    folders = {"team-a": "team-a/app-settings.yaml", "team-b": "team-b/app-settings.yaml"}
+    schemas = {"team-a": "teams/team-a.cue", "team-b": "teams/team-b.cue"}
+    own = _variant(rules, destination_template="e2e-schema-map", branch_as_env=False, strict_validation=True,
+                   file_path_map=folders,
+                   schema_map=[{"match": "team-a/**", "schema": schemas["team-a"]},
+                               {"match": "team-b/**", "schema": schemas["team-b"]}])
+    own[0].pop("file_name", None)       # two files, found by path: file_path_map
+
+    def _fn(result, rule, orchestrator, gitea_url, commit_sha, tenant, datasource):
+        # One name, two folders, two schemas: each file passes only the schema of its own folder.
+        sha = gitea.get_head_sha(CONFIG_REPO)
+        outcome = sync_and_wait(result, orchestrator, datasource, tenant, sha, gitea_url)
+        if outcome is not None and outcome.finished:
+            by_file = {f.get("file"): f for f in outcome.files}
+            for team, path in folders.items():
+                f = by_file.get(path, {})
+                result.add_check(f"{path} was checked by {schemas[team]} (schema_map)",
+                                 (f.get("validation"), f.get("schema"), f.get("schema_source"))
+                                 == ("ok", schemas[team], f"schema_map[{list(folders).index(team)}]"),
+                                 f"{f.get('validation')} {f.get('schema')} {f.get('schema_source')}")
+        if HAS_MONGO:
+            docs = _schema_map_documents(rule)
+            result.add_check("Both files were written, one document each", sorted(docs) == sorted(folders.values()),
+                             ", ".join(sorted(docs)) or "(none)")
+            result.add_check("Each document holds its own folder's data",
+                             all((docs.get(path) or {}).get("data", {}).get("owner") == team
+                                 for team, path in folders.items()),
+                             str({p: (d.get("data") or {}).get("owner") for p, d in docs.items()}))
+
+        # A mapping to a schema nobody pushed fails that file, naming the entry, the schema and the commit.
+        missing = _variant(own, schema_map=[{"match": "team-a/**", "schema": schemas["team-a"]},
+                                            {"match": "team-b/**", "schema": "teams/nowhere.cue"}],
+                           strict_validation=False)
+        missing[0].pop("file_name", None)
+        reset_destination(missing[0], ("team-a", "team-b"))
+        result.schema_commit = gitea.push_bundle(missing)
+        warmed = warm_schema(orchestrator, tenant)
+        result.add_check("Schema registry warmed at the second bundle", warmed["schema_commit"] == result.schema_commit,
+                         f"holds={warmed['schema_commit'][:12] or '(none)'} pushed={result.schema_commit[:12]}")
+        task_id = trigger_webhook(orchestrator, datasource, tenant, sha, gitea_url)
+        result.add_check("Webhook accepted for the missing schema", task_id is not None, str(task_id))
+        if task_id:
+            failed = wait_for_task(orchestrator, task_id)
+            result.add_check("Task finished FAILED", failed.state == "FAILED", failed.said())
+            if failed.finished:
+                reasons = failed.message + " ".join(str(f.get("error", "")) for f in failed.files)
+                result.add_check("The failure names the schema and the schema_map entry that sent the file there",
+                                 "teams/nowhere.cue" in reasons and "schema_map[1]" in reasons, failed.message[:200])
+                bad = [f for f in failed.files if f.get("file") == folders["team-b"]]
+                result.add_check("The file with the missing schema was not synced",
+                                 not any(f.get("status") == "ok" for f in bad), _files_summary(failed.files))
+                check_schema_commit(result, failed)
+        if HAS_MONGO:
+            # The push's other file still syncs: one bad file fails that file, not its neighbours.
+            docs = _schema_map_documents(rule)
+            result.add_check("Only the file with a schema was written", sorted(docs) == [folders["team-a"]],
+                             ", ".join(sorted(docs)) or "(none)")
+
+    # The files and the schemas they are checked by are pushed before the suite's own bundle.
+    try:
+        for team, path in folders.items():
+            gitea.push_schema_file(schemas[team], (Path(schemas_dir) / f"{team}.cue").read_bytes(),
+                                   f"e2e: schema of {team}")
+            gitea.push_file(CONFIG_REPO, path, f"owner: {team}\n".encode(), f"e2e: {path}")
+    except Exception:
+        failed = SuiteResult(23, "schema_map: a schema per path", "12_mongo_document_strategy.json",
+                             rules[0]["datasource"])
+        failed.error = traceback.format_exc()
+        failed.add_check("The suite's files and schemas were pushed", False, "see the suite's error")
+        failed.finish("fail")
+        return failed
+
+    return run_suite(23, "schema_map: a schema per path", "12_mongo_document_strategy.json", own,
+                     orchestrator, gitea, gitea_url, extra_fn=_fn, envs=("team-a", "team-b"))
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1282,12 +1857,14 @@ def main() -> None:
     parser.add_argument("--gitea-user",   default=os.environ.get("GITEA_ADMIN_USER", "demo-admin"))
     parser.add_argument("--gitea-pass",   default=os.environ.get("GITEA_ADMIN_PASSWORD", "VarTrack123"))
     args = parser.parse_args()
+    # Every call the suites make to the orchestrator is signed with the demo's INTERNAL_AUTH_SECRET.
+    args.orchestrator = OrchestratorClient(args.orchestrator, os.environ.get("INTERNAL_AUTH_SECRET", ""))
 
     Path(args.results_dir).mkdir(parents=True, exist_ok=True)
 
     gitea = GiteaClient(args.gitea, args.gitea_user, args.gitea_pass)
 
-    banner("VarTrack E2E Test Runner — 22 Suites / 8 Sinks + CUE + Vault")
+    banner("VarTrack E2E Test Runner — 23 Suites / 8 Sinks + CUE + Vault")
     run_started = datetime.now(timezone.utc).isoformat()
     global_t0 = time.monotonic()
 
@@ -1361,11 +1938,12 @@ def main() -> None:
 
     # ── Extended coverage suites (17–22) ──────────────────────────────────────
     results.append(suite_17_self_heal_drift(args.orchestrator, gitea, args.gitea, mongo_doc))
-    results.append(suite_18_invalid_signature(args.orchestrator, gitea, args.gitea, mongo_doc))
+    results.append(suite_18_unsigned_calls_refused(args.orchestrator, gitea, args.gitea, mongo_doc))
     results.append(suite_19_redis_dry_run(args.orchestrator, gitea, args.gitea, redis_hash))
     results.append(suite_20_branch_map(args.orchestrator, gitea, args.gitea, mongo_doc))
     results.append(suite_21_structured_prune(args.orchestrator, gitea, args.gitea, mongo_doc))
     results.append(suite_22_task_status_polling(args.orchestrator, gitea, args.gitea, mongo_doc))
+    results.append(suite_23_schema_map(args.orchestrator, gitea, args.gitea, mongo_docs))
 
     # ── Summary ───────────────────────────────────────────────────────────────
     total_ms   = (time.monotonic() - global_t0) * 1000
