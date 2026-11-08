@@ -476,7 +476,18 @@ func (h *WebhookHandler) verifyWebhook(
 		}
 		if deliveryHeader != "" {
 			deliveryID := r.Header.Get(deliveryHeader)
-			if !h.replayProtector.CheckNonce(deliveryID) {
+			fresh, nonceErr := h.replayProtector.CheckNonce(deliveryID)
+			if nonceErr != nil {
+				// Not "new", not "a replay": it could not be checked. Refuse, and let the sender retry.
+				slog.Error("webhook refused: replay protection is unavailable",
+					"platform", platformName, "error", nonceErr,
+					"correlation_id", correlationID, "request_id", requestID)
+				w.Header().Set("Retry-After", "5")
+				writeErrorJSON(w, http.StatusServiceUnavailable, ErrCodeReplayProtectionUnavailable,
+					"replay protection is unavailable; retry shortly")
+				return "", "", false
+			}
+			if !fresh {
 				slog.Warn("replay detected: duplicate delivery ID",
 					"platform", platformName,
 					"correlation_id", correlationID, "request_id", requestID)

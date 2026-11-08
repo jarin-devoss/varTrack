@@ -60,7 +60,11 @@ func TestReplayProtector_CheckNonce(t *testing.T) {
 			rp := newRP(t, 5*time.Minute)
 			var got bool
 			for _, n := range tc.nonces {
-				got = rp.CheckNonce(n)
+				var err error
+				got, err = rp.CheckNonce(n)
+				if err != nil {
+					t.Fatalf("CheckNonce(%q) error = %v", n, err)
+				}
 			}
 			if got != tc.wantLast {
 				t.Errorf("CheckNonce final result = %v, want %v", got, tc.wantLast)
@@ -75,12 +79,12 @@ func TestReplayProtector_CheckNonce_ExpiresAfterWindow(t *testing.T) {
 		Window:      time.Nanosecond,
 		FutureDrift: 30 * time.Second,
 	})
-	rp.CheckNonce("expiry-nonce")
+	_, _ = rp.CheckNonce("expiry-nonce")
 
 	time.Sleep(2 * time.Millisecond) // outlive the 1 ns window
 
 	// Trigger prune by calling CheckNonce — the expired entry is removed.
-	if !rp.CheckNonce("expiry-nonce") {
+	if fresh, _ := rp.CheckNonce("expiry-nonce"); !fresh {
 		t.Error("expired nonce should be re-admitted after window expiry")
 	}
 }
