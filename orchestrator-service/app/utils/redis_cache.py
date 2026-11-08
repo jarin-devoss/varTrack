@@ -65,6 +65,19 @@ class RedisCache:
         except Exception as exc:
             logger.debug("redis_cache: set failed key=%s err=%s", key, exc)
 
+    def incr(self, key: str, ttl: int = 300) -> Optional[int]:
+        """Add one to the counter at *key* (created at 1) and return its new value; the counter expires
+        *ttl* seconds after its last change. None when Redis could not be reached: unlike set(), the
+        caller is told, because a counter that was not advanced is a change nobody will see."""
+        try:
+            pipe = self._client.pipeline()
+            pipe.incr(_KEY_PREFIX + key)
+            pipe.expire(_KEY_PREFIX + key, ttl)
+            return int(pipe.execute()[0])
+        except Exception as exc:
+            logger.warning("redis_cache: incr failed key=%s err=%s", key, exc)
+            return None
+
     def delete(self, key: str) -> None:
         """Delete a specific cache key.  Silently ignores errors."""
         try:

@@ -14,8 +14,11 @@ Based on the VaultConfig proto definition.
 from __future__ import annotations
 
 import logging
+import os
 import random
+import tempfile
 import time
+import weakref
 from typing import Any, Optional
 
 logger = logging.getLogger(__name__)
@@ -26,6 +29,13 @@ try:
 except ImportError:
     HVAC_AVAILABLE = False
     logger.warning("hvac library not installed - Vault secret resolution unavailable")
+
+
+def _remove(path: str) -> None:
+    try:
+        os.unlink(path)
+    except OSError:
+        pass
 
 
 class VaultClient:
@@ -50,8 +60,9 @@ class VaultClient:
         kv_version: int = 2,
         namespace: Optional[str] = None,
         auth: Optional[dict[str, Any]] = None,
-        verify_ssl: bool = True,
+        insecure_skip_verify: bool = False,
         ssl_ca: Optional[str] = None,
+        ssl_ca_file: Optional[str] = None,
         timeout: int = 10,
         max_retries: int = 3,
     ):
@@ -72,10 +83,13 @@ class VaultClient:
             - {"app_role": {"role_id": "...", "secret_id": "..."}}
             - {"kubernetes": {"role": "...", "jwt_path": "..."}}
             - {"userpass": {"username": "...", "password": "..."}}
-        verify_ssl:
-            Whether to verify SSL certificates
+        insecure_skip_verify:
+            Do not check the server's certificate. Off unless set: a Vault is verified by default.
         ssl_ca:
-            CA certificate content for server verification
+            CA certificate for server verification, as its content (PEM)
+        ssl_ca_file:
+            CA certificate for server verification, as the path of a PEM file. Give this or
+            ssl_ca, not both
         timeout:
             Request timeout in seconds
         max_retries:
@@ -96,7 +110,7 @@ class VaultClient:
         self._client = hvac.Client(
             url=endpoint,
             namespace=namespace,
-            verify=ssl_ca if ssl_ca else verify_ssl,
+            verify=self._verify_argument(insecure_skip_verify, ssl_ca, ssl_ca_file),
             timeout=(timeout, timeout),
         )
         
@@ -104,6 +118,24 @@ class VaultClient:
         if auth:
             self._authenticate(auth)
     
+    def _verify_argument(self, insecure_skip_verify: bool, ssl_ca: Optional[str], ssl_ca_file: Optional[str]):
+        """What hvac's ``verify`` takes: the path of a CA file, or whether to check at all.
+        hvac reads a path only, so a CA given as content is written to a private file that
+        is removed when this client goes away."""
+        if ssl_ca and ssl_ca_file:
+            raise ValueError("vault: give the CA as ssl_ca (content) or ssl_ca_file (a path), not both")
+        if ssl_ca_file:
+            return ssl_ca_file
+        if ssl_ca:
+            if "-----BEGIN" not in ssl_ca:
+                raise ValueError("vault: ssl_ca is the CA's content (PEM); for a file use ssl_ca_file")
+            fd, path = tempfile.mkstemp(prefix="vartrack-vault-ca-", suffix=".pem")  # 0600
+            with os.fdopen(fd, "w", encoding="utf-8") as handle:
+                handle.write(ssl_ca)
+            weakref.finalize(self, _remove, path)
+            return path
+        return not insecure_skip_verify
+
     def get_secret(self, path: str, key: str) -> str:
         """
         Fetch a secret value from Vault.
@@ -269,17 +301,22 @@ def create_vault_client_from_proto_config(config: dict[str, Any]) -> VaultClient
     VaultClient
         Configured Vault client ready to fetch secrets
     """
-    # Extract auth config
+    # Extract auth config. The credentials are SecretRefs ({value}, {file}); a plain string is still read.
+    from app.config import _resolve_secret_ref
+
+    def plain(value: Any) -> Any:
+        return _resolve_secret_ref(value) if isinstance(value, dict) else value
+
     auth_config: dict[str, Any] = {}
-    
+
     if "token_auth" in config:
-        auth_config["token"] = config["token_auth"]["token"]
+        auth_config["token"] = plain(config["token_auth"]["token"])
         
     elif "app_role_auth" in config:
         app_role = config["app_role_auth"]
         auth_config["app_role"] = {
             "role_id": app_role["role_id"],
-            "secret_id": app_role["secret_id"],
+            "secret_id": plain(app_role["secret_id"]),
             "mount_path": app_role.get("mount_path", "approle"),
         }
         
@@ -295,7 +332,7 @@ def create_vault_client_from_proto_config(config: dict[str, Any]) -> VaultClient
         up = config["userpass_auth"]
         auth_config["userpass"] = {
             "username": up["username"],
-            "password": up["password"],
+            "password": plain(up["password"]),
             "mount_path": up.get("mount_path", "userpass"),
         }
     
@@ -306,8 +343,9 @@ def create_vault_client_from_proto_config(config: dict[str, Any]) -> VaultClient
         kv_version=config.get("kv_version", 2),
         namespace=config.get("namespace"),
         auth=auth_config,
-        verify_ssl=config.get("verify_ssl", True),
+        insecure_skip_verify=bool(config.get("insecure_skip_verify", False)),
         ssl_ca=config.get("ssl_ca"),
+        ssl_ca_file=config.get("ssl_ca_file"),
         timeout=int(
             config["timeout"].get("seconds", 10)
             if isinstance(config.get("timeout"), dict)
