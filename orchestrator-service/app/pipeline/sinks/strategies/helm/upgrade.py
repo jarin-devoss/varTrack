@@ -32,7 +32,6 @@ class UpgradeStrategy(HelmWriteStrategy):
     def __init__(
         self,
         *,
-        helm_binary: str = "",
         values_mode: str = "set",
         wait: bool = False,
         wait_timeout: str = "5m",
@@ -46,7 +45,8 @@ class UpgradeStrategy(HelmWriteStrategy):
         chart_version: str = "",
         chart_repo: str = "",
     ) -> None:
-        self._helm         = helm_binary or os.getenv("HELM_BINARY", "") or (shutil.which("helm") or "")
+        # Which program runs is the operator's choice (HELM_BINARY), never a rule's.
+        self._helm         = os.getenv("HELM_BINARY", "") or (shutil.which("helm") or "")
         self._values_mode  = values_mode.lower()
         self._wait         = wait
         self._wait_timeout = wait_timeout
@@ -78,8 +78,7 @@ class UpgradeStrategy(HelmWriteStrategy):
             raise ValueError("UpgradeStrategy requires rule_config['helm_chart']")
         if not self._helm:
             raise RuntimeError(
-                "helm binary not found — install helm or set HELM_BINARY / "
-                "rule_config['helm_binary']"
+                "helm binary not found — install helm or set HELM_BINARY"
             )
 
         # Separate VarTrack meta from real values

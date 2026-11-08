@@ -12,7 +12,6 @@ via the SinkKeyFormat message.
   ─────────────  ─────────────────────────  ──────────
   mongo          DOT only                   DOT
   s3             DOT only                   DOT
-  vercel         DOT only                   DOT
   helm           DOT only                   DOT
   redis          DOT (HASH), FLAT (STRING)  DOT
   zookeeper      SLASH, SLASH_DOT           SLASH
@@ -35,7 +34,7 @@ from enum import Enum
 
 
 class KeyFormat(Enum):
-    DOT       = "dot"        # "db.host.port"    Mongo, S3, Vercel, Helm, Redis HASH
+    DOT       = "dot"        # "db.host.port"    Mongo, S3, Helm, Redis HASH
     SLASH     = "slash"      # "/db/host/port"   ZooKeeper standard
     SLASH_DOT = "slash_dot"  # ".db.host.port"   ZooKeeper alt
     FLAT      = "flat"       # "db_host_port"    Redis STRING, ConfigMap safe
@@ -45,7 +44,6 @@ class KeyFormat(Enum):
 SINK_ALLOWED_FORMATS: dict[str, list[KeyFormat]] = {
     "mongo":        [KeyFormat.DOT],
     "s3":           [KeyFormat.DOT],
-    "vercel":       [KeyFormat.DOT],
     "helm":         [KeyFormat.DOT],
     "redis":        [KeyFormat.DOT, KeyFormat.FLAT],
     "zookeeper":    [KeyFormat.SLASH, KeyFormat.SLASH_DOT],
@@ -56,7 +54,6 @@ SINK_ALLOWED_FORMATS: dict[str, list[KeyFormat]] = {
 SINK_DEFAULT_FORMAT: dict[str, KeyFormat] = {
     "mongo":        KeyFormat.DOT,
     "s3":           KeyFormat.DOT,
-    "vercel":       KeyFormat.DOT,
     "helm":         KeyFormat.DOT,
     "redis":        KeyFormat.DOT,
     "zookeeper":    KeyFormat.SLASH,

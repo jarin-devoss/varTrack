@@ -14,6 +14,7 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
 
+from app.api import tokens
 from app.config import settings
 
 logger = logging.getLogger(__name__)
@@ -84,7 +85,25 @@ async def _lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         pass
 
 
+def _cors_origins() -> list[str]:
+    """The origins allowed to call the API from a browser. A wildcard is honoured
+    only while the orchestrator is running open for development: once service
+    authentication is on, or in production, the web UI's own origin has to be listed."""
+    origins = list(settings.CORS_ORIGINS)
+    if "*" in origins and (tokens.enforced() or settings.APP_ENV == "production"):
+        logger.error(
+            "CORS_ORIGINS contains '*': ignored while internal authentication is on or in "
+            "production — list the web UI's origin(s) instead"
+        )
+        origins = [o for o in origins if o != "*"]
+    return origins
+
+
 def create_app() -> FastAPI:
+    # Refuse to start in production without a way to tell callers apart; say
+    # plainly when running open for development.
+    tokens.check_startup("orchestrator API")
+
     # redirect_slashes=False prevents 307 redirects for POST requests with a
     # trailing slash — most webhook senders do not follow redirects for POST.
     # A lightweight ASGI middleware strips the trailing slash from the raw path
@@ -115,16 +134,20 @@ def create_app() -> FastAPI:
 
     # Middleware stack — Starlette applies in reverse-add order (last = outermost).
     # Desired execution order (outermost → innermost):
-    #   SecurityHeaders → CorrelationID → RequestID → CORS → Metrics → StripSlash → router
+    #   SecurityHeaders → CorrelationID → RequestID → CORS → Metrics → StripSlash → InternalAuth → router
     from app.monitoring.instrument import MetricsMiddleware
     from app.api.middlewares.security_headers import SecurityHeadersMiddleware
     from app.api.middlewares.correlation import CorrelationIDMiddleware
     from app.api.middlewares.request_id import RequestIDMiddleware
+    from app.api.middlewares.auth import InternalAuthMiddleware
+    # Innermost, after the path has been normalised: every route needs a signed
+    # grant unless it is one of the few that answer for themselves.
+    app.add_middleware(InternalAuthMiddleware)
     app.add_middleware(_StripTrailingSlash)
     app.add_middleware(MetricsMiddleware)
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=settings.CORS_ORIGINS,
+        allow_origins=_cors_origins(),
         allow_methods=["*"],
         allow_headers=["*"],
     )
@@ -174,16 +197,20 @@ def create_app() -> FastAPI:
         redis_ok   = _check_redis_backend()
         grpc_ok    = _check_grpc_thread()
 
-        if circuit_ok and broker_ok and redis_ok and grpc_ok:
+        from app import dependencies
+
+        extra = dependencies.readiness()
+        if circuit_ok and broker_ok and redis_ok and grpc_ok and "unavailable" not in extra:
             return JSONResponse(status_code=200,
                                 content={"status": "READY", "broker": "ok", "redis": "ok",
-                                         "grpc": "ok", "circuit": breaker.state.value})
+                                         "grpc": "ok", "circuit": breaker.state.value, **extra})
         return JSONResponse(status_code=503, content={
             "status":  "NOT_READY",
             "broker":  "ok" if broker_ok  else "unreachable",
             "redis":   "ok" if redis_ok   else "unreachable",
             "grpc":    "ok" if grpc_ok    else "dead",
             "circuit": breaker.state.value,
+            **extra,
         })
 
     @app.get("/metrics", tags=["monitoring"], include_in_schema=False)
@@ -223,5 +250,22 @@ def create_app() -> FastAPI:
     @app.exception_handler(FastAPIHTTPException)
     async def _http_error(request: Request, exc: FastAPIHTTPException) -> JSONResponse:
         return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail})
+
+    # What the signed-in web UI user may see and do is the gateway's permission engine's
+    # to say. When it cannot be asked the answer is "unavailable", not a guess made here.
+    from app import authz_client
+
+    from app.dependencies import DependencyError
+
+    @app.exception_handler(DependencyError)
+    async def _dependency_unavailable(request: Request, exc: DependencyError) -> JSONResponse:
+        logger.error("%s unavailable for %s: %s", exc.dependency, request.url.path, exc.reason)
+        return JSONResponse(status_code=503, content={
+            "detail": f"{exc.dependency} unavailable: {exc.reason}", "dependency": exc.dependency})
+
+    @app.exception_handler(authz_client.Unavailable)
+    async def _permissions_unavailable(request: Request, exc: authz_client.Unavailable) -> JSONResponse:
+        logger.error("permissions unavailable for %s: %s", request.url.path, exc)
+        return JSONResponse(status_code=503, content={"detail": "permissions are unavailable; try again shortly"})
 
     return app

@@ -3,11 +3,18 @@ from __future__ import annotations
 
 import pytest
 
+from app.pipeline.sinks.settings import Settings
 from app.pipeline.sinks.strategies.helm import UpgradeStrategy, ValuesFileStrategy, get_strategy
 
 
-def command(name: str, **rule) -> list[str]:
-    strategy = get_strategy(name, {"helm_binary": "helm", **rule})
+@pytest.fixture(autouse=True)
+def the_operators_helm(monkeypatch):
+    # Which program runs is the operator's (HELM_BINARY), never a rule's.
+    monkeypatch.setenv("HELM_BINARY", "helm")
+
+
+def command(name: str, **settings) -> list[str]:
+    strategy = get_strategy(name, Settings.of("helm", **settings))
     cmd, _ = strategy._build_cmd({"replicaCount": "3"}, {}, "app", "shop", "./chart", None, None, [], False)
     return cmd
 
@@ -31,20 +38,24 @@ def test_values_only_keeps_the_other_values():
 
 
 def test_chart_version_and_repo():
-    cmd = command("upgrade", helm_chart_version="1.4.2", helm_repo="https://charts.example.com")
+    cmd = command("upgrade", chart_version="1.4.2", chart_repo="https://charts.example.com")
     assert cmd[cmd.index("--version") + 1] == "1.4.2"
     assert cmd[cmd.index("--repo") + 1] == "https://charts.example.com"
 
 
 def test_values_file_stays_available():
-    assert isinstance(get_strategy("values_file", {}), ValuesFileStrategy)
-    assert isinstance(get_strategy("upgrade", {}), UpgradeStrategy)
+    assert isinstance(get_strategy("values_file", Settings.of("helm")), ValuesFileStrategy)
+    assert isinstance(get_strategy("upgrade", Settings.of("helm")), UpgradeStrategy)
     with pytest.raises(ValueError, match="Available"):
-        get_strategy("rollback", {})
+        get_strategy("rollback", Settings.of("helm"))
 
 
 def test_config_cue_sets_the_strategy():
-    from app.pipeline.datasource_settings import sink_settings
-    s = sink_settings("helm", {"upgrade_strategy": "FULL_UPGRADE", "chart_version": "2.0.0"}, "helm", {})
-    assert s == {"helm_upgrade_strategy": "full_upgrade", "helm_chart_version": "2.0.0"}
-    assert sink_settings("helm", {"upgrade_strategy": "UPGRADE_STRATEGY_UNSPECIFIED"}, "helm", {}) == {}
+    from app.pipeline.sinks.helm import HelmSink
+
+    sink = HelmSink(settings=Settings.of("helm", upgrade_strategy="FULL_UPGRADE", chart_version="2.0.0"))
+    assert isinstance(sink._strategy, UpgradeStrategy)
+    assert sink._strategy._install is False and sink._strategy._chart_version == "2.0.0"
+    # unset (or *_UNSPECIFIED) is the values file, which runs no helm at all
+    assert isinstance(HelmSink(settings=Settings.of("helm", upgrade_strategy="UPGRADE_STRATEGY_UNSPECIFIED"))._strategy,
+                      ValuesFileStrategy)

@@ -11,16 +11,20 @@ config, then the repository's vartrack.json, then the admin's `force`):
 
 Each layer overrides the one before it, key by key. branch_map,
 file_path_map, variables_map and prune are merged key by key instead, and
-prune.protection patterns add up. bundle.json and vartrack.json can "extends"
+prune.protection patterns add up. schema_map is a list that adds up too, config.cue's entries first (the first
+entry that matches a file wins), so a path the operator mapped cannot be remapped by a tenant. bundle.json and vartrack.json can "extends"
 presets (app.pipeline.presets); those are resolved into their layer first.
 
 Some keys only config.cue sets: the datasource's connection settings and credentials, and the rule's
 secret_manager, repositories, exclude_repositories, overrides and self_heal
-(rule.proto marks them admin_only).
+(rule.proto's settable_in says CONFIG_CUE for them).
 The gateway and the watcher read those from config.cue, so a different value
-further down would split the services. bundle.json values for them are
-dropped with a warning; vartrack.json can only set the keys repo_overrides
-allows. `force` cannot pin them either — they are set on the rule itself.
+further down would split the services. bundle.json may set exactly the options
+rule.proto declares settable there: a value for anything else is dropped with a
+warning, whether it is reserved to config.cue or an option nobody declared, so
+a key a sink happens to read cannot be set from a tenant's repository by
+accident. vartrack.json can only set the keys repo_overrides allows. `force`
+cannot pin them either — they are set on the rule itself.
 
 The rules are config.cue's: a bundle.json rule for a platform and datasource
 config.cue has no rule for is ignored, since the gateway never routes to it.
@@ -39,7 +43,7 @@ import logging
 from typing import Any, Iterable, Optional
 
 from app.pipeline.renamed_options import with_current_names
-from app.pipeline.rule_options import ADMIN_ONLY, MERGEABLE  # noqa: F401 — read from rule.proto's annotations
+from app.pipeline.rule_options import ADMIN_ONLY, MERGEABLE, TENANT_SETTABLE  # noqa: F401 — read from rule.proto's annotations
 
 logger = logging.getLogger(__name__)
 
@@ -58,12 +62,47 @@ def _warn_once(message: str, *args: Any) -> None:
 
 
 @functools.cache
-def admin_only_keys() -> frozenset[str]:
-    """The keys only config.cue sets: the rule keys above and every sink
-    setting a datasource block is translated to (mongo_uri, s3_region, …)."""
-    from app.pipeline.datasource_settings import _MAPPINGS
+def config_cue_keys() -> frozenset[str]:
+    """The keys only config.cue sets: the rule options reserved to it and every field of a
+    datasource block (hosts, extra_flags, …), which a sink reads from that block alone."""
+    from app.pipeline.rule_options import FIELDS
+    from vartrack.v1.models import datasource_pb2
 
-    return ADMIN_ONLY | {key for mapping in _MAPPINGS.values() for key, _ in mapping}
+    fields = {f.name for kind in datasource_pb2.DataSource.DESCRIPTOR.fields if kind.message_type
+              for f in kind.message_type.fields}
+    return ADMIN_ONLY | (fields - set(FIELDS))
+
+
+# Keys a bundle.json rule may carry that are not options: notes, and preset syntax
+# (resolved before the rule is layered).
+_NOT_SETTINGS = frozenset({"description", "$schema", "extends"})
+
+
+def warn_tenant_claim(options: dict, where: str, owner: str, tenant: str = "") -> None:
+    """Say, once, that a file wrote a tenant_id: the tenant is never something a file says, so it is dropped.
+    *owner* says where the tenant really comes from; *tenant*, when the file belongs to one, lets the warning
+    name a key that named another (which could not have acted as it)."""
+    if "tenant_id" not in options:
+        return
+    named = options["tenant_id"]
+    other = (f" (it names tenant {named}, but this file is tenant {tenant}'s)"
+             if tenant and isinstance(named, str) and named and named != tenant else "")
+    _warn_once("%s sets tenant_id, which no file may set — the tenant is %s; ignored%s", where, owner, other)
+
+
+def tenant_settable(rule: dict) -> tuple[dict, list[str], list[str]]:
+    """(the keys of *rule* a tenant's bundle.json may set, the ones config.cue
+    reserves, the ones no option declares). Only the first are used."""
+    kept, reserved, unknown = {}, [], []
+    config_cue = config_cue_keys()
+    for key, value in rule.items():
+        if key in TENANT_SETTABLE:
+            kept[key] = value
+        elif key in config_cue:
+            reserved.append(key)
+        elif key not in _NOT_SETTINGS:
+            unknown.append(key)
+    return kept, sorted(reserved), sorted(unknown)
 
 
 def merge_child(parent: dict, child: dict) -> dict:
@@ -72,6 +111,8 @@ def merge_child(parent: dict, child: dict) -> dict:
     prune.protection patterns of both layers are kept: a layer can add keys
     that must never be deleted, not take them away."""
     out = {**parent, **child}
+    if parent.get("schema_map") or child.get("schema_map"):
+        out["schema_map"] = [*(parent.get("schema_map") or []), *(child.get("schema_map") or [])]
     for key in MERGEABLE:
         p, c = parent.get(key), child.get(key)
         if key == "prune" and isinstance(p, dict) != isinstance(c, dict) and p is not None and c is not None:
@@ -94,7 +135,7 @@ def apply_force(rule: dict) -> dict:
     force = rule.get("force")
     if not isinstance(force, dict) or not force:
         return rule
-    blocked = admin_only_keys() | _IDENTITY
+    blocked = config_cue_keys() | _IDENTITY
     ignored = sorted(k for k in force if k in blocked)
     if ignored:
         _warn_once("config.cue: the %s/%s rule forces %s, which only config.cue sets — set it on the rule itself",
@@ -154,13 +195,21 @@ def _base(cue_rule: dict, bundle: dict) -> dict:
     return rule
 
 
-def _without_admin_only(rule: dict, base: dict, source: str) -> dict:
-    admin = admin_only_keys()
-    dropped = sorted(k for k in rule if k in admin and rule[k] != base.get(k))
+def _settable_by_tenant(rule: dict, base: dict, source: str, tenant_id: str = "") -> dict:
+    """The part of a tenant's *rule* that may be laid over config.cue's *base*."""
+    kept, reserved, unknown = tenant_settable(rule)
+    warn_tenant_claim(rule, f"{source}: the {rule.get('platform')}/{rule.get('datasource')} rule",
+                      f"the one whose schema repository holds this file ({tenant_id})", tenant_id)
+    unknown = [k for k in unknown if k != "tenant_id"]
+    dropped = [k for k in reserved if rule[k] != base.get(k)]
     if dropped:
         _warn_once("%s: the %s/%s rule sets %s, which only config.cue sets — ignored",
                    source, rule.get("platform"), rule.get("datasource"), ", ".join(dropped))
-    return {k: v for k, v in rule.items() if k not in admin}
+    if unknown:
+        _warn_once("%s: the %s/%s rule sets %s, which %s not %s a tenant may set — ignored",
+                   source, rule.get("platform"), rule.get("datasource"), ", ".join(unknown),
+                   "is" if len(unknown) == 1 else "are", "an option" if len(unknown) == 1 else "options")
+    return kept
 
 
 def layered_rule(cue_rule: dict, bundle_rule: Optional[dict], tenant_id: str,
@@ -169,9 +218,10 @@ def layered_rule(cue_rule: dict, bundle_rule: Optional[dict], tenant_id: str,
     laid over it, then its `force`."""
     bundle = _bundle() if bundle is None else bundle
     base = _base(cue_rule, bundle)
-    child = _without_admin_only(dict(with_current_names(bundle_rule, source)), base, source) if bundle_rule else {}
+    child = (_settable_by_tenant(dict(with_current_names(bundle_rule, source)), base, source, tenant_id)
+             if bundle_rule else {})
     rule = merge_child(base, child)
-    rule.setdefault("tenant_id", tenant_id)
+    rule["tenant_id"] = tenant_id   # the tenant it was loaded for, whatever a file said
     return apply_force(rule)
 
 
@@ -182,8 +232,17 @@ def _allowed(cue: dict, tenant_id: str) -> bool:
 
 
 def owner(cue: dict) -> str:
-    """The tenant a config.cue rule belongs to when no bundle.json names it."""
-    return next(iter(cue.get("tenants") or []), DEFAULT_TENANT)
+    """The tenant a config.cue rule belongs to when no bundle.json names it: the first it
+    lists in ``tenants``; else the one declared tenant whose repositories are the ones the
+    rule covers; else "default"."""
+    named = next(iter(cue.get("tenants") or []), None)
+    if named:
+        return named
+    from app import tenants
+    from app.pipeline.repo_scope import patterns
+    include, _ = patterns(cue)
+    covering = tenants.tenants_of_repositories(include)
+    return covering[0] if len(covering) == 1 else DEFAULT_TENANT
 
 
 def owners() -> list[str]:
@@ -211,7 +270,10 @@ def tenant_rules(bundle_rules: list[dict], tenant_id: str, claimed: set[tuple[An
     bundle = _bundle()
     cues = cue_rules(bundle)
     if not cues:
-        return list(bundle_rules)
+        for r in bundle_rules:
+            warn_tenant_claim(r, f"bundle.json: the {r.get('platform')}/{r.get('datasource')} rule",
+                              f"the one whose schema repository holds this file ({tenant_id})", tenant_id)
+        return [{**r, "tenant_id": tenant_id} for r in bundle_rules]
     out: list[dict] = []
     for rule in bundle_rules:
         cue = _find(cues, rule.get("platform"), rule.get("datasource"))
@@ -239,7 +301,10 @@ def rule_for(platform: str, datasource: str, bundle_rule: Optional[dict], tenant
     bundle = _bundle()
     cues = cue_rules(bundle)
     if not cues:
-        return bundle_rule
+        if bundle_rule is not None:
+            warn_tenant_claim(bundle_rule, f"bundle.json: the {platform}/{datasource} rule",
+                              f"the one whose schema repository holds this file ({tenant_id})", tenant_id)
+        return {**bundle_rule, "tenant_id": tenant_id} if bundle_rule is not None else None
     cue = _find(cues, platform, datasource)
     if bundle_rule is not None and not _usable(cue, bundle_rule, tenant_id):
         return None

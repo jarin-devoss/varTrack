@@ -9,7 +9,10 @@
 gateway-service/
 watcher-service/
 cli/
-libs/
+# libs/go is built into vartrack-bundle (stage 0c); the rest of libs/ is not needed
+libs/*
+!libs/go/
+libs/go/**/*_test.go
 ui/
 e2e/
 docs/

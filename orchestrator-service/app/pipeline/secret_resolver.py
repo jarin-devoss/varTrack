@@ -46,6 +46,7 @@ import logging
 import re
 from typing import Any
 
+from app.dependencies import SecretUnavailable
 from app.utils.vault_client import VaultClient
 from app.utils.secret_masker import register_secret
 from pathlib import Path
@@ -128,6 +129,10 @@ def resolve_secrets(
     Fields present in secret_fields but absent from flat_data are skipped
     (the field may not exist for this particular file/env).
 
+    A secret that cannot be fetched raises SecretUnavailable. The file's own value is never
+    kept in its place: that is a placeholder, and writing it would deploy something that is not
+    the secret while the task reports success.
+
     Parameters
     ----------
     flat_data:
@@ -141,7 +146,7 @@ def resolve_secrets(
     -------
     Updated flat_data with injected secret values.
     """
-    if not secret_fields or not secrets_config:
+    if not secret_fields:
         return flat_data
 
     result = dict(flat_data)
@@ -151,20 +156,22 @@ def resolve_secrets(
             continue  # field not present in this file's flat_data
 
         sm_name = ref if ref else "default"
-        sm_config = secrets_config.get(sm_name)
+        sm_config = secrets_config.get(sm_name) if secrets_config else None
         if not sm_config:
-            logger.warning("secret_resolver: no secret manager %r — skipping field", sm_name)
-            continue
+            raise SecretUnavailable(
+                f"{field} is a @secret field, but config.cue defines no usable secret manager {sm_name!r}",
+                what=field)
 
         path, key = _secret_location(result[field], field, sm_config)
         try:
             value = _fetch_from_sm(sm_config, path, key)
-            register_secret(value)
-            result[field] = value
-            logger.debug("secret_resolver: injected @secret field")
         except Exception as exc:
-            logger.error("secret_resolver: failed to resolve secret field: %s", exc)
-            # Keep original value on failure — don't crash the ETL run.
+            logger.error("secret_resolver: failed to resolve secret field %s: %s", field, exc)
+            raise SecretUnavailable(
+                f"{field}: cannot read {path}#{key} from secret manager {sm_name!r}: {exc}", what=field) from None
+        register_secret(value)
+        result[field] = value
+        logger.debug("secret_resolver: injected @secret field")
 
     return result
 
@@ -263,8 +270,9 @@ def secret_managers_from_bundle(bundle: dict) -> dict:
                 "kv_version": int(cfg.get("kv_version") or 2),
                 "namespace": cfg.get("namespace") or None,
                 "auth": auth,
-                "verify_ssl": cfg.get("verify_ssl", True) is not False,
+                "insecure_skip_verify": bool(cfg.get("insecure_skip_verify", False)),
                 "ssl_ca": cfg.get("ssl_ca") or None,
+                "ssl_ca_file": cfg.get("ssl_ca_file") or None,
                 "timeout": _seconds(cfg.get("timeout"), 10),
             }
             entries.append((tag, name, entry))
@@ -312,8 +320,9 @@ def _fetch_from_vault(sm_config: dict, path: str, key: str) -> str:
         kv_version=int(sm_config.get("kv_version", 2)),
         namespace=sm_config.get("namespace"),
         auth=sm_config.get("auth"),
-        verify_ssl=sm_config.get("verify_ssl", True),
+        insecure_skip_verify=bool(sm_config.get("insecure_skip_verify", False)),
         ssl_ca=sm_config.get("ssl_ca"),
+        ssl_ca_file=sm_config.get("ssl_ca_file"),
         timeout=int(sm_config.get("timeout", 10)),
     )
 

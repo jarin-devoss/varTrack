@@ -9,7 +9,6 @@ gateway-service (gRPC) ──► Celery task queue ──► ETL pipeline ──
                                                                    ZooKeeper
                                                                    ConfigMap
                                                                    Helm
-                                                                   Vercel
                                                                    Linux server
 ```
 
@@ -113,7 +112,7 @@ Controls the storage path, collection name, or key prefix in every sink. Placeho
 Priority order when resolving the environment from a webhook event:
 
 1. `branch_map[branch]` — explicit mapping (`main` → `production`)
-2. `file_path_map[file_path]` — glob patterns on the changed file path
+2. `file_path_map` — the environment whose file (`{env: path}`) is the changed one
 3. `pr_as_env: true` → `pr-{number}`
 4. `branch_as_env: true` → branch name
 5. `tag_as_env: true` → tag name
@@ -186,7 +185,8 @@ Priority order when resolving the environment from a webhook event:
 | `GIT_CACHE_MAX_ENTRIES` | `20` | LRU cap on mirrors; one in use is never removed |
 | `CUE_BINARY` | `cue` | Path to the CUE binary |
 | `CUE_TIMEOUT_SECONDS` | `15` | Subprocess timeout for `cue vet` |
-| `ORCHESTRATOR_ADDR` | `:50051` | gRPC listen address |
+| `ORCHESTRATOR_HTTP_ADDR` | `0.0.0.0:8000` | HTTP listen address (formerly `ORCHESTRATOR_ADDR`, still read for one release) |
+| `GRPC_PORT` | `50051` | gRPC listen port |
 | `MTLS_ENABLED` | `false` (non-prod) / `true` (prod) | Enable mTLS for inbound gRPC |
 | `DEBUG` | `false` | Enable FastAPI debug mode |
 | `CORS_ORIGINS` | `[]` | Allowed CORS origins |
@@ -307,7 +307,6 @@ orchestrator-service/
 │   │       ├── zookeeper.py    # ZooKeeper sink
 │   │       ├── configmap.py    # Kubernetes ConfigMap sink
 │   │       ├── helm.py         # Helm values sink
-│   │       ├── vercel.py       # Vercel environment sink
 │   │       ├── linux_server.py # SSH file sink
 │   │       └── key_formatter.py# {tenant}/{env} placeholder resolution
 │   ├── parsers/                # YAML / JSON / TOML / .env / HCL / XML / INI

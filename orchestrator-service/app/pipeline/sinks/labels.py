@@ -159,19 +159,6 @@ class VarTrackLabels:
         """JSON-encoded bytes for a ``__vartrack__`` meta znode."""
         return json.dumps(self.as_dict(), sort_keys=True).encode("utf-8")
 
-    def as_vercel_meta(self) -> dict[str, str]:
-        """
-        Vercel Environment Variable metadata fields stored as specially-
-        named env vars prefixed with ``VARTRACK_``.
-
-        Vercel does not support arbitrary metadata on env vars, so we store
-        the label set as a single JSON env var.
-        """
-        return {
-            "VARTRACK_MANAGED_BY": MANAGED_BY_VALUE,
-            "VARTRACK_META":       json.dumps(self.as_dict(), sort_keys=True),
-        }
-
     def as_helm_annotations(self) -> dict[str, str]:
         """
         Helm chart annotations added to the release via ``--set``.

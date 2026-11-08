@@ -1,12 +1,11 @@
 """
 app/ui/scm.py
 ──────────────
-The Git platform as identity provider and as authority on what a user may
-see. The web UI signs users in with the platform (OAuth2 authorization code
-flow with PKCE) and then asks it, with the user's own token, which
-repositories that user can read or write: the platform's permissions decide
-which rules the UI shows, the way a cluster's RBAC decides what a Kubernetes
-dashboard shows to an impersonated user.
+The Git platform as identity provider. The web UI signs users in with the platform
+(OAuth2 authorization code flow with PKCE) and learns who they are; that is all this
+module does. What the user may see and do is not asked of the platform here: the
+gateway's permission engine asks it, with the same token, and decides
+(app/authz_client.py).
 
 GitHub (github.com or Enterprise) and Gitea are supported, matching the
 platforms a bundle can declare.
@@ -22,23 +21,6 @@ from urllib.parse import urlencode, urlparse
 import requests
 
 logger = logging.getLogger(__name__)
-
-# Paging cap when listing a user's repositories (only needed for rules whose
-# repositories are glob patterns).
-MAX_REPO_PAGES = 20
-
-
-@dataclass(frozen=True)
-class Permission:
-    read: bool = False
-    write: bool = False
-
-    def __or__(self, other: "Permission") -> "Permission":
-        return Permission(self.read or other.read, self.write or other.write)
-
-
-NO_ACCESS = Permission()
-FULL_ACCESS = Permission(read=True, write=True)
 
 
 @dataclass(frozen=True)
@@ -60,14 +42,6 @@ class ScmError(Exception):
 
 class TokenRejected(ScmError):
     """The platform no longer accepts the user's token (expired or revoked)."""
-
-
-def _permission(perms: dict | None) -> Permission:
-    """The platform's repository permission block → read/write. A repository the
-    user can fetch is readable even when the block is missing (public repos)."""
-    perms = perms or {}
-    write = any(perms.get(k) for k in ("admin", "maintain", "push"))
-    return Permission(read=True, write=bool(write))
 
 
 class Provider:
@@ -96,6 +70,13 @@ class Provider:
         self.scopes = list(scopes) if scopes else list(self.default_scopes)
         self.verify_ssl = verify_ssl
         self.timeout = timeout
+
+    def _for_browser(self, url: str) -> str:
+        """A link the platform gave in an API answer, as the browser can open it. The platform writes its own
+        configured address (a Gitea next to varTrack says http://gitea:3000), which the browser may not reach."""
+        if url and self.public_url != self.endpoint and url.startswith(self.endpoint + "/"):
+            return self.public_url + url[len(self.endpoint):]
+        return url
 
     # ── OAuth2 ────────────────────────────────────────────────────────────────
 
@@ -169,40 +150,6 @@ class Provider:
     def _user(self, body: dict) -> ScmUser:
         raise NotImplementedError
 
-    def permission(self, token: str, repo: str) -> Permission:
-        """What the user may do with *repo* ("owner/name"). The platforms answer
-        404 for a repository the user cannot see, whether or not it exists."""
-        owner, _, name = repo.partition("/")
-        if not owner or not name:
-            return NO_ACCESS
-        resp = self._get(token, f"/repos/{owner}/{name}")
-        if resp.status_code == 200:
-            return _permission(_json(resp).get("permissions"))
-        if resp.status_code in (403, 404):
-            return NO_ACCESS
-        raise ScmError(f"{self.kind}: /repos/{repo} answered {resp.status_code}")
-
-    def repos(self, token: str) -> dict[str, Permission]:
-        """Every repository the user can access, for rules that name repositories by pattern."""
-        out: dict[str, Permission] = {}
-        for page in range(1, MAX_REPO_PAGES + 1):
-            resp = self._get(token, self._repos_path, {**self._repos_params, self._page_size_param: 100, "page": page})
-            if resp.status_code != 200:
-                raise ScmError(f"{self.kind}: {self._repos_path} answered {resp.status_code}")
-            batch = _json(resp)
-            if not isinstance(batch, list) or not batch:
-                break
-            for repo in batch:
-                if repo.get("full_name"):
-                    out[repo["full_name"]] = _permission(repo.get("permissions"))
-            if len(batch) < 100:
-                break
-        return out
-
-    _repos_path = "/user/repos"
-    _repos_params: dict[str, Any] = {}
-    _page_size_param = "per_page"
-
 
 @functools.cache
 def proto_const(platform: str, field: str) -> str:
@@ -228,7 +175,6 @@ class GitHub(Provider):
     kind = "github"
     # OAuth Apps can only read private repositories with the "repo" scope.
     default_scopes = ("read:user", "user:email", "repo")
-    _repos_params = {"affiliation": "owner,collaborator,organization_member"}
 
     @property
     def api_url(self) -> str:
@@ -247,13 +193,12 @@ class GitHub(Provider):
 
     def _user(self, body: dict) -> ScmUser:
         return ScmUser(login=body.get("login", ""), name=body.get("name") or "", email=body.get("email") or "",
-                       avatar_url=body.get("avatar_url") or "", is_admin=bool(body.get("site_admin")))
+                       avatar_url=self._for_browser(body.get("avatar_url") or ""), is_admin=bool(body.get("site_admin")))
 
 
 class Gitea(Provider):
     kind = "gitea"
     default_scopes = ("read:user", "read:repository")
-    _page_size_param = "limit"
 
     @property
     def api_url(self) -> str:
@@ -261,7 +206,7 @@ class Gitea(Provider):
 
     def _user(self, body: dict) -> ScmUser:
         return ScmUser(login=body.get("login", ""), name=body.get("full_name") or "", email=body.get("email") or "",
-                       avatar_url=body.get("avatar_url") or "", is_admin=bool(body.get("is_admin")))
+                       avatar_url=self._for_browser(body.get("avatar_url") or ""), is_admin=bool(body.get("is_admin")))
 
 
 PROVIDERS: dict[str, type[Provider]] = {"github": GitHub, "gitea": Gitea}

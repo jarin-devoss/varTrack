@@ -40,19 +40,23 @@ class TestRunStageETL(unittest.TestCase):
         flat_data=None,
         validate_raises=None,
         rule_config=None,
+        choice=None,
     ) -> ETLResult:
         flat_data = flat_data or {"db.host": "localhost", "db.port": "5432"}
         ctx = _ctx(rule_config=rule_config or {"variables_map": {}, "branch_map": {}})
 
         mock_schema = MagicMock()
-        mock_schema.tenant_schema_root.return_value = Path("/nonexistent/schemas")
+        mock_schema.current_schema_root.return_value = Path("/nonexistent/schemas")
+
+        from app.pipeline.validator import SchemaChoice
 
         mock_validator = MagicMock()
-        mock_validator._find_schema.return_value = None
+        mock_validator.choose.return_value = choice or SchemaChoice(
+            Path("/nonexistent/schemas/default.cue"), "default.cue", "default")
         if validate_raises:
             mock_validator.validate.side_effect = validate_raises
         else:
-            mock_validator.validate.return_value = None
+            mock_validator.validate.return_value = True
 
         with (
             patch("app.pipeline.stage_etl.collect_files", return_value=files),
@@ -61,14 +65,29 @@ class TestRunStageETL(unittest.TestCase):
             patch("app.pipeline.validator.Validator", return_value=mock_validator),
             patch("app.pipeline.env_resolver.resolve", return_value="production"),
             patch("app.pipeline.transformer.transform", return_value=flat_data),
+            patch("app.pipeline.secret_resolver.parse_secret_fields", return_value={}),
+            patch("app.pipeline.change_logger.parse_logger_fields", return_value=frozenset()),
         ):
             from app.pipeline.stage_etl import run_stage_etl
             return run_stage_etl(ctx, datasource="mongo", tenant_id="acme")
 
+    def test_the_result_names_the_schema_commit_the_files_were_validated_against(self):
+        mock_schema = MagicMock()
+        mock_schema.current_schema_root.return_value = Path("/nonexistent/schemas")
+        mock_schema.schema_commit.return_value = "5c4e" * 10
+        with (
+            patch("app.pipeline.stage_etl.collect_files", return_value=[]),
+            patch("app.schema_registry.manager.get_schema_manager", return_value=mock_schema),
+        ):
+            from app.pipeline.stage_etl import run_stage_etl
+            result = run_stage_etl(_ctx(), datasource="mongo", tenant_id="acme")
+        self.assertEqual(result.schema_commit, "5c4e" * 10)
+        mock_schema.schema_commit.assert_called_once_with("acme")
+
     def test_files_are_read_at_the_pushed_commit(self):
         ctx = _ctx(commit_sha="c" * 40)
         mock_schema = MagicMock()
-        mock_schema.tenant_schema_root.return_value = Path("/nonexistent/schemas")
+        mock_schema.current_schema_root.return_value = Path("/nonexistent/schemas")
         with (
             patch("app.pipeline.stage_etl.collect_files", return_value=[]) as collect,
             patch("app.schema_registry.manager.get_schema_manager", return_value=mock_schema),
@@ -105,10 +124,10 @@ class TestRunStageETL(unittest.TestCase):
         result = self._run([("cfg.json", '{"key": {"a": 1, "b": 2}}')], flat_data=flat)
         self.assertEqual(result.files[0].flat_data, flat)
 
-    def test_cue_validation_failure_strict_skips_file(self):
+    def test_cue_validation_failure_strict_fails_the_file(self):
         """
-        strict=True CUE failure adds file to skipped
-        (not to result.files). The file is never written.
+        strict=True CUE failure adds the file to errors, with the reason
+        (not to result.files). The file is never written, and the task says why.
         """
         from app.pipeline.validator import CUEValidationError
 
@@ -117,8 +136,9 @@ class TestRunStageETL(unittest.TestCase):
             validate_raises=CUEValidationError("field missing"),
             rule_config={"strict_validation": True, "variables_map": {}, "branch_map": {}},
         )
-        self.assertIn("config.yaml", result.skipped,
-                      "Strict CUE failure must add file to result.skipped")
+        self.assertIn("config.yaml", result.errors,
+                      "Strict CUE failure must add file to result.errors")
+        self.assertIn("strict_validation: field missing", result.failure("config.yaml"))
         self.assertEqual(len(result.files), 0,
                          "File with strict CUE failure must not be in result.files")
 
@@ -132,7 +152,7 @@ class TestRunStageETL(unittest.TestCase):
                   return_value=[("bad.yaml", "content")]),
             patch("app.schema_registry.manager.get_schema_manager",
                   return_value=MagicMock(
-                      tenant_schema_root=MagicMock(return_value=Path("/x")))),
+                      current_schema_root=MagicMock(return_value=Path("/x")))),
             patch("app.pipeline.validator.Validator", return_value=MagicMock()),
             patch("app.pipeline.env_resolver.resolve", return_value="production"),
             patch("app.pipeline.transformer.transform",

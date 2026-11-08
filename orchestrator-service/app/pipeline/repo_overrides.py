@@ -17,9 +17,10 @@ server.
 Security model
 ──────────────
 Only a safe-listed subset of rule_config keys can be overridden.  Infrastructure
-keys (platform, datasource, repo_url, tenant_id, token, secrets, repositories,
+keys (platform, datasource, repo_url, token, secrets, repositories,
 self_heal, and Celery wiring) are always taken from the central bundle and
-cannot be changed by the repo.
+cannot be changed by the repo. The tenant is not a key at all: it is the one that
+owns the pushed repository, and a tenant_id in vartrack.json is dropped with a warning.
 
 Schema registry
 ───────────────
@@ -61,10 +62,10 @@ _OVERRIDABLE_KEYS: frozenset[str] = REPO_OVERRIDABLE
 class RepoConfigError(ValueError):
     """A vartrack.json that is there but cannot be used: not JSON, not an
     object, or naming a preset that cannot be read. The sync stops — it does
-    not go ahead without settings the repository asked for (a dry_run, say)."""
+    not go ahead without settings the repository asked for (a branch_map, say)."""
 
 
-def apply_repo_overrides(ctx: "PayloadContext") -> "PayloadContext":
+def apply_repo_overrides(ctx: "PayloadContext", tenant_id: str | None = None) -> "PayloadContext":
     """
     Fetch vartrack.json from the repository and merge its settings into
     ctx.rule_config, returning an updated PayloadContext.
@@ -75,11 +76,15 @@ def apply_repo_overrides(ctx: "PayloadContext") -> "PayloadContext":
     - vartrack.json contains no overridable keys
 
     Raises RepoConfigError when vartrack.json is not a JSON object, or a
-    preset it extends cannot be resolved.
+    preset it extends cannot be resolved, or comes from a repository that is not
+    one of *tenant_id*'s preset sources (presets.Scope).
     """
     from app.pipeline.git_extractor import GitExtractor
 
-    token = ctx.rule_config.get("token")
+    from app.dependencies import SourceUnavailable
+    from app.pipeline.git_credentials import credential_for
+
+    token = credential_for(ctx.rule_config, ctx.repo_url)
     content, name = None, VARTRACK_JSON
     try:
         extractor = GitExtractor()
@@ -89,12 +94,12 @@ def apply_repo_overrides(ctx: "PayloadContext") -> "PayloadContext":
             )
             if content is not None:
                 break
-    except Exception:
-        logger.warning(
-            "repo_overrides: failed to fetch %s repo=%s ref=%s",
-            name, ctx.repo_url, ctx.ref,
-        )
-        return ctx
+    except SourceUnavailable:
+        # The repository cannot be read: the sync could not read its files either, and a
+        # repository's own settings are not to be skipped because they could not be fetched.
+        raise
+    except Exception as exc:
+        raise RepoConfigError(f"{name} in {ctx.repo_url} could not be fetched: {exc}") from exc
 
     if content is None:
         logger.debug(
@@ -115,15 +120,18 @@ def apply_repo_overrides(ctx: "PayloadContext") -> "PayloadContext":
 
     if overrides.get("extends"):
         # Presets: "local>" is the repo's own Git server.
-        from app.pipeline.presets import Origin, PresetError, Resolver
+        from app.pipeline.presets import Origin, PresetError, Resolver, scope_of
         try:
-            overrides = Resolver(Origin.of(ctx.repo_url, token)).resolve(overrides)
+            scope = scope_of(tenant_id or ctx.rule_config.get("tenant_id"))
+            overrides = Resolver(Origin.of(ctx.repo_url, token), scope=scope).resolve(overrides)
         except PresetError as exc:
             raise RepoConfigError(f"{name} in {ctx.repo_url}: {exc}") from exc
 
     overrides = with_current_names(overrides, f"{name} in {ctx.repo_url}")
+    from app.pipeline.rule_layers import warn_tenant_claim
+    warn_tenant_claim(overrides, f"{name} in {ctx.repo_url}", "the one that owns the pushed repository")
     applicable = {k: v for k, v in overrides.items() if k in _OVERRIDABLE_KEYS}
-    blocked    = set(overrides) - _OVERRIDABLE_KEYS
+    blocked    = set(overrides) - _OVERRIDABLE_KEYS - {"tenant_id"}   # that one was warned about above
     if blocked:
         logger.info(
             "repo_overrides: ignoring non-overridable keys %s repo=%s",

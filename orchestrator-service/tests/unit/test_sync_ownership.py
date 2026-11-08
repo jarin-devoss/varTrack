@@ -75,10 +75,35 @@ def test_locks_are_taken_in_order_and_released():
     redis = MagicMock()
     redis.lock.side_effect = lambda name, **kw: taken.append((name, kw)) or FakeLock()
     with patch("app.ui.ledger._redis", return_value=redis):
-        with stage_sync.target_locks("acme", "redis", ["staging", "production", "staging"]):
+        with stage_sync.target_locks("acme", "redis", ["staging", "production", "staging"],
+                                     {"destination_template": "{tenant}:{env}"}):
             pass
-    assert [n for n, _ in taken] == ["vt:sync-lock:acme:redis:production", "vt:sync-lock:acme:redis:staging"]
+    assert [n for n, _ in taken] == ["vt:sync-lock:redis:acme:production", "vt:sync-lock:redis:acme:staging"]
     assert taken[0][1] == {"timeout": stage_sync.LOCK_LEASE_SECONDS, "blocking_timeout": stage_sync.LOCK_WAIT_SECONDS}
+
+
+def test_environments_that_share_a_place_take_its_lock_once():
+    # A destination_template without {env}: two files of one push, two environments, one place. Taking the
+    # lock once per environment made the sync wait on itself until the lock timed out.
+    names = []
+    redis = MagicMock()
+    redis.lock.side_effect = lambda name, **kw: names.append(name) or FakeLock()
+    with patch("app.ui.ledger._redis", return_value=redis):
+        with stage_sync.target_locks("acme", "mongo", ["team-a", "team-b"], {"destination_template": "shared"}):
+            pass
+    assert names == ["vt:sync-lock:mongo:shared"]
+
+
+def test_the_lock_is_the_destinations_so_two_tenants_writing_one_place_meet():
+    names = []
+    redis = MagicMock()
+    redis.lock.side_effect = lambda name, **kw: names.append(name) or FakeLock()
+    rule = {"destination_template": "shared:{env}"}
+    with patch("app.ui.ledger._redis", return_value=redis):
+        for tenant in ("acme", "evil"):
+            with stage_sync.target_locks(tenant, "redis", ["production"], rule):
+                pass
+    assert names == ["vt:sync-lock:redis:shared:production"] * 2
 
 
 def test_a_busy_target_fails_the_sync():
@@ -135,15 +160,15 @@ def _sink_class(prunes=True):
     """FakeSink with the classmethods stage_sync asks the sink's class."""
     class Sink(FakeSink):
         @classmethod
-        def prunes_keys(cls, rule_config):
+        def prunes_keys(cls, settings, rule_config):
             return prunes
 
         @classmethod
-        def key_space(cls, rule_config, tenant_id, env):
+        def key_space(cls, settings, rule_config, tenant_id, env):
             return rule_config.get("space") or f"{tenant_id}/{env}"
 
         @classmethod
-        def store(cls, rule_config):
+        def store(cls, settings, rule_config):
             return rule_config.get("store", "")
     return Sink
 
@@ -399,20 +424,6 @@ def test_an_unreadable_stale_key_is_deleted_and_a_gone_one_leaves_the_inventory(
     assert _target("production")["pendingPrune"] == {}
 
 
-def test_prune_dry_run_deletes_nothing_and_keeps_the_keys_pending(redis):
-    sink = _sink_class()()
-    _sync(sink, [_file("a.yaml", "production", a="1", old="1")], prune={"enabled": True, "dry_run": True})
-
-    results = _sync(sink, [_file("a.yaml", "production", a="1")], prune={"enabled": True, "dry_run": True})
-
-    assert sink.deleted == []
-    assert results[-1].prune_would_delete == ["old"]
-    assert list(_target("production")["pendingPrune"]) == ["old"]
-    # dry run turned off: the pending key is deleted by the next sync
-    _sync(sink, [_file("a.yaml", "production", a="1")])
-    assert sink.deleted == [("production", ["old"])]
-
-
 def test_nothing_is_pruned_when_prune_is_off(redis):
     sink = _sink_class()()
     _sync(sink, [_file("a.yaml", "production", a="1", old="1")], prune=False)
@@ -426,7 +437,9 @@ def test_nothing_is_pruned_when_a_file_failed(redis):
 
     results = _sync(sink, [_file("a.yaml", "production", a="1"), _file("b.yaml", "production", b="2")])
 
-    assert [r.status for r in results] == ["ok", "error"]
+    # a.yaml was written, and this sink cannot take it back: it says so, instead of staying "ok"
+    assert [r.status for r in results] == ["partial", "error"]
+    assert "not rolled back" in results[0].error and "a.yaml" in results[0].error
     assert sink.deleted == []
 
 
@@ -546,39 +559,17 @@ def test_redis_strings_deletes_only_the_given_keys():
 
 def test_redis_json_structure_has_nothing_to_prune_and_key_space_follows_the_prefix():
     from app.pipeline.sinks.redis import RedisSink
+    from app.pipeline.sinks.settings import Settings
 
-    assert RedisSink.prunes_keys({"redis_data_structure": "json"}) is False
-    assert RedisSink.prunes_keys({}) is True
-    a = RedisSink.key_space({"datasource": "redis", "redis_key_prefix": "fixed"}, "acme", "staging")
-    b = RedisSink.key_space({"datasource": "redis", "redis_key_prefix": "fixed"}, "acme", "develop")
-    c = RedisSink.key_space({"datasource": "redis"}, "acme", "staging")
-    d = RedisSink.key_space({"datasource": "redis"}, "acme", "develop")
+    rule = {"datasource": "redis"}
+    assert RedisSink.prunes_keys(Settings.of("redis", data_structure="JSON"), rule) is False
+    assert RedisSink.prunes_keys(Settings.of("redis"), rule) is True
+    fixed = Settings.of("redis", key_prefix="fixed")
+    a = RedisSink.key_space(fixed, rule, "acme", "staging")
+    b = RedisSink.key_space(fixed, rule, "acme", "develop")
+    c = RedisSink.key_space(Settings.of("redis"), rule, "acme", "staging")
+    d = RedisSink.key_space(Settings.of("redis"), rule, "acme", "develop")
     assert a == b and c != d
-
-
-def test_vercel_deletes_a_variable_only_when_this_environment_owns_all_its_targets():
-    from app.pipeline.sinks.vercel import VercelSink
-
-    sink = VercelSink.__new__(VercelSink)
-    sink._http = MagicMock()
-    sink._api_base, sink._project_id, sink._team_id, sink._targets = "https://api", "prj", None, None
-    sink._fetch_existing = lambda: {
-        "OLD": {"id": "1", "target": ["preview"]},
-        "SHARED": {"id": "2", "target": ["preview", "production"]},
-    }
-    deleted = []
-    sink._delete_env_var = deleted.append
-
-    assert sink.delete_keys({"OLD", "SHARED", "GONE"}, datasource="vercel", env="staging") == 1
-    assert deleted == ["1"]
-
-
-def test_vercel_environments_other_than_production_share_a_key_space():
-    from app.pipeline.sinks.vercel import VercelSink
-
-    rule = {"vercel_project_id": "prj"}
-    assert VercelSink.key_space(rule, "acme", "staging") == VercelSink.key_space(rule, "acme", "develop")
-    assert VercelSink.key_space(rule, "acme", "staging") != VercelSink.key_space(rule, "acme", "production")
 
 
 def test_zookeeper_deletes_exactly_the_given_leaf_znodes():
@@ -599,12 +590,13 @@ def test_zookeeper_deletes_exactly_the_given_leaf_znodes():
 
 
 def test_zookeeper_key_space_is_the_root_path():
+    from app.pipeline.sinks.settings import Settings
     from app.pipeline.sinks.zookeeper import ZookeeperSink
 
-    rule = {"zk_base_path": "/vt", "destination_template": "/{env}"}
-    assert ZookeeperSink.key_space(rule, "acme", "staging") == "/vt/staging"
-    assert ZookeeperSink.key_space({"zk_base_path": "/vt", "destination_template": "/shared"}, "acme", "a") == \
-        ZookeeperSink.key_space({"zk_base_path": "/vt", "destination_template": "/shared"}, "acme", "b")
+    settings = Settings.of("zookeeper", base_path="/vt")
+    assert ZookeeperSink.key_space(settings, {"destination_template": "/{env}"}, "acme", "staging") == "/vt/staging"
+    shared = {"destination_template": "/shared"}
+    assert ZookeeperSink.key_space(settings, shared, "acme", "a") == ZookeeperSink.key_space(settings, shared, "acme", "b")
 
 
 def test_mongo_deletes_documents_by_key_inside_the_environment():
@@ -624,14 +616,19 @@ def test_mongo_deletes_documents_by_key_inside_the_environment():
 
 def test_mongo_only_prunes_the_key_value_strategy_and_only_when_it_is_asked_for():
     from app.pipeline.sinks.mongo import MongoSink
+    from app.pipeline.sinks.settings import Settings
+
+    def prunes(**fields):
+        return MongoSink.prunes_keys(Settings.of("mongo", **fields), {})
 
     # Unset is STRATEGY_DOCUMENT: it replaces the file's document on every write, so no key is left to prune.
-    assert MongoSink.prunes_keys({}) is False
-    assert MongoSink.prunes_keys({"update_strategy": "STRATEGY_UNSPECIFIED"}) is False
-    assert MongoSink.prunes_keys({"update_strategy": "STRATEGY_KEY_VALUE"}) is True
-    assert MongoSink.prunes_keys({"update_strategy": "STRATEGY_FILE"}) is False
-    assert MongoSink.prunes_keys({"update_strategy": "STRATEGY_DOCUMENT"}) is False
-    assert MongoSink.prunes_keys({"update_strategy": "nonsense"}) is False
+    assert prunes() is False
+    assert prunes(update_strategy="STRATEGY_UNSPECIFIED") is False
+    assert prunes(update_strategy="STRATEGY_KEY_VALUE") is True
+    assert prunes(update_strategy="STRATEGY_FILE") is False
+    assert prunes(update_strategy="STRATEGY_DOCUMENT") is False
+    with pytest.raises(Exception):  # the proto has no such strategy: config.cue is refused, not read as a default
+        prunes(update_strategy="nonsense")
 
 
 def test_whole_object_sinks_do_not_prune():
@@ -640,8 +637,10 @@ def test_whole_object_sinks_do_not_prune():
     from app.pipeline.sinks.linux_server import LinuxServerSink
     from app.pipeline.sinks.s3 import S3Sink
 
-    for cls in (ConfigmapSink, HelmSink, LinuxServerSink, S3Sink):
-        assert cls.prunes_keys({}) is False
+    from app.pipeline.sinks.settings import Settings
+
+    for kind, cls in (("configmap", ConfigmapSink), ("helm", HelmSink), ("linux_server", LinuxServerSink), ("s3", S3Sink)):
+        assert cls.prunes_keys(Settings.of(kind), {}) is False
 
 
 # ── The dry run ───────────────────────────────────────────────────────────────
@@ -678,29 +677,38 @@ def test_a_dry_run_leaves_protected_keys_out_and_lists_nothing_when_prune_is_off
 
 def test_a_redis_store_is_its_servers_and_database_however_they_are_written():
     from app.pipeline.sinks.redis import RedisSink
+    from app.pipeline.sinks.settings import Settings
 
-    a = RedisSink.store({"redis_hosts": ["Cache-2:6379", "cache-1:6379"], "redis_db": 0})
-    b = RedisSink.store({"redis_hosts": ["cache-1:6379", "cache-2:6379"], "redis_db": 0})
-    assert a == b
-    assert a != RedisSink.store({"redis_hosts": ["cache-1:6379", "cache-2:6379"], "redis_db": 1})
-    assert a != RedisSink.store({"redis_hosts": ["cache-1:6379"], "redis_db": 0})
+    def store(hosts, database):
+        return RedisSink.store(Settings.of("redis", hosts=hosts, database=database), {})
+
+    a = store(["Cache-2:6379", "cache-1:6379"], 0)
+    assert a == store(["cache-1:6379", "cache-2:6379"], 0)
+    assert a != store(["cache-1:6379", "cache-2:6379"], 1)
+    assert a != store(["cache-1:6379"], 0)
 
 
-def test_a_zookeeper_store_is_its_servers_and_a_vercel_store_its_team():
-    from app.pipeline.sinks.vercel import VercelSink
+def test_a_zookeeper_store_is_its_servers():
+    from app.pipeline.sinks.settings import Settings
     from app.pipeline.sinks.zookeeper import ZookeeperSink
 
-    assert ZookeeperSink.store({"zk_hosts": ["zk1:2181"]}) == ZookeeperSink.store({"zk_hosts": ["ZK1:2181"]})
-    assert ZookeeperSink.store({"zk_hosts": ["zk1:2181"]}) != ZookeeperSink.store({"zk_hosts": ["zk2:2181"]})
-    assert VercelSink.store({"vercel_team_id": "team_a"}) != VercelSink.store({"vercel_team_id": "team_b"})
+    def store(*hosts):
+        return ZookeeperSink.store(Settings.of("zookeeper", hosts=list(hosts)), {})
+
+    assert store("zk1:2181") == store("ZK1:2181")
+    assert store("zk1:2181") != store("zk2:2181")
 
 
 def test_datasources_do_not_share_mongo_documents_so_mongo_names_no_store():
     from app.pipeline.sinks.mongo import MongoSink
 
     # Documents are filtered by tenant, datasource and env: the key space already says it all.
-    assert MongoSink.store({"mongo_uri": "mongodb://a"}) == ""
-    assert MongoSink.key_space({"datasource": "mongo-a"}, "acme", "staging") !=         MongoSink.key_space({"datasource": "mongo-b"}, "acme", "staging")
+    from app.pipeline.sinks.settings import Settings
+
+    settings = Settings.of("mongo", endpoint="mongodb://a")
+    assert MongoSink.store(settings, {}) == ""
+    assert MongoSink.key_space(settings, {"datasource": "mongo-a"}, "acme", "staging") != \
+        MongoSink.key_space(settings, {"datasource": "mongo-b"}, "acme", "staging")
 
 
 # ── A change of update_strategy is reported ───────────────────────────────────

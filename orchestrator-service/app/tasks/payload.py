@@ -61,11 +61,6 @@ def extract_changed_filenames(payload: dict, platform: str) -> list[str]:
     return list(names)
 
 
-def token_from_headers(headers: dict[str, str]) -> str | None:
-    auth = headers.get("authorization", headers.get("Authorization", ""))
-    return auth[7:] if auth.startswith("Bearer ") else None
-
-
 # ── Structured prune config ───────────────────────────────────────────────────
 
 class PruneConfig:
@@ -74,35 +69,30 @@ class PruneConfig:
 
     All valid forms::
 
-        prune: true                              # enabled, dry_run=false
+        prune: true                              # enabled
         prune: false                             # disabled
-        prune: { dry_run: true }                 # enabled, deletes only simulated
 
-    The structured form may also carry an explicit ``enabled`` key, and the
-    glob patterns of keys never to delete (the proto's PruneConfig)::
+    The structured form carries an explicit ``enabled`` key, and the glob
+    patterns of keys never to delete (the proto's PruneConfig)::
 
-        prune: { enabled: false, dry_run: false }  # disabled
+        prune: { enabled: false }                # disabled
         prune: { enabled: true, protection: ["SYSTEM_*"] }
         prune: { protection: ["SYSTEM_*"] }      # disabled: protection only
 
     Prune runs once per environment, after all its files are written, so the
-    former ``last`` key has nothing left to do. It is not read, and it does
-    not enable prune: ``prune: { last: true }`` is a disabled block.
+    former ``last`` key has nothing left to do, and ``dry_run`` (report what
+    would be deleted, delete nothing) is a dry run's job: neither is read, and
+    neither enables prune. ``prune: { last: true }`` is a disabled block.
     """
 
-    __slots__ = ("enabled", "dry_run", "protection")
+    __slots__ = ("enabled", "protection")
 
-    def __init__(self, enabled: bool, dry_run: bool, protection: list[str] | None = None) -> None:
+    def __init__(self, enabled: bool, protection: list[str] | None = None) -> None:
         self.enabled    = enabled
-        self.dry_run    = dry_run
         self.protection = list(protection or [])
 
     def __repr__(self) -> str:
-        return f"PruneConfig(enabled={self.enabled}, dry_run={self.dry_run}, protection={self.protection})"
-
-    def with_dry_run(self) -> "PruneConfig":
-        """Return a copy with dry_run forced to True (used by the dry-run route)."""
-        return PruneConfig(enabled=self.enabled, dry_run=True, protection=self.protection)
+        return f"PruneConfig(enabled={self.enabled}, protection={self.protection})"
 
 
 def extract_prune_config(rule_config: dict) -> PruneConfig:
@@ -110,21 +100,15 @@ def extract_prune_config(rule_config: dict) -> PruneConfig:
     Parse ``rule_config["prune"]`` into a :class:`PruneConfig`.
 
     Supports both the structured form and the legacy boolean form. The flat
-    keys dry_run_prune and prune_protection (the proto's former fields, still
-    found in bundle.json files) fill what the structured form leaves out.
+    key prune_protection (the proto's former field, still found in bundle.json
+    files) fills what the structured form leaves out.
     """
     raw = rule_config.get("prune", False)
-    dry_run = bool(rule_config.get("dry_run_prune", False))
     protection = list(rule_config.get("prune_protection") or [])
 
     if isinstance(raw, dict):
-        return PruneConfig(
-            # A block that sets dry_run means enabled; one that only lists
-            # protection (a preset's) does not.
-            enabled=bool(raw.get("enabled", "dry_run" in raw)),
-            dry_run=bool(raw.get("dry_run", dry_run)),
-            protection=list(raw.get("protection") or protection),
-        )
+        # A block that only lists protection (a preset's) is not enabled.
+        return PruneConfig(enabled=bool(raw.get("enabled", False)), protection=list(raw.get("protection") or protection))
 
     # Legacy boolean: prune: true / false
-    return PruneConfig(enabled=bool(raw), dry_run=dry_run, protection=protection)
+    return PruneConfig(enabled=bool(raw), protection=protection)

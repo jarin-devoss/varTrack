@@ -42,7 +42,8 @@ class KeyValueStrategy(MongoWriteStrategy):
         update_strategy changed to key-value. Returns how many were removed."""
         return deleted(collection.delete_many({**doc_filter, "_vt_file": file_path, "data": {"$exists": True}}))
 
-    def upsert(self, collection, flat_data, doc_filter, commit_sha, file_path, meta, data=None) -> Written:
+    def upsert(self, collection, flat_data, doc_filter, commit_sha, file_path, meta, data=None,
+               session=None) -> Written:
         replaced = self._drop_file_document(collection, doc_filter, file_path)
         if not flat_data:
             return Written(0, replaced)
@@ -69,7 +70,8 @@ class KeyValueStrategy(MongoWriteStrategy):
                 time.sleep(0.1 * (attempt + 1))
         return Written(len(flat_data), replaced)
 
-    def repair(self, collection, flat_data, doc_filter, commit_sha, file_path, meta, data=None) -> Written:
+    def repair(self, collection, flat_data, doc_filter, commit_sha, file_path, meta, data=None,
+               session=None) -> Written:
         replaced = self._drop_file_document(collection, doc_filter, file_path)
         try:
             from vartrack_core import py_diff  # type: ignore[import]

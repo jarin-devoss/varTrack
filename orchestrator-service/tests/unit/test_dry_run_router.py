@@ -86,16 +86,7 @@ async def test_dry_run_forces_dry_run_flag_in_task():
                 headers={"x-github-event": "push", "x-tenant-id": "acme"},
             )
 
-    rule = captured.get("rule_config", {})
-    prune = rule.get("prune", {}) if isinstance(rule.get("prune"), dict) else {}
-    # Either the rule_config.prune.dry_run is True, or a top-level dry_run kwarg
-    # is passed — implementation-dependent, but dry_run must appear somewhere.
-    is_dry = (
-        captured.get("dry_run") is True
-        or prune.get("dry_run") is True
-        or (isinstance(rule.get("dry_run_prune"), bool) and rule.get("dry_run_prune"))
-    )
-    assert is_dry, f"dry_run not enforced in task kwargs: {captured}"
+    assert captured.get("dry_run") is True, f"dry_run not enforced in task kwargs: {captured}"
 
 
 @pytest.mark.asyncio
@@ -143,14 +134,9 @@ async def test_dry_run_route_does_not_conflict_with_webhook_route():
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("prune,want", [
-    (True, {"enabled": True, "dry_run": True, "protection": []}),
-    (False, {"enabled": False, "dry_run": True, "protection": []}),
-    ({"enabled": True, "protection": ["keep.*"]}, {"enabled": True, "dry_run": True, "protection": ["keep.*"]}),
-    ({"protection": ["keep.*"]}, {"enabled": False, "dry_run": True, "protection": ["keep.*"]}),
-])
-async def test_dry_run_forces_the_prune_dry_run_but_not_prune_on(prune, want):
-    """A dry run never deletes, and a rule that does not prune does not start to."""
+@pytest.mark.parametrize("prune", [True, False, {"enabled": True, "protection": ["keep.*"]}, {"protection": ["keep.*"]}])
+async def test_a_dry_run_is_the_tasks_own_flag_and_the_rule_is_passed_on_as_it_is(prune):
+    """The dry run is the request's; it does not rewrite the rule (no `dry_run` in it, the prune block untouched)."""
     app = _app({"tenant_id": "acme", "prune": prune})
     captured: dict = {}
 
@@ -164,4 +150,6 @@ async def test_dry_run_forces_the_prune_dry_run_but_not_prune_on(prune, want):
             await c.post("/v1/webhooks/mongo/dry-run", content=b"{}",
                          headers={"x-github-event": "push", "x-tenant-id": "acme"})
 
-    assert captured["rule_config"]["prune"] == want
+    assert captured["dry_run"] is True
+    assert captured["rule_config"]["prune"] == prune
+    assert "dry_run" not in captured["rule_config"]

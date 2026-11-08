@@ -14,7 +14,9 @@ rule.proto and nowhere here:
     TYPES             what JSON type each takes
     STRING_MAPS       the options that are maps of strings
     MERGEABLE         merged key by key across layers
+    SETTABLE_IN       the layer furthest from the operator that may set each option
     ADMIN_ONLY        only config.cue sets them
+    TENANT_SETTABLE   a tenant's bundle.json may set them (and a repository's, if allowed)
     REPO_OVERRIDABLE  a repository's vartrack.json may set them
     RENAMED           option names that were renamed, old → current
 """
@@ -79,11 +81,35 @@ STRING_MAPS: tuple[str, ...] = tuple(
 # Merged key by key when two layers set them.
 MERGEABLE: tuple[str, ...] = tuple(name for name, field in FIELDS.items() if _config(field).mergeable)
 
+CONFIG_CUE = options_pb2.CONFIG_CUE
+BUNDLE_JSON = options_pb2.BUNDLE_JSON
+VARTRACK_JSON = options_pb2.VARTRACK_JSON
+
+
+def _settable_in(field: FieldDescriptor) -> int:
+    """The layer furthest from the operator that may set *field*: what it says in
+    settable_in, else what the two booleans it used to say amount to, else a
+    tenant's bundle.json."""
+    option = _config(field)
+    if option.settable_in != options_pb2.LAYER_UNSPECIFIED:
+        return option.settable_in
+    if option.admin_only:
+        return CONFIG_CUE
+    if option.repo_overridable:
+        return VARTRACK_JSON
+    return BUNDLE_JSON
+
+
+SETTABLE_IN: dict[str, int] = {name: _settable_in(field) for name, field in FIELDS.items()}
+
 # Only config.cue sets them.
-ADMIN_ONLY: frozenset[str] = frozenset(name for name, field in FIELDS.items() if _config(field).admin_only)
+ADMIN_ONLY: frozenset[str] = frozenset(name for name, layer in SETTABLE_IN.items() if layer == CONFIG_CUE)
+
+# What a tenant's bundle.json may set: every option not reserved to config.cue.
+TENANT_SETTABLE: frozenset[str] = frozenset(name for name, layer in SETTABLE_IN.items() if layer != CONFIG_CUE)
 
 # What a repository's vartrack.json may set.
-REPO_OVERRIDABLE: frozenset[str] = frozenset(name for name, field in FIELDS.items() if _config(field).repo_overridable)
+REPO_OVERRIDABLE: frozenset[str] = frozenset(name for name, layer in SETTABLE_IN.items() if layer == VARTRACK_JSON)
 
 
 def _renamed() -> dict[str, str]:

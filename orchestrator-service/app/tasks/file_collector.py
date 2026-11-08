@@ -41,7 +41,9 @@ def collect(
                   whatever the ref points to by now
     """
     extractor = GitExtractor()
-    token     = rule_config.get("token")
+    from app.pipeline.git_credentials import credential_for
+
+    token     = credential_for(rule_config, repo_url)
     commit    = revision or None
 
     # Strategy 1 – single tracked file

@@ -20,6 +20,18 @@ FROM golang:1.27-alpine@sha256:f92b6ef800e499660581efdabdf25d9d817a9d124eaf90092
 ARG CUE_VERSION=v0.16.0
 RUN go install cuelang.org/go/cmd/cue@${CUE_VERSION}
 
+# ─── Stage 0c: vartrack-bundle ───────────────────────────────────────────────
+# The program that reads config.cue for the orchestrator exactly as the gateway and
+# the watcher do (libs/go/bundle): one CUE evaluation, one set of shorthands and renamed
+# options, one strict parse against the protos. The orchestrator is handed its output
+# and does not read config.cue with rules of its own.
+FROM golang:1.27-alpine@sha256:f92b6ef800e499660581efdabdf25d9d817a9d124eaf900924f0504e7e27e12d AS bundle-builder
+WORKDIR /src/libs/go
+COPY libs/go/go.mod libs/go/go.sum ./
+RUN go mod download
+COPY libs/go ./
+RUN CGO_ENABLED=0 go build -trimpath -o /out/vartrack-bundle ./cmd/vartrack-bundle
+
 # ─── Stage 1: Python dependency builder ──────────────────────────────────────
 # Install Python deps into a separate layer so the runtime image only copies
 # the site-packages directory (not pip / build toolchain).
@@ -93,6 +105,9 @@ RUN apt-get update \
 
 # CUE binary compiled from source.
 COPY --from=cue-builder /go/bin/cue /usr/local/bin/cue
+
+# Reads config.cue as the gateway does (see stage 0c).
+COPY --from=bundle-builder /out/vartrack-bundle /usr/local/bin/vartrack-bundle
 
 # Python packages from builder.
 COPY --from=builder /usr/local/lib/python3.14/site-packages \

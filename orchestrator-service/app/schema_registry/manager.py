@@ -26,10 +26,12 @@ The manager:
 4. Parses bundle.json (if present) so workers can resolve rule_config
    locally without a round-trip to the API.
 
-Tenant repos are configured via env vars:
+A tenant's schema repository is the operator's to register: the ``schema_repo`` of a tenant
+declared in config.cue. A request never registers or changes one. (Before tenants were
+declared, env vars did it; they are still read, with a warning, for one release:
     SCHEMA_TENANT_<ID>_REPO    git clone URL
     SCHEMA_TENANT_<ID>_BRANCH  branch (default: main)
-    SCHEMA_TENANT_<ID>_TOKEN   optional auth token
+    SCHEMA_TENANT_<ID>_TOKEN   optional auth token)
 """
 from __future__ import annotations
 
@@ -46,7 +48,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
 
+from app import dependencies
 from app.config import settings
+from app.dependencies import SchemaUnavailable, SecretUnavailable
 from app.pipeline.renamed_options import with_current_names
 
 logger = logging.getLogger(__name__)
@@ -72,9 +76,48 @@ class _TenantEntry:
     # Why bundle.json (or a preset it extends) could not be used; the tenant
     # then has no rules.
     bundle_error: str = ""
+    # The clone itself failed: this entry holds nothing, and is tried again once it is stale.
+    clone_failed: bool = False
+    # The tenant's schema generation (see _published_generation) when this entry was fetched.
+    generation: int = 0
 
-    def is_stale(self) -> bool:
-        return (time.time() - self.fetched_at) > settings.SCHEMA_TTL_SECONDS
+    def is_stale(self, published: int = 0) -> bool:
+        """Older than the TTL, or fetched at another generation than the tenant's schemas are at now."""
+        # "Another", not "an older one": the generation is only a label for a state of the schemas. A
+        # counter Redis lost (a restart, a flush) starts again from 1; the schemas may have changed in
+        # between, so a clone fetched at a different number is fetched again.
+        return (time.time() - self.fetched_at) > settings.SCHEMA_TTL_SECONDS or self.generation != published
+
+
+# Every process (the API, each worker of the pool) keeps its own clones. invalidate() — a push to
+# the schema repository, a warm-up — runs in one of them, so it also advances a counter (the tenant's
+# schema generation) in Redis; every other process sees that its clone was fetched at another number
+# and fetches before it is used again. It is a counter, never a time: clocks differ between
+# containers and hosts and can step back, and a "newer" time that is numerically smaller is not seen.
+# (a name of its own: an INCR on a key that holds anything but an integer fails)
+_GENERATION_KEY = "schema_generation_counter:{tenant}"
+_GENERATION_TTL = 30 * 24 * 3600
+
+
+def _published_generation(tenant_id: str) -> int:
+    try:
+        from app.utils.redis_cache import get_cache as _get_cache
+        rc = _get_cache()
+        value = rc.get(_GENERATION_KEY.format(tenant=tenant_id)) if rc is not None else None
+        return int(value or 0)
+    except Exception:
+        return 0   # no Redis: the TTL alone decides, as before
+
+
+def _publish_generation(tenant_id: str) -> None:
+    try:
+        from app.utils.redis_cache import get_cache as _get_cache
+        rc = _get_cache()
+        if rc is not None and rc.incr(_GENERATION_KEY.format(tenant=tenant_id), ttl=_GENERATION_TTL) is None:
+            raise RuntimeError("Redis did not take the new generation")
+    except Exception:
+        logger.warning("schema generation of tenant %s not published: other processes refresh on their TTL",
+                       tenant_id)
 
 
 class SchemaRegistryManager:
@@ -85,8 +128,10 @@ class SchemaRegistryManager:
         self._root.mkdir(parents=True, exist_ok=True)
         self._entries: dict[str, _TenantEntry] = {}
         self._tenant_configs: dict[str, dict] = {}
+        self._from_bundle: set[str] = set()     # the entries config.cue's tenants put in _tenant_configs
         self._lock = threading.Lock()
         self._load_env_configs()
+        self.sync_declared()
 
     # ── Public API ────────────────────────────────────────────────────────────
 
@@ -120,6 +165,7 @@ class SchemaRegistryManager:
         """The (tenant, platform, datasource) of the tenants' bundle.json rules.
         A registered tenant not loaded yet is loaded first: until then its
         rules would count as tenant "default"'s."""
+        self.sync_declared()
         with self._lock:
             loaded = {e.tenant_id for e in self._entries.values()}
             missing = [t for t in self._tenant_configs if t not in loaded]
@@ -132,43 +178,100 @@ class SchemaRegistryManager:
             return {(e.tenant_id, r.get("platform"), r.get("datasource"))
                     for e in self._entries.values() for r in e.rules}
 
+    def sync_declared(self) -> None:
+        """Bring the registered schema repositories in line with config.cue's tenants (a
+        declared tenant's schema_repo wins over an env var of the same name; a tenant taken
+        out of config.cue is unregistered). config.cue is re-read when it changes."""
+        from app import tenants
+        from app.pipeline.datasource_settings import _Secrets, _bundle
+
+        try:
+            bundle = _bundle()
+            declared = tenants.declared()
+        except Exception:
+            logger.warning("config.cue's tenants could not be read; keeping the registered schema repositories")
+            return
+        wanted: dict[str, dict] = {}
+        for tenant in declared:
+            repo = tenant.get("schema_repo") or {}
+            if not repo.get("repo"):
+                continue
+            secret = _Secrets(bundle, f"tenant {tenant['name']}", repo.get("secret_manager") or "")
+            registration = {"repo_url": repo["repo"], "branch": repo.get("branch") or "main", "token": None}
+            try:
+                if "://" not in repo["repo"] and not repo["repo"].startswith("git@"):
+                    # "owner/name" on a platform: the clone URL is that platform's server and the
+                    # name; with no token of its own the tenant's schema repository is read with the
+                    # platform's, which is the one the operator named for it.
+                    from app.pipeline.presets import PresetError, _platform
+                    try:
+                        endpoint, platform_token = _platform(str(repo.get("platform") or ""))
+                    except PresetError as exc:
+                        raise SchemaUnavailable(
+                            f"schema_repo {repo['repo']!r} names the platform {repo.get('platform')!r}: {exc}") from exc
+                    registration["repo_url"] = f"{endpoint}/{repo['repo'].strip('/')}.git"
+                    registration["token"] = platform_token
+                if repo.get("token"):
+                    registration["token"] = secret(repo.get("token"), "schema_repo.token")
+            except (SecretUnavailable, SchemaUnavailable) as exc:
+                # An anonymous clone, or a clone of "owner/name" as if it were a URL, would fail with
+                # a message about the wrong thing: say what it is, and let the tenant's sync fail with that.
+                registration["error"] = exc.reason
+                dependencies.down(f"schemas:{tenant['name']}", exc.reason)
+            wanted[tenant["name"]] = registration
+        with self._lock:
+            for name in getattr(self, "_from_bundle", set()) - set(wanted):
+                self._tenant_configs.pop(name, None)
+            self._tenant_configs.update(wanted)
+            self._from_bundle = set(wanted)
+
+    def registration(self, tenant_id: str) -> dict:
+        """The schema repository registered for *tenant_id* ({} when none): repo_url, branch,
+        token."""
+        self.sync_declared()
+        with self._lock:
+            return dict(self._tenant_configs.get(tenant_id) or {})
+
     def list_tenant_ids(self) -> list[str]:
-        """Return all registered tenant IDs (from env-var config or runtime registration)."""
+        """Every tenant with a registered schema repository (declared in config.cue, or from
+        the deprecated env vars)."""
+        self.sync_declared()
         with self._lock:
             return list(self._tenant_configs.keys())
 
-    def register_tenant(
-        self,
-        tenant_id: str,
-        repo_url: str,
-        branch: str = "main",
-        token: Optional[str] = None,
-    ) -> None:
-        """Register (or update) a tenant's schema repo at runtime."""
-        with self._lock:
-            self._tenant_configs[tenant_id] = {
-                "repo_url": repo_url,
-                "branch":   branch,
-                "token":    token,
-            }
-        logger.info("registered schema repo tenant=%s repo=%s", tenant_id, repo_url)
+    def tenant_for_repo(self, repo: str) -> Optional[str]:
+        """The tenant whose registered schema repository is *repo* ("owner/name", or a clone
+        URL), else None. A schema push belongs to that tenant and to no other: it is what a
+        push says it came from, checked against what an operator registered, never the other
+        way round."""
+        from app.ui.ledger import repo_name
 
-    def get_or_clone(
-        self,
-        tenant_id: str,
-        repo_url: Optional[str] = None,
-        branch: Optional[str] = None,
-        token: Optional[str] = None,
-    ) -> Path:
+        self.sync_declared()
+        wanted = repo_name(repo).lower()
+        with self._lock:
+            for tenant_id, cfg in self._tenant_configs.items():
+                if cfg.get("repo_url") and repo_name(cfg["repo_url"]).lower() == wanted:
+                    return tenant_id
+        return None
+
+    def registered_branch(self, tenant_id: str) -> str:
+        """The branch of the tenant's registered schema repository."""
+        return self.registration(tenant_id).get("branch", "main")
+
+    def get_or_clone(self, tenant_id: str) -> Path:
         """
-        Return local path of the tenant's schema clone.
-        Clones on first call; re-fetches on TTL expiry.
-        *branch* defaults to the tenant's registered branch, then "main".
+        Return local path of the tenant's schema clone, from the repository, branch and
+        credential an operator registered for the tenant (SCHEMA_TENANT_<ID>_REPO, …).
+        Clones on first call; re-fetches on TTL expiry. Nothing a request carries chooses
+        what is cloned, or with which credential.
         """
-        cfg = self._tenant_configs.get(tenant_id, {})
-        repo_url = repo_url or cfg.get("repo_url")
-        branch   = branch   or cfg.get("branch", "main")
-        token    = token    or cfg.get("token")
+        cfg = self.registration(tenant_id)
+        if cfg.get("error"):
+            raise SchemaUnavailable(f"tenant {tenant_id}: the schema repository cannot be reached: "
+                                    f"{cfg['error']}", what=tenant_id)
+        repo_url = cfg.get("repo_url")
+        branch   = cfg.get("branch", "main")
+        token    = cfg.get("token")
 
         if not repo_url:
             return self._root / tenant_id   # sentinel (empty dir)
@@ -180,22 +283,29 @@ class SchemaRegistryManager:
         # Hold the lock only to READ cache state, release before network I/O
         # (clone/fetch), then re-acquire to WRITE the result.  This prevents
         # the global lock from being held for the full duration of a git clone.
+        # Read before fetching: a change published while this fetch runs makes it stale again.
+        published = _published_generation(tenant_id)
         with self._lock:
             entry = self._entries.get(cache_key)
-            needs_clone   = entry is None
-            needs_refresh = (not needs_clone) and entry.is_stale()
+            needs_clone   = entry is None or (entry.clone_failed and entry.is_stale(published))
+            needs_refresh = (not needs_clone) and entry.is_stale(published)
 
         if needs_clone:
             # Clone outside the lock — network I/O should never hold a global lock.
             _t = time.perf_counter()
             new_entry = self._clone(tenant_id, repo_url, branch, token)
+            new_entry.generation = published
             _elapsed = time.perf_counter() - _t
             with self._lock:
                 # Double-check: another thread may have cloned while we were busy.
                 existing = self._entries.get(cache_key)
-                if existing is None:
+                if existing is None or existing.clone_failed:
                     self._entries[cache_key] = new_entry
                     entry = new_entry
+                    if new_entry.clone_failed:
+                        dependencies.down(f"schemas:{tenant_id}", new_entry.bundle_error)
+                    else:
+                        dependencies.up(f"schemas:{tenant_id}")
                     logger.info("schema cloned tenant=%s sha=%s", tenant_id, new_entry.commit_sha)
                     m = _m()
                     if m:
@@ -214,10 +324,12 @@ class SchemaRegistryManager:
             try:
                 _t = time.perf_counter()
                 refreshed = self._refresh(entry, token)
+                refreshed.generation = published
                 _elapsed = time.perf_counter() - _t
                 with self._lock:
                     self._entries[cache_key] = refreshed
                     entry = refreshed
+                dependencies.up(f"schemas:{tenant_id}")
                 logger.info("schema refreshed tenant=%s sha=%s", tenant_id, entry.commit_sha)
                 m = _m()
                 if m:
@@ -227,7 +339,8 @@ class SchemaRegistryManager:
                     except Exception:
                         pass
             except Exception as exc:
-                logger.warning("schema refresh failed, using stale: %s", exc)
+                logger.warning("schema refresh failed, using stale: %s", dependencies.scrub(exc))
+                dependencies.stale(f"schemas:{tenant_id}", f"refresh failed: {exc}")
                 m = _m()
                 if m:
                     try:
@@ -251,6 +364,8 @@ class SchemaRegistryManager:
             paths_to_delete = [self._entries.pop(k).local_path for k in keys]
         for path in paths_to_delete:
             shutil.rmtree(path, ignore_errors=True)
+        # The other processes' clones are older now too.
+        _publish_generation(tenant_id)
         # Purge rule-config Redis cache entries for this tenant so workers
         # pick up the new bundle.json on the next resolve_rule() call.
         try:
@@ -261,6 +376,29 @@ class SchemaRegistryManager:
         except Exception:
             pass
         logger.info("schema cache invalidated tenant=%s", tenant_id)
+
+    def schema_commit(self, tenant_id: str) -> str:
+        """The commit of the schema repository this process holds for the tenant, "" when it holds
+        none. A sync reports it, so which schemas validated it is on record."""
+        with self._lock:
+            for key, entry in self._entries.items():
+                if key.startswith(f"{tenant_id}:") and not entry.clone_failed:
+                    return entry.commit_sha
+        return ""
+
+    def current_schema_root(self, tenant_id: str) -> Path:
+        """The tenant's schema dir, fetched first when this process's clone is older than the TTL or
+        than a change another process published. A sync validates against this, never against
+        whatever clone the process happens to hold. When the fetch fails, the clone already held is
+        used (and the dependency is marked stale by get_or_clone)."""
+        try:
+            self.get_or_clone(tenant_id)
+        except SchemaUnavailable:
+            raise
+        except Exception:
+            logger.warning("schema repo of tenant %s could not be refreshed; validating with the clone held",
+                           tenant_id)
+        return self.tenant_schema_root(tenant_id)
 
     def tenant_schema_root(self, tenant_id: str) -> Path:
         """
@@ -309,8 +447,11 @@ class SchemaRegistryManager:
         """
         from app.pipeline.rule_layers import rule_for
         from app.utils.redis_cache import get_cache as _get_cache
-        if self.bundle_error(tenant_id):
-            return None
+        reason = self.bundle_error(tenant_id)
+        if reason:
+            # The tenant's schema repository could not be read or its bundle.json cannot be used:
+            # "no such rule" would be false, and its files must not be written as if it had no schemas.
+            raise SchemaUnavailable(f"tenant {tenant_id}: {reason}", what=tenant_id)
         _rc = _get_cache()
         _cache_key = f"rule:{tenant_id}:{platform}:{datasource}"
         if _rc is not None:
@@ -374,11 +515,15 @@ class SchemaRegistryManager:
                 env=_git_env,
             )
             sha = repo.head.commit.hexsha
+            repo.close()   # GitPython keeps a `git cat-file` process per Repo until it is closed
         except Exception as exc:
-            logger.error("schema clone failed: %s", exc)
-            return self._empty_entry(tenant_id, repo_url, branch, local_dir)
+            reason = dependencies.scrub(exc)
+            logger.error("schema clone failed: %s", reason)
+            return self._empty_entry(tenant_id, repo_url, branch, local_dir,
+                                     bundle_error=f"the schema repository {repo_url} could not be cloned: {reason}")
 
-        rules, bundle_error = _load_bundle_checked(local_dir, repo_url, token)
+        rules, bundle_error = _load_bundle_checked(local_dir, repo_url, token, tenant_id)
+        _log_missing_schemas(tenant_id, local_dir, rules, sha)
         return _TenantEntry(
             tenant_id=tenant_id,
             repo_url=repo_url,
@@ -404,10 +549,21 @@ class SchemaRegistryManager:
             ),
         }
         repo = git.Repo(str(entry.local_path))
-        repo.remote("origin").pull(entry.branch, depth=1, env=_git_env)
-        sha = repo.head.commit.hexsha
+        # The clone is a shallow cache of the remote branch: take what the remote has now, never merge.
+        # A shallow `pull` cannot reconcile a branch it holds one commit of with one that moved on
+        # ("Need to specify how to reconcile divergent branches"), and every refresh after the first
+        # push failed, so the tenant kept validating against, and reading @secret fields from, the
+        # schemas it had when it was first cloned.
+        try:
+            with repo.git.custom_environment(**_git_env):
+                repo.git.fetch("--depth=1", "origin", entry.branch)
+                repo.git.reset("--hard", "FETCH_HEAD")
+            sha = repo.head.commit.hexsha
+        finally:
+            repo.close()   # GitPython keeps a `git cat-file` process per Repo until it is closed
 
-        rules, bundle_error = _load_bundle_checked(entry.local_path, entry.repo_url, token)
+        rules, bundle_error = _load_bundle_checked(entry.local_path, entry.repo_url, token, entry.tenant_id)
+        _log_missing_schemas(entry.tenant_id, entry.local_path, rules, sha)
         return _TenantEntry(
             tenant_id=entry.tenant_id,
             repo_url=entry.repo_url,
@@ -424,6 +580,7 @@ class SchemaRegistryManager:
         repo_url: str,
         branch: str,
         local_path: Optional[Path] = None,
+        bundle_error: str = "",
     ) -> _TenantEntry:
         lp = local_path or (self._root / tenant_id)
         lp.mkdir(parents=True, exist_ok=True)
@@ -432,11 +589,13 @@ class SchemaRegistryManager:
             repo_url=repo_url,
             branch=branch,
             local_path=lp,
+            bundle_error=bundle_error,
+            clone_failed=bool(bundle_error),
         )
 
     def _load_env_configs(self) -> None:
         """
-        Auto-register tenants from env vars:
+        Register tenants from env vars (deprecated, see the module docstring):
             SCHEMA_TENANT_ACME_REPO=https://...
             SCHEMA_TENANT_ACME_BRANCH=main
             SCHEMA_TENANT_ACME_TOKEN=ghp_xxx
@@ -455,6 +614,10 @@ class SchemaRegistryManager:
 
         for tenant_id, cfg in seen.items():
             if "repo" in cfg:
+                logger.warning(
+                    "SCHEMA_TENANT_%s_* is deprecated: declare the tenant's schema_repo in config.cue "
+                    "(tenants: [{name: %r, schema_repo: {...}}]); the env vars are read for this release only",
+                    tenant_id.upper(), tenant_id)
                 self._tenant_configs[tenant_id] = {
                     "repo_url": cfg["repo"],
                     "branch":   cfg.get("branch", "main"),
@@ -558,30 +721,70 @@ def _inject_token(repo_url: str, token: Optional[str]) -> str:
     return "https://oauth2:" + token + "@" + bare
 
 
+_missing_logged: set[str] = set()
+
+
+def _log_missing_schemas(tenant_id: str, local_dir: Path, bundle_rules: list[dict], commit: str) -> None:
+    """Say, once per schema and commit, that a schema_map entry of this tenant names a schema the schema repository
+    does not have. The sync of a file it covers fails (app.pipeline.validator.Validator.choose); this says so before
+    the first push does. The entries are the tenant's bundle.json rules' and config.cue's rules it may layer."""
+    from app.pipeline import rule_layers
+    from app.pipeline.schema_paths import NONE, join_inside, schema_problem
+
+    named: list[tuple[str, str, str]] = []
+    for label, rules in (("bundle.json", bundle_rules),
+                         ("config.cue", [r for r in rule_layers.cue_rules() if rule_layers._allowed(r, tenant_id)])):
+        for rule in rules:
+            for i, entry in enumerate(rule.get("schema_map") or []):
+                if isinstance(entry, dict) and isinstance(entry.get("schema"), str):
+                    named.append((f"{label} rule {rule.get('platform')}/{rule.get('datasource')} schema_map[{i}]",
+                                  entry["schema"], str(entry.get("match", ""))))
+    for where, schema, match in named:
+        if schema == NONE or schema_problem(schema):
+            continue
+        try:
+            present = join_inside(local_dir, schema).is_file()
+        except ValueError:
+            present = False
+        key = f"{tenant_id}|{commit}|{where}|{schema}"
+        if not present and key not in _missing_logged:
+            _missing_logged.add(key)
+            logger.warning("tenant %s: %s sends %s to schema %s, which is not in its schema repository at %s — "
+                           "those files will fail their sync", tenant_id, where, match, schema, (commit or "?")[:12])
+
+
 def _load_bundle(local_dir: Path, repo_url: str = "", token: Optional[str] = None) -> list[dict]:
     """The rules of bundle.json (or rules.json); none when it cannot be used."""
     return _load_bundle_checked(local_dir, repo_url, token)[0]
 
 
-def _load_bundle_checked(local_dir: Path, repo_url: str = "", token: Optional[str] = None) -> tuple[list[dict], str]:
+def _load_bundle_checked(local_dir: Path, repo_url: str = "", token: Optional[str] = None,
+                         tenant_id: str = "") -> tuple[list[dict], str]:
     """(rules, error): bundle.json (or rules.json) parsed for worker-side rule
     resolution, with the presets its "extends" name resolved
     (app.pipeline.presets) — "local>" being the Git server of the schema repo
     at *repo_url*. A file that does not parse is an error, not an empty
     bundle: a tenant whose layer is missing must not sync without it."""
-    from app.pipeline.presets import Origin, resolve_bundle_rules
+    from app.pipeline.presets import Origin, resolve_bundle_rules, scope_of
 
     origin = Origin.of(repo_url, token) if repo_url else None
+    scope = scope_of(tenant_id)
     for name in ("bundle.json", "rules.json"):
         p = local_dir / name
         if p.exists():
             try:
                 data = json.loads(p.read_text())
-                rules = resolve_bundle_rules(data, origin, str(p))
+                rules = resolve_bundle_rules(data, origin, str(p), scope=scope)
             except Exception as exc:
                 logger.error("%s cannot be used — the tenant has no rules until it is fixed: %s", p, exc)
                 return [], f"{name}: {exc}"
             rules = [with_current_names(r, str(p)) for r in rules]
+            from app.pipeline.schema_paths import schema_map_problems
+            problems = [m for i, r in enumerate(rules)
+                        for m in schema_map_problems(r.get("schema_map"), f"rules[{i}].schema_map")]
+            if problems:
+                logger.error("%s cannot be used — the tenant has no rules until it is fixed: %s", p, "; ".join(problems))
+                return [], f"{name}: {'; '.join(problems)}"
             logger.debug("loaded %d rules from %s", len(rules), p)
             return rules, ""
     return [], ""

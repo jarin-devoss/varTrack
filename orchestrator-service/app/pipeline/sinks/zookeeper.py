@@ -41,7 +41,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Collection
-from typing import Any
+from typing import Any, TYPE_CHECKING
 
 from app.pipeline.sinks.base import BaseSink, update_strategy
 from app.pipeline.sinks.labels import VarTrackLabels
@@ -51,11 +51,37 @@ from app.pipeline.sinks.key_formatter import (
 )
 from app.utils.enums.sync_mode import SyncMode
 
+if TYPE_CHECKING:
+    from app.pipeline.sinks.settings import Settings
+
 logger = logging.getLogger(__name__)
 
 _SINK_KIND      = "zookeeper"
 _DEFAULT_FORMAT = KeyFormat.SLASH
 _META_ZNODE     = "__vartrack__"
+
+# A transaction is one request, and a server refuses one over jute.maxbuffer (1 MiB by default). A file whose
+# znodes do not fit is written as several transactions, each of them whole.
+_TXN_BUDGET     = 800_000
+_TXN_OP_COST    = 64              # a znode op's overhead on top of its path and data
+
+
+def _batches(znodes: dict[str, bytes], meta_path: str, meta: bytes) -> list[dict[str, bytes]]:
+    """The znodes split into transactions that each fit a request. The stamp goes in the last one, so it
+    is only written once every value it describes is."""
+    batches: list[dict[str, bytes]] = []
+    current: dict[str, bytes] = {}
+    size = len(meta_path) + len(meta) + _TXN_OP_COST      # reserved for the stamp
+    for path, value in znodes.items():
+        cost = len(path) + len(value) + _TXN_OP_COST
+        if current and size + cost > _TXN_BUDGET:
+            batches.append(current)
+            current, size = {}, len(meta_path) + len(meta) + _TXN_OP_COST
+        current[path] = value
+        size += cost
+    current[meta_path] = meta
+    batches.append(current)
+    return batches
 
 
 class ZookeeperSink(BaseSink):
@@ -64,6 +90,7 @@ class ZookeeperSink(BaseSink):
         self,
         *,
         name: str = "zookeeper",
+        settings: "Settings | None" = None,
         rule_config: dict | None = None,
         tenant_id: str = "default",
         **_kwargs: Any,
@@ -73,34 +100,33 @@ class ZookeeperSink(BaseSink):
         except ImportError as exc:
             raise RuntimeError("kazoo is required: pip install kazoo") from exc
 
-        cfg = rule_config or {}
+        from app.pipeline.sinks.settings import Settings
 
-        strategy = update_strategy(cfg.get("update_strategy"))
+        s    = settings or Settings.of("zookeeper")
+        rule = rule_config or {}
+
+        strategy = update_strategy(s.get("update_strategy"))
         if strategy not in ("STRATEGY_UNSPECIFIED", "STRATEGY_KEY_VALUE"):
             raise ValueError(
                 f"ZooKeeper stores one znode per key; update_strategy {strategy} is not supported. "
                 "Use STRATEGY_KEY_VALUE or leave it unset."
             )
 
-        self._base_path     = cfg.get("zk_base_path", "").rstrip("/")
+        self._base_path     = s.get("base_path", "").rstrip("/")
         self._tenant_id     = tenant_id
-        # destination_template is the canonical path template ({tenant}, {env} placeholders).
-        # zk_path_template is kept as a ZK-specific fallback for backwards compat.
-        self._path_template = (
-            cfg.get("destination_template")
-            or cfg.get("zk_path_template")
-            or "/{tenant}/{env}"
-        )
-        hosts           = cfg.get("zk_hosts", ["localhost:2181"])
-        timeout         = int(cfg.get("zk_timeout_secs", 10))
+        # destination_template is the path template ({tenant}, {env} placeholders). Its former
+        # name, zk_path_template, is renamed to it when the rule is built.
+        self._path_template = rule.get("destination_template") or "/{tenant}/{env}"
+        hosts           = s.get("hosts") or ["localhost:2181"]
+        timeout         = s.seconds("session_timeout") or 10
 
-        fmt_name         = cfg.get("key_format", "slash")
+        fmt_name         = rule.get("key_format", "slash")
         self._key_format = key_format_from_str(fmt_name)
         validate_sink_format(_SINK_KIND, self._key_format)
 
         self._zk = KazooClient(hosts=",".join(hosts), timeout=timeout)
-        user = cfg.get("zk_username")
-        pwd  = cfg.get("zk_password")
+        user = s.get("username")
+        pwd  = s.secret("password")
         if user and pwd:
             self._zk.add_auth("digest", f"{user}:{pwd}")
         self._zk.start(timeout=timeout)
@@ -129,17 +155,13 @@ class ZookeeperSink(BaseSink):
         root    = self._root_path(env)
         self._zk.ensure_path(root)
 
-        # Stamp __vartrack__ meta znode for this env
         meta_path = f"{root}/{_META_ZNODE}"
         self._zk.ensure_path(meta_path)
-        self._zk.set(meta_path, labels.as_zk_meta())
 
         # Convert dot keys → znode paths
         # "db.host" → "/db/host"   (SLASH)
         # "db.host" → ".db.host"   (SLASH_DOT)
         formatted = format_keys(flat_data, self._key_format)
-
-        from kazoo.exceptions import NoNodeError, NodeExistsError
 
         # Build a map of key → relative path for reuse below
         rel_paths = {
@@ -160,33 +182,62 @@ class ZookeeperSink(BaseSink):
         except ImportError:
             to_write = formatted
 
-        written = 0
-        for key, value in to_write.items():
-            relative = rel_paths[key]
-            path     = f"{root}/{relative}"
-            encoded  = value.encode("utf-8")
-            try:
-                self._zk.set(path, encoded)
-            except NoNodeError:
-                try:
-                    self._zk.create(path, encoded, makepath=True)
-                except NodeExistsError:
-                    self._zk.set(path, encoded)
-            written += 1
+        znodes = {f"{root}/{rel_paths[key]}": value.encode("utf-8") for key, value in to_write.items()}
+        for parent in sorted({path.rsplit("/", 1)[0] for path in znodes} - {root}):
+            self._zk.ensure_path(parent)      # idempotent, and a transaction cannot make a path
 
-        return {"written": written}
+        # The values and the stamp that says who wrote them are one transaction: ZooKeeper applies all of
+        # its operations or none, so a failed write leaves the znodes as they were, stamp included.
+        self._commit(znodes, meta_path, labels.as_zk_meta())
+        return {"written": len(znodes)}
+
+    def _commit(self, znodes: dict[str, bytes], meta_path: str, meta: bytes) -> None:
+        batches = _batches(znodes, meta_path, meta)
+        if len(batches) > 1:
+            logger.warning(
+                "ZookeeperSink: %d znodes do not fit one transaction (%d bytes); writing %d transactions, "
+                "each whole, so a failure between them leaves the earlier ones written",
+                len(znodes), sum(len(p) + len(v) for p, v in znodes.items()), len(batches),
+            )
+        for batch in batches:
+            self._commit_batch(batch)
+
+    def _commit_batch(self, batch: dict[str, bytes]) -> None:
+        from kazoo.exceptions import NoNodeError, NodeExistsError, RolledBackError
+
+        failure: Exception | None = None
+        # A node that appeared (or went) between looking and the transaction fails it: look again once.
+        for _ in range(2):
+            txn = self._zk.transaction()
+            for path, value in batch.items():
+                if self._zk.exists(path):
+                    txn.set_data(path, value)
+                else:
+                    txn.create(path, value)
+            results = txn.commit()
+            errors = [r for r in results if isinstance(r, Exception)]
+            if not errors:
+                return
+            # the failing op carries its own error; the others report RolledBackError
+            failure = next((e for e in errors if not isinstance(e, RolledBackError)), errors[0])
+            if not isinstance(failure, (NoNodeError, NodeExistsError)):
+                break
+        raise RuntimeError(
+            f"ZooKeeper refused the transaction of {len(batch)} znodes ({type(failure).__name__}: {failure}); "
+            f"none of them was written"
+        )
 
     @classmethod
-    def prunes_keys(cls, rule_config: dict) -> bool:
+    def prunes_keys(cls, settings: Any, rule_config: dict) -> bool:
         return True
 
     @classmethod
-    def key_space(cls, rule_config: dict, tenant_id: str, env: str) -> str:
-        return cls._root_of(rule_config, tenant_id, env)
+    def key_space(cls, settings: Any, rule_config: dict, tenant_id: str, env: str) -> str:
+        return cls._root_of(settings, rule_config, tenant_id, env)
 
     @classmethod
-    def store(cls, rule_config: dict) -> str:
-        return cls._store_of(rule_config.get("zk_hosts"))
+    def store(cls, settings: Any, rule_config: dict) -> str:
+        return cls._store_of(settings.get("hosts"))
 
     def delete_keys(self, keys: "Collection[str]", *, datasource: str, env: str) -> int:
         # Only the znodes of the keys themselves — never the subtrees around
@@ -209,15 +260,11 @@ class ZookeeperSink(BaseSink):
             pass
 
     @staticmethod
-    def _root_of(rule_config: dict, tenant_id: str, env: str) -> str:
-        # destination_template is the canonical path template ({tenant}, {env}
-        # placeholders); zk_path_template is the ZK-specific fallback.
-        template = (
-            rule_config.get("destination_template")
-            or rule_config.get("zk_path_template")
-            or "/{tenant}/{env}"
-        )
-        base = rule_config.get("zk_base_path", "").rstrip("/")
+    def _root_of(settings: Any, rule_config: dict, tenant_id: str, env: str) -> str:
+        # destination_template (the rule's) is the path template ({tenant}, {env} placeholders),
+        # under the datasource's base_path.
+        template = rule_config.get("destination_template") or "/{tenant}/{env}"
+        base = settings.get("base_path", "").rstrip("/")
         return (base + resolve_destination(template, tenant=tenant_id, env=env)).rstrip("/")
 
     def _root_path(self, env: str) -> str:

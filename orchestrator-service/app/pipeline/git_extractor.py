@@ -46,6 +46,7 @@ import logging
 import time
 from typing import NamedTuple, Optional
 
+from app.dependencies import SourceUnavailable
 from app.utils.git.mirror import RepoMirrors, clean_path, get_default_mirrors, is_commit_sha
 
 logger = logging.getLogger(__name__)
@@ -118,7 +119,8 @@ class GitExtractor:
         Return the content of *file_path* at a commit as a UTF-8 string.
 
         Returns None if the file doesn't exist at that commit (deleted, never
-        committed), or if the repository or the ref can't be reached.
+        committed). Raises SourceUnavailable when the repository or the ref
+        can't be reached or read: that is not the same answer as "not there".
 
         Parameters
         ----------
@@ -141,10 +143,10 @@ class GitExtractor:
             return None
         try:
             mirrors, sha = self._commit(repo_url, ref, token, revision)
-        except Exception:
+        except Exception as exc:
             logger.exception("git_extractor: clone/fetch failed repo=%s ref=%s", repo_url, ref)
             _obs_git("error", time.perf_counter() - _t0)
-            return None
+            raise SourceUnavailable(f"cannot read {repo_url} at {ref}: {exc}", what=repo_url) from None
 
         try:
             raw = mirrors.read(repo_url, sha, file_path)
@@ -182,6 +184,9 @@ class GitExtractor:
         """
         Fetch a specific list of files at one commit.
 
+        Raises SourceUnavailable when the repository cannot be read at all, or one
+        of the files cannot be read: dropping it would look like "it was deleted".
+
         Returns a list of FileContent(path, content) where content is None for
         files that were deleted or couldn't be read.
 
@@ -198,9 +203,9 @@ class GitExtractor:
 
         try:
             mirrors, sha = self._commit(repo_url, ref, token, revision)
-        except Exception:
+        except Exception as exc:
             logger.exception("git_extractor: clone/fetch failed repo=%s ref=%s", repo_url, ref)
-            return [FileContent(path=fp, content=None) for fp in filenames]
+            raise SourceUnavailable(f"cannot read {repo_url} at {ref}: {exc}", what=repo_url) from None
 
         results: list[FileContent] = []
         for fp in filenames:
@@ -212,12 +217,10 @@ class GitExtractor:
                 )
                 results.append(FileContent(path=fp, content=None))
                 continue
-            except Exception:
-                # Same as extract_file, but a batch carries on with the other
-                # files; the None content tells the caller this one failed.
+            except Exception as exc:
+                # As in extract_file: a file that exists but cannot be read is not a deleted one.
                 logger.exception("git_extractor: read error path=%s", fp)
-                results.append(FileContent(path=fp, content=None))
-                continue
+                raise SourceUnavailable(f"cannot read {fp} in {repo_url} at {ref}: {exc}", what=repo_url) from None
 
             if raw is None:
                 logger.debug("git_extractor: file deleted/missing path=%s sha=%s", fp, sha)
@@ -238,6 +241,7 @@ class GitExtractor:
         branch: str,
         *,
         token: Optional[str] = None,
+        fresh: bool = False,
     ) -> str:
         """
         Return the current HEAD commit SHA for *branch*.
@@ -249,6 +253,9 @@ class GitExtractor:
         ----------
         repo_url : clone URL
         branch   : short branch name, e.g. "main"
+        fresh    : ask the remote even when the head was asked for in the last two minutes. Self-heal
+                   can take the remembered head; a Sync someone presses after a push cannot, or it would
+                   sync the commit from before their push. What it reads is remembered for the others.
 
         Returns
         -------
@@ -266,7 +273,7 @@ class GitExtractor:
         import hashlib as _hashlib
         _cache_key = "sha:" + _hashlib.sha256(f"{repo_url}:{branch}".encode()).hexdigest()[:24]
         _rc = _get_cache()
-        if _rc is not None:
+        if _rc is not None and not fresh:
             cached = _rc.get(_cache_key)
             if cached:
                 logger.debug("git_extractor: sha cache hit repo=%s branch=%s sha=%s",

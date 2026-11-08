@@ -53,13 +53,16 @@ from __future__ import annotations
 import logging
 import os
 from collections.abc import Collection
-from typing import Any
+from typing import Any, TYPE_CHECKING
 
 from app.pipeline.sinks.base import BaseSink, update_strategy
 from app.pipeline.sinks.labels import VarTrackLabels
 from app.pipeline.sinks.key_formatter import resolve_destination
 from app.pipeline.sinks.strategies.mongo import get_strategy, MongoWriteStrategy
 from app.utils.enums.sync_mode import SyncMode
+
+if TYPE_CHECKING:
+    from app.pipeline.sinks.settings import Settings
 
 logger = logging.getLogger(__name__)
 
@@ -69,6 +72,8 @@ _DEFAULT_COLLECTION = "configs"
 
 class MongoSink(BaseSink):
     object_name = "document"
+    can_restore = True   # snapshot_file_data / restore_file_data below
+    _can_transact: bool | None = None   # whether the server has transactions; asked on the first write
 
     def __init__(
         self,
@@ -78,6 +83,7 @@ class MongoSink(BaseSink):
         database: str | None = None,
         collection: str | None = None,
         tenant_id: str = "default",
+        settings: "Settings | None" = None,
         rule_config: dict | None = None,
         **_kwargs: Any,
     ) -> None:
@@ -86,40 +92,51 @@ class MongoSink(BaseSink):
         except ImportError as exc:
             raise RuntimeError("pymongo is required: pip install pymongo") from exc
 
-        cfg = rule_config or {}
+        from app.pipeline.sinks.settings import Settings
+
+        s    = settings or Settings.of("mongo")
+        rule = rule_config or {}
         uri = (
             mongo_uri
-            or cfg.get("mongo_uri")
+            or self.uri_of(s)
             or os.getenv("MONGO_URI", "mongodb://localhost:27017")
         )
 
         tls_opts: dict[str, object] = {}
-        if cfg.get("mongo_tls") or os.getenv("MONGO_TLS", "").lower() in ("1", "true", "yes"):
+        if s.get("ssl") or os.getenv("MONGO_TLS", "").lower() in ("1", "true", "yes"):
             tls_opts["tls"] = True
-        ca_file = cfg.get("mongo_tls_ca_file") or os.getenv("MONGO_TLS_CA_FILE", "")
+        ca_file = s.get("ssl_ca_path") or os.getenv("MONGO_TLS_CA_FILE", "")
         if ca_file:
             tls_opts["tlsCAFile"] = ca_file
             tls_opts.setdefault("tls", True)
-        if cfg.get("mongo_tls_insecure") or os.getenv("MONGO_TLS_INSECURE", "").lower() in ("1", "true", "yes"):
+        if s.get("ssl_allow_invalid_certificates") or os.getenv("MONGO_TLS_INSECURE", "").lower() in ("1", "true", "yes"):
             tls_opts["tlsAllowInvalidCertificates"] = True
 
+        # connect_timeout_ms is how long to wait to reach the server; without it the driver waits 20 s to connect and
+        # 30 s to find a server (twice, for the index below and the first operation), so a stopped server looks
+        # fine for a minute. 0 keeps the driver's waits.
+        timeout_ms = int(s.get("connect_timeout_ms") or 0)
+        if timeout_ms > 0:
+            tls_opts["connectTimeoutMS"] = timeout_ms
+            tls_opts["serverSelectionTimeoutMS"] = timeout_ms
+
         self._client           = pymongo.MongoClient(uri, **tls_opts)
-        self._db               = self._client[database or cfg.get("database") or _DEFAULT_DB]
-        self._base_collection  = collection or cfg.get("collection") or _DEFAULT_COLLECTION
+        self._db               = self._client[database or s.get("database") or _DEFAULT_DB]
+        self._base_collection  = collection or s.get("collection") or _DEFAULT_COLLECTION
         self._tenant_id        = tenant_id
-        self._env_as_collection = bool(cfg.get("env_as_collection", False))
+        self._env_as_collection = bool(s.get("env_as_collection", False))
         # destination_template: collection name template, e.g. "{env}-config".
         # Takes precedence over env_as_collection logic when set.
-        self._dest_tpl   = cfg.get("destination_template", "")
+        self._dest_tpl   = rule.get("destination_template", "")
 
         # MongoConfig.update_strategy: STRATEGY_DOCUMENT (default), STRATEGY_KEY_VALUE or STRATEGY_FILE.
-        strategy_name = cfg.get("update_strategy")
+        strategy_name = s.get("update_strategy")
         self._strategy: MongoWriteStrategy = get_strategy(strategy_name)
         self._strategy_name = update_strategy(strategy_name) if strategy_name else "STRATEGY_DOCUMENT"
 
         # Mongo only supports DOT format — validate here so misconfiguration
         # is caught at construction, not at write time.
-        if cfg.get("key_format") and cfg["key_format"] != "dot":
+        if rule.get("key_format") and rule["key_format"] != "dot":
             raise ValueError(
                 "MongoSink only supports key_format='dot'. "
                 "Mongo is a document store — slash/flat paths are not valid here."
@@ -209,14 +226,20 @@ class MongoSink(BaseSink):
             env, collection.name, len(flat_data),
         )
 
-        if sync_mode == SyncMode.GIT_SMART_REPAIR:
-            result = self._strategy.repair(
-                collection, flat_data, doc_filter, commit_sha, file_path, meta, data=data
-            )
+        write = self._strategy.repair if sync_mode == SyncMode.GIT_SMART_REPAIR else self._strategy.upsert
+
+        def run(session: Any = None) -> Any:
+            return write(collection, flat_data, doc_filter, commit_sha, file_path, meta, data=data,
+                         **({"session": session} if session is not None else {}))
+
+        # A file whose write is several operations (the document, and the documents of another shape it
+        # replaces) is one transaction when the server has them: all of it happens, or none of it.
+        # Without them (a standalone server) the sync's own snapshot is what puts a failed file back.
+        if self._strategy.transactional and self._transactions():
+            with self._client.start_session() as session:
+                result = session.with_transaction(run)
         else:
-            result = self._strategy.upsert(
-                collection, flat_data, doc_filter, commit_sha, file_path, meta, data=data
-            )
+            result = run()
 
         if result.replaced:
             # The datasource's update_strategy changed since this file was last
@@ -229,23 +252,54 @@ class MongoSink(BaseSink):
             )
         return {"written": result.written, "replaced": result.replaced, "strategy": self._strategy_name}
 
+    def _transactions(self) -> bool:
+        """Whether the server runs multi-document transactions: a replica set or a sharded cluster does,
+        a standalone server does not. Asked once, on the first write (the answer is the server's)."""
+        if self._can_transact is None:
+            try:
+                hello = self._client.admin.command("hello")
+            except Exception:
+                logger.warning("MongoSink: could not ask the server whether it has transactions; "
+                               "writing without one", exc_info=True)
+                return False
+            self._can_transact = bool(hello.get("setName") or hello.get("msg") == "isdbgrid")
+            if not self._can_transact:
+                logger.info("MongoSink: a standalone server has no transactions; a failed sync puts a file "
+                            "back from its snapshot instead (run a replica set for one write, one step)")
+        return self._can_transact
+
     # ── Prune ─────────────────────────────────────────────────────────────────
 
+    @staticmethod
+    def uri_of(settings: Any) -> str | None:
+        """The connection string: endpoint as it is, else host and port with username and password."""
+        if settings.get("endpoint"):
+            return str(settings.get("endpoint"))
+        host = settings.get("host")
+        if not host:
+            return None
+        from urllib.parse import quote_plus
+
+        user, password = settings.get("username"), settings.secret("password")
+        # A credential is escaped: an "@" or ":" in it would otherwise end the userinfo early.
+        creds = f"{quote_plus(user)}:{quote_plus(password)}@" if user and password else ""
+        return f"mongodb://{creds}{host}:{settings.get('port') or 27017}"
+
     @classmethod
-    def prunes_keys(cls, rule_config: dict) -> bool:
+    def prunes_keys(cls, settings: Any, rule_config: dict) -> bool:
         # Only the key-value strategy keeps one document per key, and only when it
         # is asked for: the default, like the file strategy, replaces the file's
         # document on every write.
         try:
-            return update_strategy(rule_config.get("update_strategy")) == "STRATEGY_KEY_VALUE"
+            return update_strategy(settings.get("update_strategy")) == "STRATEGY_KEY_VALUE"
         except ValueError:
             return False
 
     @classmethod
-    def key_space(cls, rule_config: dict, tenant_id: str, env: str) -> str:
+    def key_space(cls, settings: Any, rule_config: dict, tenant_id: str, env: str) -> str:
         # Documents are filtered by tenant, datasource and env: environments
         # never share keys, even in one collection.
-        return f"{tenant_id}/{rule_config.get('datasource', '')}/{env}"
+        return f"{tenant_id}/{rule_config.get('datasource') or settings.name}/{env}"
 
     def delete_keys(self, keys: "Collection[str]", *, datasource: str, env: str) -> int:
         if not keys:

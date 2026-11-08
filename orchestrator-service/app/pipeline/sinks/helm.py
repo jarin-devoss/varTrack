@@ -23,13 +23,16 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Collection
-from typing import Any
+from typing import Any, TYPE_CHECKING
 
 from app.pipeline.sinks.base import BaseSink
 from app.pipeline.sinks.labels import VarTrackLabels
 from app.pipeline.sinks.key_formatter import resolve_destination
 from app.pipeline.sinks.strategies.helm import get_strategy, HelmWriteStrategy
 from app.utils.enums.sync_mode import SyncMode
+
+if TYPE_CHECKING:
+    from app.pipeline.sinks.settings import Settings
 
 logger = logging.getLogger(__name__)
 
@@ -41,24 +44,29 @@ class HelmSink(BaseSink):
         self,
         *,
         name: str = "helm",
+        settings: "Settings | None" = None,
         rule_config: dict | None = None,
         tenant_id: str = "default",
         **_kwargs: Any,
     ) -> None:
-        cfg = rule_config or {}
-        self._tenant_id      = tenant_id
-        self._release_name   = cfg.get("helm_release_name", "vartrack")
-        # destination_template: release name template, e.g. "app-{env}".
-        # Takes precedence over helm_release_name when set.
-        self._dest_tpl = cfg.get("destination_template", "")
-        self._namespace    = cfg.get("helm_namespace", "default")
-        self._chart        = cfg.get("helm_chart")
-        self._kubeconfig   = cfg.get("helm_kubeconfig_path")
-        self._context      = cfg.get("helm_context")
-        self._extra_flags  = cfg.get("helm_extra_flags", [])
+        from app.pipeline.sinks.settings import Settings
 
-        strategy_name: str = cfg.get("helm_upgrade_strategy", "values_file")
-        self._strategy: HelmWriteStrategy = get_strategy(strategy_name, cfg)
+        s    = settings or Settings.of("helm")
+        rule = rule_config or {}
+        self._tenant_id      = tenant_id
+        self._release_name   = s.get("release_name", "vartrack")
+        # destination_template: release name template, e.g. "app-{env}".
+        # Takes precedence over release_name when set.
+        self._dest_tpl = rule.get("destination_template", "")
+        self._namespace    = s.get("namespace", "default")
+        self._chart        = s.get("chart_name")
+        self._kubeconfig   = s.get("kubeconfig_path")
+        self._context      = s.get("context")
+        # Flags go to helm's argv: the operator's, from the datasource block alone.
+        self._extra_flags  = s.get("extra_flags") or []
+
+        strategy_name: str = str(s.get("upgrade_strategy") or "values_file").lower()
+        self._strategy: HelmWriteStrategy = get_strategy(strategy_name, s, rule)
 
     def _write(
         self,

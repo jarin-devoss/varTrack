@@ -26,7 +26,7 @@ import logging
 import time
 import uuid
 from datetime import datetime, timezone
-from typing import Any, Iterable
+from typing import Any, Collection, Iterable
 
 logger = logging.getLogger(__name__)
 
@@ -43,6 +43,8 @@ ACTIVE_STATES = ("PENDING", "RUNNING", "RETRYING")
 
 # Header carried by tasks that were not started by a Git push.
 TRIGGER_HEADER = "x-vartrack-trigger"
+# A dry run started only to learn what a sync would delete: it is not listed, and says nothing in the events.
+PREVIEW_HEADER = "x-vartrack-preview"
 
 _client = None
 
@@ -127,6 +129,10 @@ def is_active(task: dict[str, Any], now: float | None = None) -> bool:
     except (KeyError, ValueError):
         return True
     return (now if now is not None else time.time()) - started < TASK_STALE_AFTER_SECONDS
+
+
+def is_preview(headers: dict[str, str] | None) -> bool:
+    return any(k.lower() == PREVIEW_HEADER and v == "1" for k, v in (headers or {}).items())
 
 
 def trigger_from_headers(headers: dict[str, str] | None, default: str = "webhook") -> str:
@@ -270,6 +276,24 @@ def record_task(task: dict[str, Any], *, tenant: str, new: bool = False) -> None
         logger.warning("ui ledger: record_task failed", exc_info=True)
 
 
+def record_task_if_absent(task: dict[str, Any], *, tenant: str, listed: bool = True) -> bool:
+    """List a task a worker has not started yet, unless the worker already recorded it (it was quicker than
+    the request that queued it). Returns whether this call recorded it."""
+    try:
+        r = _redis()
+        if not r.set(_key("task", task["taskId"]), json.dumps({**task, "tenant": tenant}), ex=TASK_TTL_SECONDS, nx=True):
+            return False
+        if listed:
+            lst = _key("tasks", tenant)
+            r.lrem(lst, 0, task["taskId"])
+            r.lpush(lst, task["taskId"])
+            r.ltrim(lst, 0, MAX_TASKS - 1)
+        return True
+    except Exception:
+        logger.warning("ui ledger: record_task_if_absent failed", exc_info=True)
+        return False
+
+
 def record_event(
     *,
     tenant: str,
@@ -316,6 +340,20 @@ def list_envs(tenant: str, datasource: str) -> list[str]:
     return sorted(m.split("|", 1)[1] for m in members if m.split("|", 1)[0] == datasource)
 
 
+def forget_target(tenant: str, datasource: str, env: str) -> bool:
+    """Drop what the ledger holds for one environment of a datasource: its desired state, last sync and drift mark.
+    Its events and the tasks that wrote it stay in their lists. False when it held nothing."""
+    try:
+        r = _redis()
+        removed = r.delete(_key("target", tenant, datasource, env))
+        r.srem(_key("targets", tenant), f"{datasource}|{env}")
+        r.delete(f"vt:ui:drift:{tenant}:{datasource}:{env}")
+        return bool(removed)
+    except Exception:
+        logger.warning("ui ledger: forget_target failed", exc_info=True)
+        return False
+
+
 def get_target(tenant: str, datasource: str, env: str) -> dict[str, Any] | None:
     raw = _redis().get(_key("target", tenant, datasource, env))
     return json.loads(raw) if raw else None
@@ -326,24 +364,53 @@ def get_task(task_id: str) -> dict[str, Any] | None:
     return json.loads(raw) if raw else None
 
 
-def list_tasks(tenant: str, *, rule: str | None = None, limit: int = 100) -> list[dict[str, Any]]:
+def rule_of(record: dict[str, Any]) -> str:
+    """The rule a task or event belongs to, as "platform/datasource". One recorded
+    before it named its platform is "/datasource"."""
+    return record.get("rule") or "/" + str(record.get("datasource") or "")
+
+
+def page_tasks(tenant: str, *, rule: str | None = None, rules: Collection[str] | None = None,
+               trigger: str | None = None, limit: int = 100, offset: int = 0) -> tuple[list[dict[str, Any]], int | None]:
+    """One page of a tenant's tasks, newest first, and where the next one starts
+    (None at the end). Tasks outside *rules* (every rule when None; none when empty)
+    are skipped inside the scan, before they count toward *limit*, so a page of
+    ``limit`` holds ``limit`` tasks the caller may see whenever that many exist."""
     r = _redis()
     ids = r.lrange(_key("tasks", tenant), 0, MAX_TASKS - 1)
     tasks: list[dict[str, Any]] = []
-    for raw in r.mget([_key("task", i) for i in ids]) if ids else []:
-        if not raw:
-            continue
-        task = json.loads(raw)
-        if rule and task.get("rule") != rule:
-            continue
-        tasks.append(task)
-        if len(tasks) >= limit:
-            break
-    return tasks
+    pos = max(0, offset)
+    while pos < len(ids):
+        batch = ids[pos:pos + 100]
+        for n, raw in enumerate(r.mget([_key("task", i) for i in batch])):
+            if not raw:
+                continue
+            task = json.loads(raw)
+            if rule and task.get("rule") != rule:
+                continue
+            if rules is not None and rule_of(task) not in rules:
+                continue
+            if trigger and task.get("trigger") != trigger:
+                continue
+            tasks.append(task)
+            if len(tasks) >= limit:
+                following = pos + n + 1
+                return tasks, (following if following < len(ids) else None)
+        pos += len(batch)
+    return tasks, None
 
 
-def list_events(tenant: str, *, rule: str | None = None, limit: int = 200) -> list[dict[str, Any]]:
+def list_tasks(tenant: str, *, rule: str | None = None, rules: Collection[str] | None = None,
+               limit: int = 100) -> list[dict[str, Any]]:
+    return page_tasks(tenant, rule=rule, rules=rules, limit=limit)[0]
+
+
+def list_events(tenant: str, *, rule: str | None = None, rules: Collection[str] | None = None,
+                limit: int = 200) -> list[dict[str, Any]]:
+    """Newest first; events outside *rules* (every rule when None) are skipped before *limit*."""
     events = [json.loads(raw) for raw in _redis().lrange(_key("events", tenant), 0, MAX_EVENTS - 1)]
     if rule:
         events = [e for e in events if e.get("rule") == rule]
+    if rules is not None:
+        events = [e for e in events if e.get("rule") in rules]
     return events[:limit]

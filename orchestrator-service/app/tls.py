@@ -43,6 +43,20 @@ class TLSBundle(NamedTuple):
 
 # ── Entry points ──────────────────────────────────────────────────────────────
 
+def _no_certificate(msg: str, instead: str) -> None:
+    """TLS was asked for and there is nothing to serve it with. The service does not start on
+    *instead*, unless the operator named the "tls" degraded mode (VARTRACK_ALLOW_DEGRADED), and never
+    in production."""
+    from app import dependencies
+
+    if dependencies.allowed("tls"):
+        logger.warning("%s — serving %s (VARTRACK_ALLOW_DEGRADED=tls)", msg, instead)
+        dependencies.mode_on("tls", f"{msg}; serving {instead}")
+        return
+    raise RuntimeError(f"{msg}. It will not serve {instead} instead"
+                       + ("" if dependencies._production() else " unless VARTRACK_ALLOW_DEGRADED=tls says it may"))
+
+
 def build_ssl_context() -> ssl.SSLContext | None:
     """
     Return an ssl.SSLContext for uvicorn, or None for plain HTTP.
@@ -59,9 +73,7 @@ def build_ssl_context() -> ssl.SSLContext | None:
     bundle = _resolve_bundle(settings)
     if bundle is None:
         msg = "MTLS_ENABLED=true but no cert available — set TLS_CERT_FILE/TLS_KEY_FILE or TLS_SELF_SIGNED=true"
-        if getattr(settings, "APP_ENV", "") == "production":
-            raise RuntimeError(msg)
-        logger.warning("%s — falling back to plain HTTP", msg)
+        _no_certificate(msg, "plain HTTP")
         return None
 
     ctx = ssl.SSLContext(ssl.Purpose.CLIENT_AUTH)
@@ -99,7 +111,8 @@ def build_grpc_server_credentials():
 
     bundle = _resolve_bundle(settings)
     if bundle is None:
-        logger.warning("MTLS_ENABLED=true but no cert available — gRPC falling back to insecure")
+        _no_certificate("MTLS_ENABLED=true but no cert available — set TLS_CERT_FILE/TLS_KEY_FILE "
+                        "or TLS_SELF_SIGNED=true", "an insecure gRPC port")
         return None
 
     cert_pem = Path(bundle.cert_file).read_bytes()

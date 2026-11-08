@@ -14,6 +14,9 @@ class PayloadContext:
     pr_number:      str | None
     rule_config:    dict
     parsed_payload: dict   # the raw parsed JSON — needed by file_collector strategy 3
+    # This run is a dry run: whatever started it (the UI's Dry run, `vt sync --dry-run`, the dry-run webhook) said
+    # so. A rule has no say in it. @secret values are fetched and masked in the report; nothing is written.
+    dry_run:        bool = False
 
 @dataclass
 class ETLFile:
@@ -22,8 +25,17 @@ class ETLFile:
     env:           str
     flat_data:     dict[str, str]
     root_key:      str
-    validation:    Literal["ok", "warn", "failed"] = "ok"
+    # ok      checked against a schema, and passed
+    # warn    checked, failed, and the rule is not strict_validation: the file is synced anyway
+    # failed  checked, failed, strict_validation (the file is not synced; it is reported as an error)
+    # none    no schema checked it (none found, "none" mapped, or the cue program is not installed)
+    validation:    Literal["ok", "warn", "failed", "none"] = "ok"
     error:         str = ""
+    # Which schema checked it: its path in the tenant's schema repository (or "none"), where the choice came
+    # from (schema_map[N], file, name, default, none), and a note when the file's own $schema was overridden or ignored.
+    schema:        str = "none"
+    schema_source: str = "none"
+    schema_note:   str = ""
     # Fields annotated @logger() in the CUE schema — change-log is emitted for
     # these keys on every write.  Empty frozenset when no schema or no @logger.
     logger_fields: frozenset[str] = field(default_factory=frozenset)
@@ -43,18 +55,36 @@ class ETLResult:
     # validation failed) from "errored" (unexpected exception during parse/transform).
     # A non-empty errors list signals the task layer to fail or alert.
     errors:  list[str]     = field(default_factory=list)  # unexpected exceptions
+    # Why each file in `errors` could not be processed: the exception, in words. An error
+    # with no reason is a failure nobody can act on.
+    error_reasons: dict[str, str] = field(default_factory=dict)
+    # The commit of the tenant's schema repository these files were validated against ("" when the
+    # tenant has none): a task reports it, so a sync that ran on old schemas shows which ones.
+    schema_commit: str = ""
+
+    def failure(self, file_path: str) -> str:
+        return self.error_reasons.get(file_path) or "could not be processed"
 
 @dataclass
 class SyncResult:
     """One file's sync outcome from Stage 3."""
     file_path: str
     env:       str
-    status:    Literal["ok", "empty", "validation_failed", "error", "skipped", "aborted"]
+    # partial      written, and left written: a later file of the sync failed and this sink cannot take
+    #              the write back (the error says so); the next sync or self-heal writes the desired state
+    # rolled_back  written, then restored because a later file of the sync failed
+    status:    Literal["ok", "empty", "validation_failed", "error", "skipped", "aborted", "partial", "rolled_back"]
     sync_mode: str = ""
     written:   int = 0
     pruned:    int = 0
     error:     str = ""
     root_key:  str = ""
+    # What checked the file (ETLFile.validation, schema, schema_source, schema_note), so a task's result says which
+    # schema, at the task's schema_commit, checked each file, or that none did.
+    validation:    str = ""
+    schema:        str = ""
+    schema_source: str = ""
+    schema_note:   str = ""
     # Documents the sink removed because the datasource's update_strategy
     # changed since this file was last written (the strategy now in use is
     # replaced_by), so a change of shape is never silent.
@@ -73,9 +103,7 @@ class SyncResult:
     #                      them); None when prune did not run
     #   prune_skipped      stale keys left alone because something changed them
     #                      outside varTrack
-    #   prune_would_delete stale keys a prune dry run did not delete
     #   prune_error        why the delete failed; the writes stand
     prune_pending:      list[str] | None = None
     prune_skipped:      list[str] = field(default_factory=list)
-    prune_would_delete: list[str] = field(default_factory=list)
     prune_error:        str = ""
