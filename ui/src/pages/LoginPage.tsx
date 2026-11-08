@@ -1,12 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useApi } from '../api';
-import { createLiveApi } from '../api/live';
 import { Notice } from '../components/common';
 import { Icon } from '../components/Icon';
+import { TokenForm } from '../features/TokenForm';
 import { appPath, platformLabel } from '../lib/platforms';
-import { usePrefs } from '../lib/prefs';
-import { tokenIdentity } from '../lib/token';
 import { useQuery } from '../lib/useQuery';
 
 /** Why the last sign-in did not work (the orchestrator's callback sends ?error=). */
@@ -74,14 +72,14 @@ export function LoginPage() {
             ))}
           </div>
         ) : (
-          <TokenForm returnUrl={returnUrl} />
+          <TokenSignIn returnUrl={returnUrl} />
         )}
 
         {sso && (
           <details className="card" style={{ marginTop: 12 }}>
             <summary className="muted" style={{ cursor: 'pointer', fontSize: 13 }}>API token for the Playground</summary>
             <div style={{ marginTop: 12 }}>
-              <TokenForm returnUrl={returnUrl} compact />
+              <TokenForm compact onSaved={() => navigate(returnUrl)} />
             </div>
           </details>
         )}
@@ -90,61 +88,17 @@ export function LoginPage() {
   );
 }
 
-/** A bearer token for the gateway (validate / push from the Playground), kept in memory for this tab. */
-function TokenForm({ returnUrl, compact = false }: { returnUrl: string; compact?: boolean }) {
-  const [prefs, setPrefs] = usePrefs();
+/** Without single sign-on the bearer token is the way in; the links under it are for a person who has none yet. */
+function TokenSignIn({ returnUrl }: { returnUrl: string }) {
   const navigate = useNavigate();
-  const [token, setToken] = useState('');
-  const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-
-  const submit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const value = token.trim().replace(/^Bearer\s+/i, '');
-    if (!tokenIdentity(value)) {
-      setError("That doesn't look like a JWT. Paste the token from `vt login` or your identity provider.");
-      return;
-    }
-    setBusy(true);
-    setError(null);
-    const connection = { ...prefs.connection, token: value };
-    const health = await createLiveApi(connection).getHealth();
-    setBusy(false);
-    setPrefs({ connection });
-    if (health.every(s => s.status === 'down')) {
-      setError('Signed in, but none of the services answered. Check the URLs in Settings.');
-      return;
-    }
-    navigate(returnUrl);
-  };
-
   return (
-    <form className={compact ? 'stack' : 'card stack'} onSubmit={submit}>
-      <label className="field">
-        <span className="field__label">Token</span>
-        <textarea
-          className="textarea"
-          style={{ minHeight: compact ? 80 : 110 }}
-          value={token}
-          onChange={e => setToken(e.target.value)}
-          placeholder="eyJhbGciOi…"
-          autoComplete="off"
-          spellCheck={false}
-          autoFocus={!compact}
-        />
-        <span className="field__hint">Kept in memory for this tab only — never written to storage.</span>
-      </label>
-      {error && <Notice tone="critical">{error}</Notice>}
-      <button className={compact ? 'btn' : 'btn btn--primary'} type="submit" disabled={busy || !token.trim()}>
-        {busy ? 'Saving…' : compact ? 'Use this token' : 'Sign in'}
-      </button>
-      {!compact && (
-        <div className="row" style={{ justifyContent: 'space-between', fontSize: 13 }}>
-          <Link to="/settings">Connection settings</Link>
-          <Link to="/home">Continue without a token</Link>
-        </div>
-      )}
-    </form>
+    <>
+      <TokenForm onSaved={() => navigate(returnUrl)} />
+      <div className="row" style={{ justifyContent: 'space-between', fontSize: 13 }}>
+        <Link to="/settings">Connection settings</Link>
+        <Link to="/home">Continue without a token</Link>
+      </div>
+    </>
   );
 }
 
