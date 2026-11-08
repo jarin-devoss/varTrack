@@ -1,5 +1,7 @@
-# Only requirements.txt, demo.sh, and test_runner.py are needed
+# Only requirements.txt, demo.sh, test_runner.py, grant.py and ui_sign_in.py are needed
 *
 !requirements.txt
 !demo.sh
 !test_runner.py
+!grant.py
+!ui_sign_in.py

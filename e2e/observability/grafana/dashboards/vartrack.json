@@ -546,7 +546,7 @@
     },
     {
       "id": 17,
-      "title": "Documents Written/min",
+      "title": "Keys Written/min",
       "type": "timeseries",
       "gridPos": {
         "x": 0,
@@ -560,12 +560,12 @@
       },
       "targets": [
         {
-          "expr": "sum(rate(orch_mongo_documents_written_total[1m])) by (datasource, sync_mode) * 60",
-          "legendFormat": "written {{datasource}} {{sync_mode}}"
+          "expr": "sum(rate(orch_sink_keys_written_total[1m])) by (sink, datasource) * 60",
+          "legendFormat": "written {{sink}} {{datasource}}"
         },
         {
-          "expr": "sum(rate(orch_mongo_documents_pruned_total[1m])) by (datasource) * 60",
-          "legendFormat": "pruned {{datasource}}"
+          "expr": "sum(rate(orch_sink_keys_pruned_total[1m])) by (sink, datasource) * 60",
+          "legendFormat": "pruned {{sink}} {{datasource}}"
         }
       ],
       "fieldConfig": {
@@ -590,16 +590,16 @@
       },
       "targets": [
         {
-          "expr": "histogram_quantile(0.50, sum(rate(orch_mongo_write_duration_seconds_bucket[1m])) by (le, sync_mode))",
-          "legendFormat": "p50 {{sync_mode}}"
+          "expr": "histogram_quantile(0.50, sum(rate(orch_sink_write_duration_seconds_bucket[1m])) by (le, sink))",
+          "legendFormat": "p50 {{sink}}"
         },
         {
-          "expr": "histogram_quantile(0.95, sum(rate(orch_mongo_write_duration_seconds_bucket[1m])) by (le, sync_mode))",
-          "legendFormat": "p95 {{sync_mode}}"
+          "expr": "histogram_quantile(0.95, sum(rate(orch_sink_write_duration_seconds_bucket[1m])) by (le, sink))",
+          "legendFormat": "p95 {{sink}}"
         },
         {
-          "expr": "histogram_quantile(0.99, sum(rate(orch_mongo_write_duration_seconds_bucket[1m])) by (le, sync_mode))",
-          "legendFormat": "p99 {{sync_mode}}"
+          "expr": "histogram_quantile(0.99, sum(rate(orch_sink_write_duration_seconds_bucket[1m])) by (le, sink))",
+          "legendFormat": "p99 {{sink}}"
         }
       ],
       "fieldConfig": {
@@ -610,7 +610,7 @@
     },
     {
       "id": 19,
-      "title": "MongoDB Errors",
+      "title": "Sink Errors",
       "type": "stat",
       "gridPos": {
         "x": 0,
@@ -624,7 +624,7 @@
       },
       "targets": [
         {
-          "expr": "sum(orch_mongo_errors_total)",
+          "expr": "sum(orch_sink_errors_total)",
           "legendFormat": ""
         }
       ],
@@ -659,7 +659,7 @@
     },
     {
       "id": 20,
-      "title": "Mongo Error Rate by Operation",
+      "title": "Sink Error Rate by Operation",
       "type": "timeseries",
       "gridPos": {
         "x": 4,
@@ -673,8 +673,8 @@
       },
       "targets": [
         {
-          "expr": "sum(rate(orch_mongo_errors_total[1m])) by (operation)",
-          "legendFormat": "{{operation}}"
+          "expr": "sum(rate(orch_sink_errors_total[1m])) by (sink, operation)",
+          "legendFormat": "{{sink}} {{operation}}"
         }
       ],
       "fieldConfig": {

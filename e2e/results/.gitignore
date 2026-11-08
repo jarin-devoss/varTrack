@@ -1,0 +1,4 @@
+# What a run of the regression writes (init/test_runner.py). CI uploads it as an artifact. It is not
+# kept in git: a stale report would let a run that wrote nothing look like a pass (check_results.py).
+*
+!.gitignore

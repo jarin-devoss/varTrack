@@ -1,0 +1,280 @@
+{
+  "routes": {
+    "/login": {
+      "spec": "01-sign-in"
+    },
+    "*": {
+      "spec": "21-links-and-not-found",
+      "contains": "Page not found"
+    },
+    "/": {
+      "spec": "21-links-and-not-found",
+      "contains": "root address goes to Home"
+    },
+    "/home": {
+      "spec": "04-home"
+    },
+    "/favorites": {
+      "spec": "05-favorites"
+    },
+    "/rules": {
+      "spec": "06-rules-list"
+    },
+    "/rules/:tenant/:platform/:datasource": {
+      "spec": "07-rule-detail",
+      "contains": "/rules/demo/"
+    },
+    "/rules/:platform/:datasource": {
+      "spec": "08-environment",
+      "contains": "/rules/${RULE}"
+    },
+    "/environments": {
+      "spec": "13-environments"
+    },
+    "/events": {
+      "spec": "14-events"
+    },
+    "/tasks": {
+      "spec": "15-tasks"
+    },
+    "/tasks/:taskId": {
+      "spec": "16-task-detail",
+      "contains": "/tasks/${"
+    },
+    "/playground": {
+      "spec": "17-playground"
+    },
+    "/settings": {
+      "spec": "18-settings"
+    },
+    "/settings/:section": {
+      "spec": "18-settings",
+      "contains": "/settings/appearance"
+    },
+    "/profile": {
+      "spec": "19-profile"
+    }
+  },
+  "labels": {
+    "Clear filters": {
+      "spec": "06-rules-list"
+    },
+    "Close": {
+      "spec": "03-shell"
+    },
+    "Close search": {
+      "spec": "03-shell"
+    },
+    "Desired state, in Git": {
+      "spec": "07-rule-detail"
+    },
+    "Dismiss": {
+      "spec": "10-dry-run"
+    },
+    "Environment": {
+      "spec": "08-environment"
+    },
+    "Environments": {
+      "spec": "07-rule-detail"
+    },
+    "Inline diff: minus is the current value in the sink, plus is the desired value in Git": {
+      "spec": "08-environment",
+      "contains": "Inline diff"
+    },
+    "Last sync": {
+      "spec": "06-rules-list"
+    },
+    "Loading": {
+      "spec": "21-links-and-not-found"
+    },
+    "Open a task by ID": {
+      "spec": "15-tasks"
+    },
+    "Pipeline stages": {
+      "spec": "16-task-detail"
+    },
+    "Playground": {
+      "spec": "03-shell"
+    },
+    "Prune keys that are no longer in Git": {
+      "spec": "11-prune"
+    },
+    "Reason": {
+      "spec": "14-events"
+    },
+    "Refresh": {
+      "spec": "06-rules-list"
+    },
+    "Rule": {
+      "spec": "14-events"
+    },
+    "Search": {
+      "spec": "06-rules-list"
+    },
+    "Search (press /)": {
+      "spec": "03-shell"
+    },
+    "Sections": {
+      "spec": "03-shell"
+    },
+    "Sink": {
+      "spec": "06-rules-list"
+    },
+    "Sort": {
+      "spec": "06-rules-list"
+    },
+    "State": {
+      "spec": "15-tasks"
+    },
+    "Sync history, newest first": {
+      "spec": "08-environment"
+    },
+    "Sync status": {
+      "spec": "06-rules-list"
+    },
+    "Tenant": {
+      "reason": "The filter is shown only to a person who sees two tenants or more; the demo stack has one (config.cue declares `demo`). The component's rule is covered by the orchestrator tests of tenant visibility (tests/unit/test_ui_sso.py, TestTenants)."
+    },
+    "Trigger": {
+      "spec": "15-tasks"
+    },
+    "Type": {
+      "spec": "14-events"
+    },
+    "User menu": {
+      "spec": "03-shell"
+    },
+    "varTrack home": {
+      "spec": "03-shell"
+    }
+  },
+  "states": {
+    "sync.Synced": {
+      "spec": "09-sync-matrix"
+    },
+    "sync.OutOfSync": {
+      "spec": "12-drift-and-heal"
+    },
+    "sync.Unknown": {
+      "spec": "20-failures"
+    },
+    "drift.in_sync": {
+      "spec": "12-drift-and-heal"
+    },
+    "drift.drifted": {
+      "spec": "12-drift-and-heal"
+    },
+    "drift.healing": {
+      "spec": "12-drift-and-heal"
+    },
+    "drift.heal_failed": {
+      "spec": "12-drift-and-heal"
+    },
+    "drift.unknown": {
+      "spec": "20-failures"
+    },
+    "drift.not_watched": {
+      "reason": "The orchestrator never sends it: it compares every rule, with or without self-heal, so a rule that is not watched reads drifted or in_sync (spec 12 checks that, and the page's wording for it). Only the UI's status table holds the value."
+    },
+    "task.PENDING": {
+      "spec": "20-failures",
+      "contains": "queued"
+    },
+    "task.RUNNING": {
+      "spec": "20-failures"
+    },
+    "task.RETRYING": {
+      "reason": "A worker retries a task only for a connection error it can recover from within seconds; no sink of the stack can be made to fail that way and then recover on cue. The wording of the state is held by the UI's unit tests (src/lib)."
+    },
+    "task.SUCCEEDED": {
+      "spec": "16-task-detail"
+    },
+    "task.FAILED": {
+      "spec": "16-task-detail"
+    },
+    "file.ok": {
+      "spec": "16-task-detail",
+      "contains": "Written"
+    },
+    "file.empty": {
+      "reason": "A file without keys never reaches the sink: it is skipped first (file.skipped, spec 16), so the sink-stage 'empty' result cannot be produced through the product today. The wording is held by the UI's status table."
+    },
+    "file.validation_failed": {
+      "spec": "20-failures"
+    },
+    "file.error": {
+      "spec": "20-failures"
+    },
+    "file.skipped": {
+      "spec": "16-task-detail",
+      "contains": "Skipped"
+    },
+    "file.aborted": {
+      "spec": "20-failures"
+    },
+    "file.partial": {
+      "reason": "Needs a sink that writes, cannot take the write back, and fails on a later file; the stack's sinks that write several files all restore (spec 20 shows rolled_back). Held by the orchestrator tests of the sink commit (tests/unit/test_sink_commits.py) and the UI's status table."
+    },
+    "trigger.webhook": {
+      "spec": "15-tasks"
+    },
+    "trigger.cli": {
+      "spec": "15-tasks"
+    },
+    "trigger.self_heal": {
+      "spec": "15-tasks"
+    },
+    "trigger.ui": {
+      "spec": "15-tasks"
+    },
+    "event.WebhookReceived": {
+      "spec": "14-events"
+    },
+    "event.SyncStarted": {
+      "spec": "14-events"
+    },
+    "event.SyncSucceeded": {
+      "spec": "14-events"
+    },
+    "event.SyncFailed": {
+      "spec": "14-events"
+    },
+    "event.ValidationFailed": {
+      "spec": "14-events"
+    },
+    "event.KeysPruned": {
+      "spec": "14-events"
+    },
+    "event.PruneFailed": {
+      "spec": "14-events"
+    },
+    "event.PruneSkipped": {
+      "spec": "14-events"
+    },
+    "event.ShapeChanged": {
+      "spec": "14-events"
+    },
+    "event.SharedKeySpace": {
+      "spec": "14-events"
+    },
+    "event.DriftDetected": {
+      "spec": "14-events"
+    },
+    "event.HealSucceeded": {
+      "spec": "12-drift-and-heal"
+    },
+    "event.HealFailed": {
+      "spec": "12-drift-and-heal"
+    },
+    "event.SchemaRefreshed": {
+      "spec": "14-events"
+    },
+    "file.rolled_back": {
+      "spec": "20-failures"
+    },
+    "drift.missing": {
+      "spec": "24-unsynced-environments",
+      "contains": "Not synced yet"
+    }
+  }
+}

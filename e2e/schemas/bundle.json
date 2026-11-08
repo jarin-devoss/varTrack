@@ -1,8 +1,7 @@
 [
   {
-    "platform": "github",
+    "platform": "gitea",
     "datasource": "mongo",
-    "tenant_id": "demo",
     "repo_url": "http://gitea:3000/vartrack-demo/demo-configs.git",
     "file_name": "app-settings.yaml",
     "branch_as_env": false,
@@ -11,9 +10,8 @@
     "prune": true
   },
   {
-    "platform": "github",
+    "platform": "gitea",
     "datasource": "zookeeper",
-    "tenant_id": "demo",
     "repo_url": "http://gitea:3000/vartrack-demo/demo-configs.git",
     "file_name": "app-settings.yaml",
     "branch_as_env": false,

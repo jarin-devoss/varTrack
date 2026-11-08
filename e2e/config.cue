@@ -1,5 +1,5 @@
 // VarTrack E2E demo bundle.
-// Gitea (GitHub-compatible) as git platform, MongoDB + ZooKeeper as sinks.
+// Gitea as the git platform, MongoDB + ZooKeeper as sinks.
 //
 // The rules here are the first layer; schemas/bundle.json (tenant "demo")
 // lays its rules over them — file, branch and sync settings — and the
@@ -7,21 +7,27 @@
 bundle: {
 	platforms: [
 		{
-			github: {
+			// The demo's Gitea, declared as what it is: a platform's type decides how its API is called,
+			// so `vt` identifies a Gitea token against it, and its webhooks carry X-Gitea-Event.
+			gitea: {
 				endpoint:          "http://gitea:3000"
 				protocol:          "http"
 				token:             "demo-admin-token"
 				org_name:          "vartrack-demo"
-				verify_ssl:        false
+				insecure_skip_verify: true
 				timeout:           "30s"
 				max_retries:       3
-				event_type_header: "X-GitHub-Event"
+				event_type_header: "X-Gitea-Event"
 				push_event_name:   "push"
 				pr_event_name:     "pull_request"
 			}
 		},
 	]
 
+	// The MongoDB datasources store a file as ONE document per environment (STRATEGY_DOCUMENT, the default): the config nested
+	// under `data`, with its types and arrays. `mongo-kv` is the one that stores one document per KEY (STRATEGY_KEY_VALUE, a
+	// `key` and a string `value`): the shape that keeps single keys, so it is the one prune and per-key drift apply to.
+	// `mongo-document` is the document shape with its own collection, and `mongo-file` stores the file as it parsed.
 	datasources: [
 		{
 			mongo: {
@@ -38,7 +44,7 @@ bundle: {
 				buffer_size:                    100
 				max_pool_size:                  5
 				connect_timeout_ms:             5000
-				update_strategy:                "STRATEGY_KEY_VALUE"
+				update_strategy:                "STRATEGY_DOCUMENT"
 			}
 		},
 		{
@@ -49,7 +55,7 @@ bundle: {
 			}
 		},
 		{
-			// Primary MongoDB sink — key-value strategy, collection: primary_vars.
+			// Primary MongoDB sink — document strategy, collection: primary_vars.
 			mongo: {
 				tag:                            "primary"
 				endpoint:                       "mongodb://mongo:27017"
@@ -64,11 +70,30 @@ bundle: {
 				buffer_size:                    100
 				max_pool_size:                  5
 				connect_timeout_ms:             5000
+				update_strategy:                "STRATEGY_DOCUMENT"
+			}
+		},
+		{
+			// Per-key MongoDB sink — key-value strategy, collection: kv_vars (one document per key).
+			mongo: {
+				tag:                            "kv"
+				endpoint:                       "mongodb://mongo:27017"
+				host:                           "mongo"
+				port:                           27017
+				database:                       "vartrack"
+				collection:                     "kv_vars"
+				env_as_collection:              false
+				auth_source:                    "admin"
+				ssl:                            false
+				ssl_allow_invalid_certificates: false
+				buffer_size:                    100
+				max_pool_size:                  5
+				connect_timeout_ms:             5000
 				update_strategy:                "STRATEGY_KEY_VALUE"
 			}
 		},
 		{
-			// DR MongoDB sink — same instance, separate collection: dr_vars.
+			// DR MongoDB sink — same instance, document strategy, separate collection: dr_vars.
 			mongo: {
 				tag:                            "dr"
 				endpoint:                       "mongodb://mongo:27017"
@@ -83,7 +108,7 @@ bundle: {
 				buffer_size:                    100
 				max_pool_size:                  5
 				connect_timeout_ms:             5000
-				update_strategy:                "STRATEGY_KEY_VALUE"
+				update_strategy:                "STRATEGY_DOCUMENT"
 			}
 		},
 		{
@@ -209,54 +234,59 @@ bundle: {
 
 	rules: [
 		{
-			platform:   "github"
+			platform:   "gitea"
 			datasource: "mongo"
 			repositories: ["vartrack-demo/demo-configs"]
 			self_heal:    true
 		},
 		{
-			platform:   "github"
+			platform:   "gitea"
 			datasource: "zookeeper"
 			repositories: ["vartrack-demo/demo-configs"]
 			self_heal:    true
 		},
 		{
-			platform:   "github"
+			platform:   "gitea"
 			datasource: "mongo-document"
 			repositories: ["vartrack-demo/demo-configs"]
 		},
 		{
-			platform:   "github"
+			platform:   "gitea"
 			datasource: "mongo-file"
 			repositories: ["vartrack-demo/demo-configs"]
 		},
 		{
-			platform:   "github"
+			platform:   "gitea"
 			datasource: "redis-hash"
 			repositories: ["vartrack-demo/demo-configs"]
 		},
 		{
-			platform:   "github"
+			platform:   "gitea"
 			datasource: "redis-string"
 			repositories: ["vartrack-demo/demo-configs"]
 		},
 		{
-			platform:   "github"
+			platform:   "gitea"
 			datasource: "linux_server"
 			repositories: ["vartrack-demo/demo-configs"]
 		},
 		{
-			platform:   "github"
+			platform:   "gitea"
 			datasource: "s3"
 			repositories: ["vartrack-demo/demo-configs"]
 		},
 		{
-			platform:   "github"
+			platform:   "gitea"
 			datasource: "mongo-primary"
 			repositories: ["vartrack-demo/demo-configs"]
 		},
 		{
-			platform:   "github"
+			platform:   "gitea"
+			datasource: "mongo-kv"
+			repositories: ["vartrack-demo/demo-configs"]
+		},
+		{
+			platform:   "gitea"
 			datasource: "mongo-dr"
 			repositories: ["vartrack-demo/demo-configs"]
 		},
@@ -272,6 +302,34 @@ bundle: {
 	global_tags: {
 		team:        "platform"
 		environment: "demo"
+	}
+
+	// The demo's one tenant, declared by the operator. A push is its own when it comes from
+	// one of its repositories; a push to its schema repository refreshes it. A request can
+	// name a tenant but never makes one.
+	tenants: [{
+		name:         "demo"
+		repositories: ["vartrack-demo/*"]
+		schema_repo: {
+			platform: "gitea"
+			repo:     "vartrack-demo/schemas"
+			branch:   "main"
+		}
+	}]
+
+	// Web UI sign-in with Gitea. The OAuth application is registered by the demo (init/ui_sign_in.py), which writes its
+	// client id and secret where the services read them. The browser reaches the UI on :8080 and Gitea on :3000.
+	ui: {
+		public_url: "http://localhost:8080"
+		auth: {
+			providers: [{
+				platform:      "gitea"
+				client_id:     {file: "/demo-state/ui-sign-in/gitea-client-id"}
+				client_secret: {file: "/demo-state/ui-sign-in/gitea-client-secret"}
+				browser_url:   "http://localhost:3000"
+			}]
+			admins: ["gitea:demo-admin"]
+		}
 	}
 
 	// CLI API (vt, the web UI's Playground): callers use their own Gitea

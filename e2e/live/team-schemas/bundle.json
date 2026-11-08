@@ -6,7 +6,6 @@
     {
       "platform": "gitea-team",
       "datasource": "redis-team",
-      "tenant_id": "payments",
       "branch": "main",
       "prune": true
     }

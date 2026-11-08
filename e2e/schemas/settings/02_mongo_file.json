@@ -1,6 +1,6 @@
 [
   {
-    "platform": "github",
+    "platform": "gitea",
     "datasource": "mongo-file",
     "repo_url": "http://gitea:3000/vartrack-demo/demo-configs.git",
     "file_name": "app-settings.yaml",
