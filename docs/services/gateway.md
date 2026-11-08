@@ -81,6 +81,7 @@ POST /webhooks/{datasource}
 | `200 OK` | Event type not handled (e.g. `ping`) |
 | `400` | Bad request (missing header, invalid JSON, validation error) |
 | `401` | Signature invalid or replay detected |
+| `503` | The replay store (Redis) cannot be asked, so the delivery cannot be checked: retry (`GW_REPLAY_PROTECTION_UNAVAILABLE`) |
 | `404` | No rule configured for this datasource |
 | `413` | Request body exceeds `max_webhook_body_bytes` |
 | `429` | Rate limit exceeded |

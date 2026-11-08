@@ -27,6 +27,20 @@ The watcher does not read rules from `config.cue`, a tenant's `bundle.json` or a
 
 See [Drift Detection & Self-Heal](../concepts/drift-detection.md) for the edge cases (unknown, a heal underway, a sync that died).
 
+### A heal already asked for
+
+After the watcher asks for a heal, a "drifted" answer for **the same environments** within the next two polls (at least 30 s) is the drift that heal is about to fix, and it does not ask again. A *different* drift (another environment now differs too) is new and is healed at once.
+
+### Look now
+
+`POST /admin/check?platform=<platform>&datasource=<datasource>[&tenant=<tenant>]` on the admin port makes the watcher check that rule and heal it if it drifted right away, whatever an earlier heal asked, and answers with what each watcher of the rule found:
+
+```json
+{"results": [{"watcher": "gitea/mongo", "tenant": "demo", "state": "drifted", "detail": "differs from Git: gitea/mongo/default", "healed": true}]}
+```
+
+`404` when the rule is not watched (no `self_heal`, or suspended). With `INTERNAL_AUTH_SECRET` set the call needs an `admin` grant signed with it (`Authorization: Bearer <grant>`); without a secret the watcher runs open, as it does towards the orchestrator, and accepts it unsigned. The end-to-end tests use it to wait for the watcher's answer instead of its next poll; a test stack also lowers `POLL_INTERVAL` (the demo uses `10s`).
+
 ---
 
 ## Running
