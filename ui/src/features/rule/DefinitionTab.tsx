@@ -30,7 +30,11 @@ export function toCue(rule: Rule): string {
   };
   if (rule.excludeRepositories.length) out.exclude_repositories = rule.excludeRepositories;
   if (rule.fileName) out.file_name = rule.fileName;
-  if (Object.keys(rule.filePathMap).length) out.file_path_map = rule.filePathMap;
+  // The page shows each file with the environment it feeds (path → env); the config says it the
+  // other way round (env → path), so it is turned back here.
+  if (Object.keys(rule.filePathMap).length) {
+    out.file_path_map = Object.fromEntries(Object.entries(rule.filePathMap).map(([path, env]) => [env, path]));
+  }
   if (Object.keys(rule.branchMap).length) out.branch_map = rule.branchMap;
   if (rule.prAsEnv) out.pr_as_env = true;
   if (rule.branchAsEnv) out.branch_as_env = true;
@@ -38,10 +42,8 @@ export function toCue(rule: Rule): string {
   out.destination_template = rule.destinationTemplate;
   out.sync_mode = rule.syncMode;
   out.self_heal = rule.selfHeal;
-  if (rule.dryRun) out.dry_run = true;
   if (rule.prune.enabled) {
     const prune: Record<string, CueValue> = { enabled: true };
-    if (rule.prune.dryRun) prune.dry_run = true;
     if (rule.prune.protection.length) prune.protection = rule.prune.protection;
     out.prune = prune;
   }

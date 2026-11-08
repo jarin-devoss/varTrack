@@ -182,7 +182,7 @@ export function RulesPage() {
         rule={syncing?.rule ?? null}
         initialEnvs={syncing?.env ? [syncing.env] : undefined}
         onClose={() => setSyncing(null)}
-        onStarted={rules.reload}
+        onChanged={rules.reload}
       />
       <NewRulePanel open={creating} onClose={() => setCreating(false)} bundle={bundle.data} existing={all.map(r => r.name)} />
     </div>

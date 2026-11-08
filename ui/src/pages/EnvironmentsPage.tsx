@@ -118,7 +118,7 @@ export function EnvironmentsPage() {
         </div>
       )}
 
-      <SyncPanel open={!!syncing} rule={syncing?.rule ?? null} initialEnvs={syncing ? [syncing.env] : undefined} onClose={() => setSyncing(null)} onStarted={rules.reload} />
+      <SyncPanel open={!!syncing} rule={syncing?.rule ?? null} initialEnvs={syncing ? [syncing.env] : undefined} onClose={() => setSyncing(null)} onChanged={rules.reload} />
     </div>
   );
 }

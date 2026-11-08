@@ -1,9 +1,9 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { useApi } from '../api';
 import { isNotAvailable } from '../api/http';
 import type { RuleList, RuleView } from '../api/types';
-import { EmptyState, ErrorState, LoadingRows, Notice, Segmented, Timestamp } from '../components/common';
+import { EmptyState, ErrorState, LoadingRows, Segmented, Timestamp } from '../components/common';
 import { Hero, type HeroColor } from '../components/Hero';
 import { Icon, SINK_LABEL } from '../components/Icon';
 import { Panel, UTabs } from '../components/Panel';
@@ -25,6 +25,7 @@ import { isPinned } from '../lib/rules';
 import { useRules } from '../lib/useRules';
 import { DRIFT_SEVERITY, ruleDrift, ruleSync, TRIGGER, targetSync, type SyncStatus } from '../lib/status';
 import { peekQuery, useQuery } from '../lib/useQuery';
+import { useToast } from '../components/Toasts';
 
 type RuleTab = 'overview' | 'history' | 'events' | 'definition';
 type EnvTab = 'environments' | 'keys' | 'diff';
@@ -40,9 +41,28 @@ export function RulePage() {
   const api = useApi();
   const all = useRules();
   // Opened from a list: show the rule the list already has while it loads.
-  const rule = useQuery(`rule:${tenant ?? ''}:${name}`, a => a.getRule(name, tenant), {
+  // Refresh reads the sinks now; the polling in between answers from the last read.
+  const refreshing = useRef(false);
+  const rule = useQuery(`rule:${tenant ?? ''}:${name}`, a => {
+    const fresh = refreshing.current;
+    refreshing.current = false;
+    return a.getRule(name, tenant, { fresh });
+  }, {
     placeholder: () => peekQuery<RuleList>(api, 'rules')?.rules.find(r => r.name === name && (!tenant || r.tenant === tenant)),
   });
+  const session = useQuery('auth:session', a => a.getSession(), { poll: false });
+  const notify = useToast();
+  // An administrator (or anyone, when sign-in is off) may drop an environment no branch feeds any more from the record.
+  const canForget = !!session.data && (!session.data.enabled || !!session.data.admin);
+  const forget = async (env: string) => {
+    try {
+      await api.forgetEnvironment(name, env, tenant);
+      notify({ tone: 'good', title: `${env} forgotten`, body: 'Its events and tasks stay in their lists.' });
+      rule.reload();
+    } catch (err) {
+      notify({ tone: 'critical', title: `Couldn't forget ${env}`, body: (err as Error).message });
+    }
+  };
   const [params, setParams] = useSearchParams();
   const [pinned, togglePin] = usePinned();
   const [sync, setSync] = useState<{ envs?: string[]; dryRun: boolean } | null>(null);
@@ -121,18 +141,12 @@ export function RulePage() {
         <button className="abtn" onClick={() => setParam({ tab: 'diff', env: null, view: null })}>
           <Icon name="diff" size={14} /> Diff
         </button>
-        <button className="abtn" onClick={rule.reload} title="Fetch the latest state">
+        <button className="abtn" onClick={() => { refreshing.current = true; rule.reload(); }} title="Read the sinks now">
           <Icon name="refresh" size={14} className={rule.fetching ? 'spin' : undefined} /> Refresh
         </button>
       </div>
 
       <RuleStatus rule={r} onRetry={envs => openSync(envs)} />
-
-      {r.dryRun && (
-        <Notice tone="info">
-          This rule has <code>dry_run: true</code>: every sync runs the full pipeline but writes nothing.
-        </Notice>
-      )}
 
       <Panel title="Environments" subtitle={<>Desired state in Git compared with the current state in {SINK_LABEL[r.sinkType]}</>} id="environments-panel">
         <UTabs
@@ -154,6 +168,7 @@ export function RulePage() {
                 target={t}
                 onOpen={view => setParam({ env: t.env, view: view && view !== 'summary' ? view : null })}
                 onSync={() => openSync([t.env])}
+                onForget={canForget ? () => void forget(t.env) : undefined}
               />
             ))}
           </div>
@@ -197,7 +212,7 @@ export function RulePage() {
         onClose={() => setParam({ env: null, view: null })}
         onSync={e => openSync([e])}
       />
-      <SyncPanel open={!!sync} rule={r} initialEnvs={sync?.envs} initialDryRun={sync?.dryRun} onClose={() => setSync(null)} onStarted={rule.reload} />
+      <SyncPanel open={!!sync} rule={r} initialEnvs={sync?.envs} initialDryRun={sync?.dryRun} onClose={() => setSync(null)} onChanged={rule.reload} />
     </div>
   );
 }
@@ -331,7 +346,7 @@ function RuleOverview({ rule: r }: { rule: RuleView }) {
         <div>
           <dt>Prune</dt>
           <dd>
-            {r.prune.enabled ? `On${r.prune.dryRun ? ' (report only)' : ''}` : 'Off'}
+            {r.prune.enabled ? 'On' : 'Off'}
             {r.prune.protection.length > 0 && (
               <span className="muted">
                 {' '}

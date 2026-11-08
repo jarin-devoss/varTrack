@@ -5,7 +5,8 @@ import { Icon, SINK_ICON, SINK_LABEL } from '../components/Icon';
 import { SlideOver } from '../components/Overlay';
 import { UTabs } from '../components/Panel';
 import { DriftPill, OpPill, SyncIcon, SyncPill, TONE_COLOR } from '../components/Status';
-import { DRIFT, SYNC, TRIGGER, targetNote, targetSync } from '../lib/status';
+import { keyDiffers } from '../lib/rules';
+import { DRIFT, SYNC, TRIGGER, isActive, targetNote, targetSync } from '../lib/status';
 import { useQuery } from '../lib/useQuery';
 import { taskHref } from './links';
 import { DiffOptions, EnvDiff } from './rule/DiffView';
@@ -35,6 +36,7 @@ function currentLine(rule: RuleView, t: Target) {
       </>
     );
   }
+  if (t.drift === 'missing') return <>nothing written here yet · the first sync of {t.fedBy ?? t.ref} writes it</>;
   if (t.drift === 'in_sync') return <>matches Git · {t.keyCount} keys</>;
   if (t.drift === 'unknown') return <>couldn't be read{t.driftMessage ? ` — ${t.driftMessage}` : ''}</>;
   return <>not compared{rule.selfHeal ? '' : ' — self-heal is off'}</>;
@@ -44,7 +46,7 @@ function currentLine(rule: RuleView, t: Target) {
 export function TargetPills({ target: t }: { target: Target }) {
   return (
     <>
-      <SyncPill status={targetSync(t)} />
+      {t.drift === 'missing' ? <DriftPill state="missing" /> : <SyncPill status={targetSync(t)} />}
       {(t.drift === 'healing' || t.drift === 'heal_failed') && <DriftPill state={t.drift} />}
       {t.lastSync && t.lastSync.state !== 'SUCCEEDED' && <OpPill state={t.lastSync.state} />}
     </>
@@ -106,8 +108,14 @@ export function EnvCompare({ rule, target: t }: { rule: RuleView; target: Target
   );
 }
 
+/** A sync of this environment has been accepted and has not ended. */
+export function syncRunning(t: Target): boolean {
+  return !!t.lastSync && isActive(t.lastSync.state);
+}
+
 /** Error line under a box: why the last sync or self-heal failed, or why the sink can't be read. */
 function targetProblem(t: Target): string | undefined {
+  if (t.notFed) return t.notFed;
   if (t.drift === 'heal_failed' || t.drift === 'unknown') return t.driftMessage;
   if (t.lastSync?.state === 'FAILED') return t.lastSync.error ?? t.lastSync.message;
   return undefined;
@@ -117,9 +125,10 @@ export type EnvView = 'summary' | 'diff' | 'current' | 'desired' | 'history';
 export const ENV_VIEWS: EnvView[] = ['summary', 'diff', 'current', 'desired', 'history'];
 
 /** One environment as a box: name and status on top, desired vs current underneath. */
-export function EnvBox({ rule, target: t, onOpen, onSync }: { rule: RuleView; target: Target; onOpen: (view?: EnvView) => void; onSync: () => void }) {
+export function EnvBox({ rule, target: t, onOpen, onSync, onForget }: { rule: RuleView; target: Target; onOpen: (view?: EnvView) => void; onSync: () => void; onForget?: () => void }) {
   const sync = targetSync(t);
   const problem = targetProblem(t);
+  const running = syncRunning(t);
   return (
     <article className={`envbox envbox--${TONE_COLOR[SYNC[sync].tone]}`} aria-label={`${t.env}: ${SYNC[sync].label}`}>
       <header className="envbox__head">
@@ -129,16 +138,28 @@ export function EnvBox({ rule, target: t, onOpen, onSync }: { rule: RuleView; ta
         <span className="envbox__pills">
           <TargetPills target={t} />
         </span>
-        <span className="envbox__note">{targetNote(t)}</span>
+        <span className="envbox__note">{t.notFed ? 'No longer synced by this rule' : targetNote(t)}</span>
         <span className="envbox__actions">
           {sync === 'OutOfSync' && (
             <button type="button" className="abtn" onClick={() => onOpen('diff')}>
               <Icon name="diff" size={13} /> Diff
             </button>
           )}
-          <button type="button" className="abtn abtn--blue" onClick={onSync}>
-            <Icon name="refresh" size={13} /> Sync
+          <button
+            type="button"
+            className="abtn abtn--blue"
+            onClick={onSync}
+            disabled={!!t.notFed || running}
+            aria-label={`Sync ${t.env}`}
+            title={t.notFed ?? (running ? `${t.env} is being synced` : `Sync ${t.env} from ${t.fedBy ?? 'Git'}`)}
+          >
+            <Icon name="refresh" size={13} className={running ? 'spin' : undefined} /> {running ? 'Syncing…' : 'Sync'}
           </button>
+          {t.notFed && onForget && (
+            <button type="button" className="abtn" onClick={onForget} aria-label={`Forget ${t.env}`} title="Remove this environment from varTrack's record. Its events and tasks stay.">
+              <Icon name="trash" size={13} /> Forget
+            </button>
+          )}
           <button type="button" className="icon-btn icon-btn--plain" onClick={() => onOpen()} aria-label={`Details for ${t.env}`} title="Details">
             <Icon name="chevronRight" size={16} />
           </button>
@@ -190,8 +211,15 @@ export function EnvPanel({
       }
       actions={
         t && (
-          <button type="button" className="abtn abtn--blue" onClick={() => onSync(t.env)}>
-            <Icon name="refresh" size={13} /> Sync {t.env}
+          <button
+            type="button"
+            className="abtn abtn--blue"
+            onClick={() => onSync(t.env)}
+            disabled={!!t.notFed || syncRunning(t)}
+            aria-label={`Sync ${t.env}`}
+            title={t.notFed ?? (syncRunning(t) ? `${t.env} is being synced` : `Sync ${t.env} from ${t.fedBy ?? 'Git'}`)}
+          >
+            <Icon name="refresh" size={13} className={syncRunning(t) ? 'spin' : undefined} /> {syncRunning(t) ? 'Syncing…' : `Sync ${t.env}`}
           </button>
         )
       }
@@ -301,7 +329,7 @@ function StateValues({ rule, target: t, side }: { rule: RuleView; target: Target
 
   const value = (k: KeyEntry) => (side === 'live' ? k.liveValue : k.gitValue);
   const rows = keys.data.filter(k => value(k) !== undefined).sort((a, b) => a.key.localeCompare(b.key));
-  const differ = rows.filter(k => k.state !== 'synced').length;
+  const differ = rows.filter(keyDiffers).length;
   const text = rows.map(k => `${k.key} = ${value(k)}`).join('\n');
   const sink = SINK_LABEL[rule.sinkType];
 
@@ -337,7 +365,7 @@ function StateValues({ rule, target: t, side }: { rule: RuleView; target: Target
           </div>
           <div className="values" role="table" aria-label={side === 'live' ? `Current values in ${sink}` : 'Desired values in Git'}>
             {rows.map(k => (
-              <div key={k.key} role="row" className={`values__line${k.state !== 'synced' ? ' values__line--differs' : ''}`}>
+              <div key={k.key} role="row" className={`values__line${keyDiffers(k) ? ' values__line--differs' : ''}`}>
                 <span className="values__key" role="cell">
                   {k.key}
                 </span>
@@ -347,7 +375,7 @@ function StateValues({ rule, target: t, side }: { rule: RuleView; target: Target
                 <span className="values__val" role="cell">
                   {value(k)}
                   {k.secret && <Icon name="lock" size={12} className="faint" label="Secret" style={{ marginLeft: 6, verticalAlign: -1 }} />}
-                  {k.state !== 'synced' && <span className="sr-only"> (differs)</span>}
+                  {keyDiffers(k) && <span className="sr-only"> (differs)</span>}
                 </span>
               </div>
             ))}
