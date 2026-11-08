@@ -16,9 +16,12 @@ decides whether to reject or warn:
 
 CUE validation process
 ──────────────────────
-1. Find the matching .cue schema file in schema_dir:
+1. Choose the schema (Validator.choose), in this order:
+     the rule's schema_map: the first entry whose glob matches the file's path   "none" = not checked, on purpose
+     the file's own $schema, when the rule has schema_from_file
      <schema_dir>/<file_name>.cue   e.g.  package.json.cue
      <schema_dir>/default.cue       fallback
+   A schema the map or the file names that is not in schema_dir is an error, never a fall-back to the next.
 
 2. Convert flat_data dict to a CUE value literal:
      { "database.host": "localhost", "database.port": "5432" }
@@ -30,18 +33,25 @@ CUE validation process
 
 4. If cue vet exits non-zero → CUEValidationError
 
-If no schema file is found, validation is skipped (no error).
-If the CUE binary is not installed, validation is skipped with a warning.
+If no schema file is found, nothing checks the file: the caller reports validation "none", and fails it under
+strict_validation.
+If the CUE binary is not installed there is no way to check: validate() raises CUEUnavailable, which
+fails the file under strict_validation and marks it unchecked otherwise. Only an operator who named
+the "schema_validation" degraded mode (VARTRACK_ALLOW_DEGRADED) gets files written unvalidated.
 """
 from __future__ import annotations
 
 import json
 import logging
 import os
+import re
 import subprocess
 import tempfile
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
+
+from app.pipeline import schema_paths
 
 logger = logging.getLogger(__name__)
 
@@ -64,6 +74,27 @@ class CUEValidationError(Exception):
     """Raised when CUE schema validation fails in strict mode."""
 
 
+class CUEUnavailable(CUEValidationError):
+    """A schema exists for the file, but the cue program that checks it is not installed."""
+
+
+@dataclass(frozen=True)
+class SchemaChoice:
+    """Which schema checks a file, and why: what Validator.choose decided."""
+    path:   Optional[Path]   # the schema file to check with; None when nothing checks the file
+    name:   str              # the schema in the schema repository ("api/settings.cue"), or "none"
+    source: str              # schema_map[N] | file | name | default | none
+    note:   str = ""         # said in the file's result: a $schema that was overridden or ignored
+    error:  str = ""         # an explicit choice that cannot be honoured: the file fails with this
+
+    @property
+    def checked(self) -> bool:
+        return self.path is not None
+
+
+_URL = re.compile(r"^[A-Za-z][A-Za-z0-9+.-]*://")
+
+
 class Validator:
     """
     CUE-based flat-data validator.
@@ -78,12 +109,67 @@ class Validator:
         self._schema_dir = schema_dir
         self._cue_available: Optional[bool] = None   # lazy-check
 
+    def choose(
+        self,
+        file_path: str,
+        rule_config: Optional[dict] = None,
+        file_schema: Any = None,
+        *,
+        tenant_id: str = "",
+        commit: str = "",
+    ) -> SchemaChoice:
+        """The schema for the file at *file_path* (its path in the repository), in the order of the module
+        docstring. *file_schema* is the file's own top-level ``$schema``, read by the caller; it counts only when
+        the rule has schema_from_file."""
+        rule = rule_config or {}
+        where = f"the schema repository of tenant {tenant_id or '?'}" + (f" at {commit[:12]}" if commit else "")
+        note = ""
+        from_file = file_schema if rule.get("schema_from_file") and isinstance(file_schema, str) else None
+
+        for i, entry in enumerate(rule.get("schema_map") or []):
+            if not isinstance(entry, dict) or not schema_paths.glob_match(str(entry.get("match", "")), file_path):
+                continue
+            source = f"schema_map[{i}]"
+            if from_file is not None and from_file != entry.get("schema"):
+                note = f"the file's $schema ({from_file}) was overridden by {source}"
+            return self._named(str(entry.get("schema", "")), source, f"{source}, {entry.get('match')}", where, note)
+
+        if from_file is not None:
+            if _URL.match(from_file):
+                note = f"the file's $schema ({from_file}) is a URL, not a schema in the schema repository: ignored"
+            else:
+                return self._named(from_file, "file", "$schema of the file", where, note)
+
+        found = self._find_schema(Path(file_path).name)
+        if found is not None:
+            return SchemaChoice(found, found.name, "name" if found.name != "default.cue" else "default", note)
+        return SchemaChoice(None, schema_paths.NONE, "none", note)
+
+    def _named(self, schema: str, source: str, why: str, where: str, note: str) -> SchemaChoice:
+        """A schema the operator (or the file) named: "none", or one that has to exist."""
+        if schema == schema_paths.NONE:
+            return SchemaChoice(None, schema_paths.NONE, source, note)
+        problem = schema_paths.schema_problem(schema)
+        if problem:
+            return SchemaChoice(None, schema, source, note, error=f"schema {schema!r} ({why}) {problem}")
+        missing = f"schema {schema} ({why}) is not in {where}"
+        if self._schema_dir is None or not Path(self._schema_dir).is_dir():
+            return SchemaChoice(None, schema, source, note, error=missing)
+        try:
+            path = schema_paths.join_inside(Path(self._schema_dir), schema)
+        except ValueError as exc:
+            return SchemaChoice(None, schema, source, note, error=f"{exc} ({why})")
+        if not path.is_file():
+            return SchemaChoice(None, schema, source, note, error=missing)
+        return SchemaChoice(path, schema, source, note)
+
     def validate(
         self,
         flat_data: dict[str, str],
         file_name: str,
         strict: bool = False,
-    ) -> None:
+        schema_path: Optional[Path] = None,
+    ) -> bool:
         """
         Validate *flat_data* against the CUE schema for *file_name*.
 
@@ -91,24 +177,32 @@ class Validator:
         ----------
         flat_data  : { "database.host": "localhost", ... }
         file_name  : basename of the source file, e.g. "package.json"
+        schema_path: the schema choose() picked; left out, the file name's schema is looked up
         strict     : if True, raises CUEValidationError on failure;
                      if False, logs a warning and returns
+
+        Returns True when the file was checked and passed, False when nothing checked it (no schema, or the
+        degraded mode that writes files unvalidated); a failure is logged (strict=False) or raised.
 
         Raises
         ------
         CUEValidationError — only when strict=True and validation fails
         """
-        schema_path = self._find_schema(file_name)
+        if schema_path is None:
+            schema_path = self._find_schema(file_name)
         if schema_path is None:
             logger.debug("validator: no schema for file=%s, skipping", file_name)
-            return
+            return False
 
         if not self._is_cue_available():
-            logger.warning(
-                "validator: CUE binary %r not found — skipping validation for %s",
-                _CUE_BIN, file_name,
-            )
-            return
+            from app import dependencies
+
+            reason = f"cannot validate {file_name}: the {_CUE_BIN!r} program is not installed"
+            if dependencies.allowed("schema_validation"):
+                logger.warning("%s — writing it unvalidated (VARTRACK_ALLOW_DEGRADED=schema_validation)", reason)
+                dependencies.mode_on("schema_validation", reason)
+                return False
+            raise CUEUnavailable(reason)
 
         error = self._run_cue_vet(flat_data, schema_path, file_name)
         if error:
@@ -116,6 +210,8 @@ class Validator:
             if strict:
                 raise CUEValidationError(msg)
             logger.warning("validator: %s", msg)
+            return False
+        return True
 
     # ── Internal ──────────────────────────────────────────────────────────────
 

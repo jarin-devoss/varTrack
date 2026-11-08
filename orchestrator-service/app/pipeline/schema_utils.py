@@ -4,6 +4,8 @@ import logging
 import threading
 import time
 
+from app.dependencies import DependencyError
+
 logger = logging.getLogger(__name__)
 
 
@@ -29,6 +31,8 @@ def rule_config_for_datasource(tenant_id: str, datasource: str, platform: str = 
             logger.warning("schema repo of tenant %s could not be refreshed; using the rules already loaded", tenant_id)
         rules = [r for r in mgr.get_all_rules(tenant_id)
                  if r.get("datasource") == datasource and (not platform or r.get("platform") == platform)]
+    except DependencyError:
+        raise   # "cannot read config.cue" is not "no such rule"
     except Exception:
         logger.exception("rule lookup failed tenant=%s datasource=%s", tenant_id, datasource)
         return None
@@ -42,7 +46,10 @@ def rule_from_bundle(platform: str, datasource: str, tenant_id: str) -> dict | N
     try:
         from app.schema_registry.manager import get_schema_manager
         return get_schema_manager().resolve_rule(platform, datasource, tenant_id)
+    except DependencyError:
+        raise   # the tenant's schemas or config.cue cannot be read: say that, not "no rule"
     except Exception:
+        logger.exception("rule lookup failed tenant=%s platform=%s datasource=%s", tenant_id, platform, datasource)
         return None
 
 def rule_from_any_tenant(platform: str, datasource: str) -> dict | None:
@@ -159,5 +166,8 @@ def rules_from_bundle_all(tenant_id: str | None = None) -> list[dict]:
                 r.setdefault("tenant_id", tid)
                 all_rules.append(r)
         return all_rules
+    except DependencyError:
+        raise   # a heal pass that cannot read config.cue fails, instead of finding "no rules"
     except Exception:
+        logger.exception("rules of every tenant could not be listed")
         return []

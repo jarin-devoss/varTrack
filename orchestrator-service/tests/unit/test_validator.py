@@ -20,7 +20,7 @@ from unittest.mock import MagicMock, patch
 for _m in ("vartrack_core", "pymongo", "git", "gitpython"):
     sys.modules.setdefault(_m, MagicMock())
 
-from app.pipeline.validator import CUEValidationError, Validator
+from app.pipeline.validator import CUEUnavailable, CUEValidationError, Validator
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -137,16 +137,32 @@ class TestValidatorTimeout(unittest.TestCase):
         self.tmpdir.cleanup()
 
     def test_timeout_handled_gracefully(self):
-        """subprocess.TimeoutExpired must not propagate as unhandled exception."""
+        """subprocess.TimeoutExpired must not propagate as unhandled exception: a cue program that
+        cannot be run is "cannot validate", said as CUEUnavailable."""
         with patch(
             "subprocess.run",
             side_effect=subprocess.TimeoutExpired(cmd=["cue"], timeout=15),
         ):
-            # Should not propagate TimeoutExpired — validator must catch it.
-            try:
+            with self.assertRaises(CUEUnavailable):
                 self.validator.validate({"k": "v"}, "cfg.yaml", strict=False)
-            except subprocess.TimeoutExpired:
-                self.fail("TimeoutExpired must be caught by Validator, not propagated")
+
+    def test_a_missing_cue_program_is_not_a_passed_validation(self):
+        with patch("subprocess.run", side_effect=FileNotFoundError("cue")):
+            with self.assertRaises(CUEUnavailable) as caught:
+                self.validator.validate({"k": "v"}, "cfg.yaml", strict=True)
+        self.assertIn("cannot validate cfg.yaml", str(caught.exception))
+
+    def test_an_operator_who_named_the_mode_gets_files_written_unvalidated_and_it_shows(self):
+        from app import dependencies
+
+        dependencies.reset()
+        with patch("subprocess.run", side_effect=FileNotFoundError("cue")),                 patch.dict("os.environ", {"VARTRACK_ALLOW_DEGRADED": "schema_validation"}):
+            self.validator.validate({"k": "v"}, "cfg.yaml", strict=True)    # no error
+        self.assertIn("schema_validation", dependencies.active_modes())
+        dependencies.reset()
+
+    def test_no_schema_is_still_nothing_to_check(self):
+        Validator(schema_dir=None).validate({"k": "v"}, "cfg.yaml", strict=True)
 
 
 if __name__ == "__main__":

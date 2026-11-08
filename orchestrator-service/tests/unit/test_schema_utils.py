@@ -22,7 +22,7 @@ def mgr(monkeypatch, tmp_path):
 
 
 def test_the_rule_for_the_datasource_is_found(mgr):
-    assert schema_utils.rule_config_for_datasource("default", "redis") == {"platform": "github", "datasource": "redis"}
+    assert schema_utils.rule_config_for_datasource("default", "redis") == {"platform": "github", "datasource": "redis", "tenant_id": "default"}
 
 
 def test_with_rules_on_several_platforms_the_platform_picks_the_rule(mgr):
@@ -37,7 +37,7 @@ def test_with_rules_on_several_platforms_and_none_named_nothing_is_guessed(mgr):
 
 
 def test_a_platform_is_not_needed_when_one_rule_writes_to_the_datasource(mgr):
-    assert schema_utils.rule_config_for_datasource("default", "redis", "github") == {"platform": "github", "datasource": "redis"}
+    assert schema_utils.rule_config_for_datasource("default", "redis", "github") == {"platform": "github", "datasource": "redis", "tenant_id": "default"}
     assert schema_utils.rule_config_for_datasource("default", "redis", "gitea") is None
 
 

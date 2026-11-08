@@ -7,10 +7,11 @@ POST /v1/tenants/{tenant_id}/schemas/warm  →  force-clone schema repo in API p
 from __future__ import annotations
 
 import asyncio
-from typing import Optional
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
+
+from app.api.deps import require_viewer_or_grant, tenant_in_scope
 
 router = APIRouter()
 
@@ -21,16 +22,12 @@ class SchemaListResponse(BaseModel):
     cue_files:   list[str]
 
 
-class SchemaWarmRequest(BaseModel):
-    repo_url: str
-    branch:   str = "main"
-    token:    Optional[str] = None
-
-
 class SchemaWarmResponse(BaseModel):
     tenant_id:  str
     status:     str
     rules_loaded: int
+    # The commit of the schema repository this process now holds for the tenant ("" when none).
+    schema_commit: str = ""
 
 
 # FIX (Dependency Injection): expose schema_manager via a Depends function so
@@ -39,7 +36,8 @@ def get_schema_manager(request: Request):
     return getattr(request.app.state, "schema_manager", None)
 
 
-@router.get("/tenants/{tenant_id}/schemas", response_model=SchemaListResponse)
+@router.get("/tenants/{tenant_id}/schemas", response_model=SchemaListResponse,
+            dependencies=[Depends(require_viewer_or_grant), Depends(tenant_in_scope)])
 async def list_schemas(
     tenant_id: str, mgr=Depends(get_schema_manager)
 ) -> SchemaListResponse:
@@ -76,13 +74,16 @@ async def list_schemas(
     )
 
 
-@router.post("/tenants/{tenant_id}/schemas/warm", response_model=SchemaWarmResponse)
+@router.post("/tenants/{tenant_id}/schemas/warm", response_model=SchemaWarmResponse,
+             dependencies=[Depends(tenant_in_scope)])
 async def warm_schema(
-    tenant_id: str, body: SchemaWarmRequest, mgr=Depends(get_schema_manager)
+    tenant_id: str, mgr=Depends(get_schema_manager)
 ) -> SchemaWarmResponse:
     """
     Force-clone a tenant's schema repo inside the API process so that
-    resolve_rule() can return rule configs for incoming webhooks.
+    resolve_rule() can return rule configs for incoming webhooks. The repository, branch and
+    credential are the ones an operator registered for the tenant; the request names none of
+    them, so it cannot point a tenant at another repository.
 
     Needed for bootstrap: the schema-registry webhook runs in the Celery
     worker process (different address space); this endpoint runs the same
@@ -91,6 +92,8 @@ async def warm_schema(
     """
     if mgr is None:
         return SchemaWarmResponse(tenant_id=tenant_id, status="no_manager", rules_loaded=0)
+    if tenant_id not in mgr.list_tenant_ids():
+        raise HTTPException(status_code=404, detail=f"tenant {tenant_id!r} has no schema repository registered")
 
     # FIX (Deprecation): use get_running_loop() instead of get_event_loop().
     loop = asyncio.get_running_loop()
@@ -98,10 +101,7 @@ async def warm_schema(
     # stale rules being served when the schema repo was recreated (e.g. demo
     # teardown + re-run) and git-pull would diverge.
     await loop.run_in_executor(None, mgr.invalidate, tenant_id)
-    await loop.run_in_executor(
-        None,
-        lambda: mgr.get_or_clone(tenant_id, body.repo_url, body.branch, body.token),
-    )
+    await loop.run_in_executor(None, mgr.get_or_clone, tenant_id)
     # FIX (Event Loop Block): get_all_rules() may parse/deserialise CUE files
     # or acquire the threading.Lock — push it to the executor so the event
     # loop is not blocked during rule loading.
@@ -110,4 +110,5 @@ async def warm_schema(
         tenant_id=tenant_id,
         status="ok",
         rules_loaded=len(rules),
+        schema_commit=mgr.schema_commit(tenant_id),
     )
