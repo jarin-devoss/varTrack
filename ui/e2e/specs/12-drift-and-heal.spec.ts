@@ -14,8 +14,8 @@ test.use(as('admin'));
 const FIELD = 'api.rate_limit';
 
 // The rules store a file as one document per environment (STRATEGY_DOCUMENT): the value is nested under `data`.
-const tamper = (stores: Stores, collection: string, value: string) => stores.mongoSet(collection, 'default', FIELD, value);
-const stored = (stores: Stores, collection: string) => stores.mongoValue(collection, 'default', FIELD);
+const tamper = (stores: Stores, collection: string, value: string) => stores.mongoSet(collection, 'staging', FIELD, value);
+const stored = (stores: Stores, collection: string) => stores.mongoValue(collection, 'staging', FIELD);
 
 const setValidator = (stores: Stores, collection: string, validator: string) =>
   stores.mongo(`db.runCommand({ collMod: ${JSON.stringify(collection)}, validator: ${validator}, validationLevel: ${validator === '{}' ? "'off'" : "'strict'"}, validationAction: 'error' })`);
@@ -26,7 +26,7 @@ test.describe('a rule with self-heal (gitea/mongo)', () => {
 
   // each test starts from the sink as Git says
   test.beforeEach(async ({ adminApi }) => {
-    const [id] = await adminApi.sync(RULE, ['default']);
+    const [id] = await adminApi.sync(RULE, ['staging']);
     await adminApi.succeeded(id);
   });
 
@@ -38,7 +38,7 @@ test.describe('a rule with self-heal (gitea/mongo)', () => {
 
     const rule = new RulePage(page);
     await rule.open(RULE);
-    await expect(rule.env('default')).toHaveAccessibleName(/default: Synced/);
+    await expect(rule.env('staging')).toHaveAccessibleName(/staging: Synced/);
 
     tamper(stores, COLLECTION, changed);
     expect(stored(stores, COLLECTION)).toBe(changed);
@@ -50,7 +50,7 @@ test.describe('a rule with self-heal (gitea/mongo)', () => {
     await expect.poll(async () => stored(stores, COLLECTION), { timeout: 30_000, message: 'the heal writes the value back' }).toBe(original);
     await expect.poll(healed, { timeout: 30_000 }).toBeGreaterThan(before);
     await page.getByRole('button', { name: 'Refresh' }).click();
-    await expect(rule.env('default')).toHaveAccessibleName(/default: Synced/);
+    await expect(rule.env('staging')).toHaveAccessibleName(/staging: Synced/);
     await page.getByRole('tab', { name: 'Events' }).click();
     await expect(page.locator('#rule-panel')).toContainText(/heal/i);
   });
@@ -73,7 +73,7 @@ test.describe('a rule with self-heal (gitea/mongo)', () => {
     expect(again.state).toBe('drifted');
     expect(again.healed).toBe(true);
     await expect.poll(async () => stored(stores, COLLECTION), { timeout: 30_000 }).toBe(original);
-    expect((await api.fresh(RULE)).targets.find(t => t.env === 'default')?.drift).toBe('in_sync');
+    expect((await api.fresh(RULE)).targets.find(t => t.env === 'staging')?.drift).toBe('in_sync');
   });
 });
 
@@ -82,7 +82,7 @@ test.describe('a rule without self-heal (gitea/mongo-primary)', () => {
   const COLLECTION = 'ui-mongo-primary';
 
   test.beforeEach(async ({ adminApi }) => {
-    const [id] = await adminApi.sync(RULE, ['default']);
+    const [id] = await adminApi.sync(RULE, ['staging']);
     await adminApi.succeeded(id);
   });
 
@@ -95,22 +95,22 @@ test.describe('a rule without self-heal (gitea/mongo-primary)', () => {
     tamper(stores, COLLECTION, changed);
     // Refresh reads the sink now
     await page.getByRole('button', { name: 'Refresh' }).click();
-    await expect(rule.env('default')).toHaveAccessibleName(/default: OutOfSync/);
+    await expect(rule.env('staging')).toHaveAccessibleName(/staging: OutOfSync/);
     await expect(page.locator('main')).toContainText("The watcher doesn't compare this rule with Git. Sync to restore Git values.");
     const view = await api.fresh(RULE);
     expect(view.selfHeal, 'the rule does not ask for self-heal').toBe(false);
-    expect(view.targets.find(t => t.env === 'default')?.drift).toBe('drifted');
+    expect(view.targets.find(t => t.env === 'staging')?.drift).toBe('drifted');
 
     // nobody puts it back: asked to look, the watcher says this rule is not one it keeps
     await expect(stack.checkNow('gitea', 'mongo-primary')).rejects.toThrow(/not watched/);
     expect(stored(stores, COLLECTION)).toBe(changed);
 
     // Sync repairs it
-    const taskId = await rule.syncEnv('default', { dryRun: false });
+    const taskId = await rule.syncEnv('staging', { dryRun: false });
     await api.succeeded(taskId);
     expect(stored(stores, COLLECTION)).toBe(original);
     await page.getByRole('button', { name: 'Refresh' }).click();
-    await expect(rule.env('default')).toHaveAccessibleName(/default: Synced/);
+    await expect(rule.env('staging')).toHaveAccessibleName(/staging: Synced/);
   });
 });
 
@@ -119,7 +119,7 @@ test.describe('a rule with self-heal whose heal the sink refuses (gitea/mongo)',
   const COLLECTION = 'ui-mongo';
 
   test.beforeEach(async ({ adminApi }) => {
-    const [id] = await adminApi.sync(RULE, ['default']);
+    const [id] = await adminApi.sync(RULE, ['staging']);
     await adminApi.succeeded(id);
   });
   test.afterEach(async ({ stores }) => setValidator(stores, COLLECTION, '{}'));
@@ -130,27 +130,27 @@ test.describe('a rule with self-heal whose heal the sink refuses (gitea/mongo)',
     const failures = async () => (await api.events()).filter(e => e.rule === RULE && e.reason === 'HealFailed').length;
     const before = await failures();
 
-    // the collection refuses every write of the default environment (as a validator on the database would), and a value is
+    // the collection refuses every write of the staging environment (as a validator on the database would), and a value is
     // changed past it: the watcher sees the difference, tries to put the value back, and is refused
-    setValidator(stores, COLLECTION, "{ $expr: { $ne: ['$_vt_env', 'default'] } }");
-    stores.mongo(`db.runCommand({ update: ${JSON.stringify(COLLECTION)}, updates: [{ q: { _vt_env: 'default' }, u: { $set: { ${JSON.stringify(`data.${FIELD}`)}: ${JSON.stringify(changed)} } } }], bypassDocumentValidation: true })`);
+    setValidator(stores, COLLECTION, "{ $expr: { $ne: ['$_vt_env', 'staging'] } }");
+    stores.mongo(`db.runCommand({ update: ${JSON.stringify(COLLECTION)}, updates: [{ q: { _vt_env: 'staging' }, u: { $set: { ${JSON.stringify(`data.${FIELD}`)}: ${JSON.stringify(changed)} } } }], bypassDocumentValidation: true })`);
     expect(stored(stores, COLLECTION)).toBe(changed);
 
     const [found] = await stack.checkNow('gitea', 'mongo');
     expect(found.healed, 'the watcher asked for a heal').toBe(true);
-    await expect.poll(async () => (await api.fresh(RULE)).targets.find(t => t.env === 'default')?.drift, { timeout: 60_000, intervals: [2_000], message: 'self-heal gives up' }).toBe('heal_failed');
+    await expect.poll(async () => (await api.fresh(RULE)).targets.find(t => t.env === 'staging')?.drift, { timeout: 60_000, intervals: [2_000], message: 'self-heal gives up' }).toBe('heal_failed');
     expect(stored(stores, COLLECTION), 'the sink kept the changed value').toBe(changed);
 
     const rule = new RulePage(page);
     await rule.open(RULE);
-    await expect(rule.env('default')).toHaveAccessibleName(/default: OutOfSync/);
+    await expect(rule.env('staging')).toHaveAccessibleName(/staging: OutOfSync/);
     await expect(page.locator('main')).toContainText('self-heal gave up');
     await expect.poll(failures, { timeout: 30_000 }).toBeGreaterThan(before);
 
     // the cause is gone: the person presses Sync
     setValidator(stores, COLLECTION, '{}');
-    await api.succeeded(await rule.syncEnv('default', { dryRun: false }));
+    await api.succeeded(await rule.syncEnv('staging', { dryRun: false }));
     expect(stored(stores, COLLECTION)).toBe(original);
-    await expect.poll(async () => (await api.fresh(RULE)).targets.find(t => t.env === 'default')?.drift, { timeout: 30_000 }).toBe('in_sync');
+    await expect.poll(async () => (await api.fresh(RULE)).targets.find(t => t.env === 'staging')?.drift, { timeout: 30_000 }).toBe('in_sync');
   });
 });

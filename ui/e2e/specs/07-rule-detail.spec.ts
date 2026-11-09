@@ -135,19 +135,14 @@ test.describe('the Environments panel', () => {
     await expect(page).toHaveURL(/keys=changed/);
   });
 
-  test('Diff compares the sink with Git for every environment of the rule', async ({ page }) => {
+  test('there is no rule-wide Diff: an environment has its own, which opens its panel on the Diff view', async ({ page }) => {
     const rule = new RulePage(page);
     await rule.open(RULE);
-    await page.getByRole('tab', { name: 'Diff' }).click();
-    await expect(page).toHaveURL(/tab=diff/);
-    await expect(page.locator('#environments-panel')).toContainText(/No differences|current|desired/i);
-  });
-
-  test('the Diff action of the action bar opens the same tab', async ({ page }) => {
-    const rule = new RulePage(page);
-    await rule.open(RULE);
-    await page.locator('.action-bar').getByRole('button', { name: 'Diff' }).click();
-    await expect(page).toHaveURL(/tab=diff/);
+    await expect(page.locator('.action-bar').getByRole('button', { name: 'Diff', exact: true })).toHaveCount(0);
+    await expect(page.getByRole('tablist', { name: 'Environments', exact: true }).getByRole('tab', { name: 'Diff' })).toHaveCount(0);
+    await rule.envDiff('staging').click();
+    await expect(page).toHaveURL(/env=staging&view=diff/);
+    await expect(page.getByRole('dialog')).toContainText(/No differences|current|desired/i);
   });
 });
 

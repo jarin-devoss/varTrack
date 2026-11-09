@@ -69,7 +69,7 @@
       "spec": "07-rule-detail"
     },
     "Dismiss": {
-      "spec": "10-dry-run"
+      "spec": "23-sync-feedback"
     },
     "Environment": {
       "spec": "08-environment"
@@ -83,6 +83,9 @@
     },
     "Last sync": {
       "spec": "06-rules-list"
+    },
+    "Last written by varTrack": {
+      "spec": "26-each-environment-diff"
     },
     "Loading": {
       "spec": "21-links-and-not-found"
@@ -275,6 +278,9 @@
     "drift.missing": {
       "spec": "24-unsynced-environments",
       "contains": "Not synced yet"
+    },
+    "event.RuleRefused": {
+      "spec": "27-no-default-environment"
     }
   }
 }

@@ -31,7 +31,10 @@
     "datasource": "zookeeper",
     "file_name": "app-settings.yaml",
     "key_format": "slash",
-    "destination_template": "/ui-zookeeper"
+    "destination_template": "/ui-zookeeper",
+    "branch_map": {
+      "main": "production"
+    }
   },
   {
     "platform": "gitea",
@@ -48,13 +51,59 @@
     "datasource": "mongo",
     "file_name": "app-settings.yaml",
     "branch": "develop",
-    "destination_template": "ui-mongo"
+    "destination_template": "ui-mongo",
+    "branch_map": {
+      "develop": "staging"
+    }
   },
   {
     "platform": "gitea",
     "datasource": "mongo-primary",
     "file_name": "app-settings.yaml",
     "branch": "develop",
-    "destination_template": "ui-mongo-primary"
+    "destination_template": "ui-mongo-primary",
+    "branch_map": {
+      "develop": "staging"
+    }
+  },
+  {
+    "platform": "gitea",
+    "datasource": "mongo-file",
+    "file_name": "app-settings.yaml",
+    "branch_map": {
+      "main": "production"
+    }
+  },
+  {
+    "platform": "gitea",
+    "datasource": "linux_server",
+    "file_name": "app-settings.yaml",
+    "branch_map": {
+      "main": "production"
+    }
+  },
+  {
+    "platform": "gitea",
+    "datasource": "s3",
+    "file_name": "app-settings.yaml",
+    "branch_map": {
+      "main": "production"
+    }
+  },
+  {
+    "platform": "gitea",
+    "datasource": "mongo-dr",
+    "file_name": "app-settings.yaml",
+    "branch_map": {
+      "main": "production"
+    }
+  },
+  {
+    "platform": "gitea",
+    "datasource": "mongo-kv",
+    "file_name": "app-settings.yaml",
+    "branch_map": {
+      "main": "production"
+    }
   }
 ]

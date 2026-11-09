@@ -4,14 +4,21 @@
     "datasource": "zookeeper",
     "repo_url": "http://gitea:3000/vartrack-demo/demo-configs.git",
     "file_name": "app-settings.yaml",
-    "repositories": ["vartrack-demo/demo-configs"],
+    "repositories": [
+      "vartrack-demo/demo-configs"
+    ],
     "branch_as_env": false,
     "branch": "main",
     "sync_mode": "SYNC_MODE_FULL",
     "prune": true,
     "self_heal": true,
-    "zk_hosts": ["zookeeper:2181"],
+    "zk_hosts": [
+      "zookeeper:2181"
+    ],
     "key_format": "slash",
-    "destination_template": "/vartrack/{tenant}/default"
+    "destination_template": "/vartrack/{tenant}/default",
+    "branch_map": {
+      "main": "default"
+    }
   }
 ]

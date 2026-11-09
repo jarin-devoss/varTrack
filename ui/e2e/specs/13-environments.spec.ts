@@ -116,13 +116,15 @@ test.describe('as reader', () => {
     await expect(page).toHaveURL(/\/rules\/demo\/gitea\/redis-hash\?env=staging/);
   });
 
-  test('a reader can open Sync on a row, but only to dry-run: the panel is a dry run and cannot be switched', async ({ page }) => {
+  test('Sync on a row is disabled for a reader and says why; Dry run is its own button and opens the panel as a dry run', async ({ page }) => {
     const envs = new EnvironmentsPage(page);
     await envs.toggle('gitea/redis-hash', 'staging').click();
-    await envs.row('gitea/redis-hash', 'staging').getByRole('button', { name: /^Sync staging$/ }).click();
+    const row = envs.row('gitea/redis-hash', 'staging');
+    await expect(row.getByRole('button', { name: /^Sync staging$/ })).toBeDisabled();
+    await expect(row.getByRole('button', { name: /^Sync staging$/ })).toHaveAccessibleDescription(/You can read this rule's repository but not write to it/);
+    await row.getByRole('button', { name: /^Dry run staging$/ }).click();
     await expect(envs.sync.dialog).toBeVisible();
-    await expect(envs.sync.dryRun).toBeChecked();
-    await expect(envs.sync.dryRun).toBeDisabled();
+    await expect(envs.sync.dryRun).toHaveCount(0);
     await expect(envs.sync.start).toHaveText('Start dry run');
   });
 });

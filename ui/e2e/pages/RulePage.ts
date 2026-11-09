@@ -28,6 +28,30 @@ export class SyncPanel {
   get start() {
     return this.dialog.getByRole('button', { name: /^(Sync \d+ environments?|Sync and delete \d+ keys?|Start dry run.*|Starting…)$/ });
   }
+
+  // The log a dry run shows in the panel, in place of the form, and its footer.
+  get log() {
+    return this.dialog.getByTestId('dryrun-log');
+  }
+  /** The report of one environment's dry run. */
+  report = (env: string): Locator => this.log.getByTestId('dryrun-report').filter({ has: this.page.getByText(env, { exact: true }) });
+  /** The one-line outcome of a report. */
+  get verdicts() {
+    return this.log.getByTestId('dryrun-verdict');
+  }
+  get syncThese() {
+    return this.dialog.getByRole('button', { name: 'Sync these environments' });
+  }
+  get runAgain() {
+    return this.dialog.getByRole('button', { name: 'Run again' });
+  }
+  get back() {
+    return this.dialog.getByRole('button', { name: 'Back', exact: true });
+  }
+  /** The footer's Close (the panel's own X, also named Close, comes after it). */
+  get close() {
+    return this.dialog.getByRole('button', { name: 'Close', exact: true }).first();
+  }
   get error() {
     return this.dialog.getByRole('alert');
   }
@@ -55,6 +79,7 @@ export class RulePage {
   get syncAll() {
     return this.page.locator('.action-bar').getByRole('button', { name: 'Sync', exact: true });
   }
+  /** For someone who may sync: the button that opens the Sync panel ticked on Dry run. */
   get dryRunAll() {
     return this.page.locator('.action-bar').getByRole('button', { name: 'Dry run' });
   }
@@ -68,6 +93,10 @@ export class RulePage {
   /** The box of one environment: `staging: In sync`, `main: OutOfSync`. */
   env = (env: string): Locator => this.page.getByRole('article', { name: new RegExp(`^${escape(env)}:`) });
   envSync = (env: string): Locator => this.env(env).getByRole('button', { name: `Sync ${env}` });
+  /** What starts a dry run of one environment for someone who may not sync (their Sync is disabled, next to it). */
+  envDryRun = (env: string): Locator => this.env(env).getByRole('button', { name: `Dry run ${env}` });
+  /** The environment's own Diff: in every box, disabled (with the reason) when there is nothing to compare. */
+  envDiff = (env: string): Locator => this.env(env).getByRole('button', { name: `Diff ${env}` });
   envDetails = (env: string): Locator => this.env(env).getByRole('button', { name: `Details for ${env}` });
   envNames = async (): Promise<string[]> => {
     const labels = await this.page.locator('article.envbox').evaluateAll(nodes => nodes.map(n => n.getAttribute('aria-label') ?? ''));
@@ -92,23 +121,38 @@ export class RulePage {
     return href.split('/').pop() ?? '';
   }
 
-  /** Sync one environment from the Sync panel; returns the task it queued (the answer to the request, not a toast an earlier sync left). */
+  /**
+   * Sync one environment from the Sync panel; returns the task it queued (the answer to the request, not a toast an earlier
+   * sync left). A dry run does not close the panel: its log is read there, so the panel is closed once its log is shown.
+   */
   async syncEnv(env: string, options: { dryRun?: boolean } = {}): Promise<string> {
     await this.envSync(env).click();
     await expect(this.sync.dialog).toBeVisible();
-    if (options.dryRun !== undefined && (await this.sync.dryRun.isChecked()) !== options.dryRun) await this.sync.dryRun.setChecked(options.dryRun);
+    if (options.dryRun !== undefined && (await this.sync.dryRun.count()) && (await this.sync.dryRun.isChecked()) !== options.dryRun) {
+      await this.sync.dryRun.setChecked(options.dryRun);
+    }
+    const dry = !(await this.sync.dryRun.count()) || (await this.sync.dryRun.isChecked());
     const answered = this.page.waitForResponse(startedSync);
     await this.sync.start.click();
-    // A sync that will delete keys from a production-like environment asks to type "prune" first: a person types it.
-    const confirm = this.page.getByRole('dialog', { name: 'Prune production keys?' });
-    const toast = this.page.getByRole('status').getByRole('link', { name: /follow the task/i });
-    await expect(confirm.or(toast.last())).toBeVisible();
-    if (await confirm.isVisible()) {
-      await confirm.getByRole('textbox').fill('prune');
-      await confirm.getByRole('button', { name: 'Sync and prune' }).click();
+    if (!dry) {
+      // A sync that will delete keys from a production-like environment asks to type "prune" first: a person types it.
+      const confirm = this.page.getByRole('dialog', { name: 'Prune production keys?' });
+      const toast = this.page.getByRole('status').getByRole('link', { name: /follow the task/i });
+      await expect(confirm.or(toast.last())).toBeVisible();
+      if (await confirm.isVisible()) {
+        await confirm.getByRole('textbox').fill('prune');
+        await confirm.getByRole('button', { name: 'Sync and prune' }).click();
+      }
     }
     const response = await answered;
     expect(response.status(), 'the sync request is accepted').toBe(200);
+    if (dry) {
+      // The log is shown at once and fills in as the run moves (a run waiting for a worker says it is queued): closing it
+      // before it ends is fine, the toast follows the run from there.
+      await expect(this.sync.log).toBeVisible();
+      await this.sync.close.click();
+      await expect(this.sync.dialog).toBeHidden();
+    }
     return ((await response.json()) as { taskIds: string[] }).taskIds[0];
   }
 }

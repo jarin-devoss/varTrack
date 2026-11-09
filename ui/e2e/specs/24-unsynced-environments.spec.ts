@@ -24,9 +24,9 @@ test('the first sync of an environment nobody has written writes it, one documen
 }) => {
   const env = unique('first').toLowerCase();
   const rules = JSON.parse(world) as Array<Record<string, unknown>>;
-  rules.push({
-    platform: 'gitea',
-    datasource: 'mongo-kv',
+  // the world already names mongo-kv (every rule says where its environments come from): this gives it a file, a destination,
+  // pruning, and an environment nothing has written
+  Object.assign(rules.find(r => r.datasource === 'mongo-kv')!, {
     file_name: 'app-settings.yaml',
     branch_map: { main: env },
     destination_template: COLLECTION,

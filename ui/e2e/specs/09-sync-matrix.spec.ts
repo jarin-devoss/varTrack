@@ -1,5 +1,6 @@
 import { expect, test, as, unique, type Role } from '../fixtures';
 import { CONFIG_REPO } from '../fixtures/gitea';
+import { forgetLeftover, leaveBehind } from '../fixtures/world';
 import { RulePage } from '../pages/RulePage';
 
 /**
@@ -30,8 +31,8 @@ const KINDS: Kind[] = [
   { name: 'a branch_map environment, fed by the protected branch', rule: 'gitea/redis-hash', env: 'production', branch: 'main', writerMayPush: false, writerSyncsRule: true, file: 'app-settings.yaml', keyed: true },
   { name: 'a branch_as_env environment, an open branch', rule: 'gitea/redis-string', env: 'develop', branch: 'develop', writerMayPush: true, writerSyncsRule: true, file: 'app-settings.yaml', keyed: true },
   { name: 'a branch_as_env environment, the protected branch', rule: 'gitea/redis-string', env: 'main', branch: 'main', writerMayPush: false, writerSyncsRule: true, file: 'app-settings.yaml', keyed: true },
-  { name: 'default (no environment strategy), the rule\'s own open branch', rule: 'gitea/mongo-primary', env: 'default', branch: 'develop', writerMayPush: true, writerSyncsRule: true, file: 'app-settings.yaml', keyed: true },
-  { name: 'default (no environment strategy), main', rule: 'gitea/zookeeper', env: 'default', branch: 'main', writerMayPush: false, writerSyncsRule: false, file: 'app-settings.yaml', keyed: true },
+  { name: 'a branch_map environment on a rule with no self-heal, fed by an open branch', rule: 'gitea/mongo-primary', env: 'staging', branch: 'develop', writerMayPush: true, writerSyncsRule: true, file: 'app-settings.yaml', keyed: true },
+  { name: 'a branch_map environment whose only branch is the protected one', rule: 'gitea/zookeeper', env: 'production', branch: 'main', writerMayPush: false, writerSyncsRule: false, file: 'app-settings.yaml', keyed: true },
   { name: 'a file_path_map environment, fed by the rule\'s own branch', rule: 'gitea/mongo-document', env: 'team-a', branch: 'develop', writerMayPush: true, writerSyncsRule: true, file: 'team-a/app-settings.yaml', keyed: false },
 ];
 
@@ -56,26 +57,30 @@ for (const kind of KINDS) {
 
         const mayPush = role === 'admin' || (role === 'writer' && kind.writerMayPush);
 
-        // A reader, and a writer of a rule whose environments are all fed by a branch the writer may not push to,
-        // are offered dry runs only (the permission engine says no environment of the rule can be synced).
+        // A reader, and a writer of a rule whose environments are all fed by a branch the writer may not push to, may
+        // dry-run and not sync (the permission engine says no environment of the rule can be synced): their Sync is
+        // disabled, with the reason, and Dry run is its own button.
         const dryRunOnly = role === 'reader' || (role === 'writer' && !kind.writerSyncsRule);
 
         if (dryRunOnly) {
-          test(`only a dry run: it is announced, runs, and writes nothing (${kind.rule} ${kind.env})`, async ({ page, api, gitea }) => {
+          test(`only a dry run: Sync says why it is off, the dry run shows its log, and writes nothing (${kind.rule} ${kind.env})`, async ({ page, api, gitea }) => {
             const value = unique('reader');
             await push(gitea, kind, value);
             const before = kind.keyed ? (await api.keys(kind.rule, kind.env)).keys.find(k => k.key === 'app.name')?.liveValue : undefined;
 
             const rule = new RulePage(page);
             await rule.open(kind.rule);
-            await rule.envSync(kind.env).click();
+            await expect(rule.envSync(kind.env)).toBeDisabled();
+            await expect(rule.envSync(kind.env)).toHaveAccessibleDescription(/You can read this rule's repository but not write to it/);
+            await rule.envDryRun(kind.env).click();
             await expect(rule.sync.dialog).toBeVisible();
-            await expect(rule.sync.dryRun).toBeChecked();
-            await expect(rule.sync.dryRun).toBeDisabled();
-            await expect(rule.sync.dialog).toContainText('only dry runs are allowed');
-            await rule.sync.start.click();
+            await expect(rule.sync.dryRun).toHaveCount(0);
+            await expect(rule.sync.dialog).toContainText("You can read this rule's repository but not write to it");
+            const [taskId] = await rule.sync.startAndCollect();
+            await expect(rule.sync.verdicts.first()).toBeVisible();
+            await expect(rule.sync.syncThese).toHaveCount(0);
 
-            const task = await api.finished(await rule.startedTask());
+            const task = await api.finished(taskId);
             expect(task.state).toBe('SUCCEEDED');
             expect(task.dryRun).toBe(true);
             if (kind.keyed) {
@@ -146,10 +151,19 @@ for (const kind of KINDS) {
 }
 
 test.describe('an environment no branch feeds any more', () => {
-  // gitea/redis-hash once had branch_as_env on; its `main` environment was written then and is kept (with its keys and
-  // history), but the rule as it is now produces nothing that lands there.
+  // The spec makes its own: gitea/redis-hash is fed `main` from a branch for a moment, then put back, so its `main` environment
+  // is written and kept (with its keys and history) but the rule as it is now produces nothing that lands there. (The suite's
+  // setup forgets every leftover, so none is here before this.)
   const RULE = 'gitea/redis-hash';
   const STALE = 'main';
+
+  test.beforeAll(async ({}, info) => {
+    test.setTimeout(240_000);
+    await leaveBehind(info.project.use.baseURL ?? 'http://localhost:8080', 'redis-hash', STALE, 'develop');
+  });
+  test.afterAll(async ({}, info) => {
+    await forgetLeftover(info.project.use.baseURL ?? 'http://localhost:8080', RULE, STALE);
+  });
 
   for (const role of ROLES) {
     test.describe(`as ${role}`, () => {
@@ -166,14 +180,17 @@ test.describe('an environment no branch feeds any more', () => {
         await expect(rule.env(STALE)).toContainText('No longer synced by this rule');
         await expect(rule.envSync(STALE)).toBeDisabled();
         await expect(rule.envSync(STALE)).toHaveAttribute('title', /nothing feeds main in the redis-hash rule/);
+        // a dry run of it would read the branch that feeds it, and there is none: not offered either
+        if (role === 'reader') await expect(rule.envDryRun(STALE)).toBeDisabled();
         // its keys and history are still there
         await expect(rule.envDetails(STALE)).toBeEnabled();
       });
 
-      test('the Sync panel does not offer it', async ({ page }) => {
+      test('the panel does not offer it', async ({ page }) => {
         const rule = new RulePage(page);
         await rule.open(RULE);
-        await rule.syncAll.click();
+        // the reader's Sync is off; their Dry run opens the same panel
+        await (role === 'reader' ? rule.dryRunAll : rule.syncAll).click();
         await expect(rule.sync.dialog).toBeVisible();
         await expect(rule.sync.environment('staging')).toBeChecked();
         await expect(rule.sync.environment('production')).toBeChecked();
