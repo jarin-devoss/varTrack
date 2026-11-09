@@ -85,7 +85,9 @@ func upgradeRenamedOptions(bundle map[string]interface{}) []string {
 var (
 	removedRuleOptions = map[string]string{
 		"retry_backoff": "nothing read it",
-		"dry_run": removedDryRun,
+		"dry_run":       removedDryRun,
+		"max_changed_files": "a rule reads only the files it names (file_name or file_path_map): a push that touched other " +
+			"files does not sync them, so there is nothing to cut",
 		"tenant_id": "the tenant is the one whose schema repository holds the bundle.json that layers the rule, " +
 			"never something a file says",
 		"secrets": "declare the secret manager under secret_managers (path_prefix is set there) " +

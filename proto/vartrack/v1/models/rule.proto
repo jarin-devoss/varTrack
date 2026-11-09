@@ -114,12 +114,12 @@ message Rule {
     (google.api.field_behavior) = OPTIONAL
   ];
 
-  // The most files one push syncs; a push that changed more is cut to the
-  // first of them, with a warning. 500 when unset.
-  optional int32 max_changed_files = 32 [
-    (buf.validate.field).int32.gt = 0,
-    (google.api.field_behavior) = OPTIONAL
-  ];
+  // Field 32 was `max_changed_files`, the most files one push synced: it cut the
+  // "every file the push changed" fallback of a rule that named no file. A rule
+  // names the file it reads now (file_name or file_path_map) and reads only that,
+  // so there is nothing to cut. Reserved so the number is never reused.
+  reserved 32;
+  reserved "max_changed_files";
 
   // ── root_key ─────────────────────────────────────────────────────────────────
   //
@@ -167,8 +167,12 @@ message Rule {
 
   // Branch → environment, e.g. {main: "production", develop: "staging"}.
   // A push to a branch that is not listed, and that no file_path_map,
-  // branch_as_env, pr_as_env or tag_as_env places, is synced to the
-  // environment "default".
+  // branch_as_env, pr_as_env or tag_as_env places, feeds no environment of
+  // the rule: it is skipped, not written anywhere. There is no "default"
+  // environment; a rule has to name where its environments come from (this,
+  // file_path_map, branch_as_env, pr_as_env or tag_as_env) in config.cue or the
+  // tenant's bundle.json, or it is refused when it is loaded. To keep writing
+  // to an environment called default, map a branch to it: {main: "default"}.
   map<string, string> branch_map = 10 [
     (google.api.field_behavior) = OPTIONAL,
     (vartrack.v1.config) = {mergeable: true, settable_in: VARTRACK_JSON}

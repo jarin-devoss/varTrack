@@ -61,7 +61,8 @@ func checkRules(bundle *pb.Bundle, fragment bool) error {
 
 // ruleMessage is the message a rule's own rules are written for: the *merged* rule. config.cue holds only its
 // first layer (the tenant's bundle.json supplies file_name, a repository's vartrack.json the rest), so a rule
-// such as "give file_name or file_path_map" cannot be asked of a layer; it is checked where the layers meet.
+// such as "give file_name or file_path_map" (rule.scan_target) cannot be asked of a layer; the orchestrator
+// checks it where the layers meet, in rule_layers.refusal, and refuses a rule that names no file.
 var ruleMessage = (&pb.Rule{}).ProtoReflect().Descriptor().FullName()
 
 func setOrRequired(fragment bool) protovalidate.Filter {

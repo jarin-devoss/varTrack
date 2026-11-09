@@ -205,3 +205,21 @@ func TestDropRemovedOptionsNamesTheDryRunsAndSaysWhatToDoInstead(t *testing.T) {
 		t.Error("prune.dry_run was not dropped")
 	}
 }
+
+func TestAMaxChangedFilesInARuleIsDroppedNotRefused(t *testing.T) {
+	// It cut the "every file the push changed" fallback of a rule that named no file; a rule now reads
+	// only the file it names, so a config that still sets it must load, and be told it does nothing.
+	bundle := map[string]interface{}{"rules": []interface{}{
+		map[string]interface{}{"platform": "gitea", "datasource": "mongo", "file_name": "app.yaml", "max_changed_files": 50},
+	}}
+	if got := dropRemovedOptions(bundle); len(got) != 1 || got[0] != "rules[0].max_changed_files" {
+		t.Fatalf("dropped = %v", got)
+	}
+	if _, ok := bundle["rules"].([]interface{})[0].(map[string]interface{})["max_changed_files"]; ok {
+		t.Error("max_changed_files was not dropped")
+	}
+	b := parse(t, `{"rules": [{"platform": "gitea", "datasource": "mongo", "file_name": "app.yaml", "max_changed_files": 50}]}`, true)
+	if b.GetRules()[0].GetFileName() != "app.yaml" {
+		t.Errorf("the rest of the rule should load: %v", b.GetRules()[0])
+	}
+}
