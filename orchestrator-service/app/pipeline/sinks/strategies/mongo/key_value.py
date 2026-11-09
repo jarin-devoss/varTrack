@@ -72,45 +72,22 @@ class KeyValueStrategy(MongoWriteStrategy):
 
     def repair(self, collection, flat_data, doc_filter, commit_sha, file_path, meta, data=None,
                session=None) -> Written:
+        from pymongo import UpdateOne
+
+        from app.pipeline.sinks.base import differs
+
         replaced = self._drop_file_document(collection, doc_filter, file_path)
-        try:
-            from vartrack_core import py_diff  # type: ignore[import]
-            _use_rust = True
-        except ImportError:
-            _use_rust = False
-
-        if _use_rust:
-            current = {
-                doc["key"]: doc["value"]
-                for doc in collection.find(doc_filter, {"key": 1, "value": 1, "_id": 0})
-            }
-            diff = py_diff(current, flat_data)
-            if diff["is_empty"]:
-                return Written(0, replaced)
-            from pymongo import UpdateOne
-            to_upsert = {
-                **diff["added"],
-                **{k: v["new"] for k, v in diff["changed"].items()},
-            }
-            ops = [
-                UpdateOne(
-                    {**doc_filter, "key": key},
-                    {"$set": {**meta, **doc_filter, "key": key, "value": value}},
-                    upsert=True,
-                )
-                for key, value in to_upsert.items()
-            ]
-            if ops:
-                collection.bulk_write(ops, ordered=False)
-            return Written(len(ops), replaced)
-
-        # Fallback: per-key loop
-        repaired = 0
-        for key, value in flat_data.items():
-            flt = {**doc_filter, "key": key}
-            existing = collection.find_one(flt, {"value": 1, "_vt_commit": 1})
-            if existing is None or existing.get("value") != value:
-                doc = {**meta, **doc_filter, "key": key, "value": value}
-                collection.update_one(flt, {"$set": doc}, upsert=True)
-                repaired += 1
-        return Written(repaired, replaced)
+        # What the key documents hold now, against what Git has: only the keys that differ are written.
+        to_write, unchanged = differs(self.read_values(collection, list(flat_data), doc_filter), flat_data)
+        if not to_write:
+            return Written(0, replaced, unchanged)
+        ops = [
+            UpdateOne(
+                {**doc_filter, "key": key},
+                {"$set": {**meta, **doc_filter, "key": key, "value": value}},
+                upsert=True,
+            )
+            for key, value in to_write.items()
+        ]
+        collection.bulk_write(ops, ordered=False)
+        return Written(len(ops), replaced, unchanged)

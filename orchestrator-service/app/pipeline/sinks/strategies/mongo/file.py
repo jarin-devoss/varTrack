@@ -33,6 +33,7 @@ db.configs.createIndex(
 """
 from __future__ import annotations
 
+import json
 import logging
 from typing import Any
 
@@ -45,6 +46,12 @@ logger = logging.getLogger(__name__)
 def _in(session: Any) -> dict[str, Any]:
     """The keyword that puts an operation in *session*'s transaction (nothing when there is none)."""
     return {"session": session} if session is not None else {}
+
+
+def _canonical(value: Any) -> str:
+    """A document's data as text that tells True from 1 and keeps the order of nothing: what two copies of
+    the same file compare by."""
+    return json.dumps(value, sort_keys=True, default=str)
 
 
 class FileStrategy(MongoWriteStrategy):
@@ -66,12 +73,18 @@ class FileStrategy(MongoWriteStrategy):
 
     def repair(self, collection, flat_data, doc_filter, commit_sha, file_path, meta, data=None,
                session=None) -> Written:
+        # The document is compared with what would be written, by content. The commit it was stamped with says
+        # who wrote it, not what it holds now: a document edited in MongoDB keeps its stamp, and a heal runs at
+        # the commit that is already there.
         flt      = {**doc_filter, "_vt_file": file_path}
-        existing = collection.find_one(flt, {"_vt_commit": 1}, **_in(session))
-        if existing is None or existing.get("_vt_commit") != commit_sha:
+        existing = collection.find_one({**flt, "data": {"$exists": True}}, {"data": 1}, **_in(session))
+        wanted   = self._shape(flat_data, data)
+        if existing is None or _canonical(existing.get("data")) != _canonical(wanted):
             return self.upsert(collection, flat_data, doc_filter, commit_sha, file_path, meta, data=data,
                                session=session)
-        return Written(0)
+        # It holds the file. Documents of the other shape for it are still taken away.
+        replaced = deleted(collection.delete_many({**flt, "data": {"$exists": False}}, **_in(session)))
+        return Written(0, replaced, len(flat_data))
 
     def read_values(self, collection, keys, doc_filter) -> dict[str, str]:
         # Flat or nested, "data" reads back as the ETL's flat keys.
