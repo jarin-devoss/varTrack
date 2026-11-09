@@ -20,7 +20,7 @@ dependencies = [
     "kombu>=5.3",
 
     # MongoDB
-    "pymongo>=4.6",
+    "pymongo>=4.18.2",
 
     # ZooKeeper
     "kazoo>=2.9",
@@ -35,7 +35,7 @@ dependencies = [
     "hvac>=2.0",
 
     # Git
-    "gitpython>=3.1",
+    "gitpython>=3.1.62",
 
     # Parsing
     "PyYAML>=6",
