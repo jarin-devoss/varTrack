@@ -7,7 +7,10 @@
       "platform": "gitea-team",
       "datasource": "redis-team",
       "branch": "main",
-      "prune": true
+      "prune": true,
+      "branch_map": {
+        "main": "production"
+      }
     }
   ]
 }

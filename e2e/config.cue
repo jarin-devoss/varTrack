@@ -264,6 +264,9 @@ bundle: {
 			platform:   "gitea"
 			datasource: "redis-string"
 			repositories: ["vartrack-demo/demo-configs"]
+			// The gateway judges a CLI call (the Playground, vt sync) by this rule alone: it names the two branches the
+			// rule reads as environments. (The browser suite's tenant bundle.json also sets branch_as_env; the two agree.)
+			branch_map: {develop: "develop", main: "main"}
 		},
 		{
 			platform:   "gitea"
