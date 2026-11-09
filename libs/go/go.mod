@@ -19,7 +19,7 @@ require (
 	github.com/antlr4-go/antlr/v4 v4.13.1 // indirect
 	github.com/cockroachdb/apd/v3 v3.2.3 // indirect
 	github.com/emicklei/proto v1.14.3 // indirect
-	github.com/google/cel-go v0.27.0 // indirect
+	github.com/google/cel-go v0.29.0 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/mitchellh/go-wordwrap v1.0.1 // indirect
 	github.com/opencontainers/go-digest v1.0.0 // indirect
