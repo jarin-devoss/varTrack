@@ -30,6 +30,8 @@ When a push webhook arrives, the ETL pipeline:
 4. Applies the `config.cue` rule's `force` keys, which win over `vartrack.json`
 5. Runs ETL and Sync with the merged settings (Stages 2 and 3)
 
+A `vartrack.json` can change which file a rule reads or where its environments come from, but cannot be the only place that names them: a rule whose `config.cue` and tenant `bundle.json` give no `file_name` or `file_path_map` (or no environment strategy) is refused when it is loaded, before any repository's file is read.
+
 If `vartrack.json` is absent or empty, the central rule is used unchanged. If it is there but cannot be used — not valid JSON, not a JSON object, or extending a preset that cannot be read — the sync fails with that error: it does not go ahead without settings the repository asked for, such as a `branch_map`. The schema registry is never affected by per-repo overrides.
 
 ---

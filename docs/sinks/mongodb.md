@@ -154,6 +154,7 @@ The `destination_template` field controls which collection data is written to:
 rules: [{
   platform:             "github"
   datasource:           "mongo"
+  file_name:           "app-settings.yaml"
   destination_template: "{env}-config"
   branch_map: {
     main:    "production"
@@ -180,6 +181,8 @@ Enable self-heal to restore automatically:
 rules: [{
   platform:   "github"
   datasource: "mongo"
+  file_name: "app-settings.yaml"
+  branch_map: {main: "production"}
   self_heal:  true
 }]
 ```

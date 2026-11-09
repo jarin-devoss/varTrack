@@ -130,6 +130,8 @@ The `destination_template` sets the key prefix or hash name:
 rules: [{
   platform:             "github"
   datasource:           "redis"
+  file_name:           "app-settings.yaml"
+  branch_map:           {main: "production"}
   destination_template: "{env}:cfg"
 }]
 ```
@@ -160,6 +162,8 @@ The watcher asks the orchestrator each poll; the orchestrator reads the fields o
 rules: [{
   platform:   "github"
   datasource: "redis"
+  file_name: "app-settings.yaml"
+  branch_map: {main: "production"}
   self_heal:  true
 }]
 ```

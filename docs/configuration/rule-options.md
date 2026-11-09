@@ -19,7 +19,6 @@ Every option a rule can have, and where it may be set. A rule is built from up t
 | [`file_name`](#file_name) | string | yes | yes | yes | the upper layer replaces it |
 | [`file_path_map`](#file_path_map) | object (string → string) | yes | yes | yes | merged key by key |
 | [`branch`](#branch) | string | yes | yes | — | the upper layer replaces it |
-| [`max_changed_files`](#max_changed_files) | number | yes | yes | — | the upper layer replaces it |
 | [`root_key`](#root_key) | string | yes | yes | yes | the upper layer replaces it |
 | [`branch_as_env`](#branch_as_env) | boolean | yes | yes | yes | the upper layer replaces it |
 | [`pr_as_env`](#pr_as_env) | boolean | yes | yes | yes | the upper layer replaces it |
@@ -111,16 +110,6 @@ The branch the periodic self-heal compares when the rule has no branch_map; with
 | Set in | `config.cue`, `bundle.json` |
 | Across layers | the upper layer replaces it |
 
-## `max_changed_files`
-
-The most files one push syncs; a push that changed more is cut to the first of them, with a warning. 500 when unset.
-
-| | |
-|---|---|
-| Type | number |
-| Set in | `config.cue`, `bundle.json` |
-| Across layers | the upper layer replaces it |
-
 ## `root_key`
 
 Top-level key to extract from the parsed file BEFORE flattening. Only that subtree is written to the sink.
@@ -187,8 +176,12 @@ The tag name is the environment. Formerly env_as_tags. The former names are stil
 ```text
 Branch → environment, e.g. {main: "production", develop: "staging"}.
 A push to a branch that is not listed, and that no file_path_map,
-branch_as_env, pr_as_env or tag_as_env places, is synced to the
-environment "default".
+branch_as_env, pr_as_env or tag_as_env places, feeds no environment of
+the rule: it is skipped, not written anywhere. There is no "default"
+environment; a rule has to name where its environments come from (this,
+file_path_map, branch_as_env, pr_as_env or tag_as_env) in config.cue or the
+tenant's bundle.json, or it is refused when it is loaded. To keep writing
+to an environment called default, map a branch to it: {main: "default"}.
 ```
 
 | | |

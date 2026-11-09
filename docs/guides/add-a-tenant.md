@@ -28,6 +28,7 @@ by the rule's platform and datasource:
     {
       "platform":   "github",
       "datasource": "mongo",
+      "file_name":  "app-settings.yaml",
       "branch_map": {"develop": "staging"},
       "strict_validation": true
     }

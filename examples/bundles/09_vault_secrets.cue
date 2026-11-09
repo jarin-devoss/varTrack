@@ -46,15 +46,15 @@ bundle: {
 		},
 		{
 			redis: {
-				tag:      "redis"
-				hosts:    ["redis-host:6379"]
+				tag: "redis"
+				hosts: ["redis-host:6379"]
 				database: 0
 			}
 		},
 		{
 			redis: {
-				tag:      "redis-results"
-				hosts:    ["redis-host:6379"]
+				tag: "redis-results"
+				hosts: ["redis-host:6379"]
 				database: 1
 			}
 		},
@@ -64,8 +64,11 @@ bundle: {
 		{
 			platform:   "github"
 			datasource: "mongo"
+			file_name:  "app.yaml"
 			repositories: ["acme-corp/configs"]
-			self_heal:  true
+			// Where the environments come from: a rule that names none is refused.
+			branch_map: {main: "production"}
+			self_heal: true
 		},
 	]
 

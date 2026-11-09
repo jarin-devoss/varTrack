@@ -50,6 +50,8 @@ Set `self_heal: true` on a rule to enable automatic repair:
 rules: [{
   platform:   "github"
   datasource: "mongo"
+  file_name: "app-settings.yaml"
+  branch_map: {main: "production"}
   self_heal:  true    // watcher will restore state on drift
 }]
 ```

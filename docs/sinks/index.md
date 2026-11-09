@@ -24,10 +24,10 @@ Push once, write to all of them:
 
 ```cue
 rules: [
-  { platform: "github", datasource: "mongo",      file_name: "config.yaml", destination_template: "{env}-config" },
-  { platform: "github", datasource: "redis",      file_name: "config.yaml", destination_template: "{env}:cfg" },
-  { platform: "github", datasource: "zookeeper",  file_name: "config.yaml", destination_template: "/{tenant}/{env}" },
-  { platform: "github", datasource: "s3",         file_name: "config.yaml", destination_template: "{tenant}/{env}/" },
+  { platform: "github", datasource: "mongo",      file_name: "config.yaml", branch_map: {main: "production"}, destination_template: "{env}-config" },
+  { platform: "github", datasource: "redis",      file_name: "config.yaml", branch_map: {main: "production"}, destination_template: "{env}:cfg" },
+  { platform: "github", datasource: "zookeeper",  file_name: "config.yaml", branch_map: {main: "production"}, destination_template: "/{tenant}/{env}" },
+  { platform: "github", datasource: "s3",         file_name: "config.yaml", branch_map: {main: "production"}, destination_template: "{tenant}/{env}/" },
 ]
 ```
 

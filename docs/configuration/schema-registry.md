@@ -354,10 +354,9 @@ Every option, with the files that may set it, is in [Rule options](rule-options.
 | `platform` | Yes | Platform name — `github`, `gitea`, or `{type}-{tag}`; with `datasource`, picks the `config.cue` rule |
 | `datasource` | Yes | Datasource name — `mongo`, `redis-cfg`, `s3-minio`, … |
 | `repo_url` | No | HTTPS clone URL of the config repository (default: derived from the platform and the rule's only repository) |
-| `file_name` | No | Single file path to track in all repos |
-| `file_path_map` | No | `{ env → file_path }` for per-environment file selection — merged |
+| `file_name` | One of the two | Single file path to track in all repos. A rule that names neither this nor `file_path_map` is refused |
+| `file_path_map` | One of the two | `{ env → file_path }` for per-environment file selection — merged |
 | `branch` | No | Branch to heal when there is no `branch_map` (default: `main`) |
-| `max_changed_files` | No | The most files one push syncs (default: 500). A push that changed more is cut to the first of them, with a warning in the log |
 | `branch_map` | No | `{ branch → env }` label mapping — merged |
 | `variables_map` | No | Key renames, `{NEW_NAME: flat.key}` — merged |
 | `sync_mode` | No | `AUTO`, `GIT_UPSERT_ALL`, `GIT_SMART_REPAIR`, `LIVE_STATE` (`FULL` reads as `GIT_UPSERT_ALL`) |

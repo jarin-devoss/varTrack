@@ -33,9 +33,9 @@ bundle: {
 	datasources: [
 		{
 			mongo: {
-				tag:             ""
-				endpoint:        "mongodb://mongo-host:27017"
-				database:        "vartrack"
+				tag:      ""
+				endpoint: "mongodb://mongo-host:27017"
+				database: "vartrack"
 				// Base collection — overridden per-push by destination_template in settings.
 				collection:      "app_vars"
 				update_strategy: "STRATEGY_KEY_VALUE"
@@ -43,22 +43,22 @@ bundle: {
 		},
 		{
 			zookeeper: {
-				tag:             ""
-				hosts:           ["zk1:2181", "zk2:2181"]
+				tag: ""
+				hosts: ["zk1:2181", "zk2:2181"]
 				session_timeout: "15s"
 			}
 		},
 		{
 			redis: {
-				tag:      "redis"
-				hosts:    ["redis-host:6379"]
+				tag: "redis"
+				hosts: ["redis-host:6379"]
 				database: 0
 			}
 		},
 		{
 			redis: {
-				tag:      "redis-results"
-				hosts:    ["redis-host:6379"]
+				tag: "redis-results"
+				hosts: ["redis-host:6379"]
 				database: 1
 			}
 		},
@@ -68,14 +68,20 @@ bundle: {
 		{
 			platform:   "github"
 			datasource: "mongo"
+			file_name:  "app.yaml"
 			repositories: ["acme-corp/configs"]
-			self_heal:  true
+			// Where the environments come from: a rule that names none is refused.
+			branch_map: {main: "production"}
+			self_heal: true
 		},
 		{
 			platform:   "github"
 			datasource: "zookeeper"
+			file_name:  "app.yaml"
 			repositories: ["acme-corp/configs"]
-			self_heal:  true
+			// Where the environments come from: a rule that names none is refused.
+			branch_map: {main: "production"}
+			self_heal: true
 		},
 	]
 

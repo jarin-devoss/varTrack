@@ -73,6 +73,8 @@ Override per rule in `config.cue`:
 rules: [{
   platform:   "github"
   datasource: "mongo"
+  file_name: "app-settings.yaml"
+  branch_map: {main: "production"}
   sync_mode:  "SYNC_MODE_GIT_SMART_REPAIR"
 }]
 ```
@@ -91,6 +93,8 @@ When keys are removed from your Git config file, varTrack can delete them from t
 rules: [{
   platform:   "github"
   datasource: "mongo"
+  file_name: "app-settings.yaml"
+  branch_map: {main: "production"}
   sync_mode:  "AUTO"
   prune:      true     // delete keys present in datasource but missing from Git
 }]

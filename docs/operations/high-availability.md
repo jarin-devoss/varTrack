@@ -96,7 +96,6 @@ The watcher keeps no state of its own, so a new leader starts where the last one
 |---|---|
 | Worker `--concurrency` (`WORKER_CONCURRENCY` in the compose file, 4) | Syncs one worker runs at once |
 | `POLL_INTERVAL` (watcher, 60 s) | How often drift is checked; each poll makes the orchestrator read every `self_heal` datasource |
-| `max_changed_files` (rule, 500) | The most files one push syncs |
 | `sync_mode` | `GIT_SMART_REPAIR` reads MongoDB before writing and writes only what changed; `AUTO` uses it above 500 keys |
 | `GIT_CACHE_MAX_ENTRIES` (20) | Mirrors kept on disk per cache directory |
 | `SCHEMA_TTL_SECONDS` (300) | How often a tenant's schema repository is refreshed |

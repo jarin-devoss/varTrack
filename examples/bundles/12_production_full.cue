@@ -61,16 +61,16 @@ bundle: {
 		{
 			// ZooKeeper quorum — 3 nodes for HA.
 			zookeeper: {
-				tag:             ""
-				hosts:           ["zk1.acme.internal:2181", "zk2.acme.internal:2181", "zk3.acme.internal:2181"]
+				tag: ""
+				hosts: ["zk1.acme.internal:2181", "zk2.acme.internal:2181", "zk3.acme.internal:2181"]
 				session_timeout: "15s"
 			}
 		},
 		{
 			// Redis config store (Gitea rules write here).
 			redis: {
-				tag:      "redis-cfg"
-				hosts:    ["redis-config.acme.internal:6379"]
+				tag: "redis-cfg"
+				hosts: ["redis-config.acme.internal:6379"]
 				password: "redis-cfg-pass"
 				database: 2
 			}
@@ -78,8 +78,8 @@ bundle: {
 		{
 			// Celery broker.
 			redis: {
-				tag:      "redis"
-				hosts:    ["redis-broker.acme.internal:6379"]
+				tag: "redis"
+				hosts: ["redis-broker.acme.internal:6379"]
 				password: "redis-broker-pass"
 				database: 0
 			}
@@ -87,8 +87,8 @@ bundle: {
 		{
 			// Celery result backend.
 			redis: {
-				tag:      "redis-results"
-				hosts:    ["redis-broker.acme.internal:6379"]
+				tag: "redis-results"
+				hosts: ["redis-broker.acme.internal:6379"]
 				password: "redis-broker-pass"
 				database: 1
 			}
@@ -113,8 +113,11 @@ bundle: {
 		{
 			platform:   "github"
 			datasource: "mongo-primary"
+			file_name:  "app.yaml"
 			repositories: ["acme-corp/configs"]
-			self_heal:  true
+			// Where the environments come from: a rule that names none is refused.
+			branch_map: {main: "production"}
+			self_heal: true
 			// Production never prunes, whatever the tenant's bundle.json or a
 			// repo's vartrack.json says: force is applied after both.
 			force: {prune: {enabled: false}}
@@ -122,20 +125,29 @@ bundle: {
 		{
 			platform:   "github"
 			datasource: "mongo-dr"
+			file_name:  "app.yaml"
 			repositories: ["acme-corp/configs"]
-			self_heal:  true
+			// Where the environments come from: a rule that names none is refused.
+			branch_map: {main: "production"}
+			self_heal: true
 		},
 		{
 			platform:   "github"
 			datasource: "zookeeper"
+			file_name:  "app.yaml"
 			repositories: ["acme-corp/configs"]
-			self_heal:  true
+			// Where the environments come from: a rule that names none is refused.
+			branch_map: {main: "production"}
+			self_heal: true
 		},
 		{
 			platform:   "gitea"
 			datasource: "redis-cfg"
+			file_name:  "app.yaml"
 			repositories: ["acme-corp/configs"]
-			self_heal:  false     // No drift healing for Redis config — push-only.
+			// Where the environments come from: a rule that names none is refused.
+			branch_map: {main: "production"}
+			self_heal: false // No drift healing for Redis config — push-only.
 		},
 	]
 

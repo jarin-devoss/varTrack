@@ -316,9 +316,9 @@ Push once, write to multiple sinks in one go:
 
 ```cue
 rules: [
-  { platform: "github", datasource: "mongo",        file_name: "config.yaml", destination_template: "{env}-config" },
-  { platform: "github", datasource: "configmap",    file_name: "config.yaml", destination_template: "myapp-{env}" },
-  { platform: "github", datasource: "linux_server", file_name: "config.yaml", destination_template: "/etc/app/{env}.env" },
+  { platform: "github", datasource: "mongo",        file_name: "config.yaml", branch_map: {main: "production"}, destination_template: "{env}-config" },
+  { platform: "github", datasource: "configmap",    file_name: "config.yaml", branch_map: {main: "production"}, destination_template: "myapp-{env}" },
+  { platform: "github", datasource: "linux_server", file_name: "config.yaml", branch_map: {main: "production"}, destination_template: "/etc/app/{env}.env" },
 ]
 ```
 

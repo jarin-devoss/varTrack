@@ -36,6 +36,8 @@ bundle: {
 			platform:     "github"
 			datasource:   "mongo-primary"
 			repositories: ["acme/app-configs"]
+			// Where the environments come from: a rule that names none is refused.
+			branch_map: {main: "production"}
 			file_name:    "configs/app.yaml"
 			root_key:     "app"
 		},
