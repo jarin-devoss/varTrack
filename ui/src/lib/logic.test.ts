@@ -6,7 +6,7 @@ import { resolvedVia } from '../features/rule/resolution';
 import { taskStages } from '../features/tasks';
 import { makeRule, makeSync, makeTarget as target, makeTask } from '../test/builders';
 import { EMPTY_FACETS, facetCounts, facetsFromParams, filterRules, writeFacets } from './filters';
-import { needsAttention, ruleSync, ruleSyncState, targetNote, targetSync, worstDrift } from './status';
+import { diffable, needsAttention, ruleSync, ruleSyncState, targetNote, targetSync, worstDrift } from './status';
 import { formatDuration, relativeTime } from './time';
 
 const NOW = Date.parse('2026-10-11T12:00:00Z');
@@ -84,6 +84,26 @@ describe('current vs desired', () => {
   });
 });
 
+describe('which environments can be diffed', () => {
+  it('every environment has a Diff: synced, out of sync, healing, and one whose store cannot be read', () => {
+    for (const drift of ['in_sync', 'drifted', 'healing', 'heal_failed', 'unknown'] as const) {
+      expect(diffable(target({ drift }))).toEqual({ can: true });
+    }
+  });
+
+  it('one never written has nothing to compare, and says so', () => {
+    const d = diffable(target({ drift: 'missing' }));
+    expect(d.can).toBe(false);
+    expect(d.reason).toMatch(/^Not synced yet: nothing has been written to compare with Git/);
+  });
+
+  it('one no branch feeds any more has nothing in Git to compare with, and says so', () => {
+    const d = diffable(target({ drift: 'not_watched', notFed: 'nothing feeds main in the redis rule' }));
+    expect(d.can).toBe(false);
+    expect(d.reason).toMatch(/^No longer synced by this rule: no branch feeds it, so there is nothing in Git to compare with/);
+  });
+});
+
 describe('facet filtering', () => {
   it('filters by sync status per environment', () => {
     const out = filterRules(rules, { ...EMPTY_FACETS, status: ['OutOfSync'] }, '').map(r => r.name);
@@ -143,14 +163,15 @@ describe('live API mapping', () => {
 
 describe('rule definition', () => {
   it('renders the rule as CUE with only configured fields', () => {
-    const cue = toCue(makeRule({ prune: { enabled: true, dryRun: false, protection: ['feature_flags.*', 'secrets.*'] } }));
+    const cue = toCue(makeRule({ prune: { enabled: true, protection: ['feature_flags.*', 'secrets.*'] } }));
     expect(cue).toContain('platform:             "github"');
     expect(cue).toMatch(/branch_map:\s+\{/);
     expect(cue).toContain('main:    "production"');
     expect(cue).toContain('protection: ["feature_flags.*", "secrets.*"]');
     expect(cue).not.toContain('branch_as_env');
     const byPath = makeRule({ fileName: undefined, branchMap: {}, filePathMap: { 'deploy/prod/*.yaml': 'production' } });
-    expect(toCue(byPath)).toMatch(/"deploy\/prod\/\*\.yaml":\s+"production"/);
+    // The page lists path → env; the config says env → path.
+    expect(toCue(byPath)).toMatch(/production:\s+"deploy\/prod\/\*\.yaml"/);
   });
 
   it('explains how each environment was resolved', () => {

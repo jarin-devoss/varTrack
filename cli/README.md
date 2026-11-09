@@ -27,7 +27,7 @@ move vt.exe C:\Windows\System32\ # Windows
 
 ## Authentication
 
-`vt` authenticates with your Git token — a GitHub or Gitea personal access token. The gateway asks the rule's Git platform what that token may do in the rule's repositories: push access syncs, read access validates, dry-runs and reads tasks.
+`vt` authenticates with your Git token — a GitHub or Gitea personal access token. The gateway asks the rule's Git platform what that token may do in the rule's repositories: push access to the branch that feeds the environment syncs (branch protection counts), read access validates, dry-runs and reads tasks. The web UI asks the same permission engine, so the two always agree.
 
 ### Log in
 
@@ -37,11 +37,18 @@ vt login \
   --token  "$GIT_TOKEN"
 ```
 
+When the gateway has rules on several Git platforms, say which one your token is for. A token is shown to one platform only, never tried on all of them, so a request that names no datasource needs it:
+
+```bash
+vt login --server https://gateway.example.com --token "$GIT_TOKEN" --platform gitea
+```
+
 Or skip `vt login` entirely and set environment variables — `vt` reads them on every invocation:
 
 ```bash
 export VARTRACK_SERVER=https://gateway.example.com
 export VARTRACK_TOKEN=<your Git token>
+export VARTRACK_PLATFORM=gitea   # only with several platforms
 ```
 
 ---
@@ -199,6 +206,7 @@ Settings are stored in `~/.config/vt/config.yaml`. Environment variables overrid
 |---|---|
 | `VARTRACK_SERVER` | Gateway base URL |
 | `VARTRACK_TOKEN` | Your Git token (skips `vt login`) |
+| `VARTRACK_PLATFORM` | Git platform the token is for (needed with several platforms) |
 | `VARTRACK_TENANT` | Tenant ID |
 | `VARTRACK_CONTEXT` | Named context to activate |
 

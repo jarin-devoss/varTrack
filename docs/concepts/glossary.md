@@ -14,7 +14,7 @@ The words varTrack's docs, logs and web UI use, and what each one means here.
 
 **Sink**
 :   The code that writes one datasource type — MongoDB, Redis, ZooKeeper, S3, Kubernetes
-    ConfigMap, Helm, Vercel, Linux server. See [Sinks](../sinks/index.md).
+    ConfigMap, Helm, Linux server. See [Sinks](../sinks/index.md).
 
 **Rule**
 :   What is synced, from where, to where and how: one entry of `rules` in `config.cue`,
@@ -27,7 +27,7 @@ The words varTrack's docs, logs and web UI use, and what each one means here.
     plus `config.cue`'s `force`, applied last. Each overrides the one before.
 
 **Tenant**
-:   A team with its own **schema repository**, registered with `SCHEMA_TENANT_<ID>_REPO`.
+:   A team the operator declares in `config.cue`'s [`tenants`](../configuration/bundle.md#tenants), with its own repositories and **schema repository**. A push belongs to the tenant whose repositories it came from.
     Its `bundle.json` holds its layer of the rules, its CUE schemas validate its files, and
     the web UI shows each user the tenants' rules their Git account can read.
     A rule no tenant's `bundle.json` names belongs to tenant `default`.
@@ -64,8 +64,8 @@ The words varTrack's docs, logs and web UI use, and what each one means here.
     document strategy, the JSON structure of Redis).
 
 **Key space**
-:   Where in a store a target's keys land — a Redis hash or prefix, a ZooKeeper path, a
-    Vercel target. Two targets with the same key space write the same keys; prune never
+:   Where in a store a target's keys land — a Redis hash or prefix, a ZooKeeper path.
+    Two targets with the same key space write the same keys; prune never
     deletes a key another target still holds there.
 
 **Sync**

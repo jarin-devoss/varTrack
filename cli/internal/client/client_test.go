@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -86,5 +87,89 @@ func TestValidateConfigPostsToItsOwnRouteWithTheTenant(t *testing.T) {
 	}
 	if len(resp.Errors) != 1 || len(resp.Migrations) != 0 {
 		t.Errorf("resp = %+v", resp)
+	}
+}
+
+func TestTheClientSaysWhichPlatformTheTokenIsFor(t *testing.T) {
+	var got string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		got = r.Header.Get("X-Git-Platform")
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"task_id":"t1","status":"ok"}`))
+	}))
+	defer srv.Close()
+
+	if _, err := New(srv.URL, "token", "", false).WithPlatform("gitea-team").Sync(context.Background(), SyncRequest{Datasource: "d", Env: "e"}); err != nil {
+		t.Fatal(err)
+	}
+	if got != "gitea-team" {
+		t.Errorf("X-Git-Platform = %q, want gitea-team", got)
+	}
+	if _, err := New(srv.URL, "token", "", false).Sync(context.Background(), SyncRequest{Datasource: "d", Env: "e"}); err != nil {
+		t.Fatal(err)
+	}
+	if got != "" {
+		t.Errorf("X-Git-Platform = %q when no platform was given", got)
+	}
+}
+
+func TestATenantNameCannotAddQueryParameters(t *testing.T) {
+	var raw string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		raw = r.URL.RawQuery
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"tasks":[]}`))
+	}))
+	defer srv.Close()
+	c := New(srv.URL, "token", "", false)
+
+	// The value that used to become two parameters, tenant_id=demo and limit=1, is refused.
+	if _, err := c.ListTasks(context.Background(), "demo&limit=1", 20); err == nil {
+		t.Fatal("a tenant name with '&' was sent")
+	}
+	if raw != "" {
+		t.Errorf("a request was made for an invalid tenant: %q", raw)
+	}
+	if _, err := c.ListTasks(context.Background(), "demo", 20); err != nil {
+		t.Fatal(err)
+	}
+	if raw != "limit=20&tenant_id=demo" {
+		t.Errorf("query = %q", raw)
+	}
+}
+
+func TestInvalidTenantNamesAreRefusedOnEveryCall(t *testing.T) {
+	c := New("http://unused", "token", "", false)
+	for _, bad := range []string{"a b", "../x", "x?y", "é", strings.Repeat("a", 64), "-lead"} {
+		if _, err := c.Sync(context.Background(), SyncRequest{TenantID: bad}); err == nil {
+			t.Errorf("Sync accepted tenant %q", bad)
+		}
+		if _, err := c.Validate(context.Background(), ValidateRequest{TenantID: bad}); err == nil {
+			t.Errorf("Validate accepted tenant %q", bad)
+		}
+		if _, err := c.ValidateConfig(context.Background(), ValidateConfigRequest{TenantID: bad}); err == nil {
+			t.Errorf("ValidateConfig accepted tenant %q", bad)
+		}
+	}
+	for _, good := range []string{"", "demo", "Acme_Corp", "team-1", strings.Repeat("a", 63)} {
+		if err := CheckTenant(good); err != nil {
+			t.Errorf("tenant %q refused: %v", good, err)
+		}
+	}
+}
+
+func TestATaskIdCannotLeaveItsPath(t *testing.T) {
+	var path string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		path = r.URL.EscapedPath()
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{}`))
+	}))
+	defer srv.Close()
+	if _, err := New(srv.URL, "t", "", false).GetTask(context.Background(), "a/../b?x=1"); err != nil {
+		t.Fatal(err)
+	}
+	if path != "/v1/cli/tasks/a%2F..%2Fb%3Fx=1" {
+		t.Errorf("path = %q", path)
 	}
 }

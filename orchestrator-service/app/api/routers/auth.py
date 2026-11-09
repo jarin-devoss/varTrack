@@ -23,6 +23,7 @@ from urllib.parse import urlencode
 from fastapi import APIRouter, Request, Response
 from fastapi.responses import RedirectResponse
 
+from app import authz_client
 from app.ui import access, scm, sessions
 
 logger = logging.getLogger(__name__)
@@ -92,8 +93,18 @@ def get_session(request: Request) -> dict[str, Any]:
     }
     view.update(user=identities[session["primary"]]["user"], primary=session["primary"],
                 startedAt=session.get("startedAt"),
-                admin=any(cfg.is_admin(p, i["user"]["login"]) for p, i in identities.items()))
+                admin=_is_admin(cfg, request.cookies.get(sessions.SESSION_COOKIE), session))
     return view
+
+
+def _is_admin(cfg, session_id: str | None, session: dict) -> bool:
+    """Whether the permission engine counts the signed-in user as an admin. This is
+    only what the page shows: when the engine cannot be asked, nothing is shown."""
+    try:
+        return bool(access.UserViewer(cfg, session_id or "", session).is_admin)
+    except (authz_client.AuthzError, access.Unauthenticated) as exc:
+        logger.warning("ui auth: could not ask whether the user is an admin: %s", exc)
+        return False
 
 
 @router.get("/login")
@@ -145,9 +156,10 @@ def callback(request: Request, code: str = "", state: str = "", error: str = "")
     session_id = request.cookies.get(sessions.SESSION_COOKIE)
     session = sessions.get_session(cfg, session_id)
     if session and session_id:
-        # Already signed in: connect this platform's account to the same session.
+        # Already signed in: connect this platform's account to the same session. What
+        # the engine remembers of the token this replaces (if it does) is dropped first.
+        access.forget(session_id, session)
         sessions.connect_identity(cfg, session_id, session, platform=platform, user=user, token=token)
-        access.forget(session_id)
         logger.info("ui auth: %s connected %s as %s", session["identities"][session["primary"]]["user"]["login"],
                     platform, user.login)
         return resp
@@ -161,8 +173,10 @@ def callback(request: Request, code: str = "", state: str = "", error: str = "")
 @router.post("/logout", status_code=204)
 def logout(request: Request) -> Response:
     session_id = request.cookies.get(sessions.SESSION_COOKIE)
+    cfg = _config_or_none()
+    session = sessions.get_session(cfg, session_id) if cfg is not None else None
     sessions.delete_session(session_id)
-    access.forget(session_id)
+    access.forget(session_id, session)
     resp = Response(status_code=204)
     resp.delete_cookie(sessions.SESSION_COOKIE, path="/")
     return resp

@@ -24,6 +24,16 @@ REMOVED_OPTIONS: dict[str, str] = {
     "secrets": "declare the secret manager under secret_managers in config.cue (path_prefix is set there) "
                "and name it in the rule's secret_manager",
     "retry_backoff": "nothing read it",
+    "dry_run": "a dry run is started, not configured: use the UI's Dry run, `vt sync --dry-run` or the dry-run webhook; "
+               "the rule now writes on every push",
+    "dry_run_prune": "a dry run reports what a prune would delete; a rule with prune off deletes nothing",
+    "max_changed_files": "a rule reads only the files it names (file_name or file_path_map): a push that touched other "
+                         "files does not sync them, so there is nothing to cut",
+}
+
+# Options of the prune block that were removed.
+REMOVED_PRUNE_OPTIONS: dict[str, str] = {
+    "dry_run": "a dry run reports what a prune would delete; a rule with prune off deletes nothing",
 }
 
 _warned: set[tuple[str, str]] = set()
@@ -35,9 +45,19 @@ def with_current_names(options: Any, source: str = "") -> Any:
     under both names, the current one wins. Anything but a dict is returned
     as is.
     """
-    if not isinstance(options, dict) or not any(key in options for key in (*RENAMED_OPTIONS, *REMOVED_OPTIONS)):
+    prune = options.get("prune") if isinstance(options, dict) else None
+    if not isinstance(options, dict) or not (
+        any(key in options for key in (*RENAMED_OPTIONS, *REMOVED_OPTIONS))
+        or (isinstance(prune, dict) and any(key in prune for key in REMOVED_PRUNE_OPTIONS))
+    ):
         return options
     out = dict(options)
+    if isinstance(prune, dict) and any(key in prune for key in REMOVED_PRUNE_OPTIONS):
+        out["prune"] = {k: v for k, v in prune.items() if k not in REMOVED_PRUNE_OPTIONS}
+        for key, instead in REMOVED_PRUNE_OPTIONS.items():
+            if key in prune and (source, f"prune.{key}") not in _warned:
+                _warned.add((source, f"prune.{key}"))
+                logger.warning("%s: prune.%s was removed and has no effect; %s", source or "rule", key, instead)
     for key, instead in REMOVED_OPTIONS.items():
         if key in out:
             del out[key]

@@ -7,11 +7,11 @@
 package vartrackv1
 
 import (
+	_ "buf.build/gen/go/bufbuild/protovalidate/protocolbuffers/go/buf/validate"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	reflect "reflect"
 	sync "sync"
-	_ "vartrack/libs/gen/buf/validate"
 	secret_managers "vartrack/libs/gen/vartrack/v1/models/secret_managers"
 )
 

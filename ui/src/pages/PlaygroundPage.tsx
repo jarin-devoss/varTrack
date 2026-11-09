@@ -6,11 +6,13 @@ import { Card, CopyButton, EmptyState, Notice } from '../components/common';
 import { Icon } from '../components/Icon';
 import { Dialog } from '../components/Overlay';
 import { StatusIcon, TaskPill } from '../components/Status';
+import { TokenForm } from '../features/TokenForm';
 import { usePageTitle } from '../layout/page';
 import { useToast } from '../components/Toasts';
 import { isProductionLike } from '../features/SyncPanel';
 import { shortId } from '../features/tasks';
 import { detectFormat, flattenConfig, plaintextSecrets } from '../lib/parse';
+import { usePrefs } from '../lib/prefs';
 import { ruleKey } from '../lib/rules';
 import { isActive } from '../lib/status';
 import { useQuery } from '../lib/useQuery';
@@ -43,6 +45,8 @@ export function PlaygroundPage() {
   usePageTitle('Playground');
   const api = useApi();
   const notify = useToast();
+  const [prefs] = usePrefs();
+  const hasToken = !!prefs.connection.token;
   const bundle = useQuery('bundle', a => a.getBundle(), { poll: false });
 
   const [filePath, setFilePath] = useState('configs/app.yaml');
@@ -175,6 +179,21 @@ export function PlaygroundPage() {
         </Card>
 
         <div className="stack">
+          <Card title="Git token">
+            <details open={!hasToken}>
+              <summary className="secondary" style={{ cursor: 'pointer' }}>
+                {hasToken ? 'A token is set for this tab. Replace it' : 'Validate, Dry run and Sync need your Git token'}
+              </summary>
+              <div className="stack" style={{ marginTop: 12 }}>
+                <p className="field__hint">
+                  They go through the same API as <code>vt</code>, which asks your Git platform who you are with a personal access token — the one you give <code>vt login</code>.
+                  Signing in to this page does not provide it.
+                </p>
+                <TokenForm compact submitLabel="Use this token" onSaved={() => setError(null)} />
+              </div>
+            </details>
+          </Card>
+
           {validation && (
             <Card title="Schema validation">
               <div className="stack stack--tight">
@@ -307,6 +326,10 @@ function TaskProgress({ taskId }: { taskId: string }) {
               {f.error ? <span style={{ color: 'var(--status-critical-ink)' }}>{f.error}</span> : t.dryRun ? `${f.keys ?? 0} keys parsed and validated` : `${f.written} keys written`}
             </span>
           ))}
+          {/* a task that failed before it had files (a schema refused the file) says why in its message */}
+          {t.state === 'FAILED' && t.message && !t.files.some(f => f.error) && (
+            <span className="secondary" style={{ color: 'var(--status-critical-ink)', overflowWrap: 'anywhere' }}>{t.message}</span>
+          )}
         </div>
       ) : task.error ? (
         <span className="secondary">Started task {shortId(taskId)}. Its status isn't available here: {(task.error as Error).message}</span>

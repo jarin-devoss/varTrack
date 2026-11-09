@@ -17,6 +17,7 @@ authorizes the CLI by Git permission. Most configurations keep working; the item
 |---|---|
 | **MongoDB stores one document per file by default.** A Mongo datasource with no `update_strategy` used to store one document per key; it now stores one nested document per file (`STRATEGY_DOCUMENT`). On its next sync each file's per-key documents are replaced, with a **Shape changed** event | To keep per-key documents, set `update_strategy: "STRATEGY_KEY_VALUE"` on the datasource **before** upgrading |
 | **The CLI API is authorized by the caller's Git token.** JWT and the RBAC block are gone: `vt` sends a Git personal access token; syncing needs push access to the rule's repository, validating and reading tasks need read access. An `auth.opa` policy, when set, decides with the whole request | Give CI a Git token (`VARTRACK_TOKEN`) instead of a varTrack JWT; see [Authentication](../configuration/auth.md) |
+| **A rule names its environments and its file, or it is refused.** There is no `default` environment, and a rule that names no file no longer syncs "every file a push touched". A rule with no `branch_map`, `file_path_map`, `branch_as_env`, `pr_as_env` or `tag_as_env`, or with neither `file_name` nor `file_path_map`, is not loaded: the Rules page lists it as *Refused* with why, and nothing runs it. `max_changed_files` is gone with that fallback (it is dropped with a warning) | Before upgrading, give every rule a `file_name` (or `file_path_map`) and its environments, in `config.cue` or the tenant's `bundle.json`; a repository's `vartrack.json` alone does not count. To keep an environment called `default`, set `branch_map: {"main": "default"}`. `vt validate-config` reports a `bundle.json` rule that would be refused |
 | **One rule per platform and datasource.** A `config.cue` with two rules for the same pair is refused at startup | Give the second destination its own tagged datasource and rule |
 | **`host_key_verification: "accept-new"` needs `known_hosts_file`.** Without one it recorded nothing and verified nothing across connections | Set `known_hosts_file` to a writable path, or use `strict` |
 | **`vt validate-config` fails on warnings.** It used to exit 0 when a file had only warnings | If a pipeline relied on that, fix the warnings — they are settings a sync ignores |
@@ -34,6 +35,7 @@ removal):
 | `prune_protection` | `prune.protection` — still read |
 | `prune_last`, `prune.last` | removed: prune always runs after all of an environment's files |
 | `retry_backoff` (rule) | removed: nothing read it |
+| `max_changed_files` (rule) | removed: a rule reads only the files it names (`file_name`, `file_path_map`), so there is nothing to cut |
 | `watcher_state_datasource` | removed: the watcher keeps no state between polls |
 | a rule-level `secrets` block | removed: a rule's `secret_manager` names the entry of `secret_managers` |
 

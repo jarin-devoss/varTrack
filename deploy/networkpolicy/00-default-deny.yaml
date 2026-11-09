@@ -1,0 +1,14 @@
+# Every varTrack pod starts with no inbound traffic; the policies that follow
+# open exactly what each component needs.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: vartrack-default-deny-ingress
+  labels:
+    app.kubernetes.io/part-of: vartrack
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/part-of: vartrack
+  policyTypes:
+    - Ingress

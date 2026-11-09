@@ -4,6 +4,18 @@ package vartrack.v1;
 
 import "google/protobuf/descriptor.proto";
 
+// Layer is a place a config value can come from, from the operator's own to the
+// one furthest from them.
+enum Layer {
+  LAYER_UNSPECIFIED = 0;
+  // config.cue: written by whoever runs varTrack.
+  CONFIG_CUE = 1;
+  // A tenant's bundle.json, in the tenant's schema repository.
+  BUNDLE_JSON = 2;
+  // A repository's vartrack.json.
+  VARTRACK_JSON = 3;
+}
+
 // ConfigOption says how one config option behaves across the layers a rule is
 // built from: config.cue, a tenant's bundle.json and a repository's
 // vartrack.json.
@@ -12,20 +24,41 @@ import "google/protobuf/descriptor.proto";
 // orchestrator (Python), the gateway and the watcher (Go) read one answer. An
 // option with no annotation is replaced by the layer above it, may be set in
 // config.cue and bundle.json, and not in a vartrack.json.
+//
+// Only what a field says here is honoured: a key no field declares is not an
+// option, whichever layer it is written in.
 message ConfigOption {
-  // Only config.cue sets it; a bundle.json value is dropped with a warning.
+  // The layer furthest from the operator that may set the field: CONFIG_CUE means
+  // only config.cue does, BUNDLE_JSON a tenant's bundle.json too, VARTRACK_JSON a
+  // repository's vartrack.json as well. A value from a layer that may not set it is
+  // dropped with a warning. Unspecified reads as BUNDLE_JSON (or, for a field that
+  // still carries the two booleans below, whatever they say).
+  Layer settable_in = 5;
+
+  // Only config.cue sets it. Superseded by settable_in: CONFIG_CUE, still read.
   bool admin_only = 1;
 
   // Merged key by key when two layers set it, instead of the upper layer
   // replacing the lower one.
   bool mergeable = 2;
 
-  // A repository's vartrack.json may set it.
+  // A repository's vartrack.json may set it. Superseded by
+  // settable_in: VARTRACK_JSON, still read.
   bool repo_overridable = 3;
 
   // Former names, still read with a warning, so a config written before a
   // rename keeps working.
   repeated string old_names = 4;
+
+  // For a string field that names something on disk or holds its content:
+  // "path" (a file the service reads) or "content" (the bytes themselves, PEM
+  // for a certificate). A field never means both.
+  string path_or_content = 6;
+
+  // A field no sink or service reads says why here (a field kept for the
+  // schema, or not yet wired). A test fails for a field that is neither read
+  // nor explained.
+  string unused_reason = 7;
 }
 
 extend google.protobuf.FieldOptions {

@@ -4,11 +4,19 @@ package vartrack.v1;
 
 import "vartrack/v1/enums/strategy.proto";
 import "vartrack/v1/utils/secret_ref.proto";
+import "vartrack/v1/options.proto";
 import "buf/validate/validate.proto";
 import "google/api/field_behavior.proto";
 import "google/protobuf/duration.proto";
 
 message LinuxServerConfig {
+  // Trusting a new host key means writing it down, or nothing is verified on the next connection.
+  option (buf.validate.message).cel = {
+    id: "linux_server.accept_new_needs_known_hosts",
+    message: "host_key_verification accept-new needs known_hosts_file: with nowhere to record a new key it would verify nothing",
+    expression: "this.host_key_verification != 'accept-new' || has(this.known_hosts_file)"
+  };
+
   optional string tag = 1 [(google.api.field_behavior) = OPTIONAL];
   string host = 2 [
     (buf.validate.field).string.min_len = 1,
@@ -33,7 +41,7 @@ message LinuxServerConfig {
   ];
   bool env_as_path = 8 [(google.api.field_behavior) = OPTIONAL];
   optional string base_directory = 9 [(google.api.field_behavior) = OPTIONAL];
-  Strategy update_strategy = 10 [(buf.validate.field).enum.defined_only = true];
+  Strategy update_strategy = 10 [(buf.validate.field).enum.defined_only = true, (vartrack.v1.config) = {unused_reason: "the linux_server sink does not read it yet, so set in config.cue it has no effect"}];
   string file_mode = 11 [
     (buf.validate.field).string.pattern = "^0[0-7]{3}$",
     (google.api.field_behavior) = OPTIONAL
@@ -42,7 +50,10 @@ message LinuxServerConfig {
   bool create_directories = 13 [(google.api.field_behavior) = OPTIONAL];
   bool backup_before_write = 14 [(google.api.field_behavior) = OPTIONAL];
   string backup_suffix = 15 [(google.api.field_behavior) = OPTIONAL];
+  // Run on the new file before it replaces the old one ({file} is the new file, {target} the path it is going
+  // to): a file that fails is never put in place, so the old one is untouched.
   optional string validation_command = 16 [(google.api.field_behavior) = OPTIONAL];
+  // Only with validate_after_rename: put the previous file back when validation_command fails.
   bool rollback_on_validation_fail = 17 [(google.api.field_behavior) = OPTIONAL];
   repeated string post_write_commands = 18 [(google.api.field_behavior) = OPTIONAL];
   bool continue_on_command_error = 19 [(google.api.field_behavior) = OPTIONAL];
@@ -68,6 +79,11 @@ message LinuxServerConfig {
   optional SecretRef sudo_password = 27 [(google.api.field_behavior) = OPTIONAL];
   bool use_sftp = 28 [(google.api.field_behavior) = OPTIONAL];
   bool enable_compression = 29 [(google.api.field_behavior) = OPTIONAL];
+  // For a validator that has to see the file at its final path: the new file replaces the old one first, and
+  // validation_command then runs on it in place. A failing validation leaves the bad file there unless
+  // rollback_on_validation_fail puts the previous one back. By default the file is validated before it replaces the
+  // old one, which a reader of the file can never see half-written either way.
+  bool validate_after_rename = 30 [(google.api.field_behavior) = OPTIONAL];
 }
 
 message SSHKeyAuth {

@@ -69,6 +69,19 @@ Responses are JSON in the shapes defined in [`src/api/types.ts`](src/api/types.t
 
 `e2e/docker-compose.live.yml` runs the whole system with MongoDB, ZooKeeper, Redis, S3 (MinIO), and Kubernetes ConfigMaps and Helm releases on k3s, fed by real pushes through Gitea webhooks. See the comment at the top of that file for the command; then open the UI.
 
+## What a Sync reports
+
+Pressing **Sync** (or **Dry run**) closes the panel and shows one toast that follows the sync: *Syncing staging…*, then *Synced staging · 19 keys written*, or *Sync of staging failed* with the reason, which stays until you dismiss it. The environment's box shows *Syncing…* while its task runs.
+
+Before a sync that prunes, the panel asks a dry run (not listed among the tasks, and silent in the events) which keys it would delete: *This sync deletes nothing*, or the keys per environment. A sync that deletes keys says so on its button (*Sync and delete 3 keys*); only one that deletes from a production-like environment asks you to type `prune`, with the keys listed. An environment the rule produces and has not written is listed as *Not synced yet*, ready for its first sync.
+
+## Tests
+
+`npm test` runs the unit tests and the end-to-end coverage manifest (`e2e/coverage.json`), which fails when a route, a named
+control or a status of the UI has no browser test. `npm run test:e2e` runs the browser tests against the demo stack: they sign
+in through Gitea as an admin, a writer, a reader and an outsider and use every screen. How they work and how to write one:
+[`e2e/README.md`](e2e/README.md).
+
 ## Keyboard
 
 | Keys | Action |

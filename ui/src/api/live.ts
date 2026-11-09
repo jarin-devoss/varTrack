@@ -23,7 +23,16 @@ export interface LiveConfig {
 }
 
 const TASK_STATES: TaskState[] = ['PENDING', 'RUNNING', 'SUCCEEDED', 'FAILED', 'RETRYING'];
-const FILE_STATUSES: FileStatus[] = ['ok', 'empty', 'validation_failed', 'error', 'skipped', 'aborted'];
+const FILE_STATUSES: FileStatus[] = [
+  'ok',
+  'empty',
+  'validation_failed',
+  'error',
+  'skipped',
+  'aborted',
+  'partial',
+  'rolled_back',
+];
 
 /** Celery state + optional result dict → task state. */
 export function mapTaskState(celeryState: string, resultState?: unknown): TaskState {
@@ -63,6 +72,9 @@ export function mapFileResult(raw: Raw): FileResult {
     error: str(raw.error),
     keys: typeof raw.keys === 'number' ? raw.keys : undefined,
     validation: str(raw.validation),
+    schema: str(raw.schema),
+    schemaSource: str(raw.schema_source) ?? str(raw.schemaSource),
+    schemaNote: str(raw.schema_note) ?? str(raw.schemaNote),
     sample: raw.sample && typeof raw.sample === 'object' ? (raw.sample as Record<string, string>) : undefined,
   };
 }
@@ -99,8 +111,11 @@ export function createLiveApi(cfg: LiveConfig): VarTrackApi {
       return { rules: body.rules, hidden: body.hidden ?? [] };
     },
 
-    async getRule(name, tenant) {
-      const { body } = await requestJson<RuleView>(orch(`/v1/ui/rules/${rulePath(name)}${tenantQuery(tenant)}`), auth);
+    async getRule(name, tenant, options) {
+      const query = new URLSearchParams();
+      if (tenant) query.set('tenant', tenant);
+      if (options?.fresh) query.set('fresh', 'true');
+      const { body } = await requestJson<RuleView>(orch(`/v1/ui/rules/${rulePath(name)}${query.size ? `?${query}` : ''}`), auth);
       return body;
     },
 
@@ -170,11 +185,15 @@ export function createLiveApi(cfg: LiveConfig): VarTrackApi {
       } satisfies Task;
     },
 
+    async forgetEnvironment(rule, env, tenant) {
+      await requestJson<null>(orch(`/v1/ui/rules/${rulePath(rule)}/targets/${encodeURIComponent(env)}${tenantQuery(tenant)}`), { ...auth, method: 'DELETE' });
+    },
+
     async sync(req) {
       const { body } = await requestJson<{ taskIds: string[] }>(orch(`/v1/ui/rules/${rulePath(req.rule)}/sync${tenantQuery(req.tenant)}`), {
         ...auth,
         method: 'POST',
-        body: { envs: req.envs, dryRun: req.dryRun, prune: req.prune },
+        body: { envs: req.envs, dryRun: req.dryRun, prune: req.prune, preview: req.preview },
       });
       return body;
     },

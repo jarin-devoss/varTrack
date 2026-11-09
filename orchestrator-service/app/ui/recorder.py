@@ -38,7 +38,10 @@ def task_started(
     parsed_payload: dict | None = None,
     env: str | None = None,
     submitted_by: str | None = None,
+    preview: bool = False,
 ) -> dict[str, Any] | None:
+    """*preview*: a dry run started to learn what a sync would delete. It is recorded (its page answers) but not
+    listed, and it leaves no events: nobody asked for a sync, so nothing in the history says one ran."""
     try:
         rule = f"{platform}/{datasource}"
         repo = ledger.repo_name(repo_url)
@@ -62,8 +65,11 @@ def task_started(
             "_author": author,
             "_repoUrl": repo_url,
             "_platform": platform,
+            **({"preview": True} if preview else {}),
         }
-        ledger.record_task(task, tenant=tenant, new=True)
+        ledger.record_task(task, tenant=tenant, new=not preview)
+        if preview:
+            return task
         if trigger == "webhook":
             ledger.record_event(
                 tenant=tenant, reason="WebhookReceived", rule=rule, task_id=task_id,
@@ -79,6 +85,47 @@ def task_started(
         return None
 
 
+def task_queued(
+    task_id: str,
+    *,
+    tenant: str,
+    platform: str,
+    datasource: str,
+    trigger: str,
+    repo_url: str,
+    ref: str,
+    revision: str,
+    dry_run: bool,
+    env: str | None = None,
+    preview: bool = False,
+) -> None:
+    """A sync accepted and handed to the workers: it is on the Tasks page, and its page answers, from now
+    rather than from when a worker picks it up (which, with the workers busy or down, may be a while).
+    The worker's own record (task_started) replaces this one."""
+    try:
+        ledger.record_task_if_absent({
+            "taskId": task_id,
+            "state": "PENDING",
+            "message": "queued",
+            "trigger": trigger,
+            "rule": f"{platform}/{datasource}",
+            "datasource": datasource,
+            **({"env": env} if env else {}),
+            "repository": ledger.repo_name(repo_url),
+            "ref": ref,
+            "revision": revision,
+            "submittedBy": None,
+            "dryRun": dry_run,
+            "createdAt": ledger.now_iso(),
+            "files": [],
+            "_repoUrl": repo_url,
+            "_platform": platform,
+            **({"preview": True} if preview else {}),
+        }, tenant=tenant, listed=not preview)
+    except Exception:
+        logger.warning("ui recorder: task_queued failed", exc_info=True)
+
+
 def _file_result(r: Any, dry_run_file: dict | None = None) -> dict[str, Any]:
     if dry_run_file is not None:
         return {
@@ -91,6 +138,12 @@ def _file_result(r: Any, dry_run_file: dict | None = None) -> dict[str, Any]:
             "pruned": 0,
             "keys": dry_run_file.get("keys"),
             "validation": dry_run_file.get("validation"),
+            "schema": dry_run_file.get("schema"),
+            "schemaSource": dry_run_file.get("schema_source"),
+            **({"schemaNote": dry_run_file["schema_note"]} if dry_run_file.get("schema_note") else {}),
+            **({"validationError": dry_run_file["validation_error"]} if dry_run_file.get("validation_error") else {}),
+            # What a sync would add or change, key by key (views.would_change); a dry run only.
+            **({"wouldChange": dry_run_file["would_change"]} if dry_run_file.get("would_change") else {}),
         }
     status = r.status
     if status == "error" and r.error and "validation" in r.error.lower():
@@ -110,8 +163,10 @@ def _file_result(r: Any, dry_run_file: dict | None = None) -> dict[str, Any]:
         # Keys only: prune's values stay in the ledger's target, not in a task.
         **({"prunePending": r.prune_pending} if r.prune_pending is not None else {}),
         **({"pruneSkipped": r.prune_skipped} if r.prune_skipped else {}),
-        **({"pruneWouldDelete": r.prune_would_delete} if r.prune_would_delete else {}),
         **({"pruneError": r.prune_error} if r.prune_error else {}),
+        **({"validation": r.validation, "schema": r.schema, "schemaSource": r.schema_source}
+           if getattr(r, "validation", "") else {}),
+        **({"schemaNote": r.schema_note} if getattr(r, "schema_note", "") else {}),
     }
 
 
@@ -122,15 +177,17 @@ def task_finished(
     etl: Any = None,
     results: list[Any] | None = None,
     dry_run_files: list[dict] | None = None,
+    would_prune: dict[str, list[str]] | None = None,
     message: str = "",
 ) -> None:
-    """Record the outcome of a task and, for written files, the new desired state."""
+    """Record the outcome of a task and, for written files, the new desired state. *would_prune* is what a dry run
+    found a sync would delete, per environment (empty when nothing, or when the rule does not prune)."""
     if not task:
         return
     try:
         results = results or []
         files = [_file_result(r) for r in results] if not dry_run_files else [_file_result(None, f) for f in dry_run_files]
-        failed = [f for f in files if f["status"] not in ("ok", "empty", "skipped")]
+        failed = [f for f in files if f["status"] not in _DONE]
         envs = sorted({f["env"] for f in files if f["env"] and f["env"] != "unknown"})
         written = sum(f["written"] for f in files)
         pruned = sum(f["pruned"] for f in files)
@@ -150,7 +207,11 @@ def task_finished(
             task["env"] = envs[0]
 
         if task.get("dryRun"):
+            if would_prune is not None:
+                task["wouldPrune"] = would_prune
             ledger.record_task(task, tenant=tenant)
+            if task.get("preview"):
+                return
             ledger.record_event(tenant=tenant, reason="SyncFailed" if failed else "SyncSucceeded", rule=task["rule"],
                                 task_id=task["taskId"],
                                 message=f"dry run: {task['message']}" if failed
@@ -168,26 +229,27 @@ def task_finished(
         logger.warning("ui recorder: task_finished failed", exc_info=True)
 
 
-_DONE = ("ok", "empty", "skipped")
+# "partial" and "rolled_back" are what a failure elsewhere in the sync did to a file that was written; the
+# failure itself is the file with another status.
+_DONE = ("ok", "empty", "skipped", "partial", "rolled_back")
 
 
 def _rolls_back(datasource: str) -> bool:
     """
     Whether this datasource's sink undoes earlier writes when a later file
-    fails. stage_sync stops at the first file that fails and asks the sink to
-    roll back every file it wrote before — in any environment; sinks without
-    snapshot/delete support keep what they wrote.
+    fails (BaseSink.can_restore). stage_sync stops at the first file that fails
+    and asks such a sink to roll back every file it wrote before — in any
+    environment; the others keep what they wrote.
     """
     try:
         from app.pipeline.sinks import SINK_REGISTRY
-        from app.pipeline.sinks.base import BaseSink
     except Exception:
         return True  # unknown: claim no new desired state
     key = datasource.lower().replace("-", "_")
     cls = SINK_REGISTRY.get(key) or SINK_REGISTRY.get(key.split("_")[0])
     if cls is None:
         return False
-    return hasattr(cls, "restore_file_data") or cls.delete_file_data is not BaseSink.delete_file_data
+    return bool(getattr(cls, "can_restore", False))
 
 
 def _record_envs(task: dict[str, Any], *, tenant: str, envs: list[str], files: list[dict], etl: Any) -> None:
@@ -218,7 +280,7 @@ def _record_envs(task: dict[str, Any], *, tenant: str, envs: list[str], files: l
 
         # Only what is still in the sink becomes desired state: nothing after a
         # rollback; without one, the files that were written before the failure.
-        kept = [] if rolled_back else [f for f in env_files if f["status"] == "ok"]
+        kept = [] if rolled_back else [f for f in env_files if f["status"] in ("ok", "partial")]
         # The keys prune could not delete stay owned, so the next sync retries them.
         pending_prune = next((f["prunePending"] for f in env_files if f.get("prunePending") is not None), None)
         recorded = False

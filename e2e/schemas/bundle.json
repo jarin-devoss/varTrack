@@ -1,25 +1,29 @@
 [
   {
-    "platform": "github",
+    "platform": "gitea",
     "datasource": "mongo",
-    "tenant_id": "demo",
-    "repo_url": "http://gitea:3000/vartrack-demo/demo-configs.git",
-    "file_name": "app-settings.yaml",
-    "branch_as_env": false,
-    "branch": "main",
-    "sync_mode": "SYNC_MODE_FULL",
-    "prune": true
-  },
-  {
-    "platform": "github",
-    "datasource": "zookeeper",
-    "tenant_id": "demo",
     "repo_url": "http://gitea:3000/vartrack-demo/demo-configs.git",
     "file_name": "app-settings.yaml",
     "branch_as_env": false,
     "branch": "main",
     "sync_mode": "SYNC_MODE_FULL",
     "prune": true,
-    "key_format": "slash"
+    "branch_map": {
+      "main": "default"
+    }
+  },
+  {
+    "platform": "gitea",
+    "datasource": "zookeeper",
+    "repo_url": "http://gitea:3000/vartrack-demo/demo-configs.git",
+    "file_name": "app-settings.yaml",
+    "branch_as_env": false,
+    "branch": "main",
+    "sync_mode": "SYNC_MODE_FULL",
+    "prune": true,
+    "key_format": "slash",
+    "branch_map": {
+      "main": "default"
+    }
   }
 ]

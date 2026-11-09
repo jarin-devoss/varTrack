@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { useApi } from '../api';
 import { isNotAvailable } from '../api/http';
@@ -12,23 +12,24 @@ import { DriftPill, driftIcon, OpPill, SyncPill } from '../components/Status';
 import { asGroups, EventRow } from '../features/events';
 import { ruleHref, taskHref } from '../features/links';
 import { DefinitionTab } from '../features/rule/DefinitionTab';
-import { DiffOptions, EnvDiff } from '../features/rule/DiffView';
 import { HistoryTimeline } from '../features/rule/HistoryTimeline';
 import { KeysTab, type KeyFilter } from '../features/rule/KeysTab';
-import { ResolutionSteps } from '../features/rule/resolution';
+import { NoFallback, ResolutionSteps } from '../features/rule/resolution';
 import { fileSummary, repoSummary, ruleColor } from '../features/ruleViews';
 import { EnvBox, EnvPanel, ENV_VIEWS, type EnvView } from '../features/state';
+import { RunLogPanel } from '../features/RunLogPanel';
 import { SyncPanel } from '../features/SyncPanel';
 import { usePageTitle } from '../layout/page';
 import { usePinned } from '../lib/prefs';
-import { isPinned } from '../lib/rules';
+import { isPinned, runRights } from '../lib/rules';
 import { useRules } from '../lib/useRules';
-import { DRIFT_SEVERITY, ruleDrift, ruleSync, TRIGGER, targetSync, type SyncStatus } from '../lib/status';
+import { DRIFT_SEVERITY, diffable, ruleDrift, ruleSync, TRIGGER, targetSync, type SyncStatus } from '../lib/status';
 import { peekQuery, useQuery } from '../lib/useQuery';
+import { useToast } from '../components/Toasts';
 
 type RuleTab = 'overview' | 'history' | 'events' | 'definition';
-type EnvTab = 'environments' | 'keys' | 'diff';
-const ENV_TABS: EnvTab[] = ['environments', 'keys', 'diff'];
+type EnvTab = 'environments' | 'keys';
+const ENV_TABS: EnvTab[] = ['environments', 'keys'];
 const KEY_FILTERS: KeyFilter[] = ['all', 'changed', 'secrets', 'protected'];
 const SYNC_RANK: Record<SyncStatus, number> = { OutOfSync: 0, Unknown: 1, Synced: 2 };
 
@@ -40,9 +41,28 @@ export function RulePage() {
   const api = useApi();
   const all = useRules();
   // Opened from a list: show the rule the list already has while it loads.
-  const rule = useQuery(`rule:${tenant ?? ''}:${name}`, a => a.getRule(name, tenant), {
+  // Refresh reads the sinks now; the polling in between answers from the last read.
+  const refreshing = useRef(false);
+  const rule = useQuery(`rule:${tenant ?? ''}:${name}`, a => {
+    const fresh = refreshing.current;
+    refreshing.current = false;
+    return a.getRule(name, tenant, { fresh });
+  }, {
     placeholder: () => peekQuery<RuleList>(api, 'rules')?.rules.find(r => r.name === name && (!tenant || r.tenant === tenant)),
   });
+  const session = useQuery('auth:session', a => a.getSession(), { poll: false });
+  const notify = useToast();
+  // An administrator (or anyone, when sign-in is off) may drop an environment no branch feeds any more from the record.
+  const canForget = !!session.data && (!session.data.enabled || !!session.data.admin);
+  const forget = async (env: string) => {
+    try {
+      await api.forgetEnvironment(name, env, tenant);
+      notify({ tone: 'good', title: `${env} forgotten`, body: 'Its events and tasks stay in their lists.' });
+      rule.reload();
+    } catch (err) {
+      notify({ tone: 'critical', title: `Couldn't forget ${env}`, body: (err as Error).message });
+    }
+  };
   const [params, setParams] = useSearchParams();
   const [pinned, togglePin] = usePinned();
   const [sync, setSync] = useState<{ envs?: string[]; dryRun: boolean } | null>(null);
@@ -84,11 +104,13 @@ export function RulePage() {
   if (!rule.data) return <LoadingRows rows={4} height={110} />;
 
   const r = rule.data;
+  if (r.refused) return <RefusedRule rule={r} />;
   const envTab = ENV_TABS.includes(params.get('tab') as EnvTab) ? (params.get('tab') as EnvTab) : 'environments';
   const openEnv = r.targets.some(t => t.env === params.get('env')) ? params.get('env')! : undefined;
   const envView = ENV_VIEWS.includes(params.get('view') as EnvView) ? (params.get('view') as EnvView) : 'summary';
   const keyFilter = KEY_FILTERS.includes(params.get('keys') as KeyFilter) ? (params.get('keys') as KeyFilter) : 'all';
   const color = ruleColor(r) as HeroColor;
+  const rights = runRights(r);
   const openSync = (envs?: string[], dryRun = false) => setSync({ envs, dryRun });
   const sorted = [...r.targets].sort(
     (a, b) => SYNC_RANK[targetSync(a)] - SYNC_RANK[targetSync(b)] || DRIFT_SEVERITY.indexOf(a.drift) - DRIFT_SEVERITY.indexOf(b.drift),
@@ -111,28 +133,22 @@ export function RulePage() {
         lastUpdated={rule.updatedAt ? new Date(rule.updatedAt).toISOString() : undefined}
       />
 
+      {!rights.sync && <Notice tone="info">{rights.reason}</Notice>}
+
       <div className="action-bar">
-        <button className="abtn abtn--blue" onClick={() => openSync()}>
+        {/* Someone who may not sync still sees Sync, disabled, with the reason; a dry run is its own button (both open the panel). */}
+        <button className={rights.sync ? 'abtn abtn--blue' : 'abtn'} onClick={() => openSync()} disabled={!rights.sync} title={rights.reason}>
           <Icon name="refresh" size={14} /> Sync
         </button>
         <button className="abtn abtn--purple" onClick={() => openSync(undefined, true)}>
           <Icon name="play" size={14} /> Dry run
         </button>
-        <button className="abtn" onClick={() => setParam({ tab: 'diff', env: null, view: null })}>
-          <Icon name="diff" size={14} /> Diff
-        </button>
-        <button className="abtn" onClick={rule.reload} title="Fetch the latest state">
+        <button className="abtn" onClick={() => { refreshing.current = true; rule.reload(); }} title="Read the sinks now">
           <Icon name="refresh" size={14} className={rule.fetching ? 'spin' : undefined} /> Refresh
         </button>
       </div>
 
-      <RuleStatus rule={r} onRetry={envs => openSync(envs)} />
-
-      {r.dryRun && (
-        <Notice tone="info">
-          This rule has <code>dry_run: true</code>: every sync runs the full pipeline but writes nothing.
-        </Notice>
-      )}
+      <RuleStatus rule={r} onRetry={rights.sync ? envs => openSync(envs) : undefined} />
 
       <Panel title="Environments" subtitle={<>Desired state in Git compared with the current state in {SINK_LABEL[r.sinkType]}</>} id="environments-panel">
         <UTabs
@@ -142,7 +158,6 @@ export function RulePage() {
           tabs={[
             { id: 'environments', label: 'Environments', count: r.targets.length },
             { id: 'keys', label: 'Keys' },
-            { id: 'diff', label: 'Diff' },
           ]}
         />
         {envTab === 'environments' && (
@@ -153,7 +168,8 @@ export function RulePage() {
                 rule={r}
                 target={t}
                 onOpen={view => setParam({ env: t.env, view: view && view !== 'summary' ? view : null })}
-                onSync={() => openSync([t.env])}
+                onSync={dryRun => openSync([t.env], dryRun)}
+                onForget={canForget ? () => void forget(t.env) : undefined}
               />
             ))}
           </div>
@@ -161,14 +177,13 @@ export function RulePage() {
         {envTab === 'keys' && (
           <KeysTab
             rule={r}
-            env={keysEnv ?? sorted[0]?.env}
+            env={keysEnv ?? sorted.find(t => diffable(t).can)?.env}
             onEnvChange={setKeysEnv}
             filter={keyFilter}
             onFilterChange={f => setParam({ keys: f === 'all' ? null : f })}
-            onSync={e => openSync([e])}
+            onSync={(e, dryRun) => openSync([e], dryRun)}
           />
         )}
-        {envTab === 'diff' && <RuleDiff rule={r} />}
       </Panel>
 
       <Panel title="Rule" subtitle="How the rule is configured and what it has done" id="rule-panel">
@@ -184,7 +199,7 @@ export function RulePage() {
           ]}
         />
         {ruleTab === 'overview' && <RuleOverview rule={r} />}
-        {ruleTab === 'history' && <RuleHistory rule={r} />}
+        {ruleTab === 'history' && <RuleHistory rule={r} onShowLog={id => setParam({ run: id })} />}
         {ruleTab === 'events' && <RuleEvents rule={r} />}
         {ruleTab === 'definition' && <DefinitionTab rule={r} />}
       </Panel>
@@ -195,9 +210,36 @@ export function RulePage() {
         view={envView}
         onView={v => setParam({ view: v === 'summary' ? null : v })}
         onClose={() => setParam({ env: null, view: null })}
-        onSync={e => openSync([e])}
+        onSync={(e, dryRun) => openSync([e], dryRun)}
       />
-      <SyncPanel open={!!sync} rule={r} initialEnvs={sync?.envs} initialDryRun={sync?.dryRun} onClose={() => setSync(null)} onStarted={rule.reload} />
+      <SyncPanel open={!!sync} rule={r} initialEnvs={sync?.envs} initialDryRun={sync?.dryRun} onClose={() => setSync(null)} onChanged={rule.reload} />
+      <RunLogPanel rule={r} taskId={params.get('run')} onClose={() => setParam({ run: null })} />
+    </div>
+  );
+}
+
+/** A rule that names no environments, refused when it was loaded: nothing runs it, so it has no environments and no actions. */
+function RefusedRule({ rule: r }: { rule: RuleView }) {
+  return (
+    <div className="page-stack">
+      <Hero
+        color="red"
+        icon="xCircle"
+        kind={`Rule · ${SINK_LABEL[r.sinkType]} · refused`}
+        name={r.name}
+        meta={
+          <>
+            Tenant: {r.tenant} · {repoSummary(r)}
+          </>
+        }
+      />
+      <Notice tone="critical">
+        <strong>This rule is refused and not loaded: no push, sync or dry run reaches it.</strong>{' '}
+        <span data-testid="refused-reason">{r.refused}</span>
+      </Notice>
+      <Panel title="Rule" subtitle="How the rule is configured" id="rule-panel">
+        <RuleOverview rule={r} />
+      </Panel>
     </div>
   );
 }
@@ -221,7 +263,10 @@ function healText(r: RuleView): React.ReactNode {
 }
 
 /** Three boxes: is the sink in sync with Git, is self-heal keeping it there, and how the last sync went. */
-function RuleStatus({ rule: r, onRetry }: { rule: RuleView; onRetry: (envs: string[]) => void }) {
+function RuleStatus({ rule: r, onRetry }: { rule: RuleView; onRetry?: (envs: string[]) => void }) {
+  // The count is of what the rule produces: an environment no branch feeds any more is named after it, not counted.
+  const leftovers = r.targets.filter(t => t.notFed);
+  const produced = r.targets.length - leftovers.length;
   const out = r.targets.filter(t => targetSync(t) === 'OutOfSync');
   const synced = r.targets.filter(t => targetSync(t) === 'Synced').length;
   const drift = ruleDrift(r);
@@ -237,11 +282,17 @@ function RuleStatus({ rule: r, onRetry }: { rule: RuleView; onRetry: (envs: stri
           <SyncPill status={ruleSync(r)} large />
         </div>
         <div className="stat__sub">
-          {synced} of {r.targets.length} environment{r.targets.length === 1 ? '' : 's'} match Git
+          {synced} of {produced} environment{produced === 1 ? '' : 's'} match Git
           {out.length > 0 && (
             <>
               {' '}
               · {out.map(t => t.env).join(', ')} differ{out.length === 1 ? 's' : ''}
+            </>
+          )}
+          {leftovers.length > 0 && (
+            <>
+              {' '}
+              · {leftovers.length} no longer synced: {leftovers.map(t => t.env).join(', ')}
             </>
           )}
         </div>
@@ -262,7 +313,7 @@ function RuleStatus({ rule: r, onRetry }: { rule: RuleView; onRetry: (envs: stri
           )}
         </div>
         <div className="stat__sub">{healText(r)}</div>
-        {failedHeal.length > 0 && (
+        {failedHeal.length > 0 && onRetry && (
           <button className="abtn abtn--red stat__action" onClick={() => onRetry(failedHeal.map(t => t.env))}>
             <Icon name="refresh" size={13} /> Retry sync
           </button>
@@ -331,7 +382,7 @@ function RuleOverview({ rule: r }: { rule: RuleView }) {
         <div>
           <dt>Prune</dt>
           <dd>
-            {r.prune.enabled ? `On${r.prune.dryRun ? ' (report only)' : ''}` : 'Off'}
+            {r.prune.enabled ? 'On' : 'Off'}
             {r.prune.protection.length > 0 && (
               <span className="muted">
                 {' '}
@@ -351,12 +402,13 @@ function RuleOverview({ rule: r }: { rule: RuleView }) {
           When a push arrives, varTrack picks the environment from the first step that matches.
         </p>
         <ResolutionSteps rule={r} />
+        <NoFallback />
       </div>
     </div>
   );
 }
 
-function RuleHistory({ rule }: { rule: RuleView }) {
+function RuleHistory({ rule, onShowLog }: { rule: RuleView; onShowLog: (taskId: string) => void }) {
   const tasks = useQuery(`tasks:${rule.tenant}:${rule.name}`, api => api.listTasks({ rule: rule.name, tenant: rule.tenant, limit: 100 }));
   const [env, setEnv] = useState('all');
   if (tasks.error && !tasks.data) return <ErrorState compact error={tasks.error} what="sync history" onRetry={tasks.reload} />;
@@ -367,7 +419,7 @@ function RuleHistory({ rule }: { rule: RuleView }) {
       {rule.targets.length > 1 && (
         <Segmented label="Environment" value={env} onChange={setEnv} options={[{ value: 'all', label: 'All' }, ...rule.targets.map(t => ({ value: t.env, label: t.env }))]} />
       )}
-      {shown.length ? <HistoryTimeline tasks={shown} showEnv={env === 'all'} /> : <EmptyState compact icon="tasks" title="No syncs yet" />}
+      {shown.length ? <HistoryTimeline tasks={shown} showEnv={env === 'all'} onShowLog={onShowLog} /> : <EmptyState compact icon="tasks" title="No syncs yet" />}
     </div>
   );
 }
@@ -378,26 +430,4 @@ function RuleEvents({ rule }: { rule: RuleView }) {
   if (!events.data) return <LoadingRows rows={4} height={30} />;
   if (events.data.length === 0) return <EmptyState compact icon="activity" title="No events for this rule" />;
   return <div>{asGroups(events.data).map(g => <EventRow key={g.event.id} group={g} showSubject={false} />)}</div>;
-}
-
-function RuleDiff({ rule }: { rule: RuleView }) {
-  const targets = [...rule.targets].sort((a, b) => SYNC_RANK[targetSync(a)] - SYNC_RANK[targetSync(b)]);
-  return (
-    <div className="stack">
-      <p className="muted" style={{ fontSize: 13 }}>
-        Current state in {SINK_LABEL[rule.sinkType]} on the left, desired state in Git on the right. Inline, <span className="mono">−</span> is current and{" "}
-        <span className="mono">+</span> is desired.
-      </p>
-      <DiffOptions />
-      {targets.map(t => (
-        <section key={t.env} className="stack stack--tight">
-          <span className="row" style={{ gap: 8 }}>
-            <span className="section-label">{t.env}</span>
-            <SyncPill status={targetSync(t)} />
-          </span>
-          <EnvDiff rule={rule.name} tenant={rule.tenant} env={t.env} destination={t.destination} />
-        </section>
-      ))}
-    </div>
-  );
 }

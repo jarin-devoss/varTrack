@@ -11,7 +11,7 @@ datasources: [{
   configmap: {
     tag:        ""
     namespace:  "default"
-    kubeconfig: "/path/to/kubeconfig"    // optional — uses in-cluster config if omitted
+    kubeconfig_path: "/path/to/kubeconfig"    // optional — uses in-cluster config if omitted
   }
 }]
 ```
@@ -29,6 +29,8 @@ The `destination_template` controls the ConfigMap name:
 rules: [{
   platform:             "github"
   datasource:           "configmap"
+  file_name:           "app-settings.yaml"
+  branch_map:           {main: "production"}
   destination_template: "myapp-{env}"
 }]
 ```
@@ -62,6 +64,8 @@ The watcher asks the orchestrator each poll; the orchestrator reads the ConfigMa
 rules: [{
   platform:   "github"
   datasource: "configmap"
+  file_name: "app-settings.yaml"
+  branch_map: {main: "production"}
   self_heal:  true
 }]
 ```

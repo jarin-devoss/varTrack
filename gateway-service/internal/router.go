@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"gateway-service/internal/auth"
+	"gateway-service/internal/authz"
 	"gateway-service/internal/handlers"
 	"gateway-service/internal/middlewares"
 	"gateway-service/internal/models"
@@ -30,10 +31,10 @@ type Router struct {
 	healthHandler *handlers.HealthHandler
 	handler       http.Handler
 
-	// CLI API — the routes exist only when cliClient and gitAuthz are set.
+	// CLI API — the routes exist only when cliClient and engine are set.
 	cliClient    pb.CLIServiceClient
-	gitAuthz     *auth.GitAuthorizer
-	opaEvaluator *auth.OPAEvaluator // nil when OPA is not configured
+	engine       *authz.Engine
+	opaEvaluator *auth.OPAEvaluator // nil when OPA is not configured; the engine runs it, the router reloads it
 
 	isProduction bool
 }
@@ -80,14 +81,15 @@ func WithProduction(isProduction bool) RouterOption {
 	}
 }
 
-// WithCLIAuth enables the /v1/cli/* routes — authorized by Git permission
-// (authz) and, when opa is non-nil, OPA — served by the orchestrator's
-// CLIService through cli. When this option is not provided the CLI routes
+// WithCLIAuth enables the /v1/cli/* routes — authorized by the permission
+// engine (Git permission and, when opa is non-nil, OPA) — served by the
+// orchestrator's CLIService through cli. opa is the evaluator the engine runs;
+// the router only reloads it. When this option is not provided the CLI routes
 // are disabled.
-func WithCLIAuth(cli pb.CLIServiceClient, authz *auth.GitAuthorizer, opa *auth.OPAEvaluator) RouterOption {
+func WithCLIAuth(cli pb.CLIServiceClient, engine *authz.Engine, opa *auth.OPAEvaluator) RouterOption {
 	return func(r *Router) {
 		r.cliClient = cli
-		r.gitAuthz = authz
+		r.engine = engine
 		r.opaEvaluator = opa
 	}
 }
@@ -124,6 +126,12 @@ func NewRouter(
 		r.breaker = middlewares.NewCircuitBreaker(middlewares.DefaultCircuitBreakerConfig())
 	}
 
+	// A store that can be asked whether it is there is part of readiness: a gateway that cannot
+	// check webhook deliveries is not ready for them.
+	if pinger, ok := r.nonceStore.(interface{ Ping(context.Context) error }); ok {
+		r.healthHandler.RegisterDependency("nonce_store", pinger.Ping)
+	}
+
 	// Register all configured secret managers with the health handler so
 	// the readiness probe can check them via Ping().
 	for _, name := range bundleService.ListConfiguredSecretManagers() {
@@ -158,8 +166,8 @@ func (r *Router) setupRoutes() {
 		),
 	))
 
-	if r.cliClient != nil && r.gitAuthz != nil {
-		cliHandler := handlers.NewCLIHandler(r.cliClient, r.gitAuthz, r.opaEvaluator)
+	if r.cliClient != nil && r.engine != nil {
+		cliHandler := handlers.NewCLIHandler(r.cliClient, r.engine)
 		r.mux.Handle("/v1/cli/", http.StripPrefix("/v1/cli", routes.CLIRoutes(cliHandler)))
 	}
 }

@@ -4,15 +4,15 @@
 bundle: {
 	platforms: [
 		{
-			github: {
+			gitea: {
 				endpoint:          "http://gitea:3000"
 				protocol:          "http"
 				token:             "demo-admin-token"
 				org_name:          "vartrack-demo"
-				verify_ssl:        false
+				insecure_skip_verify: true
 				timeout:           "30s"
 				max_retries:       3
-				event_type_header: "X-GitHub-Event"
+				event_type_header: "X-Gitea-Event"
 				push_event_name:   "push"
 				pr_event_name:     "pull_request"
 			}
@@ -71,7 +71,7 @@ bundle: {
 	rules: [
 		{
 			// Key-value store: collection named after the env
-			platform:             "github"
+			platform:             "gitea"
 			datasource:           "mongo-kv"
 			file_name:            "app-settings.yaml"
 			repositories:         ["vartrack-demo/demo-configs"]
@@ -87,7 +87,7 @@ bundle: {
 		},
 		{
 			// File snapshot: one document per file per env
-			platform:             "github"
+			platform:             "gitea"
 			datasource:           "mongo-file"
 			file_name:            "app-settings.yaml"
 			repositories:         ["vartrack-demo/demo-configs"]
@@ -103,7 +103,7 @@ bundle: {
 		},
 		{
 			// ZooKeeper: paths scoped per env
-			platform:             "github"
+			platform:             "gitea"
 			datasource:           "zk-main"
 			file_name:            "app-settings.yaml"
 			repositories:         ["vartrack-demo/demo-configs"]
@@ -120,7 +120,7 @@ bundle: {
 	]
 
 	schema_registry: {
-		platform: "github"
+		platform: "gitea"
 		repo:     "vartrack-demo/schemas"
 		branch:   "main"
 	}

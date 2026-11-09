@@ -37,12 +37,12 @@ varTrack syncs **configuration data**, not Kubernetes resources.
 
 | | varTrack |
 |---|---|
-| **What it syncs** | Configuration data: MongoDB, Redis, ZooKeeper, S3, ConfigMap, Helm values, Vercel env vars, Linux files |
+| **What it syncs** | Configuration data: MongoDB, Redis, ZooKeeper, S3, ConfigMap, Helm values, Linux files |
 | **Where config lives** | The application's own datastore |
 | **Drift detection** | Any datasource — MongoDB, Redis, ZooKeeper, S3 |
 | **Secret management** | HashiCorp Vault with `@secret()` annotations |
 | **Schema validation** | CUE schema per tenant, enforced before every write |
-| **Targets** | Redis, MongoDB, ZooKeeper, S3, Linux SSH, Vercel, ConfigMap, Helm |
+| **Targets** | Redis, MongoDB, ZooKeeper, S3, Linux SSH, ConfigMap, Helm |
 | **Multi-sink fan-out** | One push → multiple sinks in parallel |
 
 It works alongside whatever deploys your services. A typical setup:
@@ -77,7 +77,7 @@ varTrack's Helm sink triggers `helm upgrade` on push and the watcher can detect 
 
 ## When varTrack is the right fit
 
-✅ You store config, feature flags, or environment variables in MongoDB, Redis, S3, ZooKeeper, ConfigMaps, Helm releases, Vercel, or Linux servers — and want Git as the single authority
+✅ You store config, feature flags, or environment variables in MongoDB, Redis, S3, ZooKeeper, ConfigMaps, Helm releases, or Linux servers — and want Git as the single authority
 
 ✅ You have multiple environments (dev, staging, production) and want changes to flow automatically on push without manual scripts
 

@@ -73,6 +73,8 @@ Override per rule in `config.cue`:
 rules: [{
   platform:   "github"
   datasource: "mongo"
+  file_name: "app-settings.yaml"
+  branch_map: {main: "production"}
   sync_mode:  "SYNC_MODE_GIT_SMART_REPAIR"
 }]
 ```
@@ -91,13 +93,15 @@ When keys are removed from your Git config file, varTrack can delete them from t
 rules: [{
   platform:   "github"
   datasource: "mongo"
+  file_name: "app-settings.yaml"
+  branch_map: {main: "production"}
   sync_mode:  "AUTO"
   prune:      true     // delete keys present in datasource but missing from Git
 }]
 ```
 
 !!! warning
-    `prune: true` permanently deletes keys from the datasource that are no longer in Git. Use `prune: {enabled: true, dry_run: true}` or the full dry-run first to verify what would be removed.
+    `prune: true` permanently deletes keys from the datasource that are no longer in Git. Run a dry run first (the UI's *Dry run*, `vt sync --dry-run`): it reports the keys a prune would delete.
 
 ### What prune deletes
 
@@ -107,13 +111,13 @@ A key is stale when varTrack wrote it before and no file of the environment hold
 
 - A key somebody else put in the datasource is never deleted, with or without `protection`.
 - A stale key that was **changed outside varTrack** since varTrack wrote it is kept, and reported with a `PruneSkipped` event.
-- Environments that write to the same place keep each other's keys: Vercel's `staging` and `develop` both write to `preview`, and a Redis `key_prefix` or a ZooKeeper path without `{env}` is shared by every environment.
-- **So do datasources and tenants.** A datasource's name says nothing about where it writes. Two datasources on the same Redis database (same servers and `db`) with the same `key_prefix` and hash, the same ZooKeeper servers and root path, or the same Vercel team, project and targets write the same keys, and one never prunes a key the other still holds. A datasource on another server, or with another prefix, is not compared. MongoDB filters its documents by tenant, datasource and environment, so its datasources never share keys.
+- Environments that write to the same place keep each other's keys: a Redis `key_prefix` or a ZooKeeper path without `{env}` is shared by every environment.
+- **So do datasources and tenants.** A datasource's name says nothing about where it writes. Two datasources on the same Redis database (same servers and `db`) with the same `key_prefix` and hash, the same ZooKeeper servers and root path write the same keys, and one never prunes a key the other still holds. A datasource on another server, or with another prefix, is not compared. MongoDB filters its documents by tenant, datasource and environment, so its datasources never share keys.
   Who holds a key is recorded with each sync, as the key space the sync wrote to, so another tenant counts even when its schema repository cannot be read right now. A target last written by an older version has no such record and is placed by the rules until it is written again. When a prune finds another target holding keys in the same key space, the UI shows one **Shared key space** warning event for the environment (again after the sharing has ended and begun anew).
 - If the rules of the tenants cannot be listed when prune runs, nothing is pruned, as when the ledger cannot be read.
 - If the delete fails, the sync still succeeds. The keys stay on the list and the next sync retries them (a `PruneFailed` event).
 
-Prune applies to sinks that keep each key separately: Redis (hash or strings), Vercel, ZooKeeper and MongoDB with `update_strategy: "STRATEGY_KEY_VALUE"`. A sink that replaces a whole object on every write — ConfigMap, S3, Linux server, Helm, MongoDB with its default `STRATEGY_DOCUMENT` (or `STRATEGY_FILE`), Redis with the JSON structure — has no stale key to delete. Setting `prune` on one has no effect.
+Prune applies to sinks that keep each key separately: Redis (hash or strings), ZooKeeper and MongoDB with `update_strategy: "STRATEGY_KEY_VALUE"`. A sink that replaces a whole object on every write — ConfigMap, S3, Linux server, Helm, MongoDB with its default `STRATEGY_DOCUMENT` (or `STRATEGY_FILE`), Redis with the JSON structure — has no stale key to delete. Setting `prune` on one has no effect.
 
 `prune.last` was removed: the delete is always last now. A `prune` block that only had `last` is a disabled block; write `prune: true` or `prune: {enabled: true}`.
 
@@ -156,15 +160,7 @@ In the web UI, **Dry run** on a rule runs the same simulation for the environmen
 
 ### Prune dry-run — simulate deletes only
 
-Test the prune step independently without touching any writes. Enabled per rule:
+See what a prune would delete without deleting it by starting a dry run: the UI's *Dry run*, `vt sync --dry-run`, or the dry-run webhook. It runs the whole pipeline, writes nothing, and its report lists the stale keys per environment (`prune.would_delete`). The web UI's *Sync* panel shows the same list before a sync that prunes, and asks you to type `prune` only when a production-like environment would lose keys.
 
-```cue
-rules: [{
-  prune: {
-    enabled: true
-    dry_run: true   // always simulate deletes — never actually remove keys
-  }
-}]
-```
-
-With `prune.dry_run`, every sync runs normally (writes go through) but the delete step is always simulated, never executed. The task reports the stale keys, and they stay on the list: turn `dry_run` off and the next sync deletes them.
+!!! note "`prune.dry_run` was removed"
+    It made every sync of a rule report its prune instead of running it, with no way to see that from the person's side. A file that still sets it loads, and the loader warns; delete the line. A rule with `prune` off deletes nothing; a dry run reports what a prune would.

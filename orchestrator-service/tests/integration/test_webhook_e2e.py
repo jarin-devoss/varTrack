@@ -59,6 +59,7 @@ async def _gateway(
 
     mgr = MagicMock()
     mgr.resolve_rule.return_value = {"tenant_id": tenant_id} if tenant_id else {}
+    mgr.tenant_for_repo.return_value = tenant_id    # the tenant whose schema repository a push names
     app.state.schema_manager = mgr
 
     with patch("app.tasks.etl.process_webhook_task") as mock_proc:
@@ -121,15 +122,16 @@ async def test_e2e_pull_request_webhook_accepted():
 
 
 @pytest.mark.asyncio
-async def test_e2e_missing_tenant_id_returns_400():
-    """No tenant_id in rule_config AND no repository.full_name in payload → 400."""
+async def test_e2e_missing_tenant_id_is_the_default_tenant_when_none_are_declared():
+    """No tenants declared and no tenant_id in the rule: the push is the "default" tenant's.
+    (With tenants declared, a push no tenant owns is refused: tests/unit/test_tenants.py.)"""
     async with _gateway(tenant_id=None) as client:
         resp = await client.post(
             "/v1/webhooks/mongo",
             content=b'{}',
             headers={"x-github-event": "push"},
         )
-    assert resp.status_code == 400
+    assert resp.status_code == 200
 
 
 @pytest.mark.asyncio

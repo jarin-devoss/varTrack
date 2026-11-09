@@ -234,6 +234,17 @@ func (s *Bundle) PlatformNames() []string {
 	return names
 }
 
+// Rules returns every rule of the bundle.
+func (s *Bundle) Rules() []*pb.Rule {
+	return s.bundle.GetRules()
+}
+
+// Tenants returns the tenants the operator declared in config.cue: none when the bundle
+// declares none, and one implicit tenant ("default") covers everything.
+func (s *Bundle) Tenants() []*pb.Tenant {
+	return s.bundle.GetTenants()
+}
+
 // RulesForDatasource returns every rule that writes to the datasource, one
 // per platform: a rule is identified by its platform and datasource.
 func (s *Bundle) RulesForDatasource(datasourceName string) []*pb.Rule {

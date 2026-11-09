@@ -8,7 +8,6 @@ import (
 	"io"
 	"net/http"
 	"os"
-	"strings"
 	"sync"
 	"time"
 
@@ -26,6 +25,8 @@ type OPAInput struct {
 	FilePath   string  `json:"file_path"`  // e.g. "configs/app.yaml"
 	TenantID   string  `json:"tenant_id"`
 	DryRun     bool    `json:"dry_run"`
+	Via        string  `json:"via"`    // the way in: "cli" or "ui"
+	Branch     string  `json:"branch"` // for a sync, the branch that feeds env
 }
 
 // OPAUser is the caller inside OPAInput, as their Git platform knows them.
@@ -251,35 +252,5 @@ func (e *OPAEvaluator) queryServer(ctx context.Context, input OPAInput) (bool, e
 		return allow, nil
 	default:
 		return false, nil
-	}
-}
-
-// ── shared helper ─────────────────────────────────────────────────────────────
-
-// InputFromRequest builds the OPA input of a CLI request.
-func InputFromRequest(
-	caller *GitCaller,
-	action, resource, datasource, env, filePath, tenantID string,
-	dryRun bool,
-) OPAInput {
-	var user OPAUser
-	if caller != nil {
-		user = OPAUser{
-			Login:        caller.Login,
-			Platform:     caller.Platform,
-			Permission:   caller.PermissionName(),
-			Admin:        caller.Admin,
-			Repositories: caller.Repos,
-		}
-	}
-	return OPAInput{
-		User:       user,
-		Action:     action,
-		Resource:   resource,
-		Datasource: datasource,
-		Env:        strings.ToLower(env),
-		FilePath:   filePath,
-		TenantID:   tenantID,
-		DryRun:     dryRun,
 	}
 }

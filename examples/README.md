@@ -17,7 +17,6 @@ CUE bundle configs — the live configuration loaded by all VarTrack services.
 | `07_multi_sink.cue` | Fan-out: one push writes to MongoDB + ZooKeeper + Redis |
 | `08_dual_datasource_same_type.cue` | Primary + DR: two MongoDB sinks differentiated by `tag` |
 | `09_vault_secrets.cue` | `@secret()` annotations — Vault resolves secrets at ETL time |
-| `10_gitlab_platform.cue` | GitLab (self-hosted) as the Git platform |
 | `11_destination_template.cue` | `{env}` interpolation: one rule fans out to per-env destinations |
 | `12_production_full.cue` | Full production bundle: multi-platform, multi-sink, Vault |
 | `13_cli_auth_opa.cue` | CLI access by Git permissions, with an OPA policy |

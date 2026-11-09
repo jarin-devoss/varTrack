@@ -1,6 +1,6 @@
 # varTrack
 
-**GitOps-native configuration sync.** Push a file to Git — VarTrack writes it to MongoDB, Redis, ZooKeeper, S3, ConfigMaps, Helm, Vercel, or a Linux server automatically. If someone edits the database directly, VarTrack detects it and restores the correct state.
+**GitOps-native configuration sync.** Push a file to Git — VarTrack writes it to MongoDB, Redis, ZooKeeper, S3, ConfigMaps, Helm, or a Linux server automatically. If someone edits the database directly, VarTrack detects it and restores the correct state.
 
 [![CI](https://github.com/jarin-devoss/varTrack/actions/workflows/ci.yml/badge.svg)](https://github.com/jarin-devoss/varTrack/actions/workflows/ci.yml)
 [![codecov](https://codecov.io/gh/jarin-devoss/varTrack/branch/main/graph/badge.svg)](https://codecov.io/gh/jarin-devoss/varTrack)
@@ -30,7 +30,6 @@ Redis          → hash "production:cfg"
 S3             → key prefix acme/production/
 Kubernetes     → ConfigMap "myapp-production"
 Helm           → release values "app-production"
-Vercel         → environment variables prefixed "production_"
 Linux server   → /etc/app/production.env
 ZooKeeper      → znodes under /acme/production/
 ```
@@ -60,7 +59,7 @@ VarTrack fills that gap. It treats Git as the single source of truth for **appli
 
 | | VarTrack |
 |---|---|
-| Target | MongoDB, Redis, ZooKeeper, S3, ConfigMap, Helm, Vercel, Linux |
+| Target | MongoDB, Redis, ZooKeeper, S3, ConfigMap, Helm, Linux |
 | Drift detection | Any datasource |
 | Secret management | HashiCorp Vault + `@secret()` annotations |
 | Schema validation | CUE per tenant, enforced before every write |
@@ -69,7 +68,7 @@ It works alongside whatever deploys your services: VarTrack only keeps their run
 
 **VarTrack is the right fit if you:**
 
-- Store config, feature flags, or environment variables in any combination of MongoDB, Redis, S3, ZooKeeper, Kubernetes, Helm, Vercel, or Linux servers — and want Git to be the single authority
+- Store config, feature flags, or environment variables in any combination of MongoDB, Redis, S3, ZooKeeper, Kubernetes, Helm, or Linux servers — and want Git to be the single authority
 - Have multiple environments (dev, staging, production) and want changes to flow automatically on push
 - Need one push to fan out to multiple sinks at once — write to a ConfigMap, a Helm release, and an S3 object in parallel
 - Want drift detection — if someone edits a value directly in any sink, VarTrack restores the correct state automatically
@@ -80,7 +79,7 @@ It works alongside whatever deploys your services: VarTrack only keeps their run
 ## Features
 
 ### Sync
-- **8 sink types** — MongoDB, Redis, ZooKeeper, S3, Kubernetes ConfigMap, Helm, Vercel, Linux server (SSH)
+- **8 sink types** — MongoDB, Redis, ZooKeeper, S3, Kubernetes ConfigMap, Helm, Linux server (SSH)
 - **7 config formats** — YAML, JSON, TOML, .env, INI, HCL, XML — format auto-detected from file extension
 - **Multi-sink fan-out** — one push writes to multiple sinks in parallel from one rule set
 - **4 sync strategies** — `AUTO` (cost-model picks for you), `GIT_UPSERT_ALL`, `GIT_SMART_REPAIR`, `LIVE_STATE`
@@ -94,7 +93,7 @@ It works alongside whatever deploys your services: VarTrack only keeps their run
 
 ### Validation & safety
 - **CUE schema validation** — validate every payload against a per-tenant schema before any write
-- **Dry-run mode** — simulate any sync without touching a datasource; `prune: {dry_run: true}` audits deletes independently
+- **Dry-run mode** — simulate any sync without touching a datasource (the UI's Dry run, `vt sync --dry-run`); it reports the keys a prune would delete
 - **`@secret()` annotations** — resolve Vault secrets into config values at ETL time; values masked as `***` in dry-run reports
 - **`@logger()` annotations** — emit structured change-log entries when specific fields change value
 
@@ -122,7 +121,7 @@ flowchart LR
 
     GIT -->|"webhook\npush / PR"| GW
     GW -->|"gRPC"| ORCH
-    ORCH -->|write| DB["MongoDB · Redis · ZooKeeper\nS3 · ConfigMap · Helm\nVercel · Linux"]
+    ORCH -->|write| DB["MongoDB · Redis · ZooKeeper\nS3 · ConfigMap · Helm\nLinux"]
     WATCH -->|"CheckDatasource\n(drift check)"| ORCH
     ORCH -->|"read back\nand compare"| DB
     WATCH -->|"SyncDatasource\n(self-heal)"| ORCH
@@ -292,7 +291,7 @@ destination_template: "{env}-config"
 When a webhook fires, VarTrack resolves the target environment in this order:
 
 1. `branch_map[branch]` — explicit mapping (e.g. `main` → `production`)
-2. `file_path_map[file_path]` — glob pattern match on the changed file path
+2. `file_path_map` — the environment whose file (`{env: path}`) is the changed one
 3. `pr_as_env: true` → environment = `pr-{number}`
 4. `branch_as_env: true` → environment = branch name
 5. `tag_as_env: true` → environment = tag name
@@ -317,13 +316,13 @@ Push once, write to multiple sinks in one go:
 
 ```cue
 rules: [
-  { platform: "github", datasource: "mongo",        file_name: "config.yaml", destination_template: "{env}-config" },
-  { platform: "github", datasource: "configmap",    file_name: "config.yaml", destination_template: "myapp-{env}" },
-  { platform: "github", datasource: "linux_server", file_name: "config.yaml", destination_template: "/etc/app/{env}.env" },
+  { platform: "github", datasource: "mongo",        file_name: "config.yaml", branch_map: {main: "production"}, destination_template: "{env}-config" },
+  { platform: "github", datasource: "configmap",    file_name: "config.yaml", branch_map: {main: "production"}, destination_template: "myapp-{env}" },
+  { platform: "github", datasource: "linux_server", file_name: "config.yaml", branch_map: {main: "production"}, destination_template: "/etc/app/{env}.env" },
 ]
 ```
 
-Any combination works — mix and match MongoDB, Redis, S3, ConfigMap, Helm, Vercel, ZooKeeper, and Linux servers. The web UI's Rules page shows each rule with its desired state in Git, its current state in the sink, and every environment's status:
+Any combination works — mix and match MongoDB, Redis, S3, ConfigMap, Helm, ZooKeeper, and Linux servers. The web UI's Rules page shows each rule with its desired state in Git, its current state in the sink, and every environment's status:
 
 ![Rules page: rules for Redis, S3, a ConfigMap, a Helm release and MongoDB, two of them out of sync](docs/assets/screenshots/rules.png)
 

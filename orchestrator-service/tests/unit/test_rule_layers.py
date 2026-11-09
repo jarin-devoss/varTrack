@@ -27,9 +27,10 @@ CUE = {
          "file_name": "app.yaml", "branch_map": {"main": "production"}, "sync_mode": "SYNC_MODE_AUTO",
          "prune": {"enabled": True}, "self_heal": True, "secret_manager": "vault-prod"},
         {"platform": "gitea", "datasource": "redis", "repositories": ["acme/*"], "file_name": "app.yaml",
-         "force": {"prune": {"enabled": False}, "dry_run": True, "self_heal": False}},
+         "branch_as_env": True,
+         "force": {"prune": {"enabled": False}, "strict_validation": True, "self_heal": False}},
         {"platform": "github-cloud", "datasource": "zookeeper", "repositories": ["acme/zk"],
-         "file_name": "zk.yaml"},
+         "file_name": "zk.yaml", "branch_map": {"main": "production"}},
     ],
 }
 
@@ -43,12 +44,12 @@ def cue(monkeypatch):
 def test_bundle_json_overrides_config_cue_and_maps_merge():
     rule = layered_rule(CUE["rules"][0], {
         "platform": "gitea", "datasource": "mongo-primary", "tenant_id": "acme",
-        "branch_map": {"develop": "staging"}, "sync_mode": "GIT_SMART_REPAIR", "prune": {"dry_run": True},
+        "branch_map": {"develop": "staging"}, "sync_mode": "GIT_SMART_REPAIR", "prune": {"protection": ["keep.*"]},
         "root_key": "app",
     }, "acme")
     assert rule["branch_map"] == {"main": "production", "develop": "staging"}
     assert rule["sync_mode"] == "GIT_SMART_REPAIR"
-    assert rule["prune"] == {"enabled": True, "dry_run": True}
+    assert rule["prune"] == {"enabled": True, "protection": ["keep.*"]}
     assert rule["root_key"] == "app"
     assert rule["file_name"] == "app.yaml"
     assert rule["tenant_id"] == "acme"
@@ -58,15 +59,15 @@ def test_keys_only_config_cue_sets_are_dropped_from_bundle_json(caplog):
     caplog.set_level(logging.WARNING)
     rule = layered_rule(CUE["rules"][0], {
         "platform": "gitea", "datasource": "mongo-primary",
-        "mongo_uri": "mongodb://elsewhere", "database": "other",
+        "endpoint": "mongodb://elsewhere", "database": "other",
         "secret_manager": "vault-dev", "repositories": ["acme/other"], "self_heal": False,
     }, "acme")
-    for key in ("mongo_uri", "database"):
+    for key in ("endpoint", "database"):   # the datasource's fields: config.cue's block alone sets them
         assert key not in rule
     assert rule["secret_manager"] == "vault-prod"
     assert rule["repositories"] == ["acme/configs"]
     assert rule["self_heal"] is True
-    assert "database, mongo_uri, repositories, secret_manager, self_heal" in caplog.text
+    assert "database, endpoint, repositories, secret_manager, self_heal" in caplog.text
 
 
 def test_a_rule_level_secrets_block_is_dropped_and_says_what_to_do_instead(caplog):
@@ -82,9 +83,9 @@ def test_a_rule_level_secrets_block_is_dropped_and_says_what_to_do_instead(caplo
 def test_force_wins_but_cannot_pin_keys_only_config_cue_sets(caplog):
     caplog.set_level(logging.WARNING)
     rule = layered_rule(CUE["rules"][1], {"platform": "gitea", "datasource": "redis",
-                                          "prune": {"enabled": True, "dry_run": True}, "dry_run": False}, "default")
+                                          "prune": {"enabled": True}, "strict_validation": False}, "default")
     assert rule["prune"] == {"enabled": False}
-    assert rule["dry_run"] is True
+    assert rule["strict_validation"] is True
     assert "self_heal" not in rule
     assert "forces self_heal" in caplog.text
 
@@ -123,9 +124,14 @@ def test_rule_for():
 
 def test_without_rules_in_config_cue_bundle_json_is_used_as_is(monkeypatch):
     monkeypatch.setattr(ds, "_bundle", lambda: {"datasources": CUE["datasources"]})
-    rule = {"platform": "gitea", "datasource": "mongo-primary", "mongo_uri": "mongodb://x"}
-    assert rule_for("gitea", "mongo-primary", rule, "acme", set()) is rule
-    assert tenant_rules([rule], "acme", set()) == [rule]
+    rule = {"platform": "gitea", "datasource": "mongo-primary", "mongo_uri": "mongodb://x", "branch_map": {"main": "production"}, "file_name": "app.yaml"}
+    # Used as it is, except for the tenant: that is the one whose schema repository it was loaded
+    # from, whatever the file says.
+    assert rule_for("gitea", "mongo-primary", rule, "acme", set()) == {**rule, "tenant_id": "acme"}
+    assert tenant_rules([rule], "acme", set()) == [{**rule, "tenant_id": "acme"}]
+    claiming = {**rule, "tenant_id": "someone-else"}
+    assert rule_for("gitea", "mongo-primary", claiming, "acme", set())["tenant_id"] == "acme"
+    assert tenant_rules([claiming], "acme", set())[0]["tenant_id"] == "acme"
 
 
 def test_a_rule_with_tenants_belongs_to_them(monkeypatch):
@@ -159,7 +165,7 @@ def test_bundle_json_cannot_set_tenants():
 def test_merge_child_replaces_other_keys():
     assert merge_child({"prune": True, "file_name": "a"}, {"prune": {"enabled": False}}) == \
         {"prune": {"enabled": False}, "file_name": "a"}
-    assert apply_force({"dry_run": False}) == {"dry_run": False}
+    assert apply_force({"strict_validation": False}) == {"strict_validation": False}
 
 
 def test_vartrack_json_merges_and_force_is_applied_after_it():
@@ -170,13 +176,13 @@ def test_vartrack_json_merges_and_force_is_applied_after_it():
     ctx = PayloadContext(platform="gitea", repo_url="http://gitea:3000/acme/a.git", ref="refs/heads/main",
                          branch="main", commit_sha="abc", tag=None, pr_number=None,
                          rule_config=rule, parsed_payload={})
-    vartrack_json = json.dumps({"branch_map": {"develop": "staging"}, "dry_run": False,
+    vartrack_json = json.dumps({"branch_map": {"develop": "staging"}, "strict_validation": False,
                                 "prune": {"enabled": True}})
     with patch("app.pipeline.git_extractor.GitExtractor") as extractor:
         extractor.return_value = MagicMock(extract_file=MagicMock(return_value=vartrack_json))
         out = apply_repo_overrides(ctx).rule_config
     assert out["branch_map"] == {"main": "production", "develop": "staging"}
-    assert out["dry_run"] is True
+    assert out["strict_validation"] is True
     assert out["prune"] == {"enabled": False}
 
 
@@ -199,24 +205,25 @@ def test_schema_manager_layers_its_rules(monkeypatch, tmp_path):
 
 
 @pytest.mark.parametrize("rule,want", [
-    ({"prune": {"enabled": True, "protection": ["SYSTEM_*"]}}, (True, False, ["SYSTEM_*"])),
-    ({"prune": {"enabled": False}}, (False, False, [])),
-    ({"prune": True, "prune_protection": ["_vt_*"]}, (True, False, ["_vt_*"])),
-    ({"prune": {"enabled": True}, "prune_protection": ["_vt_*"]}, (True, False, ["_vt_*"])),
-    ({"prune": {"protection": ["_vt_*"]}}, (False, False, ["_vt_*"])),
-    ({"prune": {"dry_run": False}}, (True, False, [])),
+    ({"prune": {"enabled": True, "protection": ["SYSTEM_*"]}}, (True, ["SYSTEM_*"])),
+    ({"prune": {"enabled": False}}, (False, [])),
+    ({"prune": True, "prune_protection": ["_vt_*"]}, (True, ["_vt_*"])),
+    ({"prune": {"enabled": True}, "prune_protection": ["_vt_*"]}, (True, ["_vt_*"])),
+    ({"prune": {"protection": ["_vt_*"]}}, (False, ["_vt_*"])),
     # `last` was removed: it is not read, and a block with only it is disabled.
-    ({"prune": {"last": True}}, (False, False, [])),
-    ({"prune": {"last": True, "dry_run": True}}, (True, True, [])),
-    ({"prune": True, "prune_last": True}, (True, False, [])),
+    ({"prune": {"last": True}}, (False, [])),
+    ({"prune": {"enabled": True, "last": True}}, (True, [])),
+    ({"prune": True, "prune_last": True}, (True, [])),
+    # `dry_run` was removed the same way: a block with only it is a disabled block.
+    ({"prune": {"dry_run": True}}, (False, [])),
 ])
 def test_prune_from_config_cue_and_from_the_old_flat_keys(rule, want):
     from app.tasks.payload import extract_prune_config
     from app.ui.views import _prune
 
     p = extract_prune_config(rule)
-    assert (p.enabled, p.dry_run, p.protection) == want
-    assert _prune(rule) == {"enabled": want[0], "dryRun": want[1], "protection": want[2]}
+    assert (p.enabled, p.protection) == want
+    assert _prune(rule) == {"enabled": want[0], "protection": want[1]}
 
 
 def test_a_broken_bundle_json_leaves_its_tenant_without_rules(monkeypatch, tmp_path):
@@ -235,7 +242,10 @@ def test_a_broken_bundle_json_leaves_its_tenant_without_rules(monkeypatch, tmp_p
     mgr._entries["default:repo"] = manager_mod._TenantEntry(
         tenant_id="default", repo_url="", branch="main", local_path=tmp_path, bundle_error=error)
     assert mgr.get_all_rules("default") == []
-    assert mgr.resolve_rule("gitea", "redis", "default") is None
+    # not "no such rule": the tenant's layer is unusable, and the sync says so
+    from app.dependencies import SchemaUnavailable
+    with pytest.raises(SchemaUnavailable, match="bundle.json"):
+        mgr.resolve_rule("gitea", "redis", "default")
 
 
 def test_concurrent_schema_clones_do_not_share_a_directory(monkeypatch, tmp_path):
@@ -261,3 +271,260 @@ def test_concurrent_schema_clones_do_not_share_a_directory(monkeypatch, tmp_path
     assert a.local_path != b.local_path
     assert a.local_path.parent == b.local_path.parent == tmp_path / "acme"
     assert a.commit_sha == b.commit_sha == "abc"
+
+
+# ── schema_map ───────────────────────────────────────────────────────────────
+
+OPERATOR = {"match": "services/api/**", "schema": "api.cue"}
+TENANT = {"match": "services/**", "schema": "tenant.cue"}
+
+
+def test_schema_map_adds_up_across_layers_with_the_operators_entries_first():
+    cue_rule = {**CUE["rules"][0], "schema_map": [OPERATOR]}
+    bundle_rule = {"platform": "gitea", "datasource": "mongo-primary", "schema_map": [TENANT]}
+    rule = layered_rule(cue_rule, bundle_rule, "acme")
+    assert rule["schema_map"] == [OPERATOR, TENANT]       # the first match wins: a pinned path cannot be remapped
+
+
+def test_a_tenants_schema_map_alone_or_the_operators_alone_is_kept():
+    only_tenant = layered_rule(CUE["rules"][0], {"platform": "gitea", "datasource": "mongo-primary",
+                                                 "schema_map": [TENANT]}, "acme")
+    only_operator = layered_rule({**CUE["rules"][0], "schema_map": [OPERATOR]}, None, "acme")
+    assert only_tenant["schema_map"] == [TENANT] and only_operator["schema_map"] == [OPERATOR]
+    assert "schema_map" not in layered_rule(CUE["rules"][0], None, "acme")
+
+
+def test_a_repository_cannot_set_schema_map_or_schema_from_file(caplog):
+    from app.pipeline import rule_options
+    from app.pipeline.repo_overrides import _OVERRIDABLE_KEYS
+
+    assert "schema_map" in rule_options.TENANT_SETTABLE and "schema_from_file" in rule_options.TENANT_SETTABLE
+    assert "schema_map" not in _OVERRIDABLE_KEYS and "schema_from_file" not in _OVERRIDABLE_KEYS
+
+
+def test_a_bundle_json_with_a_bad_schema_map_entry_is_unusable_and_says_why(tmp_path):
+    from app.schema_registry import manager as manager_mod
+
+    (tmp_path / "bundle.json").write_text(json.dumps({"rules": [
+        {"platform": "gitea", "datasource": "mongo-primary",
+         "schema_map": [{"match": "a/**", "schema": "ok.cue"}, {"match": "", "schema": "../x.cue"}]},
+    ]}), encoding="utf-8")
+    rules, error = manager_mod._load_bundle_checked(tmp_path)
+    assert rules == []
+    assert error.startswith("bundle.json: rules[0].schema_map[1].match") and 'schema_map[1].schema "../x.cue"' in error
+
+
+def test_a_good_schema_map_in_bundle_json_loads(tmp_path):
+    from app.schema_registry import manager as manager_mod
+
+    entry = {"match": "a/**", "schema": "none"}
+    (tmp_path / "bundle.json").write_text(json.dumps({"rules": [
+        {"platform": "gitea", "datasource": "mongo-primary", "schema_map": [entry]}]}), encoding="utf-8")
+    rules, error = manager_mod._load_bundle_checked(tmp_path)
+    assert error == "" and rules[0]["schema_map"] == [entry]
+
+
+def test_a_schema_map_target_missing_from_the_schema_repository_is_logged_once(tmp_path, caplog):
+    from app.schema_registry import manager as manager_mod
+
+    manager_mod._missing_logged.clear()
+    (tmp_path / "there.cue").write_text("{}\n")
+    rules = [{"platform": "gitea", "datasource": "mongo-primary", "schema_map": [
+        {"match": "a/**", "schema": "there.cue"}, {"match": "b/**", "schema": "gone.cue"},
+        {"match": "c/**", "schema": "none"}, {"match": "d/**", "schema": "../escape.cue"}]}]
+    with caplog.at_level(logging.WARNING, logger="app.schema_registry.manager"):
+        manager_mod._log_missing_schemas("acme", tmp_path, rules, "abc123" * 6)
+        manager_mod._log_missing_schemas("acme", tmp_path, rules, "abc123" * 6)     # a refresh of the same commit
+    messages = [r.getMessage() for r in caplog.records]
+    assert len([m for m in messages if "gone.cue" in m]) == 1
+    assert "bundle.json rule gitea/mongo-primary schema_map[1]" in messages[0] and "b/**" in messages[0]
+    assert not any("there.cue" in m or "none" in m.split("schema")[-1] for m in messages if "gone.cue" not in m)
+
+
+# ── the tenant is never something a file says ─────────────────────────────────
+
+def _claiming(tenant):
+    return {"platform": "gitea", "datasource": "mongo-primary", "tenant_id": tenant, "branch_map": {"develop": "staging"}, "file_name": "app.yaml"}
+
+
+def test_a_bundle_json_that_writes_a_tenant_id_is_told_where_the_tenant_comes_from(caplog):
+    with caplog.at_level(logging.WARNING, logger="app.pipeline.rule_layers"):
+        rule = layered_rule(CUE["rules"][0], _claiming("acme"), "acme")
+    [message] = [r.getMessage() for r in caplog.records if "tenant_id" in r.getMessage()]
+    assert message == ("bundle.json: the gitea/mongo-primary rule sets tenant_id, which no file may set — the tenant is "
+                       "the one whose schema repository holds this file (acme); ignored")
+    assert rule["branch_map"] == {"main": "production", "develop": "staging"}      # the rest of the rule is used
+
+
+def test_a_tenant_id_that_names_another_tenant_is_named_and_cannot_act_as_it(caplog):
+    with caplog.at_level(logging.WARNING, logger="app.pipeline.rule_layers"):
+        rule = layered_rule(CUE["rules"][0], _claiming("evil"), "acme")
+    assert any("it names tenant evil, but this file is tenant acme's" in r.getMessage() for r in caplog.records)
+    assert not any("not an option a tenant may set" in r.getMessage() and "tenant_id" in r.getMessage()
+                   for r in caplog.records)          # one specific warning, not also the generic one
+    assert rule["tenant_id"] == "acme"
+
+
+def test_the_warning_is_given_once_per_file(caplog):
+    with caplog.at_level(logging.WARNING, logger="app.pipeline.rule_layers"):
+        for _ in range(3):
+            layered_rule(CUE["rules"][0], _claiming("evil"), "acme")
+    assert len([r for r in caplog.records if "tenant_id" in r.getMessage()]) == 1
+
+
+def test_without_rules_in_config_cue_the_claim_is_dropped_with_the_same_warning(monkeypatch, caplog):
+    monkeypatch.setattr(ds, "_bundle", lambda: {})
+    with caplog.at_level(logging.WARNING, logger="app.pipeline.rule_layers"):
+        [rule] = tenant_rules([_claiming("evil")], "acme", set())
+        again = rule_for("gitea", "mongo-primary", _claiming("evil"), "acme", set())
+    assert rule["tenant_id"] == "acme" and again["tenant_id"] == "acme"
+    assert any("which no file may set" in r.getMessage() for r in caplog.records)
+
+
+def test_the_stamp_is_still_what_its_readers_get_when_a_file_names_another_tenant(monkeypatch):
+    """The tenant varTrack records for a rule is read by self-heal (tasks/etl.sync_all), by the push's owner when no
+    tenant is declared (tenants.tenant_of_push) and by the preset scope of a vartrack.json. A file's tenant_id must
+    never reach them."""
+    from app import tenants
+
+    rule = layered_rule(CUE["rules"][0], _claiming("evil"), "acme")
+    assert rule["tenant_id"] == "acme"                              # what sync_all dispatches the heal as
+    monkeypatch.setattr(tenants, "declared_names", lambda: [])
+    assert tenants.tenant_of_push(rule, ["acme/configs"]) == "acme"
+
+
+def test_a_vartrack_json_that_writes_a_tenant_id_is_dropped_with_a_warning(caplog):
+    from unittest.mock import MagicMock, patch
+
+    from app.pipeline.repo_overrides import apply_repo_overrides
+
+    ctx = PayloadContext(platform="gitea", repo_url="http://gitea:3000/acme/app.git", ref="refs/heads/main",
+                         branch="main", commit_sha="abc", tag=None, pr_number=None,
+                         rule_config={"tenant_id": "acme", "prune": {"enabled": True}}, parsed_payload={})
+    content = json.dumps({"tenant_id": "evil", "branch_map": {"main": "production"}})
+    with patch("app.pipeline.git_extractor.GitExtractor") as extractor, \
+            caplog.at_level(logging.WARNING, logger="app.pipeline.rule_layers"):
+        extractor.return_value = MagicMock(extract_file=MagicMock(return_value=content))
+        out = apply_repo_overrides(ctx).rule_config
+    assert out["tenant_id"] == "acme" and out["branch_map"] == {"main": "production"}
+    assert any("the tenant is the one that owns the pushed repository; ignored" in r.getMessage()
+               for r in caplog.records)
+
+
+# ── a rule that names no environments is refused ─────────────────────────────
+
+@pytest.fixture
+def no_refusals():
+    rule_layers._refused.clear()
+    rule_layers._said.clear()
+    yield
+    rule_layers._refused.clear()
+    rule_layers._said.clear()
+
+
+@pytest.mark.parametrize("key", rule_layers.ENV_STRATEGIES)
+def test_a_rule_that_names_where_its_environments_come_from_is_not_refused(key):
+    value = {"branch_map": {"main": "production"}, "file_path_map": {"a": "a.yaml"}}.get(key, True)
+    assert rule_layers.refusal({"platform": "gitea", "datasource": "redis", "file_name": "app.yaml", key: value}) == ""
+
+
+def test_a_rule_that_names_none_is_refused_with_how_to_fix_it():
+    why = rule_layers.refusal({"platform": "gitea", "datasource": "zookeeper", "file_name": "app.yaml"})
+    assert why.startswith("gitea/zookeeper names no environments")
+    for word in ("branch_map", "file_path_map", "branch_as_env", "pr_as_env", "tag_as_env", "config.cue", "bundle.json"):
+        assert word in why
+    assert 'branch_map: {"main": "default"}' in why      # the one-line way to keep writing to an environment called default
+
+
+def test_a_refused_rule_is_not_loaded_and_the_rest_are(monkeypatch, no_refusals):
+    cue = {**CUE, "rules": [CUE["rules"][0], {**CUE["rules"][1], "branch_as_env": False}, CUE["rules"][2]]}
+    monkeypatch.setattr(ds, "_bundle", lambda: cue)
+    loaded = tenant_rules([], "default", set())
+    assert [r["datasource"] for r in loaded] == ["mongo-primary", "zookeeper"] or "redis" not in [r["datasource"] for r in loaded]
+    assert "redis" not in [r["datasource"] for r in loaded] and "zookeeper" in [r["datasource"] for r in loaded]
+    assert rule_for("gitea", "redis", None, "default", set()) is None
+    assert [(r["datasource"], why[:30]) for r, why in rule_layers.refused_rules("default")] == [("redis", "gitea/redis names no environme")]
+    assert rule_layers.refusal_of("default", "gitea", "redis").startswith("gitea/redis names no environments")
+
+
+def test_a_rule_the_tenants_bundle_names_is_not_refused_for_what_config_cue_left_out(monkeypatch, no_refusals):
+    # config.cue's rule names no environments; the tenant's bundle.json does: the layered rule is fine
+    cue = {**CUE, "rules": [{k: v for k, v in CUE["rules"][0].items() if k != "branch_map"}]}
+    monkeypatch.setattr(ds, "_bundle", lambda: cue)
+    bundle_rule = {"platform": "gitea", "datasource": "mongo-primary", "branch_map": {"develop": "staging"}}
+    assert [r["datasource"] for r in tenant_rules([bundle_rule], "acme", set())] == ["mongo-primary"]
+    assert rule_layers.refused_rules("acme") == []
+    # without it the same rule is refused
+    assert tenant_rules([{"platform": "gitea", "datasource": "mongo-primary"}], "acme", set()) == []
+    assert [r["datasource"] for r, _ in rule_layers.refused_rules("acme")] == ["mongo-primary"]
+
+
+def test_a_refused_rule_that_is_fixed_is_loaded_again(monkeypatch, no_refusals):
+    cue = {**CUE, "rules": [{k: v for k, v in CUE["rules"][0].items() if k != "branch_map"}]}
+    monkeypatch.setattr(ds, "_bundle", lambda: cue)
+    assert tenant_rules([{"platform": "gitea", "datasource": "mongo-primary"}], "acme", set()) == []
+    assert rule_layers.refused_rules("acme")
+    fixed = {"platform": "gitea", "datasource": "mongo-primary", "branch_map": {"main": "production"}}
+    assert len(tenant_rules([fixed], "acme", set())) == 1
+    assert rule_layers.refused_rules("acme") == []
+    assert rule_layers.refusal_of("acme", "gitea", "mongo-primary") == ""
+
+
+def test_a_refused_rule_is_said_once_in_the_log_and_the_events(monkeypatch, no_refusals, caplog):
+    events = []
+    from app.ui import ledger
+    monkeypatch.setattr(ledger, "record_event", lambda **kw: events.append(kw))
+    cue = {**CUE, "rules": [{k: v for k, v in CUE["rules"][0].items() if k != "branch_map"}]}
+    monkeypatch.setattr(ds, "_bundle", lambda: cue)
+    with caplog.at_level("ERROR"):
+        for _ in range(3):
+            tenant_rules([{"platform": "gitea", "datasource": "mongo-primary"}], "acme", set())
+    assert len(events) == 1
+    assert events[0]["reason"] == "RuleRefused" and events[0]["warning"] is True
+    assert events[0]["rule"] == "gitea/mongo-primary" and events[0]["tenant"] == "acme"
+    assert len([r for r in caplog.records if "refused" in r.message]) == 1
+
+
+# ── a rule that names no file is refused too ─────────────────────────────────
+
+NAMED = {"platform": "gitea", "datasource": "s3", "branch_map": {"main": "production"}}
+
+
+@pytest.mark.parametrize("key,value", [("file_name", "app-settings.yaml"), ("file_path_map", {"production": "prod.yaml"})])
+def test_a_rule_that_names_its_file_is_not_refused(key, value):
+    assert rule_layers.refusal({**NAMED, key: value}) == ""
+
+
+def test_a_rule_that_names_no_file_is_refused_with_how_to_fix_it():
+    why = rule_layers.refusal(NAMED)
+    assert why.startswith("gitea/s3 names no file to read: set file_name")
+    assert 'for example "app-settings.yaml"' in why and "file_path_map" in why and "config.cue or the tenant's bundle.json" in why
+    assert why.endswith("A repository's vartrack.json can still change it")
+    assert "environments" not in why           # it names them: only the file is missing
+
+
+def test_a_rule_that_names_neither_gets_one_message_naming_both():
+    why = rule_layers.refusal({"platform": "gitea", "datasource": "s3"})
+    assert why.startswith("gitea/s3 names no environments and no file to read")
+    assert "branch_map" in why and "file_name" in why and why.count("gitea/s3") == 1
+
+
+def test_a_file_in_the_tenants_bundle_json_is_enough_when_config_cue_names_none(monkeypatch, no_refusals):
+    cue = {**CUE, "rules": [{"platform": "gitea", "datasource": "mongo-primary", "repositories": ["acme/configs"],
+                             "branch_map": {"main": "production"}}]}
+    monkeypatch.setattr(ds, "_bundle", lambda: cue)
+    assert tenant_rules([{"platform": "gitea", "datasource": "mongo-primary"}], "acme", set()) == []
+    [why] = [why for _, why in rule_layers.refused_rules("acme")]
+    assert "names no file to read" in why
+    named = tenant_rules([{"platform": "gitea", "datasource": "mongo-primary", "file_name": "app.yaml"}], "acme", set())
+    assert [r["file_name"] for r in named] == ["app.yaml"]
+    assert rule_layers.refused_rules("acme") == []
+
+
+def test_a_repositorys_vartrack_json_cannot_be_the_only_place_the_file_is_named(monkeypatch, no_refusals):
+    """vartrack.json is read when a push arrives, after the rule is loaded: it may change the file, not stand in for it."""
+    cue = {**CUE, "rules": [{"platform": "gitea", "datasource": "mongo-primary", "repositories": ["acme/configs"],
+                             "branch_map": {"main": "production"}}]}
+    monkeypatch.setattr(ds, "_bundle", lambda: cue)
+    assert rule_for("gitea", "mongo-primary", None, "default", set()) is None
+    assert "names no file to read" in rule_layers.refusal_of("default", "gitea", "mongo-primary")

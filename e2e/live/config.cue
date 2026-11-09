@@ -1,6 +1,5 @@
 // varTrack live demo bundle — MongoDB, ZooKeeper, Redis, S3, and Kubernetes
-// ConfigMaps and Helm on k3s (Vercel, a hosted service, and the Linux server
-// sink are left out).
+// ConfigMaps and Helm on k3s (the Linux server sink is left out).
 //
 // Gitea is the Git platform. One config repo,
 // vartrack-demo/demo-configs, feeds every sink: pushes to `main` land in
@@ -20,7 +19,7 @@ bundle: {
 				endpoint:    "http://gitea:3000"
 				protocol:    "http"
 				org_name:    "vartrack-demo"
-				verify_ssl:  false
+				insecure_skip_verify: true
 				timeout:     "30s"
 				max_retries: 3
 			}
@@ -33,7 +32,7 @@ bundle: {
 				endpoint:    "http://gitea-team:3000"
 				protocol:    "http"
 				org_name:    "payments"
-				verify_ssl:  false
+				insecure_skip_verify: true
 				timeout:     "30s"
 				max_retries: 3
 			}
@@ -207,6 +206,31 @@ bundle: {
 		repo:     "vartrack-demo/schemas"
 		branch:   "main"
 	}
+
+	// The tenants, declared by the operator. A push is a tenant's when it comes from one of
+	// its repositories; a push to its schema repository refreshes it. A request can name a
+	// tenant but never makes one.
+	tenants: [
+		{
+			name:         "default"
+			repositories: ["vartrack-demo/*"]
+			schema_repo: {
+				platform: "gitea"
+				repo:     "vartrack-demo/schemas"
+				branch:   "main"
+			}
+		},
+		// The payments team: its own repositories and schema repository, on gitea-team.
+		{
+			name:         "payments"
+			repositories: ["payments/*"]
+			schema_repo: {
+				platform: "gitea-team"
+				repo:     "payments/schemas"
+				branch:   "main"
+			}
+		},
+	]
 
 	// The demo Vault (dev mode, root token). {ref: {path, key}} values are
 	// read from it: secret/data/{path}, field {key}.

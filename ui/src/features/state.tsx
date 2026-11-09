@@ -5,7 +5,8 @@ import { Icon, SINK_ICON, SINK_LABEL } from '../components/Icon';
 import { SlideOver } from '../components/Overlay';
 import { UTabs } from '../components/Panel';
 import { DriftPill, OpPill, SyncIcon, SyncPill, TONE_COLOR } from '../components/Status';
-import { DRIFT, SYNC, TRIGGER, targetNote, targetSync } from '../lib/status';
+import { keyDiffers, runRights } from '../lib/rules';
+import { DRIFT, SYNC, TRIGGER, diffable, isActive, targetNote, targetSync } from '../lib/status';
 import { useQuery } from '../lib/useQuery';
 import { taskHref } from './links';
 import { DiffOptions, EnvDiff } from './rule/DiffView';
@@ -35,6 +36,7 @@ function currentLine(rule: RuleView, t: Target) {
       </>
     );
   }
+  if (t.drift === 'missing') return <>nothing written here yet · the first sync of {t.fedBy ?? t.ref} writes it</>;
   if (t.drift === 'in_sync') return <>matches Git · {t.keyCount} keys</>;
   if (t.drift === 'unknown') return <>couldn't be read{t.driftMessage ? ` — ${t.driftMessage}` : ''}</>;
   return <>not compared{rule.selfHeal ? '' : ' — self-heal is off'}</>;
@@ -44,7 +46,7 @@ function currentLine(rule: RuleView, t: Target) {
 export function TargetPills({ target: t }: { target: Target }) {
   return (
     <>
-      <SyncPill status={targetSync(t)} />
+      {t.drift === 'missing' ? <DriftPill state="missing" /> : <SyncPill status={targetSync(t)} />}
       {(t.drift === 'healing' || t.drift === 'heal_failed') && <DriftPill state={t.drift} />}
       {t.lastSync && t.lastSync.state !== 'SUCCEEDED' && <OpPill state={t.lastSync.state} />}
     </>
@@ -57,24 +59,44 @@ export function EnvCompare({ rule, target: t }: { rule: RuleView; target: Target
   const sink = SINK_LABEL[rule.sinkType];
   return (
     <div className={`cmp cmp--${TONE_COLOR[SYNC[sync].tone]}`}>
-      <section className="cmp__side" aria-label="Desired state, in Git">
-        <div className="cmp__label">
-          <Icon name="gitBranch" size={13} /> Desired · Git
-        </div>
-        <div className="cmp__main mono truncate" title={`${t.repository}@${t.ref}`}>
-          {t.repository}
-          <span className="faint">@</span>
-          {t.ref}
-        </div>
-        <div className="cmp__sub">
-          <Revision sha={t.revision} />
-          {t.commitMessage && <span className="truncate">{t.commitMessage}</span>}
-        </div>
-        <div className="cmp__sub">
-          <Icon name="file" size={13} className="faint" />
-          <span className="mono truncate">{targetFile(rule, t)}</span>
-        </div>
-      </section>
+      {t.notFed ? (
+        // No branch feeds it any more: nothing in Git says what it should hold. This is what varTrack last wrote there.
+        <section className="cmp__side" aria-label="Last written by varTrack">
+          <div className="cmp__label">
+            <Icon name="clock" size={13} /> Last written by varTrack
+          </div>
+          <div className="cmp__main mono truncate" title={`${t.repository}@${t.ref}`}>
+            {t.repository}
+            <span className="faint">@</span>
+            {t.ref}
+          </div>
+          <div className="cmp__sub">
+            <Revision sha={t.revision} />
+          </div>
+          <div className="cmp__sub">
+            <span className="faint">no branch feeds it any more: Git has nothing to compare it with</span>
+          </div>
+        </section>
+      ) : (
+        <section className="cmp__side" aria-label="Desired state, in Git">
+          <div className="cmp__label">
+            <Icon name="gitBranch" size={13} /> Desired · Git
+          </div>
+          <div className="cmp__main mono truncate" title={`${t.repository}@${t.ref}`}>
+            {t.repository}
+            <span className="faint">@</span>
+            {t.ref}
+          </div>
+          <div className="cmp__sub">
+            <Revision sha={t.revision} />
+            {t.commitMessage && <span className="truncate">{t.commitMessage}</span>}
+          </div>
+          <div className="cmp__sub">
+            <Icon name="file" size={13} className="faint" />
+            <span className="mono truncate">{targetFile(rule, t)}</span>
+          </div>
+        </section>
+      )}
 
       <div className="cmp__link" aria-hidden="true">
         <span className="cmp__wire" />
@@ -106,20 +128,64 @@ export function EnvCompare({ rule, target: t }: { rule: RuleView; target: Target
   );
 }
 
+/** A sync of this environment has been accepted and has not ended. */
+export function syncRunning(t: Target): boolean {
+  return !!t.lastSync && isActive(t.lastSync.state);
+}
+
 /** Error line under a box: why the last sync or self-heal failed, or why the sink can't be read. */
 function targetProblem(t: Target): string | undefined {
+  if (t.notFed) return t.notFed;
   if (t.drift === 'heal_failed' || t.drift === 'unknown') return t.driftMessage;
   if (t.lastSync?.state === 'FAILED') return t.lastSync.error ?? t.lastSync.message;
   return undefined;
+}
+
+/**
+ * What starts a run on one environment. Sync opens the sync panel. For someone who may not sync it stays, disabled, and
+ * says why (what no longer feeds the environment, else that they may only dry-run), and Dry run is its own button, which
+ * opens the panel as a dry run. `short` is the label in a box that already names the environment; the accessible name
+ * always does. *onSync(true)* asks for the dry run.
+ */
+export function EnvRun({ rule, target: t, onSync, short }: { rule: RuleView; target: Target; onSync: (dryRun?: boolean) => void; short?: boolean }) {
+  const running = syncRunning(t);
+  const rights = runRights(rule);
+  return (
+    <>
+      <button
+        type="button"
+        className={rights.sync ? 'abtn abtn--blue' : 'abtn'}
+        onClick={() => onSync()}
+        disabled={!rights.sync || !!t.notFed || running}
+        aria-label={`Sync ${t.env}`}
+        title={t.notFed ?? rights.reason ?? (running ? `${t.env} is being synced` : `Sync ${t.env} from ${t.fedBy ?? 'Git'}`)}
+      >
+        <Icon name="refresh" size={13} className={running ? 'spin' : undefined} /> {running ? 'Syncing…' : short ? 'Sync' : `Sync ${t.env}`}
+      </button>
+      {!rights.sync && (
+        <button
+          type="button"
+          className="abtn"
+          onClick={() => onSync(true)}
+          disabled={!!t.notFed}
+          aria-label={`Dry run ${t.env}`}
+          title={t.notFed ?? `Dry run ${t.env} from ${t.fedBy ?? 'Git'}: reads Git and reports, writes nothing`}
+        >
+          <Icon name="play" size={13} /> {short ? 'Dry run' : `Dry run ${t.env}`}
+        </button>
+      )}
+    </>
+  );
 }
 
 export type EnvView = 'summary' | 'diff' | 'current' | 'desired' | 'history';
 export const ENV_VIEWS: EnvView[] = ['summary', 'diff', 'current', 'desired', 'history'];
 
 /** One environment as a box: name and status on top, desired vs current underneath. */
-export function EnvBox({ rule, target: t, onOpen, onSync }: { rule: RuleView; target: Target; onOpen: (view?: EnvView) => void; onSync: () => void }) {
+export function EnvBox({ rule, target: t, onOpen, onSync, onForget }: { rule: RuleView; target: Target; onOpen: (view?: EnvView) => void; onSync: (dryRun?: boolean) => void; onForget?: () => void }) {
   const sync = targetSync(t);
   const problem = targetProblem(t);
+  const diff = diffable(t);
   return (
     <article className={`envbox envbox--${TONE_COLOR[SYNC[sync].tone]}`} aria-label={`${t.env}: ${SYNC[sync].label}`}>
       <header className="envbox__head">
@@ -129,16 +195,17 @@ export function EnvBox({ rule, target: t, onOpen, onSync }: { rule: RuleView; ta
         <span className="envbox__pills">
           <TargetPills target={t} />
         </span>
-        <span className="envbox__note">{targetNote(t)}</span>
+        <span className="envbox__note">{t.notFed ? 'No longer synced by this rule' : targetNote(t)}</span>
         <span className="envbox__actions">
-          {sync === 'OutOfSync' && (
-            <button type="button" className="abtn" onClick={() => onOpen('diff')}>
-              <Icon name="diff" size={13} /> Diff
+          <button type="button" className="abtn" onClick={() => onOpen('diff')} disabled={!diff.can} title={diff.reason} aria-label={`Diff ${t.env}`}>
+            <Icon name="diff" size={13} /> Diff
+          </button>
+          <EnvRun rule={rule} target={t} onSync={onSync} short />
+          {t.notFed && onForget && (
+            <button type="button" className="abtn" onClick={onForget} aria-label={`Forget ${t.env}`} title="Remove this environment from varTrack's record. Its events and tasks stay.">
+              <Icon name="trash" size={13} /> Forget
             </button>
           )}
-          <button type="button" className="abtn abtn--blue" onClick={onSync}>
-            <Icon name="refresh" size={13} /> Sync
-          </button>
           <button type="button" className="icon-btn icon-btn--plain" onClick={() => onOpen()} aria-label={`Details for ${t.env}`} title="Details">
             <Icon name="chevronRight" size={16} />
           </button>
@@ -169,9 +236,13 @@ export function EnvPanel({
   view: EnvView;
   onView: (v: EnvView) => void;
   onClose: () => void;
-  onSync: (env: string) => void;
+  onSync: (env: string, dryRun?: boolean) => void;
 }) {
   const t = rule.targets.find(x => x.env === env);
+  // An environment with nothing to compare (never written, or no longer fed by any branch) has no Diff, Current or Desired:
+  // the keys behind them are not there to read. Its summary and history stay; a link to another view opens the summary.
+  const comparable = !!t && diffable(t).can;
+  const shown: EnvView = comparable || view === 'summary' || view === 'history' ? view : 'summary';
   return (
     <SlideOver
       open={!!t}
@@ -188,30 +259,31 @@ export function EnvPanel({
           {rule.name} · {SINK_LABEL[rule.sinkType]}
         </>
       }
-      actions={
-        t && (
-          <button type="button" className="abtn abtn--blue" onClick={() => onSync(t.env)}>
-            <Icon name="refresh" size={13} /> Sync {t.env}
-          </button>
-        )
-      }
+      actions={t && <EnvRun rule={rule} target={t} onSync={dryRun => onSync(t.env, dryRun)} />}
     >
       {t && (
         <>
           <UTabs
             label="Environment"
-            active={view}
+            active={shown}
             onChange={onView}
-            tabs={[
-              { id: 'summary', label: 'Summary' },
-              { id: 'diff', label: 'Diff' },
-              { id: 'current', label: 'Current' },
-              { id: 'desired', label: 'Desired' },
-              { id: 'history', label: 'History' },
-            ]}
+            tabs={
+              comparable
+                ? [
+                    { id: 'summary', label: 'Summary' },
+                    { id: 'diff', label: 'Diff' },
+                    { id: 'current', label: 'Current' },
+                    { id: 'desired', label: 'Desired' },
+                    { id: 'history', label: 'History' },
+                  ]
+                : [
+                    { id: 'summary', label: 'Summary' },
+                    { id: 'history', label: 'History' },
+                  ]
+            }
           />
-          {view === 'summary' && <EnvSummary rule={rule} target={t} />}
-          {view === 'diff' && (
+          {shown === 'summary' && <EnvSummary rule={rule} target={t} />}
+          {shown === 'diff' && (
             <div className="stack">
               <p className="muted" style={{ fontSize: 13 }}>
                 Left is the current state in {SINK_LABEL[rule.sinkType]}, right is the desired state in Git. A sync writes the right side.
@@ -220,9 +292,9 @@ export function EnvPanel({
               <EnvDiff rule={rule.name} tenant={rule.tenant} env={t.env} destination={t.destination} />
             </div>
           )}
-          {view === 'current' && <StateValues rule={rule} target={t} side="live" />}
-          {view === 'desired' && <StateValues rule={rule} target={t} side="git" />}
-          {view === 'history' && <EnvHistory rule={rule} env={t.env} />}
+          {shown === 'current' && <StateValues rule={rule} target={t} side="live" />}
+          {shown === 'desired' && <StateValues rule={rule} target={t} side="git" />}
+          {shown === 'history' && <EnvHistory rule={rule} env={t.env} />}
         </>
       )}
     </SlideOver>
@@ -301,7 +373,7 @@ function StateValues({ rule, target: t, side }: { rule: RuleView; target: Target
 
   const value = (k: KeyEntry) => (side === 'live' ? k.liveValue : k.gitValue);
   const rows = keys.data.filter(k => value(k) !== undefined).sort((a, b) => a.key.localeCompare(b.key));
-  const differ = rows.filter(k => k.state !== 'synced').length;
+  const differ = rows.filter(keyDiffers).length;
   const text = rows.map(k => `${k.key} = ${value(k)}`).join('\n');
   const sink = SINK_LABEL[rule.sinkType];
 
@@ -337,7 +409,7 @@ function StateValues({ rule, target: t, side }: { rule: RuleView; target: Target
           </div>
           <div className="values" role="table" aria-label={side === 'live' ? `Current values in ${sink}` : 'Desired values in Git'}>
             {rows.map(k => (
-              <div key={k.key} role="row" className={`values__line${k.state !== 'synced' ? ' values__line--differs' : ''}`}>
+              <div key={k.key} role="row" className={`values__line${keyDiffers(k) ? ' values__line--differs' : ''}`}>
                 <span className="values__key" role="cell">
                   {k.key}
                 </span>
@@ -347,7 +419,7 @@ function StateValues({ rule, target: t, side }: { rule: RuleView; target: Target
                 <span className="values__val" role="cell">
                   {value(k)}
                   {k.secret && <Icon name="lock" size={12} className="faint" label="Secret" style={{ marginLeft: 6, verticalAlign: -1 }} />}
-                  {k.state !== 'synced' && <span className="sr-only"> (differs)</span>}
+                  {keyDiffers(k) && <span className="sr-only"> (differs)</span>}
                 </span>
               </div>
             ))}

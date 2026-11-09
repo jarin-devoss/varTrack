@@ -14,6 +14,7 @@ from unittest.mock import MagicMock, patch
 for _m in ("vartrack_core", "pymongo", "git", "gitpython"):
     sys.modules.setdefault(_m, MagicMock())
 
+from app.dependencies import SecretUnavailable
 from app.pipeline.secret_resolver import (
     mask_secrets,
     parse_secret_fields,
@@ -143,30 +144,38 @@ class TestResolveSecrets(unittest.TestCase):
         mock_client.get_secret.assert_not_called()
         self.assertEqual(result, flat)
 
-    def test_missing_sm_config_no_crash(self):
+    def test_a_secret_manager_that_is_not_defined_fails_the_file(self):
         flat = {"api_key": "placeholder"}
         with patch("app.pipeline.secret_resolver.VaultClient"):
-            result = resolve_secrets(flat, {"api_key": "nonexistent_sm"}, _SECRETS_CONFIG)
-        self.assertEqual(result["api_key"], "placeholder")
+            with self.assertRaises(SecretUnavailable) as caught:
+                resolve_secrets(flat, {"api_key": "nonexistent_sm"}, _SECRETS_CONFIG)
+        self.assertIn("nonexistent_sm", str(caught.exception))
 
-    def test_vault_failure_no_crash(self):
-        flat = {"db.password": "placeholder"}
+    def test_vault_down_fails_the_file_instead_of_writing_the_placeholder(self):
+        flat = {"db.password": "placeholder-rotated-by-vault"}
         mock_cls = MagicMock()
         mock_client = MagicMock()
         mock_client.get_secret.side_effect = RuntimeError("vault unreachable")
         mock_cls.return_value = mock_client
         with patch("app.pipeline.secret_resolver.VaultClient", mock_cls):
-            result = resolve_secrets(flat, {"db.password": None}, _SECRETS_CONFIG)
-        self.assertEqual(result["db.password"], "placeholder")
+            with self.assertRaises(SecretUnavailable) as caught:
+                resolve_secrets(flat, {"db.password": None}, _SECRETS_CONFIG)
+        self.assertIn("vault unreachable", str(caught.exception))
+        self.assertIn("db.password", str(caught.exception))
+        self.assertEqual(flat["db.password"], "placeholder-rotated-by-vault")   # the input is untouched
+
+    def test_a_secret_field_with_no_secret_managers_at_all_is_an_error(self):
+        with self.assertRaises(SecretUnavailable):
+            resolve_secrets({"db.password": "placeholder"}, {"db.password": None}, {})
+
+    def test_a_secret_field_absent_from_this_file_needs_no_manager(self):
+        flat = {"host": "localhost"}
+        self.assertEqual(resolve_secrets(flat, {"db.password": None}, {}), flat)
 
     def test_empty_secret_fields_returns_unchanged(self):
         flat = {"host": "localhost"}
         self.assertEqual(resolve_secrets(flat, {}, _SECRETS_CONFIG), flat)
 
-    def test_empty_secrets_config_returns_unchanged(self):
-        flat = {"db.password": "placeholder"}
-        result = resolve_secrets(flat, {"db.password": None}, {})
-        self.assertEqual(result, flat)
 
 
 if __name__ == "__main__":

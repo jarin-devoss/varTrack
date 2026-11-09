@@ -10,10 +10,9 @@ varTrack writes config values to Redis. Three data structures are supported: **H
 datasources: [{
   redis: {
     tag:      ""                 // optional — resolves to "redis-{tag}"
-    host:     "redis"
-    port:     6379
-    password: "secret" // optional
-    db:       0
+    hosts:    ["redis:6379"]
+    password: "secret"           // optional
+    database: 0
   }
 }]
 ```
@@ -25,12 +24,16 @@ datasources: [{
 ```cue
 datasources: [{
   redis: {
-    deployment_mode: "STANDALONE"   // default
-    host:            "redis"
-    port:            6379
+    mode:  "STANDALONE"   // default
+    hosts: ["redis:6379"]
   }
 }]
 ```
+
+!!! warning "Only standalone is implemented"
+    The sink connects to the first of `hosts` as a single instance. `mode`, `sentinel_master`, the connection pool, `write_timeout`, `enable_pipeline` and the other options marked in [`redis.proto`](https://github.com/jarin-devoss/varTrack/blob/main/proto/vartrack/v1/models/datasources/redis.proto) with `unused_reason` are accepted by the loader but read by nothing yet: set in `config.cue` they have no effect, and the orchestrator logs that once per datasource.
+
+    `connection_timeout` and `read_timeout` are read: they bound how long the sink waits to connect and for the server's answer to a command (without them a Redis that hangs leaves the worker waiting for ever).
 
 | Mode | When to use |
 |---|---|
@@ -43,7 +46,7 @@ datasources: [{
 ```cue
 datasources: [{
   redis: {
-    deployment_mode: "CLUSTER"
+    mode:  "CLUSTER"
     hosts: ["redis-node-1:6379", "redis-node-2:6379", "redis-node-3:6379"]
   }
 }]
@@ -54,10 +57,10 @@ datasources: [{
 ```cue
 datasources: [{
   redis: {
-    deployment_mode: "SENTINEL"
-    hosts:        ["sentinel-1:26379", "sentinel-2:26379"]
+    mode:            "SENTINEL"
+    hosts:           ["sentinel-1:26379", "sentinel-2:26379"]
     sentinel_master: "mymaster"
-    password:     "secret"
+    password:        "secret"
   }
 }]
 ```
@@ -111,6 +114,14 @@ Reading: `redis-cli JSON.GET production:cfg $.database.host`
 
 ---
 
+## One write, one step
+
+The data, the `EXPIRE`s and the `__vartrack__` stamp of a file go to Redis as one `MULTI`/`EXEC`, so a connection that dies before `EXEC` leaves neither the data nor the stamp. Every reply is checked: a command Redis refuses (the key holds another type, for example) fails the sync with the count and the first errors.
+
+`EXEC` is not a rollback. Redis runs the commands it accepts and reports the ones it does not, so a refusal can leave the accepted ones applied; the sync fails and a retry writes the same values again. Several `hosts` use the cluster client, which cannot run one `MULTI` over keys in different hash slots, so there the same commands are sent as one pipeline instead, with the same reply check. Pruning is one `HDEL` or `DEL`, which Redis runs whole.
+
+---
+
 ## Destination template
 
 The `destination_template` sets the key prefix or hash name:
@@ -119,6 +130,8 @@ The `destination_template` sets the key prefix or hash name:
 rules: [{
   platform:             "github"
   datasource:           "redis"
+  file_name:           "app-settings.yaml"
+  branch_map:           {main: "production"}
   destination_template: "{env}:cfg"
 }]
 ```
@@ -130,12 +143,11 @@ rules: [{
 ```cue
 datasources: [{
   redis: {
-    host:       "redis"
-    port:       6380
-    enable_tls: true
-    tls_ca:     "/etc/ssl/redis-ca.pem"       // optional CA cert
-    tls_cert:   "/etc/ssl/redis-client.pem"   // optional mTLS cert
-    tls_key:    "/etc/ssl/redis-client.key"   // optional mTLS key
+    hosts:           ["redis:6380"]
+    enable_tls:      true
+    tls_ca_cert:     "/etc/ssl/redis-ca.pem"       // optional CA cert (a path)
+    tls_client_cert: "/etc/ssl/redis-client.pem"   // optional mTLS cert (a path)
+    tls_client_key:  "/etc/ssl/redis-client.key"   // optional mTLS key (a path)
   }
 }]
 ```
@@ -150,6 +162,8 @@ The watcher asks the orchestrator each poll; the orchestrator reads the fields o
 rules: [{
   platform:   "github"
   datasource: "redis"
+  file_name: "app-settings.yaml"
+  branch_map: {main: "production"}
   self_heal:  true
 }]
 ```

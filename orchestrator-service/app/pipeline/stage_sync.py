@@ -34,20 +34,38 @@ class TargetBusy(RuntimeError):
 
 
 @contextmanager
-def target_locks(tenant_id: str, datasource: str, envs: Iterable[str]) -> Iterator[None]:
-    """Hold the lock of every environment written, taken in a fixed order so
-    two syncs cannot wait on each other. Without Redis there is no lock."""
+def target_locks(tenant_id: str, datasource: str, envs: Iterable[str],
+                 rule_config: dict | None = None) -> Iterator[None]:
+    """Hold the lock of every place written, taken in a fixed order so two syncs
+    cannot wait on each other. The lock is keyed by the destination, not the tenant:
+    two writers of one place meet whoever they act for. Without Redis there is no lock."""
+    from app.pipeline.destinations import destination_of
     from app.ui import ledger
 
+    # One lock per place, not per environment: environments that share a place (a destination_template
+    # without {env}, several files of one push) would otherwise take the same lock twice and wait on themselves.
+    by_place: dict[str, str] = {}
+    for env in sorted(set(envs)):
+        place = (destination_of(datasource, rule_config, tenant_id, env) if rule_config is not None else "")             or f"{tenant_id}:{env}"
+        by_place.setdefault(place, env)
     held = []
     try:
-        for env in sorted(set(envs)):
-            lock = ledger._redis().lock(f"vt:sync-lock:{tenant_id}:{datasource}:{env}",
+        for place, env in sorted(by_place.items()):
+            lock = ledger._redis().lock(f"vt:sync-lock:{datasource}:{place}",
                                         timeout=LOCK_LEASE_SECONDS, blocking_timeout=LOCK_WAIT_SECONDS)
             try:
                 acquired = lock.acquire()
             except Exception as exc:  # Redis unreachable: the broker is too
-                logger.warning("sync lock for %s/%s not taken: %s", datasource, env, exc)
+                from app import dependencies
+
+                dependencies.down("redis", f"the sync lock for {datasource}/{env} cannot be taken: {exc}")
+                if dependencies.production():
+                    # Two tenants (or two replicas of one) writing a place must not be allowed to
+                    # race because the thing that keeps them apart is down.
+                    raise dependencies.LockUnavailable(
+                        f"the sync lock for {datasource}/{env} cannot be taken: {exc}") from None
+                logger.warning("sync lock for %s/%s not taken (no lock outside production): %s",
+                               datasource, env, exc)
                 continue
             if not acquired:
                 raise TargetBusy(f"another sync of {datasource}/{env} is still running "
@@ -62,6 +80,16 @@ def target_locks(tenant_id: str, datasource: str, envs: Iterable[str]) -> Iterat
                 pass  # the lease ran out: the lock is gone already
 
 
+def _check_destinations(tenant_id: str, datasource: str, rule_config: dict, envs: Iterable[str]) -> None:
+    """Refuse, before anything is opened or written, a sync to a place that is not the
+    tenant's (tenants.may_write). The error names the destination and what is allowed."""
+    from app import tenants
+    from app.pipeline.destinations import destination_of
+
+    for env in sorted(set(envs)):
+        tenants.may_write(tenant_id, datasource, destination_of(datasource, rule_config, tenant_id, env))
+
+
 def _inventory(entries: dict[str, dict]) -> set[str]:
     return {key for entry in entries.values() for key in entry.get("desired", {})}
 
@@ -71,10 +99,13 @@ def key_space_id(sink_cls: Any, rule_config: dict, tenant_id: str, env: str) -> 
     store (server) and the key space inside it. Two targets with the same id
     write the same keys. Empty for a sink that does not delete single keys,
     which has no key space to share."""
-    if not sink_cls.prunes_keys(rule_config):
+    from app.pipeline.sinks.settings import for_rule
+
+    settings = for_rule(rule_config)
+    if not sink_cls.prunes_keys(settings, rule_config):
         return ""
-    return "|".join((sink_cls.__name__, str(sink_cls.store(rule_config)),
-                     str(sink_cls.key_space(rule_config, tenant_id, env))))
+    return "|".join((sink_cls.__name__, str(sink_cls.store(settings, rule_config)),
+                     str(sink_cls.key_space(settings, rule_config, tenant_id, env))))
 
 
 def _recorded_key_space(sink: Any, rule_config: dict, tenant_id: str, env: str) -> str:
@@ -95,17 +126,15 @@ def _tenant_ids() -> list[str]:
 
 
 def _every_rule() -> list[tuple[str, dict]]:
-    """(tenant, rule) of every tenant's rules, each with its datasource's
-    config.cue settings laid over it: what shows where a rule writes.
+    """(tenant, rule) of every tenant's rules: where each writes is its datasource's settings
+    and the rule's own options (key_space_id reads both).
 
     Only for targets recorded before they carried their key space: it rebuilds
     every tenant's rules, which fails or comes back empty for a tenant whose
     schema repository cannot be read."""
-    from app.pipeline.datasource_settings import with_datasource_settings
     from app.ui import drift
 
-    return [(tenant, with_datasource_settings(str(rule.get("datasource", "")), rule))
-            for tenant, rules in drift.tenant_rules() for rule in rules]
+    return [(tenant, rule) for tenant, rules in drift.tenant_rules() for rule in rules]
 
 
 def _keys_held_elsewhere(
@@ -116,7 +145,7 @@ def _keys_held_elsewhere(
     (a key_space_id) of the store the rule writes to. A datasource name says
     nothing about where it writes: two datasources on the same Redis database
     with the same prefix and hash (or the same ZooKeeper servers and root, or
-    Vercel project and targets) write the same keys, so one's stale key may be
+    …) write the same keys, so one's stale key may be
     the other's live one. *seen* are the targets already counted; *sharers*,
     when given, collects "tenant/datasource/env" of each target that holds keys
     there.
@@ -189,7 +218,7 @@ def _stale_keys(
     *written* is this sync's files for env: inventory key -> (file path, flat
     data). The environment's other files keep their keys, and so do the
     environments that share env's key space (two that land on the same Redis
-    hash, Vercel target or znode path write the same keys). *sharers* collects
+    hash or znode path write the same keys). *sharers* collects
     the other targets that hold keys in env's key space. Raises when the
     ledger cannot be read."""
     from app.ui import ledger
@@ -226,7 +255,6 @@ class PruneOutcome:
     pruned:       int = 0
     pending:      list[str] | None = None   # None: prune did not run
     skipped:      list[str] = field(default_factory=list)
-    would_delete: list[str] = field(default_factory=list)
     error:        str = ""
     # Other targets holding keys in this environment's key space ("tenant/
     # datasource/env"); their keys are never pruned from here.
@@ -246,7 +274,9 @@ def _prune_environment(
     from app.ui import ledger
 
     sink_cls = type(sink)
-    if not prune_cfg.enabled or not sink_cls.prunes_keys(rule_config):
+    from app.pipeline.sinks.settings import for_rule
+
+    if not prune_cfg.enabled or not sink_cls.prunes_keys(for_rule(rule_config, datasource), rule_config):
         return None
     sharers: list[str] = []
     try:
@@ -261,9 +291,6 @@ def _prune_environment(
     if not stale:
         return PruneOutcome(pending=[], shared_with=shared)
     keys = sorted(stale)
-    if prune_cfg.dry_run:
-        return PruneOutcome(pending=keys, would_delete=keys, shared_with=shared)
-
     sink.strict_reads = True  # a failed read is "can't tell", not "every key is gone"
     try:
         live = sink.read_values(keys, datasource, env)
@@ -302,13 +329,13 @@ def prune_candidates(
     them). Nothing is connected to; empty when the rule does not prune, the
     sink does not delete single keys, or the ledger cannot be read."""
     from app.pipeline.sinks import sink_class
-    from app.pipeline.datasource_settings import with_datasource_settings
+    from app.pipeline.sinks.settings import for_rule
     from app.ui import ledger
 
     prune_cfg = extract_prune_config(rule_config)
     sink_cls = sink_class(datasource)
-    rule_config = with_datasource_settings(datasource, rule_config)
-    if sink_cls is None or not prune_cfg.enabled or not sink_cls.prunes_keys(rule_config):
+    rule_config = {**rule_config, "datasource": rule_config.get("datasource") or datasource}
+    if sink_cls is None or not prune_cfg.enabled or not sink_cls.prunes_keys(for_rule(rule_config), rule_config):
         return {}
     written_by_env: dict[str, dict[str, tuple[str, dict]]] = {}
     for f in etl.files:
@@ -339,6 +366,59 @@ def _decide_sync_mode(key_count: int, forced_mode: SyncMode) -> SyncMode:
     if forced_mode not in (SyncMode.UNSPECIFIED, SyncMode.AUTO):
         return forced_mode
     return SyncMode.GIT_SMART_REPAIR if key_count > 500 else SyncMode.GIT_UPSERT_ALL
+
+
+def _count(record: Any) -> None:
+    """Run *record* on the metrics, when there are any: a metric never fails a sync."""
+    metrics = _m()
+    if metrics:
+        try:
+            record(metrics)
+        except Exception:
+            pass
+
+
+def _sink_kind(sink: Any) -> str:
+    """The datasource kind a sink serves ("redis", "linux_server" …): the label its metrics carry."""
+    from app.pipeline.sinks import SINK_REGISTRY
+    return next((kind for kind, cls in SINK_REGISTRY.items() if type(sink) is cls), type(sink).__name__.lower())
+
+
+def _roll_back(sink: Any, written: list[tuple[str, str, str, list, SyncResult]], *,
+               failed_file: str, reason: str) -> None:
+    """A file of the sync failed: take back the files written before it, where the sink can.
+
+    A sink that can_restore restores each file from the snapshot taken before it was written (or deletes a
+    file that did not exist), and its result becomes ``rolled_back``. A sink that cannot keeps what it wrote:
+    the result becomes ``partial`` and says so, the log says so, and nothing claims a deletion that did not
+    happen. Either way the next sync, or self-heal, writes the desired state."""
+    restorable = bool(getattr(sink, "can_restore", False))
+    kind = _sink_kind(sink)
+    for datasource, env, file_path, snapshot, res in written:
+        if not restorable:
+            _count(lambda m: m.inc_sink_not_rolled_back(kind))
+            res.status = "partial"
+            res.error = (f"not rolled back: {file_path} stays written in {env} ({type(sink).__name__} keeps no "
+                         f"snapshot to restore); {failed_file} failed — the next sync or self-heal writes the "
+                         f"desired state")
+            logger.warning("rollback: not possible on %s — %s stays written in %s (%s failed: %s)",
+                           type(sink).__name__, file_path, env, failed_file, reason)
+            continue
+        try:
+            if hasattr(sink, "restore_file_data"):
+                sink.restore_file_data(datasource, env, file_path, snapshot)
+                logger.info("rollback: restored file=%s env=%s docs=%d", file_path, env, len(snapshot))
+            else:
+                sink.delete_file_data(datasource, env, file_path)
+                logger.info("rollback: deleted file=%s env=%s", file_path, env)
+            res.status, res.written = "rolled_back", 0
+            res.error = f"rolled back: {failed_file} failed — {reason}"
+        except Exception as exc:
+            logger.exception("rollback failed for file=%s env=%s", file_path, env)
+            res.status = "partial"
+            res.error = (f"rollback failed: {file_path} stays written in {env} ({type(exc).__name__}); "
+                         f"{failed_file} failed — the next sync or self-heal writes the desired state")
+            _count(lambda m: (m.inc_sink_error(kind, "rollback"), m.inc_sink_not_rolled_back(kind)))
 
 
 def run_stage_sync(
@@ -383,14 +463,16 @@ def run_stage_sync(
     # close once after all files are done (single connection pool).
     files_iter = list(etl.files)
     # The sink is opened only once the environments are this sync's alone.
-    with target_locks(tenant_id, datasource, [f.env for f in files_iter if f.flat_data]):
+    written_envs = [f.env for f in files_iter if f.flat_data]
+    _check_destinations(tenant_id, datasource, rule_config, written_envs)
+    with target_locks(tenant_id, datasource, written_envs, rule_config):
         sink = create_sink(datasource=datasource, rule_config=rule_config, tenant_id=tenant_id)
 
         # Rollback tracking: before each write we snapshot the current state of that
         # file so that a failure can restore prior values, not just delete new ones.
-        # Each entry is (datasource, env, file_path, snapshot_docs).
+        # Each entry is (datasource, env, file_path, snapshot_docs, its SyncResult).
         # snapshot_docs is empty when the file did not previously exist.
-        written_files: list[tuple[str, str, str, list]] = []
+        written_files: list[tuple[str, str, str, list, SyncResult]] = []
 
         try:
             for idx, etl_file in enumerate(files_iter):
@@ -399,6 +481,10 @@ def run_stage_sync(
                     env=etl_file.env,
                     status="ok",
                     root_key=etl_file.root_key,
+                    validation=etl_file.validation,
+                    schema=etl_file.schema,
+                    schema_source=etl_file.schema_source,
+                    schema_note=etl_file.schema_note,
                 )
 
                 if not etl_file.flat_data:
@@ -457,21 +543,17 @@ def run_stage_sync(
                     sync_result.key_space = _recorded_key_space(sink, rule_config, tenant_id, etl_file.env)
                     sync_result.replaced  = write_result.get("replaced", 0) or 0
                     sync_result.replaced_by = write_result.get("strategy", "") if sync_result.replaced else ""
-                    written_files.append((datasource, etl_file.env, etl_file.file_path, snapshot))
+                    written_files.append((datasource, etl_file.env, etl_file.file_path, snapshot, sync_result))
                     from app.ui import ledger
                     written_by_env.setdefault(etl_file.env, {})[
                         ledger.inventory_key(repo, etl_file.file_path)
                     ] = (etl_file.file_path, etl_file.flat_data)
 
                     # ── fire-and-forget write metrics ────────────────────────────
-                    metrics = _m()
-                    if metrics:
-                        try:
-                            metrics.observe_mongo_write(sync_mode.name, _write_elapsed)
-                            metrics.inc_mongo_written(datasource, sync_mode.name, sync_result.written)
-                            metrics.inc_etl_file("ok")
-                        except Exception:
-                            pass
+                    kind = _sink_kind(sink)
+                    _count(lambda m: (m.observe_sink_write(kind, sync_mode.name, _write_elapsed),
+                                      m.inc_sink_written(kind, datasource, sync_mode.name, sync_result.written),
+                                      m.inc_etl_file("ok")))
 
                 except Exception as exc:
                     logger.exception("sync error file=%s — rolling back %d previously written file(s)",
@@ -480,33 +562,11 @@ def run_stage_sync(
                     sync_result.error  = str(exc)
                     results.append(sync_result)
 
-                    metrics = _m()
-                    if metrics:
-                        try:
-                            metrics.inc_mongo_error("write")
-                            metrics.inc_etl_file("error")
-                        except Exception:
-                            pass
+                    kind = _sink_kind(sink)
+                    _count(lambda m: (m.inc_sink_error(kind, "write"), m.inc_etl_file("error")))
 
-                    # ── Rollback: restore each file to its pre-write state ────────
-                    for rb_datasource, rb_env, rb_file, rb_snapshot in written_files:
-                        try:
-                            if hasattr(sink, "restore_file_data"):
-                                sink.restore_file_data(rb_datasource, rb_env, rb_file, rb_snapshot)
-                                logger.info(
-                                    "rollback: restored file=%s env=%s docs=%d",
-                                    rb_file, rb_env, len(rb_snapshot),
-                                )
-                            else:
-                                sink.delete_file_data(rb_datasource, rb_env, rb_file)
-                                logger.info("rollback: deleted file=%s env=%s", rb_file, rb_env)
-                        except Exception:
-                            logger.exception("rollback failed for file=%s env=%s", rb_file, rb_env)
-                            if _m():
-                                try:
-                                    _m().inc_mongo_error("rollback")
-                                except Exception:
-                                    pass
+                    # ── Rollback: put back what this sink can, say what it cannot ──
+                    _roll_back(sink, written_files, failed_file=etl_file.file_path, reason=str(exc))
 
                     # Mark all remaining un-attempted files as aborted
                     for remaining in files_iter[idx + 1:]:
@@ -515,14 +575,19 @@ def run_stage_sync(
                             env=remaining.env,
                             status="aborted",
                             root_key=remaining.root_key,
-                            error="aborted due to earlier write failure + rollback",
+                            error=f"aborted: {etl_file.file_path} failed before it was reached",
                         ))
                     break
 
                 results.append(sync_result)
             else:
-                # Every file was written (no break): now prune, once per environment.
-                for env, written in written_by_env.items():
+                # Every file was written (no break): now prune, once per environment. Not when
+                # a file of this push could not even be read or parsed: what is missing from
+                # an incomplete read is not what was removed.
+                if etl.errors:
+                    logger.warning("prune skipped: %d file(s) of this push failed before the sync (%s)",
+                                   len(etl.errors), ", ".join(etl.errors))
+                for env, written in (written_by_env.items() if not etl.errors else ()):
                     outcome = _prune_environment(
                         sink, rule_config, prune_cfg, tenant_id, datasource, env, written)
                     last = next((r for r in reversed(results) if r.env == env and r.status == "ok"), None)
@@ -531,15 +596,10 @@ def run_stage_sync(
                     last.pruned = outcome.pruned
                     last.prune_pending = outcome.pending
                     last.prune_skipped = outcome.skipped
-                    last.prune_would_delete = outcome.would_delete
                     last.prune_error = outcome.error
                     last.shared_with = outcome.shared_with
-                    metrics = _m()
-                    if metrics and outcome.pruned:
-                        try:
-                            metrics.inc_mongo_pruned(datasource, outcome.pruned)
-                        except Exception:
-                            pass
+                    if outcome.pruned:
+                        _count(lambda m: m.inc_sink_pruned(_sink_kind(sink), datasource, outcome.pruned))
         finally:
             sink.close()
 
@@ -549,6 +609,14 @@ def run_stage_sync(
             file_path=skipped_path,
             env="unknown",
             status="skipped",
+        ))
+    # A file that could not be processed is a failed file, with its reason.
+    for failed_path in etl.errors:
+        results.append(SyncResult(
+            file_path=failed_path,
+            env="unknown",
+            status="error",
+            error=etl.failure(failed_path),
         ))
 
     return results
@@ -567,7 +635,9 @@ def sync_result_to_dict(r: SyncResult) -> dict:
         **({"error": r.error} if r.error else {}),
         **({"prune_pending": r.prune_pending} if r.prune_pending is not None else {}),
         **({"prune_skipped": r.prune_skipped} if r.prune_skipped else {}),
-        **({"prune_would_delete": r.prune_would_delete} if r.prune_would_delete else {}),
         **({"prune_error": r.prune_error} if r.prune_error else {}),
         **({"key_space": r.key_space} if r.key_space else {}),
+        **({"validation": r.validation, "schema": r.schema, "schema_source": r.schema_source}
+           if r.validation else {}),
+        **({"schema_note": r.schema_note} if r.schema_note else {}),
     }

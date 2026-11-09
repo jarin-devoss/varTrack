@@ -4,8 +4,8 @@
 # releases on k3s are fed by real pushes: Gitea webhooks → gateway →
 # orchestrator. The watcher self-heals MongoDB, ZooKeeper and the ConfigMaps.
 # live-seed creates the repos and webhooks, pushes to main and develop, then
-# edits a few values directly in the sinks so there is drift to see. (Vercel, a
-# hosted service, and the Linux server sink are left out.)
+# edits a few values directly in the sinks so there is drift to see. (The Linux
+# server sink is left out.)
 #
 # From e2e/ (the orchestrator's Python gRPC stubs must exist first:
 # `buf generate`, see docs/getting-started.md):
@@ -44,11 +44,6 @@ x-orchestrator-live: &orchestrator-live
       KUBERNETES_CLIENT: kubernetes==31.0.0
       HELM_VERSION: v3.16.3
   environment:
-    SCHEMA_TENANT_DEFAULT_REPO: http://gitea:3000/vartrack-demo/schemas.git
-    SCHEMA_TENANT_DEFAULT_BRANCH: main
-    # The payments team's tenant: its own schema repo on gitea-team.
-    SCHEMA_TENANT_PAYMENTS_REPO: http://gitea-team:3000/payments/schemas.git
-    SCHEMA_TENANT_PAYMENTS_BRANCH: main
     UI_DEFAULT_TENANT: default
     # Web UI sign-in is set in live/config.cue (bundle.ui).
     # The payments repository on gitea-team is private: varTrack reads it as

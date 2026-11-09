@@ -8,10 +8,12 @@ from __future__ import annotations
 
 import logging
 import time
-from typing import Annotated
+from typing import Annotated, Optional
 
-from fastapi import APIRouter, Path, Request
+from fastapi import APIRouter, HTTPException, Path, Request
 from pydantic import BaseModel, Field
+
+from app.api.deps import request_grant, route_push
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -28,23 +30,32 @@ class SchemaWebhookBody(BaseModel):
     repo:        str
     branch:      str
     raw_payload: str = ""   # optional: raw git push payload for logging
-    tenant_id:   str
-
-
-def _platform(headers: dict[str, str]) -> str:
-    if "x-github-event" in headers:
-        return "github"
-    if "x-gitlab-event" in headers:
-        return "gitlab"
-    if "x-bitbucket-event" in headers:
-        return "bitbucket"
-    return headers.get("x-platform", "unknown")
+    # Optional, and only ever a claim to check: the tenant is the one whose registered schema
+    # repository `repo` is. A name that is not that tenant's is refused.
+    tenant_id:   Optional[str] = None
 
 
 @router.post("/webhooks/schema-registry", response_model=WebhookResponse)
 async def schema_webhook(request: Request, body: SchemaWebhookBody) -> WebhookResponse:
     """Refresh schema registry when the schema repo receives a push."""
+    from app import tenants
+    from app.schema_registry.manager import get_schema_manager
     from app.tasks.etl import refresh_schema_task
+
+    if body.tenant_id is not None:
+        try:
+            tenants.check_name(body.tenant_id)
+        except tenants.InvalidTenant as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+    mgr = getattr(request.app.state, "schema_manager", None) or get_schema_manager()
+    tenant = mgr.tenant_for_repo(body.repo)
+    if tenant is None:
+        raise HTTPException(status_code=404, detail=f"{body.repo} is not a registered schema repository")
+    if body.tenant_id is not None and body.tenant_id != tenant:
+        raise HTTPException(status_code=403, detail=f"{body.repo} is not the schema repository of {body.tenant_id}")
+    grant = request_grant(request)
+    if grant is not None and grant.tenant and grant.tenant != tenant:
+        raise HTTPException(status_code=403, detail="the grant was issued for another tenant")
     task = refresh_schema_task.apply_async(
         kwargs={
             "platform":    body.platform,
@@ -52,7 +63,7 @@ async def schema_webhook(request: Request, body: SchemaWebhookBody) -> WebhookRe
             "branch":      body.branch,
             "raw_payload": body.raw_payload,
             "headers":     dict(request.headers),
-            "tenant_id":   body.tenant_id,
+            "tenant_id":   tenant,
         },
         queue="schema",
     )
@@ -71,48 +82,10 @@ async def ingest_webhook(
     raw_bytes   = await request.body()
     raw_payload = raw_bytes.decode("utf-8", errors="replace")
 
-    raw_headers = {k.lower(): v for k, v in request.headers.items()}
-    platform    = _platform(raw_headers)
-
-    # Resolve rule_config per-tenant using X-Tenant-ID header so the correct
-    # rule_config is returned for every tenant in a multi-tenant deployment.
-    tenant_id_hdr = raw_headers.get("x-tenant-id")
-    mgr         = getattr(request.app.state, "schema_manager", None)
-    rule_config = (
-        mgr.resolve_rule(platform, datasource, tenant_id_hdr)
-        if mgr and tenant_id_hdr
-        else (mgr.resolve_rule(platform, datasource) if mgr else {})
-    )
-    rule_config  = rule_config or {}
-
-    # Resolve tenant_id: prefer rule_config, then fall back to the repository
-    # owner extracted from the webhook payload.
-    # e.g. payload repository.full_name = "acme/infra" → tenant_id = "acme"
-    tenant_id = rule_config.get("tenant_id")
-    if not tenant_id:
-        try:
-            import json as _json
-            _repo = _json.loads(raw_payload).get("repository", {})
-            _full_name = _repo.get("full_name", "") or _repo.get("name", "")
-            if _full_name and "/" in _full_name:
-                tenant_id = _full_name.split("/")[0]
-                logger.info(
-                    "tenant_id derived from repo_owner=%s datasource=%s platform=%s",
-                    tenant_id, datasource, platform,
-                )
-        except Exception:
-            pass
-
-    if not tenant_id:
-        logger.warning(
-            "no tenant_id in rule_config or payload for datasource=%s platform=%s; "
-            "rejecting webhook", datasource, platform,
-        )
-        from fastapi import HTTPException
-        raise HTTPException(
-            status_code=400,
-            detail=f"No tenant_id configured or derivable for datasource={datasource!r}",
-        )
+    # Which platform, tenant and rule the push is for: the pushed repository decides, and the dry run
+    # of this route asks the same question (app.api.deps.route_push).
+    route = route_push(request, datasource, raw_payload)
+    platform, rule_config, tenant_id = route.platform, route.rule_config, route.tenant_id
 
     # ── Circuit breaker: fail-fast when Celery broker is down ────────────────
     # Returns 503 while the circuit is open so upstream load-balancers can
@@ -124,7 +97,6 @@ async def ingest_webhook(
             "circuit breaker open — rejecting webhook datasource=%s platform=%s",
             datasource, platform,
         )
-        from fastapi import HTTPException
         raise HTTPException(
             status_code=503,
             detail="Celery broker unavailable — circuit breaker open, retry later",

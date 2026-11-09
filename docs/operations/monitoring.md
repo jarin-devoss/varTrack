@@ -14,9 +14,21 @@ shipped to Elasticsearch.
 | orchestrator | `ADMIN_PORT` (`9090`) | `GET /health/liveness` | `GET /health/readiness` | `GET /metrics` |
 | watcher | `ADMIN_ADDR` (`:9091`) | `GET /health/liveness` | `GET /health/readiness` | `GET /metrics` |
 
+Readiness answers with more than a status. The orchestrator lists every dependency it has
+checked (`config.cue`, `git`, `secrets`, `redis`, `schemas:<tenant>`) as `ok`, `stale` (the last
+good value is in use, with why and since when) or `unavailable`, and every weaker mode that is on
+under `degraded`. It is **not ready while `config.cue` cannot be read**; a tenant whose schema
+repository is down is listed but does not take the service out of rotation. The gateway is not
+ready while the Redis that remembers webhook deliveries does not answer, and lists `degraded` too.
+
 `/healthz` is an alias of readiness on the gateway and of liveness on the orchestrator and
 the watcher. The gateway's admin port also serves `/debug/pprof/` and, with `auth.opa`,
 `POST /admin/opa/reload`; keep it off the public network.
+
+The orchestrator's admin port binds to loopback unless `ADMIN_HOST` says otherwise, and once
+`INTERNAL_AUTH_SECRET` is set everything on it except the health probes needs an admin grant
+([Internal authentication](internal-auth.md#scraping-the-admin-port)). For Kubernetes probes,
+use the API port's `/v1/health/liveness` and `/v1/health/readiness`, which stay open.
 
 The orchestrator also starts a Prometheus scrape server of its own when `PROM_ENABLED=true`,
 on `PROM_PORT` (`9090`) at `PROM_METRICS_PATH` (`/metrics`). When both are on one host, give
@@ -49,6 +61,7 @@ them different ports — the e2e stack uses `ADMIN_PORT=9093` and `PROM_PORT=909
 
 | Metric | Type | Labels | What |
 |---|---|---|---|
+| `vartrack_dependency_up` | gauge | `dependency` | `1` while `config.cue`, `git`, `secrets`, `redis` or `schemas:<tenant>` is usable (a stale last-good value counts), `0` when it is not |
 | `orch_webhooks_total` | counter | `datasource`, `platform`, `outcome` | Webhooks queued for a worker |
 | `orch_webhook_dispatch_duration_seconds` | histogram | `datasource`, `platform` | gRPC receipt to the task being queued |
 | `orch_tasks_total` | counter | `task_name`, `queue`, `status` | Task runs |
@@ -58,10 +71,12 @@ them different ports — the e2e stack uses `ADMIN_PORT=9093` and `PROM_PORT=909
 | `orch_etl_stage_duration_seconds` | histogram | `stage` | Each pipeline stage |
 | `orch_etl_files_total` | counter | `outcome` | Files processed |
 | `orch_etl_keys_total` | counter | — | Flat keys read |
-| `orch_mongo_write_duration_seconds` | histogram | `sync_mode` | Write time per file — for **every** sink, despite the name |
-| `orch_mongo_documents_written_total` | counter | `datasource`, `sync_mode` | Keys written — every sink |
-| `orch_mongo_documents_pruned_total` | counter | `datasource` | Keys pruned — every sink |
-| `orch_mongo_errors_total` | counter | `operation` | Write and rollback errors — every sink |
+| `orch_sink_write_duration_seconds` | histogram | `sink`, `sync_mode` | Write time per file |
+| `orch_sink_keys_written_total` | counter | `sink`, `datasource` | Keys written |
+| `orch_sink_keys_pruned_total` | counter | `sink`, `datasource` | Keys pruned |
+| `orch_sink_errors_total` | counter | `sink`, `operation` | Write, prune and rollback errors (`operation`: `write`, `prune`, `rollback`) |
+| `orch_sink_not_rolled_back_total` | counter | `sink` | Files a failed sync left written: the sink cannot take a write back (every sink but MongoDB), or tried to and could not |
+| `orch_mongo_write_duration_seconds`, `orch_mongo_documents_written_total`, `orch_mongo_documents_pruned_total`, `orch_mongo_errors_total` | | as above for the MongoDB sink | Deprecated: the former names of the `orch_sink_*` series, which they counted for **every** sink. They are now fed by the MongoDB sink only, and go in the next release |
 | `orch_git_fetch_duration_seconds` | histogram | `outcome` | Reading a file from Git |
 | `orch_schema_operations_total` | counter | `operation`, `outcome` | Schema repository operations |
 | `orch_schema_clone_duration_seconds` | histogram | `tenant_id` | Schema repository clones and refreshes |
@@ -94,6 +109,8 @@ drift with the web UI's **Environments** page and the `DriftDetected`, `HealSucc
 | Queue backing up | `orch_task_queue_depth > 100` for 10 minutes |
 | A rule's watcher stopped | `vartrack_watcher_up == 0` |
 | Service down | the readiness check failing |
+| A dependency is down | `vartrack_dependency_up == 0` — the label says which |
+| A weaker mode is on | `/health/readiness` shows a non-empty `degraded` |
 
 The label values (`outcome`, `status`) are the ones the services emit; look at a scrape
 (`curl :9090/metrics`) before writing an alert on them.

@@ -19,6 +19,8 @@ import (
 	pb_enums "vartrack/libs/gen/vartrack/v1/enums"
 	pb_models "vartrack/libs/gen/vartrack/v1/models"
 	pb_vault "vartrack/libs/gen/vartrack/v1/models/secret_managers"
+	pb_utils "vartrack/libs/gen/vartrack/v1/utils"
+	libsecrets "vartrack/libs/secrets"
 
 	vault "github.com/hashicorp/vault/api"
 	"github.com/hashicorp/vault/api/auth/approle"
@@ -340,12 +342,24 @@ func (v *Vault) buildClientWithSecret(ctx context.Context) (*vault.Client, *vaul
 
 func (v *Vault) buildTLSConfig() (*tls.Config, error) {
 	tlsCfg := &tls.Config{
-		InsecureSkipVerify: !v.config.GetVerifySsl(), //nolint:gosec
+		InsecureSkipVerify: v.config.GetInsecureSkipVerify(), //nolint:gosec
 	}
 
-	if ca := v.config.GetSslCa(); ca != "" {
+	// The CA is either its content (ssl_ca, PEM) or a file the gateway reads (ssl_ca_file).
+	ca := []byte(v.config.GetSslCa())
+	if file := v.config.GetSslCaFile(); file != "" {
+		if len(ca) > 0 {
+			return nil, fmt.Errorf("vault: give the CA as ssl_ca (content) or ssl_ca_file (a path), not both")
+		}
+		read, err := os.ReadFile(file)
+		if err != nil {
+			return nil, fmt.Errorf("vault: read ssl_ca_file: %w", err)
+		}
+		ca = read
+	}
+	if len(ca) > 0 {
 		pool := x509.NewCertPool()
-		if !pool.AppendCertsFromPEM([]byte(ca)) {
+		if !pool.AppendCertsFromPEM(ca) {
 			return nil, fmt.Errorf("failed to parse vault CA certificate")
 		}
 		tlsCfg.RootCAs = pool
@@ -379,21 +393,47 @@ func (v *Vault) authenticateWithClient(ctx context.Context, client *vault.Client
 	}
 }
 
-func (v *Vault) authToken(client *vault.Client, auth *pb_vault.TokenAuth) error {
-	if auth.GetToken() == "" {
-		return fmt.Errorf("vault token auth: token is empty")
+// loginSecret is one of Vault's own login credentials: a plain value or a mounted file. A {ref:} is refused:
+// Vault cannot log in with a secret it would first have to read from itself.
+func loginSecret(ref *pb_utils.SecretRef, field string) (string, error) {
+	switch source := ref.GetSource().(type) {
+	case *pb_utils.SecretRef_Value:
+		if source.Value == "" {
+			return "", fmt.Errorf("vault %s is empty", field)
+		}
+		return source.Value, nil
+	case *pb_utils.SecretRef_File:
+		value, err := libsecrets.ReadSecretFile(source.File, ref.GetKey())
+		if err != nil {
+			return "", fmt.Errorf("vault %s: %w", field, err)
+		}
+		return value, nil
+	case *pb_utils.SecretRef_Ref:
+		return "", fmt.Errorf("vault %s cannot be a {ref:}: Vault would have to read it from itself", field)
 	}
-	client.SetToken(auth.GetToken())
+	return "", fmt.Errorf("vault %s is not set", field)
+}
+
+func (v *Vault) authToken(client *vault.Client, auth *pb_vault.TokenAuth) error {
+	token, err := loginSecret(auth.GetToken(), "token_auth.token")
+	if err != nil {
+		return err
+	}
+	client.SetToken(token)
 	return nil
 }
 
 func (v *Vault) authAppRole(ctx context.Context, client *vault.Client, auth *pb_vault.AppRoleAuth) (*vault.Secret, error) {
+	value, err := loginSecret(auth.GetSecretId(), "app_role_auth.secret_id")
+	if err != nil {
+		return nil, err
+	}
 	secretID := &approle.SecretID{}
 	switch auth.GetSecretIdType() {
 	case pb_enums.SecretIDType_PLAIN:
-		secretID.FromString = auth.GetSecretId()
+		secretID.FromString = value
 	case pb_enums.SecretIDType_ENVIRONMENT:
-		secretID.FromEnv = auth.GetSecretId()
+		secretID.FromEnv = value
 	default:
 		return nil, fmt.Errorf("unsupported approle secret_id_type: %v", auth.GetSecretIdType())
 	}
@@ -459,9 +499,13 @@ func (v *Vault) authUserPass(ctx context.Context, client *vault.Client, auth *pb
 		opts = append(opts, authuserpass.WithMountPath(mp))
 	}
 
+	password, err := loginSecret(auth.GetPassword(), "userpass_auth.password")
+	if err != nil {
+		return nil, err
+	}
 	userpassAuth, err := authuserpass.NewUserpassAuth(
 		auth.GetUsername(),
-		&authuserpass.Password{FromString: auth.GetPassword()},
+		&authuserpass.Password{FromString: password},
 		opts...,
 	)
 	if err != nil {

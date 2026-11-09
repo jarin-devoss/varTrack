@@ -44,10 +44,9 @@ def test_json_and_yaml(files):
 
 def test_config_and_datasource_settings_read_a_key(files):
     from app.config import _resolve_secret_ref
-    from app.pipeline.datasource_settings import find_datasource, sink_settings
+    from app.pipeline.sinks.settings import load
 
     path = files("redis.env", "REDIS_PASSWORD=from-env-file\n")
     assert _resolve_secret_ref({"file": path, "key": "REDIS_PASSWORD"}) == "from-env-file"
     bundle = {"datasources": [{"redis": {"password": {"file": path, "key": "REDIS_PASSWORD"}}}]}
-    kind, cfg = find_datasource(bundle, "redis")
-    assert sink_settings(kind, cfg, "redis", bundle)["redis_password"] == "from-env-file"
+    assert load("redis", {}, bundle).secret("password") == "from-env-file"

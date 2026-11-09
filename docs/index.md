@@ -40,7 +40,7 @@ varTrack fills that gap. It treats Git as the single source of truth for **appli
 
 | | varTrack |
 |---|---|
-| Target | MongoDB, Redis, ZooKeeper, S3, ConfigMap, Helm, Vercel, Linux |
+| Target | MongoDB, Redis, ZooKeeper, S3, ConfigMap, Helm, Linux |
 | Trigger | Git push / webhook |
 | Drift detection | Any datasource |
 | Secret management | HashiCorp Vault integration |
@@ -58,7 +58,7 @@ It works alongside whatever deploys your services: varTrack only keeps their run
 
     ---
 
-    MongoDB, Redis, ZooKeeper, S3, Kubernetes ConfigMap, Helm, Vercel, Linux server (SSH)
+    MongoDB, Redis, ZooKeeper, S3, Kubernetes ConfigMap, Helm, Linux server (SSH)
 
     [:octicons-arrow-right-24: See all sinks](sinks/index.md)
 
@@ -151,7 +151,7 @@ flowchart LR
     ORCH -->|write| REDIS["Redis"]
     ORCH -->|write| ZK["ZooKeeper"]
     ORCH -->|write| S3["S3 / MinIO"]
-    ORCH -->|write| OTHER["ConfigMap · Helm\nVercel · Linux"]
+    ORCH -->|write| OTHER["ConfigMap · Helm\nLinux"]
 
     WATCH -->|"CheckDatasource\n(drift check)"| ORCH
     WATCH -->|"SyncDatasource\n(self-heal)"| ORCH

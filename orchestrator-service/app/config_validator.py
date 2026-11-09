@@ -27,6 +27,20 @@ _TYPE_NAMES = {dict: "an object", bool: "true or false", str: "a string", list: 
                float: "a number"}
 # Keys any file may carry that no layer reads.
 _NOTES = frozenset({"description", "$schema"})
+# The tenant is where a file lives, never something it says: a file that could name its own tenant could act as
+# another one. A sync drops the key; here it is an error, so CI stops the file that carries it.
+_TENANT = "tenant_id"
+
+
+def _tenant_claim(options: dict, where: str, owner: str, result: "Result", tenant: str = "") -> None:
+    """An error when *options* carry a tenant_id. *owner* says where the tenant comes from; *tenant*, when the
+    file belongs to one, lets the error say when the key named another."""
+    if _TENANT not in options:
+        return
+    named = options[_TENANT]
+    other = (f" (it names tenant {named}, which this file cannot act as)"
+             if tenant and isinstance(named, str) and named and named != tenant else "")
+    result.errors.append(f"{where}: {_TENANT} cannot be set — the tenant is {owner}; delete the key{other}")
 
 
 class Result:
@@ -50,7 +64,7 @@ def validate(file_path: str, content: str, tenant_id: str = "default") -> Result
         result.errors.append(f"{name} is not valid JSON: {exc}")
         return result
     if name == "vartrack.json":
-        _repo_config(data, result)
+        _repo_config(data, result, tenant_id)
     else:
         _bundle(data, name, tenant_id, result)
     return result
@@ -61,19 +75,20 @@ def _unfetched(*_: Any) -> str:
     return "{}"
 
 
-def _repo_config(data: Any, result: Result) -> None:
-    from app.pipeline.presets import Origin, PresetError, Resolver
+def _repo_config(data: Any, result: Result, tenant_id: str = "default") -> None:
+    from app.pipeline.presets import Origin, PresetError, Resolver, scope_of
     from app.pipeline.repo_overrides import _OVERRIDABLE_KEYS
 
     if not isinstance(data, dict):
         result.errors.append(f"vartrack.json must hold a JSON object, not {type(data).__name__}")
         return
     try:
-        Resolver(Origin(""), _unfetched).resolve(data)
+        Resolver(Origin(""), _unfetched, scope_of(tenant_id)).resolve(data)
     except PresetError as exc:
         result.errors.append(f"vartrack.json: {exc}")
     data = _current(data, "vartrack.json", result)
-    ignored = sorted(set(data) - _OVERRIDABLE_KEYS - _NOTES - {"extends"})
+    _tenant_claim(data, "vartrack.json", "the one that owns the pushed repository", result)
+    ignored = sorted(set(data) - _OVERRIDABLE_KEYS - _NOTES - {"extends", _TENANT})
     if ignored:
         result.warnings.append(f"vartrack.json cannot set {', '.join(ignored)} — a sync ignores "
                                f"{'it' if len(ignored) == 1 else 'them'}")
@@ -83,16 +98,16 @@ def _repo_config(data: Any, result: Result) -> None:
 
 def _bundle(data: Any, name: str, tenant_id: str, result: Result) -> None:
     from app.pipeline import rule_layers
-    from app.pipeline.presets import Origin, PresetError, resolve_bundle_rules
+    from app.pipeline.presets import Origin, PresetError, resolve_bundle_rules, scope_of
     from app.schema_registry.manager import get_schema_manager
 
-    schema_repo = get_schema_manager()._tenant_configs.get(tenant_id) or {}
+    schema_repo = get_schema_manager().registration(tenant_id)
     if schema_repo.get("repo_url"):
         origin, fetch = Origin.of(schema_repo["repo_url"], schema_repo.get("token")), None
     else:
         origin, fetch = Origin(""), _unfetched
     try:
-        rules = resolve_bundle_rules(data, origin, name, fetch)
+        rules = resolve_bundle_rules(data, origin, name, fetch, scope_of(tenant_id))
     except PresetError as exc:
         result.errors.append(str(exc))
         return
@@ -110,8 +125,13 @@ def _bundle(data: Any, name: str, tenant_id: str, result: Result) -> None:
         rule = _current(rule, where, result)
         _types(rule, where, result)
         _prune_last(rule, where, result)
+        _tenant_claim(rule, where, f"the one whose schema repository holds this {name} ({tenant_id})", result,
+                      tenant=tenant_id)
         if not cues:
-            continue  # without rules in config.cue, bundle.json's are used as they are
+            # without rules in config.cue, bundle.json's are used as they are: the rule is this one
+            if (why := rule_layers.refusal(rule)):
+                result.errors.append(f"{where} would be refused and not loaded: {why}")
+            continue
         cue = next((c for c in cues if c.get("platform") == platform and c.get("datasource") == datasource), None)
         if cue is None:
             result.errors.append(f"{where}: config.cue has no rule for {platform}/{datasource}")
@@ -121,11 +141,21 @@ def _bundle(data: Any, name: str, tenant_id: str, result: Result) -> None:
                                  f"not {tenant_id}")
             continue
         base = rule_layers.layered_rule(cue, None, tenant_id, bundle)
-        ignored = sorted(k for k in rule if k in rule_layers.admin_only_keys() and rule[k] != base.get(k))
+        _, reserved, unknown = rule_layers.tenant_settable(rule)
+        unknown = [k for k in unknown if k != _TENANT]
+        ignored = [k for k in reserved if rule[k] != base.get(k)]
         if ignored:
             result.warnings.append(f"{where} sets {', '.join(ignored)}, which only config.cue sets — "
                                    f"a sync ignores {'it' if len(ignored) == 1 else 'them'}")
-        _prune_without_effect(rule_layers.layered_rule(cue, rule, tenant_id, bundle), datasource, where, result)
+        if unknown:
+            result.warnings.append(f"{where} sets {', '.join(unknown)}, which "
+                                   f"{'is not an option' if len(unknown) == 1 else 'are not options'} a tenant may set — "
+                                   f"a sync ignores {'it' if len(unknown) == 1 else 'them'}")
+        layered = rule_layers.layered_rule(cue, rule, tenant_id, bundle)
+        if (why := rule_layers.refusal(layered)):
+            # What config.cue and this bundle.json make of the rule names no environments: it is refused when loaded.
+            result.errors.append(f"{where} would be refused and not loaded: {why}")
+        _prune_without_effect(layered, datasource, where, result)
 
 
 def _repeated_rules(rules: list[dict], name: str, result: Result) -> None:
@@ -151,7 +181,7 @@ def _prune_last(options: dict, where: str, result: Result) -> None:
     files are written. A prune block that only had it is a disabled block."""
     block = options.get("prune")
     if "prune_last" in options or (isinstance(block, dict) and "last" in block):
-        enabled = isinstance(block, dict) and ("enabled" in block or "dry_run" in block)
+        enabled = isinstance(block, dict) and "enabled" in block
         result.warnings.append(
             f"{where}: prune.last was removed and has no effect — prune now runs once per environment, "
             f"after all its files are written"
@@ -161,14 +191,14 @@ def _prune_last(options: dict, where: str, result: Result) -> None:
 
 def _prune_without_effect(rule: dict, datasource: str, where: str, result: Result) -> None:
     """prune on a sink that replaces a whole object on every write does nothing."""
-    from app.pipeline.datasource_settings import with_datasource_settings
     from app.pipeline.sinks import sink_class
+    from app.pipeline.sinks.settings import for_rule
     from app.tasks.payload import extract_prune_config
 
     cls = sink_class(datasource)
     if cls is None or not extract_prune_config(rule).enabled:
         return
-    if not cls.prunes_keys(with_datasource_settings(datasource, rule)):
+    if not cls.prunes_keys(for_rule(rule, datasource), rule):
         result.warnings.append(f"{where}: prune has no effect on {datasource} — it replaces the whole "
                                f"{cls.object_name} on every write, so no stale key is left")
 

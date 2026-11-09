@@ -23,6 +23,7 @@ const (
 	ErrCodeBodyTooLarge                ErrorCode = "GW_BODY_TOO_LARGE"
 	ErrCodeSignatureInvalid            ErrorCode = "GW_SIGNATURE_INVALID"
 	ErrCodeReplayDetected              ErrorCode = "GW_REPLAY_DETECTED"
+	ErrCodeReplayProtectionUnavailable ErrorCode = "GW_REPLAY_PROTECTION_UNAVAILABLE"
 	ErrCodeInvalidJSON                 ErrorCode = "GW_INVALID_JSON"
 	ErrCodePayloadValidation           ErrorCode = "GW_PAYLOAD_VALIDATION"
 	ErrCodeSchemaRegistryNotConfigured ErrorCode = "GW_SCHEMA_REGISTRY_NOT_CONFIGURED"

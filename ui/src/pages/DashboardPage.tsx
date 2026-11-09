@@ -44,7 +44,7 @@ export function DashboardPage() {
   const bundle = useQuery('bundle', api => api.getBundle(), { poll: false });
   const health = useQuery('health', api => api.getHealth(), { poll: 15000 });
   const events = useQuery('events:recent', api => api.listEvents({ limit: 8 }));
-  const [syncing, setSyncing] = useState<{ rule: RuleView; env: string } | null>(null);
+  const [syncing, setSyncing] = useState<{ rule: RuleView; env: string; dryRun?: boolean } | null>(null);
 
   if (rules.error && !rules.data) {
     return (
@@ -68,7 +68,7 @@ export function DashboardPage() {
         </div>
       </Hero>
 
-      <AttentionPanel rules={rules.data} onSync={(rule, env) => setSyncing({ rule, env })} />
+      <AttentionPanel rules={rules.data} onSync={(rule, env, dryRun) => setSyncing({ rule, env, dryRun })} />
 
       <Panel title="Tenant" subtitle="Where the bundle comes from and what it connects to">
         <TenantFacts bundle={bundle.data} rules={rules.data} error={bundle.error} />
@@ -103,12 +103,12 @@ export function DashboardPage() {
         )}
       </Panel>
 
-      <SyncPanel open={!!syncing} rule={syncing?.rule ?? null} initialEnvs={syncing ? [syncing.env] : undefined} onClose={() => setSyncing(null)} onStarted={rules.reload} />
+      <SyncPanel open={!!syncing} rule={syncing?.rule ?? null} initialEnvs={syncing ? [syncing.env] : undefined} initialDryRun={syncing?.dryRun} onClose={() => setSyncing(null)} onChanged={rules.reload} />
     </div>
   );
 }
 
-function AttentionPanel({ rules, onSync }: { rules: RuleView[]; onSync: (rule: RuleView, env: string) => void }) {
+function AttentionPanel({ rules, onSync }: { rules: RuleView[]; onSync: (rule: RuleView, env: string, dryRun?: boolean) => void }) {
   const attention = useMemo(() => needsAttention(rules), [rules]);
   const seen = new Set<string>();
   const items = attention.filter(a => {
@@ -126,7 +126,7 @@ function AttentionPanel({ rules, onSync }: { rules: RuleView[]; onSync: (rule: R
       ) : (
         <div>
           {items.map(a => (
-            <EnvRow key={`${a.rule.name}|${a.target.env}`} rule={a.rule} target={a.target} onSync={() => onSync(a.rule, a.target.env)} />
+            <EnvRow key={`${a.rule.name}|${a.target.env}`} rule={a.rule} target={a.target} onSync={dryRun => onSync(a.rule, a.target.env, dryRun)} />
           ))}
         </div>
       )}
@@ -167,7 +167,7 @@ function TenantFacts({ bundle, rules, error }: { bundle?: BundleView; rules: Rul
       <div>
         <dt>Schema registry</dt>
         <dd className="mono">
-          {bundle.schemaRegistry ? `${bundle.schemaRegistry.repo}@${bundle.schemaRegistry.branch}` : <span className="muted">none</span>}
+          {bundle.schemaRepos.length ? bundle.schemaRepos.map(s => `${s.repo}@${s.branch}`).join(', ') : <span className="muted">none</span>}
         </dd>
       </div>
     </dl>

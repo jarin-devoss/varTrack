@@ -20,15 +20,27 @@ which refuses a replayed webhook. Point it at a Redis datasource of the bundle:
 
 ```cue
 bundle: {
-  datasources: [{redis: {tag: "broker", host: "redis", port: 6379}}]
+  datasources: [{redis: {tag: "broker", hosts: ["redis:6379"]}}]
   gateway_nonce_datasource: "redis-broker"
 }
 ```
 
-Without it each replica remembers the deliveries it saw itself, so a replay sent to another
-replica is not caught. If Redis cannot be reached at startup the gateway logs
-`Redis nonce store unavailable — using in-process memory store`; if it fails later, a
-delivery is let through rather than all traffic blocked.
+The datasource's `password` may be a string, a `{file: …}` or a `{ref: …}`; any character in
+it is fine.
+
+Replay protection never quietly gets weaker:
+
+- **`APP_ENV=production` without `gateway_nonce_datasource`, or with one the gateway cannot
+  reach or log in to, does not start.** Each replica would otherwise remember only the
+  deliveries it saw itself, and a replay sent to another replica would not be caught.
+- **If Redis fails later, a webhook that cannot be checked is refused** with `503`
+  (`GW_REPLAY_PROTECTION_UNAVAILABLE`, `Retry-After: 5`) and is not recorded, so the platform's
+  retry is the first time it is seen. Readiness reports `nonce_store unavailable` until Redis
+  answers.
+- **Outside production**, an operator who wants a development gateway with no Redis names the
+  mode: `VARTRACK_ALLOW_DEGRADED=nonce_store`. The gateway then keeps deliveries in its own
+  process, logs it at startup and lists it under `degraded` in `/health/readiness` for as long as
+  it runs. Production refuses the mode whatever is named.
 
 The rate limiter counts per replica, so the limit a client meets grows with the number of
 replicas.
@@ -84,7 +96,6 @@ The watcher keeps no state of its own, so a new leader starts where the last one
 |---|---|
 | Worker `--concurrency` (`WORKER_CONCURRENCY` in the compose file, 4) | Syncs one worker runs at once |
 | `POLL_INTERVAL` (watcher, 60 s) | How often drift is checked; each poll makes the orchestrator read every `self_heal` datasource |
-| `max_changed_files` (rule, 500) | The most files one push syncs |
 | `sync_mode` | `GIT_SMART_REPAIR` reads MongoDB before writing and writes only what changed; `AUTO` uses it above 500 keys |
 | `GIT_CACHE_MAX_ENTRIES` (20) | Mirrors kept on disk per cache directory |
 | `SCHEMA_TTL_SECONDS` (300) | How often a tenant's schema repository is refreshed |

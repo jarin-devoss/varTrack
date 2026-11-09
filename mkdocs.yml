@@ -44,12 +44,12 @@ nav:
       - S3: sinks/s3.md
       - Kubernetes ConfigMap: sinks/configmap.md
       - Helm: sinks/helm.md
-      - Vercel: sinks/vercel.md
       - Linux Server: sinks/linux-server.md
   - Operations:
     - Docker Compose: deployment/docker-compose.md
     - Production Checklist: operations/production-checklist.md
     - High Availability & Scaling: operations/high-availability.md
+    - Internal Authentication: operations/internal-auth.md
     - Monitoring: operations/monitoring.md
     - Troubleshooting: operations/troubleshooting.md
     - Upgrading: operations/upgrading.md

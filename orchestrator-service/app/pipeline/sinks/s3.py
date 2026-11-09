@@ -34,7 +34,7 @@ import logging
 import threading
 from collections.abc import Collection
 import mimetypes
-from typing import Any
+from typing import Any, TYPE_CHECKING
 from urllib.parse import quote, unquote
 
 from app.pipeline.sinks.base import BaseSink, update_strategy
@@ -42,6 +42,9 @@ from app.pipeline.sinks.labels import VarTrackLabels
 from app.pipeline.sinks.key_formatter import resolve_destination
 from app.pipeline.transformer import _flatten, as_nested
 from app.utils.enums.sync_mode import SyncMode
+
+if TYPE_CHECKING:
+    from app.pipeline.sinks.settings import Settings
 
 logger = logging.getLogger(__name__)
 
@@ -55,6 +58,7 @@ class S3Sink(BaseSink):
         self,
         *,
         name: str = "s3",
+        settings: "Settings | None" = None,
         rule_config: dict | None = None,
         tenant_id: str = "default",
         **_kwargs: Any,
@@ -64,57 +68,64 @@ class S3Sink(BaseSink):
         except ImportError as exc:
             raise RuntimeError("boto3 is required: pip install boto3") from exc
 
-        cfg = rule_config or {}
-        self._bucket          = cfg["s3_bucket"]
-        self._prefix          = cfg.get("s3_key_prefix", "").rstrip("/")
-        # S3Config.update_strategy; unset keeps s3_one_file_per_key.
-        self._strategy        = update_strategy(cfg.get("update_strategy"))
+        from app.pipeline.sinks.settings import Settings
+
+        s    = settings or Settings.of("s3")
+        rule = rule_config or {}
+        if not s.get("bucket"):
+            raise ValueError(f"s3 datasource {s.name}: bucket is required")
+        self._bucket          = s.get("bucket")
+        self._prefix          = s.get("prefix", "").rstrip("/")
+        # S3Config.update_strategy; unset keeps one_file_per_key.
+        self._strategy        = update_strategy(s.get("update_strategy"))
         self._one_per_key     = self._strategy == "STRATEGY_KEY_VALUE" or (
-            self._strategy == "STRATEGY_UNSPECIFIED" and bool(cfg.get("s3_one_file_per_key", False))
+            self._strategy == "STRATEGY_UNSPECIFIED" and bool(s.get("one_file_per_key", False))
         )
-        self._static_tags     = cfg.get("s3_object_tags", {})
-        self._dynamic_tag_keys= cfg.get("s3_tag_keys", [])
+        self._static_tags     = rule.get("s3_object_tags", {})
+        self._dynamic_tag_keys= rule.get("s3_tag_keys", [])
         self._tenant_id       = tenant_id
         # destination_template: path prefix template, e.g. "{tenant}/{env}".
-        # Takes precedence over s3_key_prefix when set.
-        self._dest_tpl  = cfg.get("destination_template", "")
+        # Takes precedence over prefix when set.
+        self._dest_tpl  = rule.get("destination_template", "")
 
         # The single-document object's name; "{env}" is the environment.
-        self._file_pattern    = cfg.get("s3_file_pattern") or "config.json"
-        self._content_type    = cfg.get("s3_content_type") or ""
+        self._file_pattern    = s.get("file_pattern") or "config.json"
+        self._content_type    = s.get("content_type") or ""
         # Server-side encryption on every object written: AES256 or aws:kms.
         self._put_extra: dict[str, str] = {}
-        if cfg.get("s3_sse"):
-            self._put_extra["ServerSideEncryption"] = cfg["s3_sse"]
-        if cfg.get("s3_kms_key_id"):
-            self._put_extra["SSEKMSKeyId"] = cfg["s3_kms_key_id"]
+        if s.get("server_side_encryption"):
+            self._put_extra["ServerSideEncryption"] = s.get("server_side_encryption")
+        if s.get("kms_key_id"):
+            self._put_extra["SSEKMSKeyId"] = s.get("kms_key_id")
 
         client_options: dict[str, Any] = {}
-        timeout = cfg.get("s3_timeout_secs")
-        if cfg.get("s3_force_path_style") or timeout:
+        timeout = s.seconds("timeout")
+        if s.get("force_path_style") or timeout:
             from botocore.config import Config
 
             client_options["config"] = Config(
-                s3={"addressing_style": "path"} if cfg.get("s3_force_path_style") else {},
+                s3={"addressing_style": "path"} if s.get("force_path_style") else {},
                 **({"connect_timeout": timeout, "read_timeout": timeout} if timeout else {}),
             )
-        # verify_ssl false skips certificate checks; ssl_ca_cert names a CA bundle.
-        if cfg.get("s3_verify_ssl") is False:
+        # The endpoint's certificate is checked unless insecure_skip_verify says not to;
+        # ssl_ca_cert names a CA bundle (a path) to check it against.
+        if s.get("insecure_skip_verify") is True:
             client_options["verify"] = False
-        elif cfg.get("s3_ssl_ca_cert"):
-            client_options["verify"] = cfg["s3_ssl_ca_cert"]
-        if cfg.get("s3_session_token"):
-            client_options["aws_session_token"] = cfg["s3_session_token"]
+        elif s.get("ssl_ca_cert"):
+            client_options["verify"] = s.get("ssl_ca_cert")
+        session_token = s.secret("session_token")
+        if session_token:
+            client_options["aws_session_token"] = session_token
 
         self._s3 = boto3.client(
             "s3",
-            region_name=cfg.get("s3_region"),
-            aws_access_key_id=cfg.get("s3_access_key_id"),
-            aws_secret_access_key=cfg.get("s3_secret_access_key"),
-            endpoint_url=cfg.get("s3_endpoint_url"),
+            region_name=s.get("region"),
+            aws_access_key_id=s.secret("access_key_id"),
+            aws_secret_access_key=s.secret("secret_access_key"),
+            endpoint_url=s.get("endpoint") or None,
             **client_options,
         )
-        if cfg.get("s3_enable_versioning"):
+        if s.get("enable_versioning"):
             _enable_versioning(self._s3, self._bucket)
 
     def _write(

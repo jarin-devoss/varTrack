@@ -22,6 +22,7 @@ from app.pipeline.models import PayloadContext
 from app.pipeline.sinks.base import update_strategy
 from app.pipeline.sinks.s3 import S3Sink
 from app.pipeline.sinks.strategies.mongo import DocumentStrategy, FileStrategy, KeyValueStrategy, get_strategy
+from app.pipeline.sinks.settings import Settings
 from app.pipeline.sinks.zookeeper import ZookeeperSink
 from app.pipeline.transformer import _py_flatten, file_shape, transform, unflatten
 
@@ -145,14 +146,15 @@ def test_transform_flattens_the_data_already_parsed(name, content, flat):
 
 def test_stage_etl_records_the_file_in_the_shape_it_parsed_to():
     from app.pipeline.stage_etl import run_stage_etl
+    from app.pipeline.validator import SchemaChoice
 
     ctx = PayloadContext(platform="github", repo_url="https://github.com/o/r", ref="refs/heads/main",
                          branch="main", commit_sha="abc", tag=None, pr_number=None,
-                         rule_config={"root_key": ""}, parsed_payload={})
+                         rule_config={"root_key": "", "branch_as_env": True}, parsed_payload={})
     schema = MagicMock()
-    schema.tenant_schema_root.return_value = Path("/nonexistent")
+    schema.current_schema_root.return_value = Path("/nonexistent")
     validator = MagicMock()
-    validator._find_schema.return_value = None
+    validator.choose.return_value = SchemaChoice(None, "none", "none")
     files = [("app.yaml", "api:\n  rate_limit: 6000\n"), ("app.env", "DB_HOST=x\n")]
     with (
         patch("app.pipeline.stage_etl.collect_files", return_value=files),
@@ -262,7 +264,8 @@ def test_key_value_reads_one_document_per_key():
 # ── S3 ────────────────────────────────────────────────────────────────────────
 
 def _s3(**cfg) -> S3Sink:
-    return S3Sink(rule_config={"s3_bucket": "b", **cfg})
+    from app.pipeline.sinks.settings import Settings
+    return S3Sink(settings=Settings.of("s3", bucket="b", **cfg))
 
 
 @pytest.mark.parametrize("cfg,flat,data,expected", [
@@ -280,8 +283,8 @@ def test_s3_config_json_follows_update_strategy(cfg, flat, data, expected):
 
 
 @pytest.mark.parametrize("cfg,per_key", [
-    ({"update_strategy": "STRATEGY_KEY_VALUE"}, True), ({"s3_one_file_per_key": True}, True),
-    ({"update_strategy": "STRATEGY_FILE", "s3_one_file_per_key": True}, False), ({}, False),
+    ({"update_strategy": "STRATEGY_KEY_VALUE"}, True), ({"one_file_per_key": True}, True),
+    ({"update_strategy": "STRATEGY_FILE", "one_file_per_key": True}, False), ({}, False),
 ])
 def test_s3_writes_one_object_per_key_for_key_value(cfg, per_key):
     assert _s3(**cfg)._one_per_key is per_key
@@ -292,8 +295,8 @@ def test_s3_writes_one_object_per_key_for_key_value(cfg, per_key):
 @pytest.mark.parametrize("strategy", ["STRATEGY_DOCUMENT", "STRATEGY_FILE"])
 def test_zookeeper_stores_flat_keys_only(strategy):
     with pytest.raises(ValueError, match="one znode per key"):
-        ZookeeperSink(rule_config={"update_strategy": strategy})
+        ZookeeperSink(settings=Settings.of("zookeeper", update_strategy=strategy))
 
 
 def test_zookeeper_takes_key_value():
-    ZookeeperSink(rule_config={"update_strategy": "STRATEGY_KEY_VALUE"})
+    ZookeeperSink(settings=Settings.of("zookeeper", update_strategy="STRATEGY_KEY_VALUE"))

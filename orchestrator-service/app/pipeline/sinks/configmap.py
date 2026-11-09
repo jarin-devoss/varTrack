@@ -37,7 +37,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Collection
-from typing import Any
+from typing import Any, TYPE_CHECKING
 
 from app.pipeline.sinks.base import BaseSink
 from app.pipeline.sinks.labels import VarTrackLabels
@@ -46,6 +46,9 @@ from app.pipeline.sinks.key_formatter import (
     resolve_destination,
 )
 from app.utils.enums.sync_mode import SyncMode
+
+if TYPE_CHECKING:
+    from app.pipeline.sinks.settings import Settings
 
 logger = logging.getLogger(__name__)
 
@@ -60,6 +63,7 @@ class ConfigmapSink(BaseSink):
         self,
         *,
         name: str = "configmap",
+        settings: "Settings | None" = None,
         rule_config: dict | None = None,
         tenant_id: str = "default",
         **_kwargs: Any,
@@ -69,24 +73,29 @@ class ConfigmapSink(BaseSink):
         except ImportError as exc:
             raise RuntimeError("kubernetes is required: pip install kubernetes") from exc
 
-        cfg = rule_config or {}
+        from app.pipeline.sinks.settings import Settings
 
-        self._namespace          = cfg["k8s_namespace"]
-        self._cm_name            = cfg["k8s_configmap_name"]
+        s    = settings or Settings.of("configmap")
+        rule = rule_config or {}
+        if not s.get("namespace") or not s.get("configmap_name"):
+            raise ValueError(f"configmap datasource {s.name}: namespace and configmap_name are required")
+
+        self._namespace          = s.get("namespace")
+        self._cm_name            = s.get("configmap_name")
         self._tenant_id          = tenant_id
-        self._env_as_namespace   = bool(cfg.get("env_as_namespace", False))
-        self._env_as_name_suffix = bool(cfg.get("env_as_name_suffix", True))
+        self._env_as_namespace   = bool(s.get("env_as_namespace", False))
+        self._env_as_name_suffix = bool(s.get("env_as_name_suffix", True))
         # destination_template: ConfigMap name template, e.g. "myapp-{env}".
         # Takes precedence over env_as_name_suffix logic when set.
-        self._dest_tpl     = cfg.get("destination_template", "")
+        self._dest_tpl     = rule.get("destination_template", "")
 
         # Key format: "flat" (default) or "dot". Validated against allowed list.
-        fmt_name         = cfg.get("key_format", "flat")
+        fmt_name         = rule.get("key_format", "flat")
         self._key_format = key_format_from_str(fmt_name)
         validate_sink_format(_SINK_KIND, self._key_format)
 
         self._k8s_client = k8s_client
-        self._api        = self._build_api(cfg, k8s_client, k8s_config)
+        self._api        = self._build_api(s, k8s_client, k8s_config)
 
         logger.debug(
             "ConfigmapSink ready fmt=%s env_as_namespace=%s env_as_name_suffix=%s",
@@ -94,15 +103,15 @@ class ConfigmapSink(BaseSink):
         )
 
     @staticmethod
-    def _build_api(cfg, k8s_client, k8s_config):
-        api_server = cfg.get("k8s_api_server")
-        token      = cfg.get("k8s_token")
-        kubeconfig = cfg.get("k8s_kubeconfig_path")
+    def _build_api(settings, k8s_client, k8s_config):
+        api_server = settings.get("api_server")
+        token      = settings.secret("token")
+        kubeconfig = settings.get("kubeconfig_path")
         if api_server and token:
             configuration = k8s_client.Configuration()
             configuration.host    = api_server
             configuration.api_key = {"authorization": f"Bearer {token}"}
-            configuration.verify_ssl = bool(cfg.get("k8s_verify_ssl", True))
+            configuration.verify_ssl = not settings.get("insecure_skip_verify", False)
             k8s_client.Configuration.set_default(configuration)
         elif kubeconfig:
             k8s_config.load_kube_config(config_file=kubeconfig)

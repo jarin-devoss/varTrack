@@ -24,9 +24,6 @@ message RepositoryOverride {
 // the environment holds any more; a key varTrack did not write, or one that
 // something else changed since, is never deleted.
 //
-// dry_run    – simulate the prune step: reads live DB state to compute
-//              candidates but never actually deletes. Always forced to true
-//              when the outer task runs in dry-run mode.
 // protection – glob patterns for keys that must never be deleted
 //              (e.g. "bootstrap.*", "_schema").
 message PruneConfig {
@@ -37,11 +34,28 @@ message PruneConfig {
 
   // enabled = true  → prune is active (equivalent to legacy prune: true)
   // enabled = false → prune is disabled (equivalent to legacy prune: false)
-  // A structured block that sets dry_run is enabled unless it says otherwise;
-  // one that only lists protection is not.
+  // A block that only lists protection is not enabled.
+  //
+  // Field 2 was `dry_run` (delete nothing, only report what would go). That is
+  // what a dry run reports for any rule that prunes, and what a rule with
+  // prune off does on a sync.
+  reserved 2;
+  reserved "dry_run";
   bool            enabled    = 4 [(google.api.field_behavior) = OPTIONAL];
-  bool            dry_run    = 2 [(google.api.field_behavior) = OPTIONAL];
   repeated string protection = 3 [(google.api.field_behavior) = OPTIONAL];
+}
+
+// SchemaMapping sends the files whose path matches `match` to one CUE schema.
+message SchemaMapping {
+  // A glob over the file's path in its repository, with forward slashes: `*`
+  // stays inside one folder, `**` crosses folders, `?` is one character, and
+  // dotfiles match. Case counts.
+  string match = 1 [(google.api.field_behavior) = REQUIRED];
+
+  // The schema that checks them: a path inside the tenant's schema repository,
+  // ending in `.cue`, or `none` for "not checked, on purpose". No absolute path,
+  // no `..`, no backslash.
+  string schema = 2 [(google.api.field_behavior) = REQUIRED];
 }
 
 // Rule maps a platform and datasource to what is synced and how.
@@ -74,7 +88,7 @@ message Rule {
   repeated string repositories = 5 [
     (buf.validate.field).repeated.min_items = 1,
     (google.api.field_behavior) = REQUIRED,
-    (vartrack.v1.config) = {admin_only: true}
+    (vartrack.v1.config) = {settable_in: CONFIG_CUE}
   ];
 
   // ── Source selection ─────────────────────────────────────────────────────────
@@ -83,14 +97,14 @@ message Rule {
   // Mutually exclusive with file_path_map (validated below).
   optional string file_name = 4 [
     (google.api.field_behavior) = OPTIONAL,
-    (vartrack.v1.config) = {repo_overridable: true}
+    (vartrack.v1.config) = {settable_in: VARTRACK_JSON}
   ];
 
   // Maps environment label → file path for per-env config files.
   // e.g. { "production": "config/prod.json", "staging": "config/staging.json" }
   map<string, string> file_path_map = 11 [
     (google.api.field_behavior) = OPTIONAL,
-    (vartrack.v1.config) = {mergeable: true, repo_overridable: true}
+    (vartrack.v1.config) = {mergeable: true, settable_in: VARTRACK_JSON}
   ];
 
   // The branch the periodic self-heal compares when the rule has no
@@ -100,12 +114,12 @@ message Rule {
     (google.api.field_behavior) = OPTIONAL
   ];
 
-  // The most files one push syncs; a push that changed more is cut to the
-  // first of them, with a warning. 500 when unset.
-  optional int32 max_changed_files = 32 [
-    (buf.validate.field).int32.gt = 0,
-    (google.api.field_behavior) = OPTIONAL
-  ];
+  // Field 32 was `max_changed_files`, the most files one push synced: it cut the
+  // "every file the push changed" fallback of a rule that named no file. A rule
+  // names the file it reads now (file_name or file_path_map) and reads only that,
+  // so there is nothing to cut. Reserved so the number is never reused.
+  reserved 32;
+  reserved "max_changed_files";
 
   // ── root_key ─────────────────────────────────────────────────────────────────
   //
@@ -129,7 +143,7 @@ message Rule {
   // file is parsed.
   optional string root_key = 24 [
     (google.api.field_behavior) = OPTIONAL,
-    (vartrack.v1.config) = {repo_overridable: true}
+    (vartrack.v1.config) = {settable_in: VARTRACK_JSON}
   ];
 
   // ── Environment resolution ───────────────────────────────────────────────────
@@ -137,27 +151,31 @@ message Rule {
   // The branch name is the environment. Formerly env_as_branch.
   bool branch_as_env = 7  [
     (google.api.field_behavior) = OPTIONAL,
-    (vartrack.v1.config) = {repo_overridable: true, old_names: ["env_as_branch"]}
+    (vartrack.v1.config) = {settable_in: VARTRACK_JSON, old_names: ["env_as_branch"]}
   ];
   // "pr-{number}" is the environment. Formerly env_as_pr.
   bool pr_as_env     = 8  [
     (google.api.field_behavior) = OPTIONAL,
-    (vartrack.v1.config) = {repo_overridable: true, old_names: ["env_as_pr"]}
+    (vartrack.v1.config) = {settable_in: VARTRACK_JSON, old_names: ["env_as_pr"]}
   ];
   // The tag name is the environment. Formerly env_as_tags.
   // The former names are still read from bundles and vartrack.json.
   bool tag_as_env    = 9  [
     (google.api.field_behavior) = OPTIONAL,
-    (vartrack.v1.config) = {repo_overridable: true, old_names: ["env_as_tags"]}
+    (vartrack.v1.config) = {settable_in: VARTRACK_JSON, old_names: ["env_as_tags"]}
   ];
 
   // Branch → environment, e.g. {main: "production", develop: "staging"}.
   // A push to a branch that is not listed, and that no file_path_map,
-  // branch_as_env, pr_as_env or tag_as_env places, is synced to the
-  // environment "default".
+  // branch_as_env, pr_as_env or tag_as_env places, feeds no environment of
+  // the rule: it is skipped, not written anywhere. There is no "default"
+  // environment; a rule has to name where its environments come from (this,
+  // file_path_map, branch_as_env, pr_as_env or tag_as_env) in config.cue or the
+  // tenant's bundle.json, or it is refused when it is loaded. To keep writing
+  // to an environment called default, map a branch to it: {main: "default"}.
   map<string, string> branch_map = 10 [
     (google.api.field_behavior) = OPTIONAL,
-    (vartrack.v1.config) = {mergeable: true, repo_overridable: true}
+    (vartrack.v1.config) = {mergeable: true, settable_in: VARTRACK_JSON}
   ];
 
   // ── Sink / merge options ─────────────────────────────────────────────────────
@@ -168,7 +186,7 @@ message Rule {
   // the bundle's only one.
   optional string secret_manager  = 3  [
     (google.api.field_behavior) = OPTIONAL,
-    (vartrack.v1.config) = {admin_only: true}
+    (vartrack.v1.config) = {settable_in: CONFIG_CUE}
   ];
   // Universal storage path / key / name template for the sink.
   // Supported placeholders: {tenant}, {env}
@@ -184,12 +202,15 @@ message Rule {
   // configmap   ConfigMap name               "myapp-{env}"      → myapp-pr-42
   //
   // When not set each sink falls back to its own sink-specific config key.
-  string destination_template     = 12 [(google.api.field_behavior) = OPTIONAL];
+  string destination_template     = 12 [
+    (google.api.field_behavior) = OPTIONAL,
+    (vartrack.v1.config) = {old_names: ["zk_path_template"]}
+  ];
   // Renames of flat keys before they are written: {"NEW_NAME": "path.in.file"}
   // writes the value at path.in.file under NEW_NAME.
   map<string, string> variables_map = 13 [
     (google.api.field_behavior) = OPTIONAL,
-    (vartrack.v1.config) = {mergeable: true, repo_overridable: true}
+    (vartrack.v1.config) = {mergeable: true, settable_in: VARTRACK_JSON}
   ];
   // How a sync writes. AUTO (the default) uses GIT_UPSERT_ALL for a file of
   // up to 500 keys and GIT_SMART_REPAIR above. GIT_UPSERT_ALL writes every
@@ -199,7 +220,7 @@ message Rule {
   // FULL as GIT_UPSERT_ALL.
   SyncMode sync_mode              = 14 [
     (google.api.field_behavior) = OPTIONAL,
-    (vartrack.v1.config) = {repo_overridable: true}
+    (vartrack.v1.config) = {settable_in: VARTRACK_JSON}
   ];
 
   // Field 21 was: apply_strategy (ApplyStrategy). Always CLIENT_SIDE — removed.
@@ -212,30 +233,29 @@ message Rule {
   // matches them.
   repeated string exclude_repositories  = 6  [
     (google.api.field_behavior) = OPTIONAL,
-    (vartrack.v1.config) = {admin_only: true}
+    (vartrack.v1.config) = {settable_in: CONFIG_CUE}
   ];
   // Turns the rule on or off for some repositories:
   // [{match_repositories: ["other-org/*"], enable: true}].
   repeated RepositoryOverride overrides = 15 [
     (google.api.field_behavior) = OPTIONAL,
-    (vartrack.v1.config) = {admin_only: true}
+    (vartrack.v1.config) = {settable_in: CONFIG_CUE}
   ];
 
   // ── Pruning ──────────────────────────────────────────────────────────────────
   // Structured prune config — replaces the old flat bool fields.
-  // prune.dry_run    → simulate only; always forced true when task dry_run=true
   // prune.protection → glob patterns that are never pruned
 
   // Delete keys varTrack wrote before that Git no longer holds: true, or
-  // {enabled, dry_run, protection}. Prune runs once per environment after all
+  // {enabled, protection}. Prune runs once per environment after all
   // its files are written, only on sinks that keep each key separately (Redis,
-  // ZooKeeper, Vercel, MongoDB with STRATEGY_KEY_VALUE). A key changed outside
+  // ZooKeeper, MongoDB with STRATEGY_KEY_VALUE). A key changed outside
   // varTrack is kept and reported. protection lists glob patterns of keys that
   // are never deleted; every layer's patterns add up. An object with only
   // protection does not turn pruning on.
   PruneConfig prune = 16 [
     (google.api.field_behavior) = OPTIONAL,
-    (vartrack.v1.config) = {mergeable: true, repo_overridable: true}
+    (vartrack.v1.config) = {mergeable: true, settable_in: VARTRACK_JSON}
   ];
 
   // Field numbers 17–19 were: prune_last, prune_protection, dry_run_prune.
@@ -245,20 +265,14 @@ message Rule {
 
   // ── Dry-run mode ──────────────────────────────────────────────────────────────
   //
-  // When true, the pipeline runs in simulation mode for every webhook that
-  // matches this rule: Stage 1 (payload) and Stage 2 (ETL) execute fully —
-  // @secret fields are fetched and then masked as "***" in the report —
-  // but Stage 3 (sink write) is skipped.  No data is ever written to the sink.
-  //
-  // Use case: "shadow" rules that validate config changes in CI/CD without
-  // touching the live datasource; canary rules during schema migrations.
-  //
-  // This flag is always forced to true by the /dry-run API endpoint even if
-  // the rule itself has dry_run = false.
-  bool dry_run = 25 [
-    (google.api.field_behavior) = OPTIONAL,
-    (vartrack.v1.config) = {repo_overridable: true}
-  ];
+  // A dry run is something a person starts, never a setting of a rule: the UI's
+  // Dry run, `vt sync --dry-run`, the dry-run webhook. It runs the whole
+  // pipeline — @secret fields are fetched and masked as "***" in the report —
+  // and skips the sink write. Field 25 was `dry_run`, a rule that never wrote
+  // (a "shadow rule"); a rule is now always a rule, and CI checks a change with
+  // `vt sync --dry-run`.
+  reserved 25;
+  reserved "dry_run";
 
   // ── Self-heal / scheduling ───────────────────────────────────────────────────
 
@@ -266,7 +280,7 @@ message Rule {
   // has the orchestrator write Git's values back.
   bool self_heal = 20 [
     (google.api.field_behavior) = OPTIONAL,
-    (vartrack.v1.config) = {admin_only: true}
+    (vartrack.v1.config) = {settable_in: CONFIG_CUE}
   ];
 
   // Field 22 was retry_backoff, which nothing read; the retry_backoff settings
@@ -284,7 +298,7 @@ message Rule {
   // self_heal, ...) are not needed here and are ignored.
   google.protobuf.Struct force = 26 [
     (google.api.field_behavior) = OPTIONAL,
-    (vartrack.v1.config) = {admin_only: true}
+    (vartrack.v1.config) = {settable_in: CONFIG_CUE}
   ];
 
   // ── Ownership, pausing, drift ────────────────────────────────────────────────
@@ -294,7 +308,7 @@ message Rule {
   // ("default" when empty).
   repeated string tenants = 27 [
     (google.api.field_behavior) = OPTIONAL,
-    (vartrack.v1.config) = {admin_only: true}
+    (vartrack.v1.config) = {settable_in: CONFIG_CUE}
   ];
 
   // Pauses automatic syncs: pushes and self-heal skip the rule, while syncs
@@ -313,8 +327,92 @@ message Rule {
   // synced.
   bool strict_validation = 30 [
     (google.api.field_behavior) = OPTIONAL,
-    (vartrack.v1.config) = {repo_overridable: true}
+    (vartrack.v1.config) = {settable_in: VARTRACK_JSON}
   ];
+
+  // Which schema checks which file, by the file's path in its repository: the
+  // first entry whose `match` matches the path wins. Without a match the schema
+  // is found by the file's name (`<name>.cue`, then `default.cue`) as before.
+  // A schema the map names that is not in the schema repository fails the file,
+  // with or without strict_validation. The layers add up, config.cue's entries
+  // first, so a path the operator mapped cannot be remapped by a tenant.
+  repeated SchemaMapping schema_map = 50 [
+    (google.api.field_behavior) = OPTIONAL,
+    (vartrack.v1.config) = {settable_in: BUNDLE_JSON}
+  ];
+
+  // Let a JSON, YAML or TOML file name its own schema with a top-level
+  // `$schema` key, when no schema_map entry matched its path (the map wins, and
+  // the file's result says so). The value has the syntax of a schema_map
+  // `schema`; a URL (an editor's hint) is ignored. `$schema` is never synced as
+  // a key, whether this is on or not.
+  bool schema_from_file = 51 [
+    (google.api.field_behavior) = OPTIONAL,
+    (vartrack.v1.config) = {settable_in: BUNDLE_JSON}
+  ];
+
+  // ── Identity the layers may state ────────────────────────────────────────────
+
+  // HTTPS clone URL of the config repository. Left out, it is derived from the
+  // platform and the rule's only repository.
+  string repo_url = 48 [
+    (google.api.field_behavior) = OPTIONAL,
+    (vartrack.v1.config) = {settable_in: BUNDLE_JSON}
+  ];
+
+  // Field 49 was tenant_id. The tenant is where a file lives, never something it says: it is the
+  // tenant whose schema repository holds the bundle.json that layers the rule, and a file that
+  // could name its own tenant could act as another one. varTrack keeps its own record of it on the
+  // rule it builds (the orchestrator's "tenant_id" key); it is not an option, so no file sets it.
+  reserved 49;
+  reserved "tenant_id";
+
+  // ── Sink options a tenant may set ────────────────────────────────────────────
+  //
+  // Formatting choices a sink makes that no datasource block carries. They change
+  // how values are laid out in the destination, never where it is or how to
+  // reach it, so a tenant's bundle.json may set them. Everything that locates or
+  // reaches a destination (hosts, credentials, paths, binaries, flags) is a
+  // datasource field, which only config.cue sets.
+
+  // How a nested key is flattened into a flat destination key: "dot", "flat", …
+  string key_format = 40 [
+    (google.api.field_behavior) = OPTIONAL,
+    (vartrack.v1.config) = {settable_in: BUNDLE_JSON}
+  ];
+
+  // Linux server: the format the file is written in. Left out, the file's extension.
+  string file_format = 41 [
+    (google.api.field_behavior) = OPTIONAL,
+    (vartrack.v1.config) = {settable_in: BUNDLE_JSON}
+  ];
+
+  // Linux server: one file per environment, named after it. True when left out.
+  optional bool env_as_filename = 42 [
+    (google.api.field_behavior) = OPTIONAL,
+    (vartrack.v1.config) = {settable_in: BUNDLE_JSON}
+  ];
+
+  // Helm: how values reach the chart, "set" (--set flags) or "file".
+  string helm_values_mode = 43 [
+    (google.api.field_behavior) = OPTIONAL,
+    (vartrack.v1.config) = {settable_in: BUNDLE_JSON}
+  ];
+
+  // S3: tags put on every object written.
+  map<string, string> s3_object_tags = 44 [
+    (google.api.field_behavior) = OPTIONAL,
+    (vartrack.v1.config) = {settable_in: BUNDLE_JSON}
+  ];
+
+  // S3: keys whose values become object tags.
+  repeated string s3_tag_keys = 45 [
+    (google.api.field_behavior) = OPTIONAL,
+    (vartrack.v1.config) = {settable_in: BUNDLE_JSON}
+  ];
+
+  reserved 46;
+  reserved "vercel_sensitive_keys";
 
   // ── Metadata (output only) ───────────────────────────────────────────────────
 

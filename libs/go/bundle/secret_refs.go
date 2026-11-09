@@ -13,8 +13,8 @@ const secretRefName protoreflect.FullName = "vartrack.v1.SecretRef"
 //	"password": "x"  →  "password": {"value": "x"}
 //
 // It follows md, the proto message v decodes into, so only fields the proto
-// declares as SecretRef are touched: a MongoDB "password" or a Vault
-// "token", which are plain strings in their protos, stay as they are. The
+// declares as SecretRef are touched: a Vault "token", which is a plain
+// string in its proto, stays as it is. The
 // object forms ({value}, {file}, {ref}) pass through unchanged.
 func wrapSecretRefs(v interface{}, md protoreflect.MessageDescriptor) {
 	obj, ok := v.(map[string]interface{})

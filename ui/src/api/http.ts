@@ -36,7 +36,7 @@ export function setUnauthenticatedHandler(handler: (() => void) | null): void {
 }
 
 export interface RequestOptions {
-  method?: 'GET' | 'POST';
+  method?: 'GET' | 'POST' | 'DELETE';
   body?: unknown;
   token?: string;
   tenant?: string;
@@ -85,6 +85,10 @@ export async function requestJson<T>(url: string, opts: RequestOptions = {}): Pr
     return { status: res.status, body: body as T };
   }
   if (res.status === 404 || res.status === 405 || res.status === 501) {
+    // A route the server does not have answers 404 {"detail": "Not Found"} (or nothing at all). A 404 that says what
+    // is missing ("no rule gitea/redis-hash") is the route answering: a rule that is not there, or not the viewer's.
+    const detail = errorMessage(body);
+    if (res.status === 404 && detail && detail !== 'Not Found') throw new ApiError(detail, 404, url);
     throw new NotAvailableError(url, res.status);
   }
   if (res.status === 401 && errorMessage(body) === 'sign in required') {

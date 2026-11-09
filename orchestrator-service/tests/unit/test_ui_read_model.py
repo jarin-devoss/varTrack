@@ -16,7 +16,8 @@ from app.ui import ledger, views
 
 
 def _rule(**kw):
-    return {"platform": "github", "datasource": "redis", "branch_map": {"main": "production"}, **kw}
+    # main feeds production, and any other branch feeds the environment of its own name
+    return {"platform": "github", "datasource": "redis", "branch_map": {"main": "production"}, "branch_as_env": True, **kw}
 
 
 def _record(desired, *, secrets=None, env="production", task="t1"):
@@ -58,8 +59,9 @@ class TestSinkType:
     def test_from_datasource_name(self, ds, expected):
         assert views.sink_type({"datasource": ds}) == expected
 
-    def test_from_connection_fields(self):
-        assert views.sink_type({"datasource": "zk-main", "zk_hosts": ["zk:2181"]}) == "zookeeper"
+    def test_the_datasource_name_decides_not_fields_a_rule_carries(self):
+        # A sink's connection is its datasource block in config.cue; a rule's copy says nothing.
+        assert views.sink_type({"datasource": "zookeeper-main", "redis_hosts": ["r:6379"]}) == "zookeeper"
 
 
 class TestCompare:
@@ -218,9 +220,44 @@ class TestRuleBase:
         assert base["name"] == "github/redis"
         assert base["repositories"] == ["acme/configs"]
         assert base["syncMode"] == "GIT_UPSERT_ALL"
-        assert base["prune"] == {"enabled": True, "dryRun": False, "protection": []}
+        assert base["prune"] == {"enabled": True, "protection": []}
         assert base["filePathMap"] == {"configs/prod.yaml": "production"}
         assert base["selfHeal"] is True
+
+
+class TestWouldChange:
+    """A dry run's answer to "what would a sync do": the values it would write against what the sink holds now."""
+
+    def test_keys_the_sink_lacks_are_added_and_different_ones_changed(self, monkeypatch):
+        _current(monkeypatch, {"same": "1", "diff": "old"})
+        got = views.would_change(_rule(), "acme", "production", {"same": "1", "diff": "new", "fresh": "x"})
+        assert got == {"added": ["fresh"], "addedCount": 1, "changed": [{"key": "diff", "from": "old", "to": "new"}],
+                       "changedCount": 1, "unchanged": 1, "secrets": 0}
+
+    def test_a_sink_that_already_matches_changes_nothing(self, monkeypatch):
+        _current(monkeypatch, {"a": "1", "b": "2"})
+        got = views.would_change(_rule(), "acme", "production", {"a": "1", "b": "2"})
+        assert (got["addedCount"], got["changedCount"], got["unchanged"]) == (0, 0, 2)
+
+    def test_a_secret_is_not_compared_because_a_dry_run_holds_it_masked(self, monkeypatch):
+        _current(monkeypatch, {"password": "real", "a": "1"})
+        got = views.would_change(_rule(), "acme", "production", {"password": "***", "a": "1"}, {"password"})
+        assert got["changedCount"] == 0 and got["secrets"] == 1 and got["unchanged"] == 1
+        assert "***" not in json.dumps(got) and "real" not in json.dumps(got)
+
+    def test_each_list_is_cut_with_its_full_count_beside_it(self, monkeypatch):
+        _current(monkeypatch, {})
+        got = views.would_change(_rule(), "acme", "production", {f"k{i:04d}": "v" for i in range(views.WOULD_CHANGE_LIMIT + 7)})
+        assert len(got["added"]) == views.WOULD_CHANGE_LIMIT and got["addedCount"] == views.WOULD_CHANGE_LIMIT + 7
+
+    def test_a_long_value_is_cut(self, monkeypatch):
+        _current(monkeypatch, {"a": "x" * 500})
+        got = views.would_change(_rule(), "acme", "production", {"a": "y"})
+        assert len(got["changed"][0]["from"]) == 201
+
+    def test_a_sink_that_cannot_be_read_says_so(self, monkeypatch):
+        _current(monkeypatch, None, "can't connect to redis: refused")
+        assert views.would_change(_rule(), "acme", "production", {"a": "1"}) == {"error": "can't connect to redis: refused"}
 
 
 def test_repo_name():
@@ -393,12 +430,12 @@ def test_grpc_rule_lookup_loads_tenants_after_a_restart(monkeypatch):
 
         def get_or_clone(self, tenant):
             self.cloned.append(tenant)
-            self._entries[f"{tenant}:schemas"] = Entry(tenant, [{"platform": "gitea", "datasource": "mongo", "tenant_id": tenant}])
+            self._entries[f"{tenant}:schemas"] = Entry(tenant, [{"platform": "gitea", "datasource": "mongo", "branch_map": {"main": "production"}, "file_name": "app.yaml", "tenant_id": tenant}])
 
     mgr = Manager()
     monkeypatch.setattr("app.schema_registry.manager.get_schema_manager", lambda: mgr)
     schema_utils._reloaded_at.clear()
-    assert schema_utils.rule_from_any_tenant("gitea", "mongo") == {"platform": "gitea", "datasource": "mongo", "tenant_id": "default"}
+    assert schema_utils.rule_from_any_tenant("gitea", "mongo") == {"platform": "gitea", "datasource": "mongo", "branch_map": {"main": "production"}, "file_name": "app.yaml", "tenant_id": "default"}
     assert mgr.cloned == ["default"]
     assert schema_utils.rule_from_any_tenant("gitea", "mongo") is not None
     assert mgr.cloned == ["default"]  # already loaded: no second clone
@@ -522,6 +559,22 @@ class TestRecorderAfterAFailedFile:
         assert ("failed", "production") not in calls  # lastSync already carries the failure
         assert ("event", "production", "SyncFailed") in calls
 
+    def test_a_file_left_written_by_a_sink_that_cannot_roll_back_is_still_desired_state(self, run):
+        # stage_sync now reports such a file as "partial": it is in the store, so the ledger records it
+        calls = run("redis", [("a.yaml", "production", "partial"), ("b.yaml", "production", "error")])
+        assert ("target", "production", "a.yaml", "FAILED") in calls
+        assert ("event", "production", "SyncFailed") in calls
+
+    def test_the_failure_is_the_file_that_failed_not_the_files_it_left_behind(self, run):
+        # the first non-done file used to be taken as the failure: a "partial" file before it must not be
+        calls = run("redis", [("a.yaml", "production", "partial"), ("b.yaml", "production", "error")])
+        assert ("failed", "production") not in calls
+
+    def test_files_rolled_back_are_not_desired_state(self, run):
+        calls = run("mongo", [("a.yaml", "production", "rolled_back"), ("b.yaml", "production", "error")])
+        assert not [c for c in calls if c[0] == "target"]
+        assert ("failed", "production") in calls
+
 
 class TestRecorderDryRun:
     @pytest.fixture
@@ -555,13 +608,16 @@ class TestRecorderDryRun:
         assert recorded["event"]["reason"] == "SyncFailed" and "failed" in recorded["event"]["message"]
 
 
-def test_ui_resync_only_rereads_a_branch():
-    from app.api.routers.ui import _branch_for
-    rule = {"branch_map": {"main": "production"}}
-    assert _branch_for(rule, "production", {"ref": "main"}) == "main"
-    assert _branch_for(rule, "production", {"ref": "cli/production"}) == "main"
-    assert _branch_for(rule, "production", {"ref": "refs/tags/v1.2"}) == "main"
-    assert _branch_for({}, "production", {"ref": "cli/production"}) is None
+def test_the_branch_that_feeds_an_environment_is_the_rules_never_the_ledgers():
+    from app.pipeline.repo_scope import branch_for
+    rule = {"branch_map": {"main": "production", "develop": "staging"}}
+    assert branch_for(rule, "production") == "main"
+    assert branch_for(rule, "staging") == "develop"
+    assert branch_for(rule, "qa") == ""
+    assert branch_for({"branch_as_env": True}, "qa") == "qa"
+    assert branch_for({}, "production") == ""
+    # Two branches feeding one environment: the answer does not depend on dict order.
+    assert branch_for({"branch_map": {"release": "production", "main": "production"}}, "production") == "main"
 
 
 def test_bundle_detail_masks_credentials_in_urls():
@@ -587,20 +643,32 @@ class TestHelmReadBack:
         assert sink.read_values(["app.db.host", "db.host"], "helm", "production") == {"app.db.host": "db.internal"}
 
 
-@pytest.mark.parametrize("rule,env,expected", [
-    ({"datasource": "s3", "s3_bucket": "b", "s3_key_prefix": "configs"}, "production", "s3://b/configs/production/"),
-    ({"datasource": "s3", "s3_bucket": "b"}, "production", "s3://b/production/"),
-    ({"datasource": "linux_server", "file_path": "/etc/app/config.env"}, "feature/x", "/etc/app/config_feature_x.env"),
-    ({"datasource": "linux_server", "file_path": "/etc/app/config.env", "env_as_dir": True}, "feature/x",
+def _datasources(monkeypatch, **blocks):
+    """config.cue declaring one datasource block per kind (no tag: named after its kind)."""
+    from app.pipeline import datasource_settings
+    bundle = {"datasources": [{kind: block} for kind, block in blocks.items()]}
+    monkeypatch.setattr(datasource_settings, "_bundle", lambda: bundle)
+
+
+@pytest.mark.parametrize("kind,block,env,expected", [
+    ("s3", {"bucket": "b", "prefix": "configs"}, "production", "s3://b/configs/production/"),
+    ("s3", {"bucket": "b"}, "production", "s3://b/production/"),
+    ("linux_server", {"file_paths": ["/etc/app/config.env"]}, "feature/x", "/etc/app/config_feature_x.env"),
+    ("linux_server", {"file_paths": ["/etc/app/config.env"], "env_as_path": True}, "feature/x",
      "/etc/app/feature_x/config.env"),
+    ("mongo", {"database": "cfg", "collection": "vars"}, "production", "cfg.vars"),
+    ("zookeeper", {"base_path": "/vt"}, "production", "/vt/acme/production"),
 ])
-def test_destination_is_where_the_sink_writes(rule, env, expected):
-    assert views.destination(rule, "acme", env) == expected
+def test_destination_is_where_the_sink_writes(monkeypatch, kind, block, env, expected):
+    _datasources(monkeypatch, **{kind: block})
+    assert views.destination({"datasource": kind}, "acme", env) == expected
 
 
-def test_destination_template_keeps_its_placeholders():
-    rule = {"datasource": "linux_server", "file_path": "/etc/app/config.env"}
-    assert views.destination_template(rule) == "/etc/app/config_{env}.env"
+def test_destination_template_keeps_its_placeholders(monkeypatch):
+    _datasources(monkeypatch, linux_server={"file_paths": ["/etc/app/config.env"]}, zookeeper={"base_path": "/vt"})
+    assert views.destination_template({"datasource": "linux_server"}) == "/etc/app/config_{env}.env"
+    assert views.destination_template({"datasource": "zookeeper"}) == "/vt/{tenant}/{env}"
+    assert views.destination_template({"datasource": "linux_server", "destination_template": "/x/{env}"}) == "/x/{env}"
 
 
 def test_schema_clone_uses_the_tenants_branch(monkeypatch):
@@ -664,3 +732,161 @@ def test_check_datasource_reads_environments_together(monkeypatch):
 
     monkeypatch.setattr(views, "compare", compare)
     assert drift.check_datasource("mongo")[:2] == ("drifted", ["github/mongo/qa"])
+
+
+class _TaskRedis:
+    """Just enough Redis for the task list: strings (with NX) and one list per tenant."""
+
+    def __init__(self):
+        self.kv, self.lists = {}, {}
+
+    def set(self, k, v, ex=None, nx=False):
+        if nx and k in self.kv:
+            return None
+        self.kv[k] = v
+        return True
+
+    def lrem(self, k, _count, v):
+        self.lists[k] = [x for x in self.lists.get(k, []) if x != v]
+
+    def lpush(self, k, v):
+        self.lists.setdefault(k, []).insert(0, v)
+
+    def ltrim(self, k, start, stop):
+        self.lists[k] = self.lists.get(k, [])[start:stop + 1]
+
+
+class TestAQueuedSyncIsOnTheTasksPage:
+    """A sync is accepted before a worker has it: its page and the list must answer from then, not say "not found"."""
+
+    @pytest.fixture
+    def fake(self, monkeypatch):
+        fake = _TaskRedis()
+        monkeypatch.setattr(ledger, "_redis", lambda: fake)
+        return fake
+
+    def _queue(self, task_id="t1"):
+        from app.ui import recorder
+        recorder.task_queued(task_id, tenant="acme", platform="gitea", datasource="redis", trigger="ui",
+                             repo_url="http://git/acme/configs.git", ref="develop", revision="abc123", dry_run=True, env="staging")
+
+    def test_it_is_listed_as_pending_with_what_was_asked(self, fake):
+        self._queue()
+        task = json.loads(fake.kv[ledger._key("task", "t1")])
+        assert (task["state"], task["rule"], task["env"], task["dryRun"], task["trigger"]) == ("PENDING", "gitea/redis", "staging", True, "ui")
+        assert task["tenant"] == "acme" and task["ref"] == "develop" and task["revision"] == "abc123"
+        assert fake.lists[ledger._key("tasks", "acme")] == ["t1"]
+        assert ledger.is_active(task)  # a queued sync is a sync in progress
+
+    def test_a_task_the_worker_already_recorded_is_not_taken_back_to_pending(self, fake):
+        ledger.record_task({"taskId": "t1", "state": "RUNNING", "createdAt": ledger.now_iso()}, tenant="acme", new=True)
+        self._queue()
+        assert json.loads(fake.kv[ledger._key("task", "t1")])["state"] == "RUNNING"
+        assert fake.lists[ledger._key("tasks", "acme")] == ["t1"]
+
+    def test_the_workers_record_replaces_it_and_the_task_is_listed_once(self, fake):
+        self._queue()
+        ledger.record_task({"taskId": "t1", "state": "RUNNING", "createdAt": ledger.now_iso()}, tenant="acme", new=True)
+        assert json.loads(fake.kv[ledger._key("task", "t1")])["state"] == "RUNNING"
+        assert fake.lists[ledger._key("tasks", "acme")] == ["t1"]
+
+
+class TestAnEnvironmentNoBranchFeedsAnyMore:
+    """The ledger keeps every environment a rule ever wrote. After the rule changes, one that nothing feeds is shown
+    as no longer synced; it is not compared with the rule's destination (it would read drifted for ever)."""
+
+    def test_it_is_not_compared_and_reads_not_watched(self, monkeypatch):
+        compared = []
+        monkeypatch.setattr(views, "compare", lambda *a, **k: compared.append(a) or {"error": None, "keys": [], "differs": 5, "checkedAt": "t"})
+        rule = _rule(branch_as_env=False)           # only main feeds anything: production
+        leftover = views.target_view(rule, "acme", _record({"a": "1"}, env="staging"), recent_tasks=[])
+        assert compared == []
+        assert leftover["drift"] == "not_watched" and "staging" in leftover["notFed"] and "lastPolledAt" not in leftover
+
+        fed = views.target_view(rule, "acme", _record({"a": "1"}, env="production"), recent_tasks=[])
+        assert fed["drift"] == "drifted" and "notFed" not in fed and len(compared) == 1
+
+
+class TestADryRunSaysWhatASyncWouldDelete:
+    """The Sync panel asks a dry run (a preview: unlisted, silent) which keys a sync would delete, per environment."""
+
+    def _started(self, monkeypatch, preview):
+        from app.ui import recorder
+        recorded, events = [], []
+        monkeypatch.setattr(ledger, "record_task", lambda task, **kw: recorded.append((dict(task), kw)))
+        monkeypatch.setattr(ledger, "record_event", lambda **kw: events.append(kw["reason"]))
+        task = recorder.task_started("t1", tenant="acme", platform="gitea", datasource="redis", trigger="ui",
+                                     repo_url="http://git/acme/configs.git", ref="develop", revision="abc", dry_run=True,
+                                     preview=preview)
+        return recorder, task, recorded, events
+
+    def test_a_dry_run_records_the_keys_it_would_delete(self, monkeypatch):
+        recorder, task, recorded, _ = self._started(monkeypatch, preview=False)
+        recorder.task_finished(task, tenant="acme", dry_run_files=[{"file": "a.yaml", "env": "production", "keys": 3}],
+                               would_prune={"production": ["old.a", "old.b"]})
+        assert recorded[-1][0]["wouldPrune"] == {"production": ["old.a", "old.b"]}
+
+    def test_a_rule_that_prunes_nothing_still_says_so(self, monkeypatch):
+        recorder, task, recorded, _ = self._started(monkeypatch, preview=False)
+        recorder.task_finished(task, tenant="acme", dry_run_files=[{"file": "a.yaml", "env": "production", "keys": 3}], would_prune={})
+        assert recorded[-1][0]["wouldPrune"] == {}      # the preview ran: nothing to delete
+
+    def test_a_preview_is_not_listed_and_says_nothing_in_the_events(self, monkeypatch):
+        recorder, task, recorded, events = self._started(monkeypatch, preview=True)
+        recorder.task_finished(task, tenant="acme", dry_run_files=[{"file": "a.yaml", "env": "production", "keys": 3}],
+                               would_prune={"production": ["old"]})
+        assert all(kw.get("new") is not True for _, kw in recorded)       # not added to the list of tasks
+        assert events == []
+        assert recorded[-1][0]["preview"] is True and recorded[-1][0]["wouldPrune"] == {"production": ["old"]}
+
+    def test_an_ordinary_dry_run_is_listed_and_in_the_events(self, monkeypatch):
+        recorder, task, recorded, events = self._started(monkeypatch, preview=False)
+        recorder.task_finished(task, tenant="acme", dry_run_files=[{"file": "a.yaml", "env": "production", "keys": 3}], would_prune={})
+        assert recorded[0][1].get("new") is True
+        assert events == ["SyncStarted", "SyncSucceeded"]
+
+    def test_a_dry_run_records_what_a_sync_would_change_and_why_a_file_only_passed_with_a_warning(self, monkeypatch):
+        recorder, task, recorded, _ = self._started(monkeypatch, preview=False)
+        change = {"added": ["new.key"], "addedCount": 1, "changed": [], "changedCount": 0, "unchanged": 2, "secrets": 0}
+        recorder.task_finished(task, tenant="acme", would_prune={}, dry_run_files=[
+            {"file": "a.yaml", "env": "production", "keys": 3, "validation": "warn", "validation_error": "port: out of range",
+             "would_change": change}])
+        (file,) = recorded[-1][0]["files"]
+        assert file["wouldChange"] == change and file["validationError"] == "port: out of range"
+
+    def test_a_file_with_nothing_to_compare_carries_no_report(self, monkeypatch):
+        recorder, task, recorded, _ = self._started(monkeypatch, preview=True)
+        recorder.task_finished(task, tenant="acme", would_prune={}, dry_run_files=[{"file": "a.yaml", "env": "production", "keys": 3}])
+        assert "wouldChange" not in recorded[-1][0]["files"][0]
+
+    def test_the_preview_header_marks_it(self):
+        assert ledger.is_preview({"X-VarTrack-Preview": "1"}) and ledger.is_preview({"x-vartrack-preview": "1"})
+        assert not ledger.is_preview({"x-vartrack-preview": "0"}) and not ledger.is_preview(None)
+
+
+class TestEnvironmentsARuleProducesButHasNotWritten:
+    """A rule that has never synced still has environments a first sync would write: the page lists them, ready to sync."""
+
+    def test_which_environments_a_rule_produces(self):
+        # a rule that names none produces none: there is no "default" (such a rule is refused when it is loaded)
+        assert views.produced_envs({"datasource": "redis"}) == {}
+        assert views.produced_envs({"datasource": "redis", "branch": "develop"}) == {}
+        assert views.produced_envs({"datasource": "redis", "branch_map": {"main": "default"}}) == {"default": "main"}   # only a name
+        assert views.produced_envs({"datasource": "redis", "branch_map": {"main": "production", "develop": "staging"}}) == {
+            "production": "main", "staging": "develop"}
+        assert views.produced_envs({"datasource": "redis", "file_path_map": {"team-a": "a/x.yaml"}, "branch": "develop"}) == {
+            "team-a": "develop"}
+        assert views.produced_envs({"datasource": "redis", "branch_as_env": True, "branch": "develop"}) == {"develop": "develop"}
+
+    def test_an_unwritten_environment_is_listed_with_the_branch_that_feeds_it(self):
+        view = views.rule_view({"platform": "gitea", "datasource": "redis", "repo_url": "http://git/acme/configs.git",
+                                "branch_map": {"main": "production"}}, "acme", [], [])
+        assert [(t["env"], t["drift"], t["fedBy"], t["ref"], t["repository"]) for t in view["targets"]] == [
+            ("production", "missing", "main", "main", "acme/configs")]
+
+    def test_a_written_environment_is_not_listed_twice(self, monkeypatch):
+        monkeypatch.setattr(views, "compare", lambda *a, **k: {"error": None, "keys": [], "differs": 0, "checkedAt": "t"})
+        rule = _rule(branch_as_env=False)
+        view = views.rule_view(rule, "acme", [_record({"a": "1"}, env="production")], [])
+        assert [(t["env"], t["drift"]) for t in view["targets"]] == [("production", "in_sync")]
+

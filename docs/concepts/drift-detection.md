@@ -35,7 +35,7 @@ Every POLL_INTERVAL (default: 60s), for each self_heal rule
 
 A few rules keep this from healing what it shouldn't, or waiting forever:
 
-- **Unknown is not drift.** A sink that cannot be read answers *unknown*, never "every key is missing", so an outage does not set off heals. A value the sink never gives back — a Vercel *sensitive* variable — is neither missing nor changed.
+- **Unknown is not drift.** A sink that cannot be read answers *unknown*, never "every key is missing", so an outage does not set off heals. A value the sink never gives back — a write-only *sensitive* value — is neither missing nor changed.
 - **One heal at a time.** After it asks for a heal, the watcher waits two poll intervals (at least 30 s) before asking again for the same drift, so the queued sync has time to start; a check that answers *in sync* ends the wait.
 - **A failed heal** is tried again on the next poll; while heal requests keep failing, a circuit breaker stops sending them for a while.
 - **A sync that died** — a worker killed mid-sync leaves no result. A sync still marked running after 15 minutes (Celery stops any task after 10) no longer counts, so the watcher heals instead of waiting on it.
@@ -50,6 +50,8 @@ Set `self_heal: true` on a rule to enable automatic repair:
 rules: [{
   platform:   "github"
   datasource: "mongo"
+  file_name: "app-settings.yaml"
+  branch_map: {main: "production"}
   self_heal:  true    // watcher will restore state on drift
 }]
 ```
@@ -118,7 +120,7 @@ Lower values mean faster drift detection but more load on the orchestrator, whic
 
 ## Why polling? (and how it's kept efficient)
 
-varTrack uses a **scheduled pull model** rather than event-driven push because it must support eight fundamentally different backends — MongoDB, Redis, ZooKeeper, S3, Kubernetes ConfigMaps, Helm, Vercel, and Linux servers. Each backend exposes a different (or no) change-notification mechanism:
+varTrack uses a **scheduled pull model** rather than event-driven push because it must support eight fundamentally different backends — MongoDB, Redis, ZooKeeper, S3, Kubernetes ConfigMaps, Helm, and Linux servers. Each backend exposes a different (or no) change-notification mechanism:
 
 | Datasource | Native change events? |
 |---|---|
@@ -127,7 +129,6 @@ varTrack uses a **scheduled pull model** rather than event-driven push because i
 | ZooKeeper | Watches (per-znode, limited concurrency) |
 | S3 | Event notifications (requires SNS/SQS wiring) |
 | Linux server | None — SSH file stat only |
-| Vercel | None |
 | ConfigMap | Kubernetes informer (requires in-cluster) |
 | Helm | None — release state only |
 

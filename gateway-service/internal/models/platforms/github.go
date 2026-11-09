@@ -67,7 +67,7 @@ func (g *GitHub) Open(ctx context.Context, config *pb_models.Platform, resolver 
 	}
 
 	tlsConfig := &tls.Config{
-		InsecureSkipVerify: !ghConfig.GetVerifySsl(), //nolint:gosec
+		InsecureSkipVerify: ghConfig.GetInsecureSkipVerify(), //nolint:gosec
 	}
 
 	// Use the proto Duration field; fall back to 30s when not set.
@@ -198,7 +198,7 @@ func (g *GitHub) CreateWebhook(ctx context.Context, repoName, endpoint string) e
 	targetURL := fmt.Sprintf("%s/%s", strings.TrimSuffix(g.config.Endpoint, "/"), endpoint)
 
 	insecureSSL := "0"
-	if !g.config.VerifySsl {
+	if g.config.InsecureSkipVerify {
 		insecureSSL = "1"
 	}
 
@@ -299,6 +299,31 @@ func (g *GitHub) ConstructCloneURL(repo string) string {
 		auth = fmt.Sprintf("%s@", g.token)
 	}
 	return fmt.Sprintf("%s://%s%s/%s.git", u.Scheme, auth, u.Host, fullRepo)
+}
+
+// ─── is this a GitHub API? ────────────────────────────────────────────────────
+
+// CheckAPI asks the platform's API root whether it is a GitHub API. A platform declared
+// `github` at an address that does not serve one (a Gitea written as `github`, say, which
+// has no /api/v3) answers webhooks and clones, but every caller token the CLI API shows it is
+// rejected, because its API is asked at a place it does not exist. It returns an error that
+// says so; the gateway logs it at startup.
+func (g *GitHub) CheckAPI(ctx context.Context) error {
+	base := g.getBaseAPIURL()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, base, nil)
+	if err != nil {
+		return err
+	}
+	resp, err := g.client.Do(req)
+	if err != nil {
+		return fmt.Errorf("cannot reach %s: %w", base, err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode == http.StatusNotFound {
+		return fmt.Errorf("%s does not answer the GitHub API (404). If this server is Gitea, declare the platform as "+
+			"`gitea` instead of `github`: as it is, the CLI API rejects every caller's token", base)
+	}
+	return nil
 }
 
 // ─── the caller's view (CLI API authorization) ────────────────────────────────

@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"gateway-service/internal/auth"
+	"gateway-service/internal/authz"
 	"gateway-service/internal/handlers"
 	"gateway-service/internal/models"
 	"gateway-service/internal/routes"
@@ -32,6 +32,7 @@ type noRules struct{}
 
 func (noRules) FindRule(_, _ string) *pbm.Rule          { return nil }
 func (noRules) RulesForDatasource(_ string) []*pbm.Rule { return nil }
+func (noRules) Rules() []*pbm.Rule                      { return nil }
 func (noRules) PlatformNames() []string                 { return []string{"gitea"} }
 func (noRules) GetPlatform(_ context.Context, _, _ string) (models.Platform, error) {
 	return onePlatform{}, nil
@@ -58,7 +59,7 @@ func (o *orchestrator) ValidateConfig(ctx context.Context, in *pb.ValidateConfig
 
 func validateConfig(t *testing.T, orch *orchestrator, token, body string) *httptest.ResponseRecorder {
 	t.Helper()
-	h := routes.CLIRoutes(handlers.NewCLIHandler(orch, auth.NewGitAuthorizer(noRules{}, nil), nil))
+	h := routes.CLIRoutes(handlers.NewCLIHandler(orch, authz.New(noRules{}, nil)))
 	req := httptest.NewRequest(http.MethodPost, "/validate-config", strings.NewReader(body))
 	if token != "" {
 		req.Header.Set("Authorization", "Bearer "+token)
@@ -105,7 +106,7 @@ func TestValidateConfigNeedsAGoodTokenAndAFile(t *testing.T) {
 }
 
 func TestValidateConfigIsPostOnly(t *testing.T) {
-	h := routes.CLIRoutes(handlers.NewCLIHandler(&orchestrator{}, auth.NewGitAuthorizer(noRules{}, nil), nil))
+	h := routes.CLIRoutes(handlers.NewCLIHandler(&orchestrator{}, authz.New(noRules{}, nil)))
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/validate-config", nil))
 	if rec.Code != http.StatusMethodNotAllowed {

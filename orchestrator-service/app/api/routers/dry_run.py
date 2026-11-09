@@ -22,8 +22,10 @@ import logging
 import time
 from typing import Annotated, Any, Optional
 
-from fastapi import APIRouter, Path, Query, Request
+from fastapi import APIRouter, HTTPException, Path, Query, Request
 from pydantic import BaseModel, Field
+
+from app.api.deps import route_push
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -53,18 +55,6 @@ class DryRunResponse(BaseModel):
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
-
-def _platform(headers: dict[str, str]) -> str:
-    if "x-github-event" in headers:
-        return "github"
-    if "x-gitlab-event" in headers:
-        return "gitlab"
-    if "x-bitbucket-event" in headers:
-        return "bitbucket"
-    return headers.get("x-platform", "unknown")
-
-
-# ── Route ─────────────────────────────────────────────────────────────────────
 
 @router.post(
     "/webhooks/{datasource}/dry-run",
@@ -113,39 +103,10 @@ async def dry_run_webhook(
     raw_payload = raw_bytes.decode("utf-8", errors="replace")
 
     received_at = time.time()
-    raw_headers = {k.lower(): v for k, v in request.headers.items()}
-    platform    = _platform(raw_headers)
-
-    mgr       = getattr(request.app.state, "schema_manager", None)
-    # Resolve per-tenant rule_config via X-Tenant-ID header.
-    tenant_id = raw_headers.get("x-tenant-id")
-    rule_config = (
-        mgr.resolve_rule(platform, datasource, tenant_id) if mgr and tenant_id
-        else {}
-    ) or {}
-
-    # Derive tenant_id from repo owner when not in header or rule_config.
-    effective_tenant = tenant_id or rule_config.get("tenant_id")
-    if not effective_tenant:
-        try:
-            import json as _json
-            _repo = _json.loads(raw_payload).get("repository", {})
-            _full_name = _repo.get("full_name", "") or _repo.get("name", "")
-            if _full_name and "/" in _full_name:
-                effective_tenant = _full_name.split("/")[0]
-                logger.info(
-                    "dry_run: tenant_id derived from repo_owner=%s datasource=%s",
-                    effective_tenant, datasource,
-                )
-        except Exception:
-            pass
-
-    # Force dry-run flags — the structured prune block, whatever form the rule wrote it in;
-    # a rule that does not prune still does not.
-    from app.tasks.payload import extract_prune_config
-    current = extract_prune_config(rule_config)
-    forced_prune = {"enabled": current.enabled, "dry_run": True, "protection": current.protection}
-    rule_config = {**rule_config, "prune": forced_prune, "dry_run": True}
+    # The same platform, tenant and rule the real push would get (app.api.deps.route_push): a dry run
+    # that previewed another tenant's schemas, or no rule at all, would preview a sync that never runs.
+    route = route_push(request, datasource, raw_payload, what="dry-run")
+    platform, rule_config, effective_tenant = route.platform, route.rule_config, route.tenant_id
 
     # ── Circuit breaker: fail-fast when Celery broker is down ────────────────
     from app.utils.circuit_breaker import get_breaker
@@ -155,7 +116,6 @@ async def dry_run_webhook(
             "circuit breaker open — rejecting dry-run datasource=%s platform=%s",
             datasource, platform,
         )
-        from fastapi import HTTPException
         raise HTTPException(
             status_code=503,
             detail="Celery broker unavailable — circuit breaker open, retry later",
@@ -170,7 +130,7 @@ async def dry_run_webhook(
                 "headers":     dict(request.headers),
                 "received_at": received_at,
                 "rule_config": rule_config,
-                "tenant_id":   effective_tenant or "default",
+                "tenant_id":   effective_tenant,
                 "dry_run":     True,
             },
             queue="webhooks",

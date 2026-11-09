@@ -9,6 +9,8 @@ RUN pip install --no-cache-dir --require-hashes -r requirements.txt
 
 COPY demo.sh /demo.sh
 COPY test_runner.py /test_runner.py
+COPY grant.py /grant.py
+COPY ui_sign_in.py /ui_sign_in.py
 RUN dos2unix /demo.sh && chmod +x /demo.sh
 
 WORKDIR /demo

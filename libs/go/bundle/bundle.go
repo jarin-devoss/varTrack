@@ -5,7 +5,7 @@
 // way: evaluate the CUE, accept the shorthands the docs allow (a credential
 // written as a plain string, a sync_mode by its short name), keep working with
 // option names that were renamed, and then parse against the proto. That is one
-// thing, so it is written once, here. The two differ in one choice, Options.Strict.
+// thing, so it is written once, here. The orchestrator is handed the result by Export.
 package bundle
 
 import (
@@ -24,18 +24,58 @@ import (
 // Options says how Load parses the bundle.
 type Options struct {
 	// Strict rejects a field the proto does not declare, so a typo in
-	// config.cue stops the service at startup (the gateway). Without it unknown
-	// fields are ignored, which keeps a service that reads only part of the
-	// bundle working when another service's settings change (the watcher).
+	// config.cue stops the service at startup. Every service loads strictly (the
+	// gateway, the watcher, and the orchestrator through Export): they share one
+	// proto, so a field one of them does not know is a typo or a mismatched
+	// release, and none of them should read a bundle the others refuse. Without
+	// it unknown fields are ignored.
 	Strict bool
+
+	// Fragment says the config is a piece of a bundle, not a whole one (a snippet in the docs): the rules for
+	// what a bundle must contain (a platform, a datasource, a rule) are not applied, the rules for what it does
+	// contain are.
+	Fragment bool
 }
 
 // Load reads the bundle in the CUE file at path.
 //
 // Whatever the options, a bundle Load returns has at most one rule for each
 // platform and datasource: a rule is identified by that pair, and every lookup
-// takes the first match, so a second one would never run.
+// takes the first match, so a second one would never run. Its declared tenants agree
+// with each other and with the rules (see checkTenants).
 func Load(path string, opts Options) (*pb.Bundle, error) {
+	jsonBytes, err := evaluate(path)
+	if err != nil {
+		return nil, err
+	}
+	return fromJSON(jsonBytes, opts)
+}
+
+// Export reads the bundle in the CUE file at path as Load does, strictly, and returns
+// it as JSON: the bundle object with its shorthands expanded, its renamed options under
+// their current names and its removed options gone, in the names the proto uses. This
+// is what a service that does not read the proto itself (the orchestrator) is given,
+// so there is one reading of config.cue and one set of rules for what it may hold: a
+// bundle Export refuses, every service refuses.
+func Export(path string) ([]byte, error) {
+	return export(path, Options{Strict: true})
+}
+
+// export is Export with the options a test needs to load a piece of a bundle (Options.Fragment).
+func export(path string, opts Options) ([]byte, error) {
+	jsonBytes, err := evaluate(path)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := fromJSON(jsonBytes, opts); err != nil {
+		return nil, err
+	}
+	return jsonBytes, nil
+}
+
+// evaluate evaluates the CUE file at path and returns its bundle as JSON, normalised
+// (see normalizeSecretRefs) but not yet parsed against the proto.
+func evaluate(path string) ([]byte, error) {
 	cfg := &load.Config{}
 
 	buildInstances := load.Instances([]string{path}, cfg)
@@ -74,12 +114,28 @@ func Load(path string, opts Options) (*pb.Bundle, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to normalize secret refs: %w", err)
 	}
+	return jsonBytes, nil
+}
 
+// fromJSON reads normalised bundle JSON into the proto.
+func fromJSON(jsonBytes []byte, opts Options) (*pb.Bundle, error) {
 	bundle := &pb.Bundle{}
 	if err := (protojson.UnmarshalOptions{DiscardUnknown: !opts.Strict}).Unmarshal(jsonBytes, bundle); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal into protobuf: %w", err)
 	}
 	if err := checkUniqueRules(bundle); err != nil {
+		return nil, err
+	}
+	if err := checkTenants(bundle); err != nil {
+		return nil, err
+	}
+	if err := checkVaultLogins(bundle); err != nil {
+		return nil, err
+	}
+	if err := checkSchemaMaps(bundle); err != nil {
+		return nil, err
+	}
+	if err := checkRules(bundle, opts.Fragment); err != nil {
 		return nil, err
 	}
 
@@ -106,9 +162,12 @@ func normalizeSecretRefs(data []byte) ([]byte, error) {
 
 	normalizeUISecretRefs(bundle)
 	upgradeRenamedOptions(bundle)
+	migrateTLSOptions(bundle)
 	dropRemovedOptions(bundle)
 	expandSyncModes(bundle)
+	expandPruneShorthand(bundle)
 	wrapSecretRefs(bundle, (&pb.Bundle{}).ProtoReflect().Descriptor())
+	normalizeDurations(bundle, (&pb.Bundle{}).ProtoReflect().Descriptor())
 
 	return json.Marshal(bundle)
 }

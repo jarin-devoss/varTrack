@@ -139,13 +139,15 @@ notification-service:
   smtp_port: 587
 ```
 
-Use a separate rule per service, each with its own `root_key`:
+Use a separate rule per service, each with its own `root_key`. A rule is identified by its platform and
+datasource, so give each destination its own datasource: declare two tagged Mongo datasources
+(`mongo-auth`, `mongo-payment`, which may point at the same database) and name them in the rules:
 
 ```cue
 rules: [
   {
     platform:             "github"
-    datasource:           "mongo"
+    datasource:           "mongo-auth"
     file_name:            "configs/services.yaml"
     root_key:             "auth-service"
     destination_template: "{env}-auth"
@@ -154,7 +156,7 @@ rules: [
   },
   {
     platform:             "github"
-    datasource:           "mongo"
+    datasource:           "mongo-payment"
     file_name:            "configs/services.yaml"
     root_key:             "payment-service"
     destination_template: "{env}-payment"
@@ -211,7 +213,7 @@ The Kubernetes fields (`replicaCount`, `image`, `resources`) are never touched.
 
 A rule is identified by its **platform and datasource**: there is at most one rule for the pair, and varTrack refuses to start when two share it. There are two ways to sync more than one file.
 
-**To one destination**, use one rule. Leave out `file_name` and every file a push touches is synced, or list the files in `file_path_map`. When a sync writes several files to one environment, prune runs once afterwards, so a key that moved from one file to the other is not deleted.
+**To one destination**, use one rule. Name the file in `file_name`, or one file for each environment in `file_path_map`; a rule reads only the files it names, and a push that touched others does not sync them. When a sync writes several files to one environment, prune runs once afterwards, so a key that moved from one file to the other is not deleted.
 
 **To different destinations in the same database**, declare a datasource for each (a datasource has an optional `tag`, so these are `mongo-app` and `mongo-db`), and give each its own rule:
 
@@ -225,6 +227,7 @@ rules: [
   {
     platform:             "github"
     datasource:           "mongo-app"
+    branch_map:           {main: "production"}
     file_name:            "configs/app.yaml"
     repositories:         ["my-org/*"]
     destination_template: "{env}-app"
@@ -232,6 +235,7 @@ rules: [
   {
     platform:             "github"
     datasource:           "mongo-db"
+    branch_map:           {main: "production"}
     file_name:            "configs/database.yaml"
     repositories:         ["my-org/*"]
     destination_template: "{env}-db"
@@ -258,8 +262,8 @@ bundle: {
   }]
 
   datasources: [
-    { mongo:     { endpoint: "mongodb://mongo:27017",  database: "vartrack" } },
-    { redis:     { host: "redis", port: 6379 } },
+    { mongo:     { endpoint: "mongodb://mongo:27017",  database: "vartrack", collection: "variables" } },
+    { redis:     { hosts: ["redis:6379"] } },
     { zookeeper: { hosts: ["zookeeper:2181"] } },
   ]
 
@@ -330,7 +334,7 @@ datasources: [
     linux_server: {
       host:        "server.example.com"
       username:    "deploy"
-      private_key: "-----BEGIN OPENSSH PRIVATE KEY-----\n..."
+      ssh_key: {private_key: {file: "/run/secrets/deploy-key"}}   // the key is read from a file
     }
   }
 ]
@@ -361,7 +365,7 @@ rules: [
 
 Every credential field accepts one of three forms:
 
-```cue
+```cue notest
 // 1. Plain string
 token: "ghp_xxx"
 
@@ -386,7 +390,7 @@ bundle: {
       mount_point: "secret"
       kv_version:  2
       token_auth: {
-        token: {file: "/run/secrets/vault-token"}   // vault token from a mounted file
+        token: "hvs.xxxx"   // the vault login itself is a plain string
       }
     }
   }]
@@ -401,9 +405,10 @@ bundle: {
 
   datasources: [{
     mongo: {
-      endpoint: "mongodb://mongo:27017"
-      database: "vartrack"
-      username: "vartrack"
+      endpoint:   "mongodb://mongo:27017"
+      database:   "vartrack"
+      collection: "variables"
+      username:   "vartrack"
       password: {ref: {path: "vartrack/mongo", key: "password"}}         // from Vault
     }
   }]
@@ -425,7 +430,6 @@ platforms: [{
     pr_event_name:   "pull_request"
     secret:          "my-webhook-secret"
     token:           "ghp_xxx"
-    verify_ssl:      true
     org_name:        "my-org"
   }
 }]
@@ -437,7 +441,7 @@ platforms: [{
 
 Validate every config push against a per-tenant CUE schema.
 
-```cue
+```cue notest
 // In your schema repo: schemas/myapp.cue
 #Config: {
   database_host:   string

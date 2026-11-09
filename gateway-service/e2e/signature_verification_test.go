@@ -76,7 +76,6 @@ func testBundleWithSecret(t *testing.T) *models.Bundle {
 					Github: &pb_gh.GitHub{
 						Endpoint:        "https://github.com",
 						Protocol:        "https",
-						VerifySsl:       true,
 						Timeout:         durationpb.New(30 * time.Second),
 						MaxRetries:      3,
 						PageSize:        30,

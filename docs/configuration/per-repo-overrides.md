@@ -30,7 +30,9 @@ When a push webhook arrives, the ETL pipeline:
 4. Applies the `config.cue` rule's `force` keys, which win over `vartrack.json`
 5. Runs ETL and Sync with the merged settings (Stages 2 and 3)
 
-If `vartrack.json` is absent or empty, the central rule is used unchanged. If it is there but cannot be used — not valid JSON, not a JSON object, or extending a preset that cannot be read — the sync fails with that error: it does not go ahead without settings the repository asked for, such as a `dry_run`. The schema registry is never affected by per-repo overrides.
+A `vartrack.json` can change which file a rule reads or where its environments come from, but cannot be the only place that names them: a rule whose `config.cue` and tenant `bundle.json` give no `file_name` or `file_path_map` (or no environment strategy) is refused when it is loaded, before any repository's file is read.
+
+If `vartrack.json` is absent or empty, the central rule is used unchanged. If it is there but cannot be used — not valid JSON, not a JSON object, or extending a preset that cannot be read — the sync fails with that error: it does not go ahead without settings the repository asked for, such as a `branch_map`. The schema registry is never affected by per-repo overrides.
 
 ---
 
@@ -76,7 +78,6 @@ These keys can be set in `vartrack.json`; what each does, its type, and how it c
 <!-- rule-options:repo-overridable -->
 - [`branch_as_env`](rule-options.md#branch_as_env)
 - [`branch_map`](rule-options.md#branch_map)
-- [`dry_run`](rule-options.md#dry_run)
 - [`file_name`](rule-options.md#file_name)
 - [`file_path_map`](rule-options.md#file_path_map)
 - [`pr_as_env`](rule-options.md#pr_as_env)
@@ -96,12 +97,14 @@ These keys can be set in `vartrack.json`; what each does, its type, and how it c
 
 Infrastructure and security-critical keys are **always** taken from the central bundle and cannot be changed by the repository:
 
-- `platform`, `datasource`, `repo_url`, `tenant_id`
+- `platform`, `datasource`, `repo_url`
 - `token`, `secret_manager`, `secret_managers`
 - `repositories`, `exclude_repositories`
 - `self_heal` and all Celery wiring keys
 
 Any key in `vartrack.json` that is not in the overridable list above is silently ignored and logged at `INFO` level.
+
+The tenant is not a setting at all: it is the tenant that owns the pushed repository, and no key in `vartrack.json` names it (`vt validate-config` reports one as an error).
 
 A key the `config.cue` rule lists under `force` cannot be overridden either: `force` is applied after `vartrack.json`. For example, `force: {prune: {enabled: false}}` keeps a production rule from pruning whatever a repository asks for.
 

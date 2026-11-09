@@ -85,6 +85,11 @@ func upgradeRenamedOptions(bundle map[string]interface{}) []string {
 var (
 	removedRuleOptions = map[string]string{
 		"retry_backoff": "nothing read it",
+		"dry_run":       removedDryRun,
+		"max_changed_files": "a rule reads only the files it names (file_name or file_path_map): a push that touched other " +
+			"files does not sync them, so there is nothing to cut",
+		"tenant_id": "the tenant is the one whose schema repository holds the bundle.json that layers the rule, " +
+			"never something a file says",
 		"secrets": "declare the secret manager under secret_managers (path_prefix is set there) " +
 			"and name it in the rule's secret_manager",
 	}
@@ -97,6 +102,15 @@ var (
 // written; prune now always runs once per environment, after them. A prune
 // block that only had it is left empty, which is a disabled block.
 const removedPruneLast = "prune now runs once per environment, after all its files are written"
+
+// removedDryRun: a dry run is something a person starts, not a setting of a rule. A rule that set dry_run never wrote;
+// it now writes like any rule.
+const removedDryRun = "a dry run is started, not configured: use the UI's Dry run, `vt sync --dry-run` or the dry-run webhook; " +
+	"the rule now writes on every push"
+
+// removedPruneDryRun: prune.dry_run reported what a prune would delete without deleting it. A dry run reports that for
+// any rule that prunes, and a rule with prune off deletes nothing.
+const removedPruneDryRun = "a dry run reports what a prune would delete; a rule with prune off deletes nothing"
 
 // dropRemovedOptions removes the options the proto no longer has (see above).
 // Returns what it dropped.
@@ -121,6 +135,10 @@ func dropRemovedOptions(bundle map[string]interface{}) []string {
 		if _, ok := prune["last"]; ok {
 			delete(prune, "last")
 			dropped[fmt.Sprintf("rules[%d].prune.last", i)] = removedPruneLast
+		}
+		if _, ok := prune["dry_run"]; ok {
+			delete(prune, "dry_run")
+			dropped[fmt.Sprintf("rules[%d].prune.dry_run", i)] = removedPruneDryRun
 		}
 	}
 

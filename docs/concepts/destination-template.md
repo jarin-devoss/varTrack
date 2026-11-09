@@ -24,7 +24,6 @@
 | Linux server | Full remote file path | `"/etc/app/{env}.env"` | `/etc/app/production.env` |
 | Helm | Release name | `"app-{env}"` | `app-production` |
 | ConfigMap | ConfigMap name | `"myapp-{env}"` | `myapp-production` |
-| Vercel | Environment variable prefix | `"{env}_"` | `production_` |
 
 ---
 
@@ -89,6 +88,8 @@ Each pull request gets its own isolated collection: `pr-42-config`, `pr-103-conf
 rules: [{
   platform:             "github"
   datasource:           "zookeeper"
+  file_name:           "app-settings.yaml"
+  branch_map:           {main: "production"}
   destination_template: "/{tenant}/{env}"
 }]
 ```

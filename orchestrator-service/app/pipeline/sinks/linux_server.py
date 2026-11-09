@@ -19,13 +19,13 @@ Auto-provision
 When the env is new (e.g. "pr-42" the first time), the sink creates a new
 file automatically.  Two naming strategies:
 
-  env_as_filename: true  (default)
+  env_as_filename: true  (default; the rule's)
     The env is embedded in the filename.
     template: "{base}_{env}.{ext}"
     e.g.   /etc/myapp/config_pr-42.env
            /etc/myapp/config_v1.2.3.json
 
-  env_as_dir: true
+  env_as_path: true  (the datasource's)
     The env becomes a sub-directory.
     e.g.   /etc/myapp/pr-42/config.env
 
@@ -34,8 +34,8 @@ If the file already exists it is overwritten (upsert semantics).
 
 SSH support
 ───────────
-Set rule_config["ssh_host"] to write to a remote server via Paramiko.
-When ssh_host is absent the sink writes to the local filesystem.
+When the datasource's block in config.cue sets host, the file is written to that
+server over SSH (Paramiko); without one the sink writes to the local filesystem.
 """
 from __future__ import annotations
 
@@ -46,13 +46,14 @@ import posixpath
 import re
 import shlex
 import shutil
+import stat
 import subprocess
 import time
 import uuid
 from collections.abc import Collection
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Protocol
+from typing import Any, Protocol, TYPE_CHECKING
 
 from app.pipeline.sinks.base import BaseSink
 from app.pipeline.sinks.labels import VarTrackLabels
@@ -61,7 +62,11 @@ from app.pipeline.sinks.key_formatter import (
     resolve_destination,
 )
 from app.pipeline.transformer import unflatten
+from app.utils import atomic_file
 from app.utils.enums.sync_mode import SyncMode
+
+if TYPE_CHECKING:
+    from app.pipeline.sinks.settings import Settings
 
 logger = logging.getLogger(__name__)
 
@@ -72,34 +77,48 @@ _DEFAULT_FORMAT = KeyFormat.DOT
 class LinuxServerSink(BaseSink):
     object_name = "file"
 
+    @staticmethod
+    def file_path_of(settings: Any) -> str | None:
+        """The file the datasource writes: its first file_paths entry, under base_directory when relative."""
+        paths = settings.get("file_paths") or []
+        if not paths:
+            return None
+        path, base = str(paths[0]), settings.get("base_directory")
+        if base and not path.startswith("/"):
+            return base.rstrip("/") + "/" + path
+        return path
+
     def __init__(
         self,
         *,
         name: str = "linux_server",
+        settings: "Settings | None" = None,
         rule_config: dict | None = None,
         tenant_id: str = "default",
         **_kwargs: Any,
     ) -> None:
-        cfg = rule_config or {}
+        from app.pipeline.sinks.settings import Settings
 
-        self._base_path       = Path(cfg.get("file_path", "/etc/vartrack/config.env"))
+        s    = settings or Settings.of("linux_server")
+        rule = rule_config or {}
+
+        self._base_path       = Path(self.file_path_of(s) or "/etc/vartrack/config.env")
         self._tenant_id       = tenant_id
-        self._env_as_filename = bool(cfg.get("env_as_filename", True))
-        self._env_as_dir      = bool(cfg.get("env_as_dir", False))
+        self._env_as_filename = bool(rule.get("env_as_filename", True))
+        self._env_as_dir      = bool(s.get("env_as_path", False))
         # destination_template: full file path template, e.g. "/etc/myapp/{env}/config.env".
-        # Takes precedence over file_path + env_as_filename/env_as_dir when set.
-        self._dest_tpl  = cfg.get("destination_template", "")
-        self._file_format     = cfg.get("file_format", self._base_path.suffix.lstrip(".") or "env")
+        # Takes precedence over the datasource's file path + env_as_filename / env_as_path when set.
+        self._dest_tpl  = rule.get("destination_template", "")
+        self._file_format     = rule.get("file_format", self._base_path.suffix.lstrip(".") or "env")
 
-        fmt_name         = cfg.get("key_format", "dot")
+        fmt_name         = rule.get("key_format", "dot")
         self._key_format = key_format_from_str(fmt_name)
         validate_sink_format(_SINK_KIND, self._key_format)
 
         # Where the file goes: a server over SSH, or this machine's disk.
-        ssh_host = cfg.get("ssh_host")
-        self._ssh = _SshTransport(cfg) if ssh_host else None
+        self._ssh = _SshTransport(s) if s.get("host") else None
         self._fs: _Fs = self._ssh if self._ssh else _LocalFs()
-        self._write_opts = _WriteOptions.from_config(cfg)
+        self._write_opts = _WriteOptions.from_settings(s)
 
         logger.debug(
             "LinuxServerSink ready path=%s fmt=%s ssh=%s",
@@ -269,6 +288,18 @@ def _flatten(node: Any, prefix: str = "") -> dict[str, str]:
     return out
 
 
+def _key_file(settings: Any) -> str | None:
+    """The private key's file: ssh_key.private_key must be {file: "/path"}; the sink reads the key from
+    a file, so any other form is refused rather than ignored."""
+    key = (settings.raw("ssh_key") or {}).get("private_key")
+    if key is None:
+        return None
+    if isinstance(key, dict) and "file" in key and not key.get("key"):
+        return str(key["file"])
+    raise ValueError(f"linux_server datasource {settings.name}: ssh_key.private_key must be "
+                     "{file: \"/path/to/key\"}: the sink reads the key from a file")
+
+
 def _safe_filename(env: str) -> str:
     """Replace filesystem-unsafe characters in env strings."""
     import re
@@ -286,26 +317,28 @@ class _WriteOptions:
     file_owner: str = ""                      # "app" or "app:app"
     backup: bool = False
     backup_suffix: str = ".bak"
-    validation_command: str = ""              # "{file}" is the written file
+    validation_command: str = ""              # "{file}" is the new file, "{target}" the path it is going to
     rollback_on_validation_fail: bool = False
+    validate_after_rename: bool = False       # validate the file in place instead (see the proto)
     post_write_commands: list[str] = field(default_factory=list)
     continue_on_command_error: bool = False
 
     @classmethod
-    def from_config(cls, cfg: dict) -> "_WriteOptions":
-        mode = str(cfg.get("file_mode") or "")
+    def from_settings(cls, settings: Any) -> "_WriteOptions":
+        mode = str(settings.get("file_mode") or "")
         if mode and not re.fullmatch(r"0?[0-7]{3}", mode):
             raise ValueError(f"file_mode {mode!r} is not an octal mode like 0640")
         return cls(
-            create_directories=cfg.get("create_directories", True) is not False,
+            create_directories=settings.get("create_directories", True) is not False,
             file_mode=mode,
-            file_owner=str(cfg.get("file_owner") or ""),
-            backup=bool(cfg.get("backup_before_write", False)),
-            backup_suffix=str(cfg.get("backup_suffix") or ".bak"),
-            validation_command=str(cfg.get("validation_command") or ""),
-            rollback_on_validation_fail=bool(cfg.get("rollback_on_validation_fail", False)),
-            post_write_commands=[str(c) for c in cfg.get("post_write_commands") or []],
-            continue_on_command_error=bool(cfg.get("continue_on_command_error", False)),
+            file_owner=str(settings.get("file_owner") or ""),
+            backup=bool(settings.get("backup_before_write", False)),
+            backup_suffix=str(settings.get("backup_suffix") or ".bak"),
+            validation_command=str(settings.get("validation_command") or ""),
+            rollback_on_validation_fail=bool(settings.get("rollback_on_validation_fail", False)),
+            validate_after_rename=bool(settings.get("validate_after_rename", False)),
+            post_write_commands=[str(c) for c in settings.get("post_write_commands") or []],
+            continue_on_command_error=bool(settings.get("continue_on_command_error", False)),
         )
 
 
@@ -319,38 +352,65 @@ class _Fs(Protocol):
     def chmod(self, path: str, mode: str) -> None: ...
     def chown(self, path: str, owner: str) -> None: ...
     def run(self, command: str) -> tuple[int, str]: ...
+    # What an atomic replacement needs. replace: *dst* becomes *src* in one step, so it is the old file or
+    # the new one to any reader, never part of either.
+    def replace(self, src: str, dst: str) -> None: ...
+    def copy_attrs(self, src: str, dst: str) -> None: ...
+    def remove_stale_temps(self, directory: str, name: str) -> None: ...
 
 
-def _with_file(command: str, path: str) -> str:
-    return command.replace("{file}", shlex.quote(path))
+def _with_file(command: str, path: str, target: str | None = None) -> str:
+    return command.replace("{file}", shlex.quote(path)).replace("{target}", shlex.quote(target or path))
 
 
 def _write_file(fs: _Fs, path: str, content: str, opts: _WriteOptions) -> None:
     """Write *content* to *path* with the datasource's options, in order:
-    directories, backup, write, mode and owner, validation (rolling back to
-    the previous file when it fails and rollback is on), post-write commands.
-    """
+    directories, backup, the new file next to the old one, mode and owner, validation, the replacement,
+    post-write commands.
+
+    The target is never written in place: a service that reads it (or reloads when it changes) would get a
+    truncated or half-written config, and so would a crash or a dropped connection leave one. The new content
+    is written to a temp file in the same directory, given the mode and owner of the file it replaces,
+    validated, and only then renamed over the target in one step. A failed validation leaves the old file
+    untouched. With ``validate_after_rename`` the order is the older one: replace, then validate the file in
+    place, and (with ``rollback_on_validation_fail``) put the previous file back when it fails."""
     directory = posixpath.dirname(path) or "/"
+    name = posixpath.basename(path)
     if not fs.exists(directory):
         if not opts.create_directories:
             raise RuntimeError(f"{directory} does not exist and create_directories is off")
         fs.mkdirs(directory)
+    fs.remove_stale_temps(directory, name)    # what a write that died between its steps left
 
-    # A backup is kept when asked for, and taken anyway when a failed
+    existed = fs.exists(path)
+    in_place = bool(opts.validation_command and opts.validate_after_rename)
+    # A backup is kept when asked for, and taken anyway when a failed in-place
     # validation must be able to restore the previous file.
-    rollback = bool(opts.validation_command and opts.rollback_on_validation_fail)
-    backup = path + opts.backup_suffix if (opts.backup or rollback) and fs.exists(path) else ""
+    rollback = bool(in_place and opts.rollback_on_validation_fail)
+    backup = path + opts.backup_suffix if (opts.backup or rollback) and existed else ""
     if backup:
         fs.copy(path, backup)
 
+    temp: str | None = posixpath.join(directory, atomic_file.temp_name(name))
     try:
-        fs.put(path, content)
+        fs.put(temp, content)
+        if existed:
+            fs.copy_attrs(path, temp)         # a replaced file keeps its mode and owner
         if opts.file_mode:
-            fs.chmod(path, opts.file_mode)
+            fs.chmod(temp, opts.file_mode)
         if opts.file_owner:
-            fs.chown(path, opts.file_owner)
+            fs.chown(temp, opts.file_owner)
 
-        if opts.validation_command:
+        if opts.validation_command and not in_place:
+            rc, out = fs.run(_with_file(opts.validation_command, temp, target=path))
+            if rc != 0:
+                raise RuntimeError(f"validation_command failed (exit {rc}): {out.strip()[:500]}; "
+                                   f"{path} was not replaced")
+
+        fs.replace(temp, path)
+        temp = None
+
+        if in_place:
             rc, out = fs.run(_with_file(opts.validation_command, path))
             if rc != 0:
                 restored = ""
@@ -359,6 +419,11 @@ def _write_file(fs: _Fs, path: str, content: str, opts: _WriteOptions) -> None:
                     restored = "; the previous file was restored"
                 raise RuntimeError(f"validation_command failed (exit {rc}): {out.strip()[:500]}{restored}")
     finally:
+        if temp is not None:                  # the replacement did not happen: the temp file goes
+            try:
+                fs.remove(temp)
+            except Exception:
+                logger.warning("LinuxServerSink: could not remove %s", temp, exc_info=True)
         # A copy taken only to roll back with is not left behind.
         if backup and not opts.backup:
             fs.remove(backup)
@@ -386,8 +451,16 @@ class _LocalFs:
             return fh.read()
 
     def put(self, path: str, content: str) -> None:
-        with open(path, "w", encoding="utf-8") as fh:
-            fh.write(content)
+        atomic_file.write_durably(path, content)
+
+    def replace(self, src: str, dst: str) -> None:
+        atomic_file.replace(src, dst)
+
+    def copy_attrs(self, src: str, dst: str) -> None:
+        atomic_file.copy_attrs(src, dst)
+
+    def remove_stale_temps(self, directory: str, name: str) -> None:
+        atomic_file.remove_stale_temps(directory, name)
 
     def copy(self, src: str, dst: str) -> None:
         shutil.copy2(src, dst)
@@ -456,32 +529,32 @@ class _SshTransport:
     any key and logs a warning on every connection.
     """
 
-    def __init__(self, cfg: dict) -> None:
+    def __init__(self, settings: Any) -> None:
         try:
             import paramiko
         except ImportError as exc:
             raise RuntimeError("paramiko is required for SSH sink: pip install paramiko") from exc
         self._paramiko = paramiko
-        self._host = cfg["ssh_host"]
-        self._command_timeout = float(cfg.get("ssh_command_timeout_secs") or 60)
-        self._sudo = bool(cfg.get("ssh_use_sudo", False))
-        self._sudo_password = str(cfg.get("ssh_sudo_password") or "")
-        self._client = self._connect(cfg)
-        use_sftp = cfg.get("ssh_use_sftp", True) is not False
+        self._host = settings.get("host")
+        self._command_timeout = float(settings.seconds("command_timeout") or 60)
+        self._sudo = bool(settings.get("use_sudo", False))
+        self._sudo_password = str(settings.secret("sudo_password") or "")
+        self._client = self._connect(settings)
+        use_sftp = settings.get("use_sftp", True) is not False
         self._sftp = self._client.open_sftp() if use_sftp and not self._sudo else None
 
-    def _connect(self, cfg: dict) -> Any:
+    def _connect(self, settings: Any) -> Any:
         paramiko = self._paramiko
-        verification = str(cfg.get("ssh_host_key_verification") or "strict").lower()
+        verification = str(settings.get("host_key_verification") or "strict").lower()
         if verification not in ("strict", "accept-new", "off"):
             raise ValueError(f"host_key_verification {verification!r}: use strict, accept-new or off")
-        known_hosts = cfg.get("ssh_known_hosts_file")
+        known_hosts = settings.get("known_hosts_file")
         if verification == "accept-new" and not known_hosts:
             raise ValueError("host_key_verification accept-new needs known_hosts_file: "
                              "with nowhere to record a new key it would verify nothing")
-        timeout = float(cfg.get("ssh_connect_timeout_secs") or 30)
-        attempts = 1 + max(0, int(cfg.get("ssh_max_retries") or 0))
-        backoff = float(cfg.get("ssh_retry_backoff_secs") or 2)
+        timeout = float(settings.seconds("connection_timeout") or 30)
+        attempts = 1 + max(0, int(settings.get("max_retries") or 0))
+        backoff = float(settings.seconds("retry_backoff") or 2)
 
         for attempt in range(1, attempts + 1):
             client = paramiko.SSHClient()
@@ -497,14 +570,14 @@ class _SshTransport:
             try:
                 client.connect(
                     hostname=self._host,
-                    port=int(cfg.get("ssh_port", 22)),
-                    username=cfg.get("ssh_user", "root"),
-                    password=cfg.get("ssh_password"),
-                    key_filename=cfg.get("ssh_key_path"),
+                    port=int(settings.get("port") or 22),
+                    username=settings.get("username") or "root",
+                    password=settings.secret("password"),
+                    key_filename=_key_file(settings),
                     timeout=timeout,
                     banner_timeout=timeout,
                     auth_timeout=timeout,
-                    compress=bool(cfg.get("ssh_compression", False)),
+                    compress=bool(settings.get("enable_compression", False)),
                 )
             except paramiko.BadHostKeyException:
                 raise  # a changed host key is never retried
@@ -593,6 +666,47 @@ class _SshTransport:
             self._check(f"install -m 0644 {shlex.quote(tmp)} {shlex.quote(path)}")
         finally:
             self.run(f"rm -f {shlex.quote(tmp)}", sudo=False)
+
+    def replace(self, src: str, dst: str) -> None:
+        """*dst* becomes *src* in one step. Over SFTP that is OpenSSH's posix-rename, which (unlike the
+        protocol's own rename) replaces an existing file atomically; a server without it is refused rather than
+        falling back to remove-then-rename, which has a moment with no file."""
+        if self._sftp:
+            try:
+                self._sftp.posix_rename(src, dst)
+            except (OSError, AttributeError) as exc:
+                raise RuntimeError(
+                    f"cannot replace {dst} atomically over SFTP: the server needs the posix-rename@openssh.com "
+                    f"extension ({exc}); set use_sftp: false to replace it with `mv` over a shell instead"
+                ) from exc
+            return
+        self._check(f"mv -f {shlex.quote(src)} {shlex.quote(dst)}")
+
+    def copy_attrs(self, src: str, dst: str) -> None:
+        """Give *dst* the mode and owner of *src*."""
+        if self._sftp:
+            st = self._sftp.stat(src)
+            self._sftp.chmod(dst, stat.S_IMODE(st.st_mode))
+            try:
+                self._sftp.chown(dst, st.st_uid, st.st_gid)
+            except OSError as exc:
+                logger.warning("LinuxServerSink: kept the mode of %s but not its owner (%s); "
+                               "set file_owner, or run as that user", src, exc)
+            return
+        out = self._check(f"stat -c '%a %u:%g' {shlex.quote(src)}").split()
+        self._check(f"chmod {out[0]} {shlex.quote(dst)}")
+        rc, err = self.run(f"chown {out[1]} {shlex.quote(dst)}")
+        if rc != 0:
+            logger.warning("LinuxServerSink: kept the mode of %s but not its owner (%s)", src, err.strip()[:200])
+
+    def remove_stale_temps(self, directory: str, name: str) -> None:
+        if self._sftp:
+            for entry in self._sftp.listdir(directory):
+                if atomic_file.is_temp_of(entry, name):
+                    self._sftp.remove(posixpath.join(directory, entry))
+            return
+        pattern = f".{name}{atomic_file._MARK}*{atomic_file._SUFFIX}"
+        self._check(f"find {shlex.quote(directory)} -maxdepth 1 -name {shlex.quote(pattern)} -delete")
 
     def copy(self, src: str, dst: str) -> None:
         if self._sftp:

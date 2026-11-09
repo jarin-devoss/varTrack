@@ -7,6 +7,7 @@
 package vartrackv1
 
 import (
+	_ "buf.build/gen/go/bufbuild/protovalidate/protocolbuffers/go/buf/validate"
 	_ "google.golang.org/genproto/googleapis/api/annotations"
 	status "google.golang.org/genproto/googleapis/rpc/status"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
@@ -16,7 +17,6 @@ import (
 	timestamppb "google.golang.org/protobuf/types/known/timestamppb"
 	reflect "reflect"
 	sync "sync"
-	_ "vartrack/libs/gen/buf/validate"
 	enums "vartrack/libs/gen/vartrack/v1/enums"
 )
 
@@ -177,6 +177,9 @@ func (x *ProcessWebhookResponse) GetStatus() *status.Status {
 	return nil
 }
 
+// A schema push carries no tenant, on purpose: the orchestrator derives it from `repo`, as the
+// tenant whose registered schema repository that is. A repository no tenant registered is refused
+// (NOT_FOUND). Nothing a request says can choose the tenant a schema push refreshes.
 type ProcessSchemaWebhookRequest struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache

@@ -27,8 +27,11 @@ def test_load_as(content, path, fmt, want):
 
 
 class _NoSchemas:
-    def tenant_schema_root(self, tenant_id):
+    def current_schema_root(self, tenant_id):
         return Path("/nonexistent/schemas") / tenant_id
+
+    def schema_commit(self, tenant_id):
+        return ""
 
 
 def _ctx(rule):
@@ -47,7 +50,8 @@ def test_cli_etl_flattens_the_env_slice(monkeypatch):
     assert len(etl.files) == 1
     f = etl.files[0]
     assert f.flat_data == {"db.host": "stg.internal", "max_connections": "50"}
-    assert f.validation == "ok"
+    assert f.validation == "none"           # no schema checked it: never reported ok
+    assert (f.schema, f.schema_source) == ("none", "none")
 
 
 def test_cli_etl_takes_a_dotenv_file(monkeypatch):
@@ -76,7 +80,7 @@ def test_validate_content_without_a_schema_says_nothing_was_checked(monkeypatch)
     status, messages, keys = cli_ops.validate_content(
         file_path="configs/app.yaml", content="app:\n  a: 1\n  b: 2\nother: x\n", fmt="yaml",
         datasource="mongo", tenant_id="default")
-    assert status == "warn"
+    assert status == "none"          # nothing checked it: not "warn", and never "ok"
     assert keys == 2                      # only the rule's root_key subtree
     assert "no schema for app.yaml" in messages[-1]
 
@@ -88,7 +92,7 @@ def test_validate_content_uses_the_schema(monkeypatch, tmp_path):
     (tmp_path / "app.yaml.cue").write_text("max_connections: int\n")
 
     class _Schemas:
-        def tenant_schema_root(self, tenant_id):
+        def current_schema_root(self, tenant_id):
             return tmp_path
 
     monkeypatch.setattr(manager, "get_schema_manager", lambda *a, **k: _Schemas())
@@ -109,7 +113,7 @@ def test_validate_content_uses_the_schema(monkeypatch, tmp_path):
     assert bad[0] == "failed" and "conflicting values" in bad[1][-1]
 
 
-def _run_cli_task(monkeypatch, lookup, **kw):
+def _run_cli_task(monkeypatch, lookup, env="staging", **kw):
     from unittest.mock import MagicMock, patch
 
     from app.pipeline import schema_utils
@@ -118,7 +122,7 @@ def _run_cli_task(monkeypatch, lookup, **kw):
     monkeypatch.setattr(schema_utils, "rule_config_for_datasource", lookup)
     with patch.object(etl.process_cli_sync_task, "update_state"),          patch("app.monitoring.tracer.start_webhook_span", return_value=MagicMock()):
         return etl.process_cli_sync_task.run(
-            datasource="mongo-primary", env="staging", file_path="a.yaml", content="a: 1", **kw)
+            datasource="mongo-primary", env=env, file_path="a.yaml", content="a: 1", **kw)
 
 
 def test_the_cli_task_looks_the_rule_up_by_the_platform_it_was_given(monkeypatch):
@@ -144,3 +148,57 @@ def test_the_cli_task_fails_instead_of_guessing_between_platforms(monkeypatch):
     result = _run_cli_task(monkeypatch, lookup)
 
     assert result["state"] == "FAILED" and "say which platform" in result["message"]
+
+
+def test_a_cli_task_a_schema_refuses_says_which_file_and_why(monkeypatch):
+    """The web UI shows the task's message: the reason a file was refused must be in it, as for a push."""
+    from types import SimpleNamespace
+    from unittest.mock import patch
+
+    from app.pipeline import stage_etl
+
+    refused = SimpleNamespace(
+        errors=["a.yaml"], files=[], skipped=[],
+        failure=lambda path: 'strict_validation: "observability.log_level": invalid value "VERBOSE"',
+    )
+    rule = {"platform": "gitea", "datasource": "mongo-primary", "file_name": "a.yaml", "branch_map": {"main": "staging"}}
+    with patch.object(stage_etl, "run_stage_etl_content", return_value=refused),             patch("app.ui.recorder.task_started", return_value=None):
+        result = _run_cli_task(monkeypatch, lambda tenant, datasource, platform="": rule)
+
+    assert result["state"] == "FAILED"
+    assert result["message"] == (
+        'failed: 1 file(s) could not be processed (a.yaml: strict_validation: "observability.log_level": invalid value "VERBOSE")'
+    )
+
+
+def test_a_cli_sync_to_an_environment_the_rule_does_not_produce_is_refused_in_the_engines_words(monkeypatch):
+    """There is no environment to fall back to: `vt sync --env default` works only where a branch_map names default."""
+    rule = {"platform": "gitea", "datasource": "mongo-primary", "file_name": "a.yaml", "branch_map": {"main": "production"}}
+    result = _run_cli_task(monkeypatch, lambda tenant, datasource, platform="": rule)
+    assert result["state"] == "FAILED"
+    assert result["message"].startswith("nothing feeds staging in the mongo-primary rule")
+
+
+def test_a_cli_sync_to_default_works_on_a_rule_whose_branch_map_names_it(monkeypatch):
+    from unittest.mock import patch
+
+    from app.pipeline import stage_etl
+
+    rule = {"platform": "gitea", "datasource": "mongo-primary", "file_name": "a.yaml", "branch_map": {"main": "default"}}
+    with patch.object(stage_etl, "run_stage_etl_content", side_effect=RuntimeError("got past the environment check")),             patch("app.ui.recorder.task_started", return_value=None):
+        result = _run_cli_task(monkeypatch, lambda tenant, datasource, platform="": rule, env="default")
+    assert "nothing feeds" not in result.get("message", "")      # past the environment check: default is a name main is mapped to
+
+
+def test_a_cli_sync_says_why_a_rule_is_not_there_when_it_was_refused(monkeypatch):
+    from app.pipeline import rule_layers
+
+    rule = {"platform": "gitea", "datasource": "mongo-primary", "file_name": "a.yaml"}
+    rule_layers._refused.clear()
+    rule_layers._refused["acme"] = {("gitea", "mongo-primary"): (rule, rule_layers.refusal(rule))}
+    try:
+        result = _run_cli_task(monkeypatch, lambda tenant, datasource, platform="": None, tenant_id="acme")
+    finally:
+        rule_layers._refused.clear()
+    assert result["state"] == "FAILED"
+    assert result["message"].startswith("gitea/mongo-primary names no environments: set branch_map")

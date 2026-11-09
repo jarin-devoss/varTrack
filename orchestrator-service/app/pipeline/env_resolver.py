@@ -5,11 +5,14 @@ Centralised environment resolution.
 
 Priority order (first match wins):
   1. branch_map[branch]          explicit mapping
-  2. file_path_map[file_path]    file-path exact match
+  2. file_path_map               the env whose file is the pushed one ({env: path})
   3. branch_as_env               branch name IS the env
   4. pr_as_env                   "pr-{number}"
   5. tag_as_env                  tag name IS the env
-  6. "default"                   hardcoded fallback
+
+When none of them matches there is no environment: the push feeds nothing of this rule and is skipped, not written
+somewhere nobody named (resolve returns None). A rule that names no environment strategy at all is refused when it
+is loaded (rule_layers.refusal).
 
 pr_as_env — how pr_number is resolved
 ──────────────────────────────────────
@@ -45,13 +48,32 @@ Flow for a push to "feature/login" (branch has open PR #42):
 
   Push to feature/login after merge:
     → lookup("feature/login") → None
-    → falls through to branch_as_env / "default"
+    → falls through to branch_as_env, and then to no environment
 """
 from __future__ import annotations
 
 import logging
 
 logger = logging.getLogger(__name__)
+
+
+_warned: set[str] = set()
+
+
+def _warn_once(message: str, *args: object) -> None:
+    text = message % args
+    if text not in _warned:
+        _warned.add(text)
+        logger.warning(text)
+
+
+def heal_branches(rule: dict) -> list[str]:
+    """The branches self-heal re-syncs for *rule*: every branch its branch_map names, else the rule's own
+    branch ("main" when it names none). The gateway's permission engine reads the same branch for an
+    environment no branch_map entry names (gateway-service/internal/authz.branchFor); the table in its
+    testdata/branch_for.json holds the cases, and tests/unit/test_branch_for_contract.py checks this against it."""
+    branches = list((rule.get("branch_map") or {}).keys())
+    return list(dict.fromkeys(branches)) or [str(rule.get("branch") or "main")]
 
 
 def resolve(
@@ -64,13 +86,13 @@ def resolve(
     branch_as_env: bool = False,
     pr_as_env: bool = False,
     tag_as_env: bool = False,
-) -> str:
+) -> str | None:
     """
     Resolve the environment string from git event metadata and rule config.
 
     Returns
     -------
-    str — never empty, falls back to "default".
+    str — the environment; None when nothing names one (the push feeds no environment of the rule).
     """
     branch_map    = branch_map    or {}
     file_path_map = file_path_map or {}
@@ -81,11 +103,17 @@ def resolve(
         logger.debug("env_resolve via=branch_map branch=%s env=%s", branch, env)
         return env
 
-    # 2. File-path → env mapping (exact match)
-    if file_path and file_path in file_path_map:
-        env = file_path_map[file_path]
-        logger.debug("env_resolve via=file_path_map path=%s env=%s", file_path, env)
-        return env
+    # 2. The env whose file this is. file_path_map is {env: path}, the direction rule.proto
+    # declares and the file collector, `vt sync --revision` and the web UI read it in.
+    if file_path:
+        for env, path in sorted(file_path_map.items()):
+            if path == file_path:
+                logger.debug("env_resolve via=file_path_map path=%s env=%s", file_path, env)
+                return env
+        if file_path in file_path_map:
+            _warn_once("file_path_map has %r as a key, so it looks written {path: env}. It is {env: path}: "
+                       "write {%r: %r}. The push resolves by the other rules until it is changed.",
+                       file_path, file_path_map[file_path], file_path)
 
     # 3. branch_as_env — branch name itself is the env
     if branch_as_env and branch:
@@ -99,7 +127,7 @@ def resolve(
     #   b) PRBranchCache lookup (plain push events to a branch that has an open PR)
     #
     # (b) is the key fix: without it, a plain push to a branch that already has
-    # an open PR would fall through to "default" and miss the PR environment.
+    # an open PR would fall through and miss the PR environment.
     if pr_as_env:
         effective_pr = pr_number
 
@@ -124,6 +152,6 @@ def resolve(
         logger.debug("env_resolve via=tag_as_env tag=%s env=%s", tag, env)
         return env
 
-    # 6. Default fallback
-    logger.debug("env_resolve via=default branch=%s", branch)
-    return "default"
+    # 6. Nothing names an environment: the push feeds none of this rule's environments.
+    logger.debug("env_resolve via=none branch=%s", branch)
+    return None

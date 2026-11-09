@@ -42,23 +42,35 @@ from app.pipeline.transformer import _flatten
 logger = logging.getLogger(__name__)
 
 
-class FileStrategy(MongoWriteStrategy):
+def _in(session: Any) -> dict[str, Any]:
+    """The keyword that puts an operation in *session*'s transaction (nothing when there is none)."""
+    return {"session": session} if session is not None else {}
 
-    def upsert(self, collection, flat_data, doc_filter, commit_sha, file_path, meta, data=None) -> Written:
+
+class FileStrategy(MongoWriteStrategy):
+    # The document is written and the other-shape ones are removed: two operations, one transaction
+    # where the server has them (MongoSink).
+    transactional = True
+
+    def upsert(self, collection, flat_data, doc_filter, commit_sha, file_path, meta, data=None,
+               session=None) -> Written:
         flt = {**doc_filter, "_vt_file": file_path}
         doc = {**meta, **doc_filter, "_vt_file": file_path, "data": self._shape(flat_data, data)}
-        collection.replace_one({**flt, "data": {"$exists": True}}, doc, upsert=True)
+        opts = _in(session)
+        collection.replace_one({**flt, "data": {"$exists": True}}, doc, upsert=True, **opts)
         # One document per key for this file, left from before the
         # datasource's update_strategy changed, no longer says anything. They
         # are counted: the sink logs it and the UI shows a Shape changed event.
-        replaced = deleted(collection.delete_many({**flt, "data": {"$exists": False}}))
+        replaced = deleted(collection.delete_many({**flt, "data": {"$exists": False}}, **opts))
         return Written(len(flat_data), replaced)
 
-    def repair(self, collection, flat_data, doc_filter, commit_sha, file_path, meta, data=None) -> Written:
+    def repair(self, collection, flat_data, doc_filter, commit_sha, file_path, meta, data=None,
+               session=None) -> Written:
         flt      = {**doc_filter, "_vt_file": file_path}
-        existing = collection.find_one(flt, {"_vt_commit": 1})
+        existing = collection.find_one(flt, {"_vt_commit": 1}, **_in(session))
         if existing is None or existing.get("_vt_commit") != commit_sha:
-            return self.upsert(collection, flat_data, doc_filter, commit_sha, file_path, meta, data=data)
+            return self.upsert(collection, flat_data, doc_filter, commit_sha, file_path, meta, data=data,
+                               session=session)
         return Written(0)
 
     def read_values(self, collection, keys, doc_filter) -> dict[str, str]:

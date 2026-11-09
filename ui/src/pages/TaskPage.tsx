@@ -6,10 +6,12 @@ import { CopyButton, EmptyState, ErrorState, LoadingRows, Notice, Revision, Time
 import { Hero, type HeroColor } from '../components/Hero';
 import { Panel } from '../components/Panel';
 import { FilePill, taskIcon } from '../components/Status';
-import { envHref, ruleHref } from '../features/links';
+import { Changes } from '../features/DryRunReport';
+import { envHref, ruleHref, runLogHref } from '../features/links';
 import { initiatedBy } from '../features/rule/HistoryTimeline';
 import { shortId, Stages, taskSummary } from '../features/tasks';
 import { usePageTitle } from '../layout/page';
+import { dryRunVerdict } from '../lib/outcome';
 import { isActive, TRIGGER } from '../lib/status';
 import { formatDateTime, formatDuration } from '../lib/time';
 import { useNow, useQuery } from '../lib/useQuery';
@@ -178,7 +180,10 @@ export function TaskPage() {
                           </pre>
                         </details>
                       ) : (
-                        <span className="muted">{f.validation ? `validation: ${f.validation}` : '—'}</span>
+                        <span className="muted" title={f.schemaNote}>
+                          {f.validation ? `validation: ${f.validation}` : '—'}
+                          {f.schema ? ` · schema: ${f.schema} (${f.schemaSource ?? '?'})` : ''}
+                        </span>
                       )}
                     </td>
                   </tr>
@@ -188,6 +193,24 @@ export function TaskPage() {
           </div>
         )}
       </Panel>
+      {t.dryRun && !isActive(t.state) && t.files.some(f => f.wouldChange) && (
+        <Panel title="What a sync would change" subtitle={dryRunVerdict(t).text} id="would-change-panel">
+          <div className="stack" style={{ gap: 20 }}>
+            {t.files.filter(f => f.wouldChange).map((f, i) => (
+              <div key={`${f.file}:${f.env}:${i}`} className="stack stack--tight">
+                <span className="row" style={{ gap: 8 }}>
+                  <span className="mono">{f.file}</span>
+                  <span className="tag">{f.env}</span>
+                </span>
+                <Changes change={f.wouldChange!} />
+              </div>
+            ))}
+            {t.rule && (
+              <Link to={runLogHref({ name: t.rule, tenant: t.tenant }, t.taskId)}>Open this log over the rule</Link>
+            )}
+          </div>
+        </Panel>
+      )}
     </div>
   );
 }

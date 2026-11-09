@@ -6,41 +6,53 @@
     {
       "platform": "gitea",
       "datasource": "mongo-primary",
-      "tenant_id": "default",
-      "branch": "main"
+      "branch": "main",
+      "branch_map": {
+        "main": "production"
+      }
     },
     {
       "platform": "gitea",
       "datasource": "zookeeper",
-      "tenant_id": "default",
       "branch": "main",
-      "key_format": "slash"
+      "key_format": "slash",
+      "branch_map": {
+        "main": "production"
+      }
     },
     {
       "platform": "gitea",
       "datasource": "redis",
-      "tenant_id": "default",
-      "branch": "main"
+      "branch": "main",
+      "branch_map": {
+        "main": "production"
+      }
     },
     {
       "platform": "gitea",
       "datasource": "s3-minio",
-      "tenant_id": "default",
-      "branch": "main"
+      "branch": "main",
+      "branch_map": {
+        "main": "production"
+      }
     },
     {
       "platform": "gitea",
       "datasource": "configmap-checkout",
-      "tenant_id": "default",
       "branch": "main",
-      "key_format": "dot"
+      "key_format": "dot",
+      "branch_map": {
+        "main": "production"
+      }
     },
     {
       "platform": "gitea",
       "datasource": "helm-checkout",
-      "tenant_id": "default",
       "branch": "main",
-      "helm_values_mode": "file"
+      "helm_values_mode": "file",
+      "branch_map": {
+        "main": "production"
+      }
     }
   ]
 }

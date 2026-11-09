@@ -48,7 +48,7 @@ export function RulesPage() {
   const bundle = useQuery('bundle', api => api.getBundle(), { poll: false });
   const [params, setParams] = useSearchParams();
   const [pinned, togglePin] = usePinned();
-  const [syncing, setSyncing] = useState<{ rule: RuleView; env?: string } | null>(null);
+  const [syncing, setSyncing] = useState<{ rule: RuleView; env?: string; dryRun?: boolean } | null>(null);
   const [creating, setCreating] = useState(false);
 
   const search = params.get('q') ?? '';
@@ -170,7 +170,7 @@ export function RulesPage() {
         <>
           <div className="rcard-grid">
             {visible.map(r => (
-              <RuleCard key={ruleKey(r)} rule={r} pinned={isPinned(pinned, r)} onTogglePin={() => togglePin(r)} onSync={() => setSyncing({ rule: r })} showTenant={tenants.length > 1} />
+              <RuleCard key={ruleKey(r)} rule={r} pinned={isPinned(pinned, r)} onTogglePin={() => togglePin(r)} onSync={dryRun => setSyncing({ rule: r, dryRun })} showTenant={tenants.length > 1} />
             ))}
           </div>
           {more}
@@ -181,8 +181,9 @@ export function RulesPage() {
         open={!!syncing}
         rule={syncing?.rule ?? null}
         initialEnvs={syncing?.env ? [syncing.env] : undefined}
+        initialDryRun={syncing?.dryRun}
         onClose={() => setSyncing(null)}
-        onStarted={rules.reload}
+        onChanged={rules.reload}
       />
       <NewRulePanel open={creating} onClose={() => setCreating(false)} bundle={bundle.data} existing={all.map(r => r.name)} />
     </div>

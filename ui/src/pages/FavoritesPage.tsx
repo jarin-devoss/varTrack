@@ -17,7 +17,7 @@ export function FavoritesPage() {
   const rules = useRules();
   const [pinned, togglePin] = usePinned();
   const [search, setSearch] = useState('');
-  const [syncing, setSyncing] = useState<RuleView | null>(null);
+  const [syncing, setSyncing] = useState<{ rule: RuleView; dryRun?: boolean } | null>(null);
 
   const favorites = (rules.data ?? []).filter(r => isPinned(pinned, r));
   const tenants = tenantsOf(rules.data ?? []);
@@ -52,10 +52,10 @@ export function FavoritesPage() {
       )}
       <div className="rcard-grid">
         {shown.map(r => (
-          <RuleCard key={ruleKey(r)} rule={r} pinned onTogglePin={() => togglePin(r)} onSync={() => setSyncing(r)} showTenant={tenants.length > 1} />
+          <RuleCard key={ruleKey(r)} rule={r} pinned onTogglePin={() => togglePin(r)} onSync={dryRun => setSyncing({ rule: r, dryRun })} showTenant={tenants.length > 1} />
         ))}
       </div>
-      <SyncPanel open={!!syncing} rule={syncing} onClose={() => setSyncing(null)} onStarted={rules.reload} />
+      <SyncPanel open={!!syncing} rule={syncing?.rule ?? null} initialDryRun={syncing?.dryRun} onClose={() => setSyncing(null)} onChanged={rules.reload} />
     </div>
   );
 }

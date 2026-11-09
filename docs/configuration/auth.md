@@ -1,6 +1,8 @@
 # Authentication & Authorization
 
-varTrack's CLI API (`/v1/cli/*`, used by `vt`) keeps no users or roles of its own. The caller shows their own Git token, and the rule's Git platform says what they may do. An optional **OPA** policy then decides with the whole request.
+varTrack keeps no users or roles of its own. The caller shows their own Git token, and the rule's Git platform says what they may do. An optional **OPA** policy then decides with the whole request.
+
+**One permission engine decides, for every way in.** It lives in the gateway. The CLI API (`/v1/cli/*`, used by `vt`) asks it directly, and the web UI asks it through an internal service, so a person is judged the same whether they press *Sync* in the browser or run `vt sync`. There is no second set of rules in the orchestrator to drift from it.
 
 ---
 
@@ -16,10 +18,12 @@ For each request the gateway asks the platform of the rule that syncs to the dat
 
 | The caller can, in one of the rule's repositories… | …so they may |
 |---|---|
-| push | `vt sync` |
+| push to the branch that feeds the environment | `vt sync` |
 | read | `vt sync --dry-run`, `vt validate`, `vt task` |
 
-A rule's repositories are the ones its `repositories` and enabled `overrides` name or match, minus its exclusions — the repositories the gateway routes pushes from. The web UI decides the same way (see below).
+A sync bypasses Git review, so it may do no more than the caller could do with a direct push. The branch that feeds an environment is the rule's `branch_map` entry that maps to it, or the environment's own name with `branch_as_env`; **branch protection counts**. A writer who may push to `develop` but not to the protected `main` can sync `staging` but not `production`. A rule that maps no branch to an environment cannot be synced to it.
+
+A rule's repositories are the ones its `repositories` and enabled `overrides` name or match, minus its exclusions — the repositories the gateway routes pushes from. The web UI asks the same engine (see below).
 
 | Answer | When |
 |---|---|
@@ -27,7 +31,9 @@ A rule's repositories are the ones its `repositories` and enabled `overrides` na
 | `403` | the caller lacks the access above, or the OPA policy denies the request |
 | `404` | no rule syncs to the datasource; a task of a rule the caller cannot read |
 
-`vt validate` without `--datasource`, and `vt validate-config`, need a token any platform of the bundle accepts. `vt task list` shows the tasks of the rules the caller can read.
+`vt validate` without `--datasource`, and `vt validate-config`, need a token the platform it is for accepts. `vt task list` shows the tasks of the rules the caller can read: the orchestrator is told which those are before it reads a page, so `--limit 5` returns five tasks you may read whenever that many exist, and the `next_cursor` in the API's answer continues where the page ended.
+
+A token is shown to **one platform only**, never tried on every platform in turn. A request that names a datasource uses the platform of the rule that syncs to it. One that names none (`vt validate` without `--datasource`, `vt validate-config`, `vt task list`) uses the platform you name, or the bundle's only platform; with several platforms and none named it answers `400` and lists them. Name it once with `vt login --platform gitea` (stored in the context), or for one call with `--platform` (`vt sync`, `vt validate`), `VARTRACK_PLATFORM` or the `X-Git-Platform` header.
 
 The `platform:login` entries of [`ui.auth.admins`](#set-it-up) may do anything, on the CLI API as in the UI. Tasks record their caller as `login@platform`.
 
@@ -37,7 +43,7 @@ The bundle's `auth.oidc` and `auth.rbac` blocks are no longer used; the gateway 
 
 ## OPA — policy layer (Open Policy Agent)
 
-OPA runs after the Git permission check for decisions Git permissions can't express — e.g., "writers may sync anywhere but production". Give the policy in exactly one of three ways:
+OPA runs after the Git permission check for decisions Git permissions can't express — e.g., "writers may sync anywhere but production". It is optional, and it can only **refuse**: it never grants more than Git does. It is asked about syncs (dry runs included) and validates, from the CLI and from the web UI alike; reading a rule, a task or an environment is Git's alone. Admins are judged too, so a policy can block production syncs for everyone during a freeze. Give the policy in exactly one of three ways:
 
 ```cue
 auth: {
@@ -96,6 +102,8 @@ Every request evaluation receives:
 | `input.file_path` | `"configs/app.yaml"` |
 | `input.tenant_id` | `"acme"` |
 | `input.dry_run` | `false` |
+| `input.via` | `"cli"` or `"ui"` — the way in |
+| `input.branch` | `"main"` — for a sync, the branch that feeds `env` |
 
 ### Reloading the policy
 
@@ -106,36 +114,47 @@ Every request evaluation receives:
 ## Layer evaluation order
 
 ```
-Request
+Request            (the CLI API, or the web UI asking through the gateway)
   │
   ▼
-Git token             ← 401 if missing, or the rule's platform rejects it
+Identify           ← 401 if missing or the platform rejects it; 400 if the platform must be named
+  │                  (the token is asked of one platform only)
+  ▼
+Admin?             ← ui.auth.admins: allowed whatever Git says; the policy still runs
   │
   ▼
-Git permission        ← 403 without push (sync) or read (anything else) access
+Role in the rule's ← read, write or admin, from the platform
+repositories
   │
   ▼
-OPA evaluation        ← 403 if the policy does not allow it
+Branch (sync only) ← 403 unless the caller may push to the branch that feeds the environment,
+  │                  branch protection included
+  ▼
+OPA evaluation     ← 403 if the policy does not allow it (syncs, dry runs, validates)
   │
   ▼
 Handler
 ```
 
-OPA is skipped if no `opa` block is configured.
+OPA is skipped if no `opa` block is configured. What the platforms said is remembered for `AUTHZ_CACHE_TTL` (default 60 seconds) and a revoked permission keeps working until then; a failure to reach a platform is never remembered.
 
 ---
 
 ## Web UI sign-in with your Git platform
 
-The web UI can sign users in with the Git platforms your rules already use (GitHub, GitHub Enterprise, Gitea) and show each user only what those platforms let them see. varTrack keeps no list of who may see what: each rule is judged on its own platform, asked with the user's own account there.
+The web UI can sign users in with the Git platforms your rules already use (GitHub, GitHub Enterprise, Gitea) and show each user only what those platforms let them see. Signing in only says who someone is. What they may see and do is decided by the [same engine](#authentication-authorization) the CLI API asks, in the gateway: the orchestrator sends it the user's tokens and the rule, and does what the answer says. varTrack keeps no list of who may see what: each rule is judged on its own platform, asked with the user's own account there.
 
 | The user can, on the rule's platform… | …so in the UI they |
 |---|---|
 | read at least one repository the rule covers | see the rule, its tasks and its events |
 | read the repository an environment was last synced from | see that environment, its keys and its diff |
-| write to one of the rule's repositories | can **Sync** it; with read access only they can **Dry run** it |
+| push to the branch that feeds an environment | can **Sync** it (branch protection counts, as for `vt sync`); with read access only they can **Dry run** it, and **Sync** is shown disabled, with the reason, wherever it would be (the rule's card and page, an environment, the Keys tab) |
 
-A rule covers the repositories it names, the ones its patterns (`acme/*`) match minus its exclusions, and the ones its environments were synced from. A rule, environment or task the user cannot see answers *not found*, exactly like one that does not exist. Answers are cached for two minutes per session, so a permission change on a platform shows up within that time.
+A dry run does not close the Sync panel: its **log** is shown there — what was read from Git and at which revision, how the schema judged each file, and the keys a sync would add, change (the value in the store now, the value in Git) and delete — and someone who may sync can start the real sync of the same environments from it. An earlier dry run's log opens again from the rule's *History* tab (*Show log*), over the rule's page; the address (`?run=<task id>`) can be shared. Secret values are counted, never shown.
+
+A rule covers the repositories it names and the ones its patterns (`acme/*`) match, minus its exclusions. The repository an environment was synced from decides whether that *environment* is visible, never what the user may do to the rule. A rule, environment or task the user cannot see answers *not found*, exactly like one that does not exist; a sync the engine refuses answers `403` with its reason (`wes on gitea may not push to main of acme/configs (the branch that feeds production)`). A sync re-reads exactly the branch the permission was judged on. The engine's `OPA` policy and admin list apply to the UI as to the CLI.
+
+The UI needs the gateway's permission engine: set `AUTHZ_ADDR` on the gateway and `GATEWAY_AUTHZ_ADDR` on the orchestrator (see [Internal authentication](../operations/internal-auth.md#the-permission-engine)). If it cannot be reached the UI answers `503 permissions are unavailable` rather than guessing.
 
 ### Tenants are shown, not chosen
 
@@ -201,7 +220,7 @@ bundle: {
 | `ui.auth.providers[].client_id` / `client_secret` | — | The OAuth application: a string, `{value: "…"}`, `{file: "/path"}` or `{ref: {path: "…", key: "…"}}` |
 | `ui.auth.providers[].browser_url` | the platform's `endpoint` | The platform's address as the browser sees it, when the endpoint is internal (e.g. `http://gitea:3000`) |
 | `ui.auth.providers[].scopes` | per platform, see above | OAuth scopes |
-| `ui.auth.admins` | — | `platform:login` entries that see every rule; with one provider a bare login works. With several, an admin must name the platform: `alice` on GitHub and `alice` on Gitea need not be the same person |
+| `ui.auth.admins` | — | `platform:login` entries that see and sync every rule, in the UI and on the CLI API. The gateway reads this list, and is its only reader. With one platform a bare login works; with several, an admin must name the platform (the gateway refuses to start otherwise): `alice` on GitHub and `alice` on Gitea need not be the same person |
 | `ui.auth.session_ttl_seconds` | `28800` | How long a session lasts (8 hours) |
 | `ui.auth.session_secret` | derived from the client secrets | Key for encrypting sessions at rest |
 | `ui.auth.redirect_url` | `{public_url}/api/orchestrator/v1/auth/callback` | The callback URL, when it differs |
@@ -211,10 +230,10 @@ Without `ui.auth` the UI is open to anyone who can reach it, as before. If sign-
 
 `{ref: {path, key}}` reads field `key` of the Vault secret at `path` (under the secret manager's `mount_point`). The orchestrator reads files and references when it loads these settings, then again at most once a minute, so a rotated secret is picked up without a restart. If Vault can't be reached or the key is missing, the UI stays closed and the orchestrator's log names the field. Rotating a client secret also ends the sessions in progress unless `session_secret` is set, since the session key is otherwise derived from the client secrets. The model is [`ui.proto`](https://github.com/jarin-devoss/varTrack/blob/main/proto/vartrack/v1/models/ui.proto).
 
-**Without a `ui.auth` block**, the orchestrator reads the same settings from environment variables: `UI_AUTH_PLATFORMS` (`github,gitea`), then per platform `UI_AUTH_{P}_CLIENT_ID`, `UI_AUTH_{P}_CLIENT_SECRET`, `UI_AUTH_{P}_URL` and `UI_AUTH_{P}_SCOPES` (`{P}` is the platform name upper-cased with `-` as `_`), plus `UI_PUBLIC_URL`, `UI_AUTH_REDIRECT_URL`, `UI_AUTH_ADMINS`, `UI_SESSION_TTL_SECONDS` and `UI_SESSION_SECRET`. Any of them can be read from a file by appending `_FILE`.
+**Without a `ui.auth` block**, the orchestrator reads the same settings from environment variables: `UI_AUTH_PLATFORMS` (`github,gitea`), then per platform `UI_AUTH_{P}_CLIENT_ID`, `UI_AUTH_{P}_CLIENT_SECRET`, `UI_AUTH_{P}_URL` and `UI_AUTH_{P}_SCOPES` (`{P}` is the platform name upper-cased with `-` as `_`), plus `UI_PUBLIC_URL`, `UI_AUTH_REDIRECT_URL`, `UI_SESSION_TTL_SECONDS` and `UI_SESSION_SECRET`. Any of them can be read from a file by appending `_FILE`. The admins are always `ui.auth.admins` in the bundle: the old `UI_AUTH_ADMINS` variable is no longer read, and the orchestrator refuses to start while it is set rather than leave you thinking it counts.
 
 ### How sessions work
 
-Sign-in is the OAuth2 authorization code flow with PKCE. The login state is single-use, expires after five minutes, names the platform, and is bound to the browser that started it by a cookie. After sign-in the browser holds only a random session id in an `HttpOnly` cookie (`Secure` when the UI is served over HTTPS). The platform tokens stay on the server, encrypted with AES-256-GCM, in Redis next to the sync ledger, and expired tokens are refreshed when the platform issues refresh tokens. Signing out deletes the session on the server, so a copied cookie stops working too.
+Sign-in is the OAuth2 authorization code flow with PKCE. The login state is single-use, expires after five minutes, names the platform, and is bound to the browser that started it by a cookie. After sign-in the browser holds only a random session id in an `HttpOnly` cookie (`Secure` when the UI is served over HTTPS). The platform tokens stay on the server, encrypted with AES-256-GCM, in Redis next to the sync ledger, and expired tokens are refreshed when the platform issues refresh tokens. A token travels to the gateway's engine only as a field of a request over the internal connection (TLS in production, authenticated with a signed grant), and is never logged. Signing out deletes the session on the server, so a copied cookie stops working too.
 
-This covers the web UI's API (`/v1/ui/*`). The CLI API (`/v1/cli/*`, used by `vt` and by the UI's Playground) takes a Git token instead, as above; paste one under *API token for the Playground* on the sign-in page to use it from the UI.
+This covers the web UI's API (`/v1/ui/*`). The CLI API (`/v1/cli/*`, used by `vt` and by the UI's Playground) takes a Git token instead, as above; paste one into the *Git token* card on the Playground page to use it from the UI (it stays in the memory of that browser tab). Signing in to the UI does not provide it, and a personal access token need not be a JWT.

@@ -1,10 +1,12 @@
 [
   {
-    "platform": "github",
+    "platform": "gitea",
     "datasource": "mongo",
     "repo_url": "http://gitea:3000/vartrack-demo/demo-configs.git",
     "file_name": "app-settings.yaml",
-    "repositories": ["vartrack-demo/demo-configs"],
+    "repositories": [
+      "vartrack-demo/demo-configs"
+    ],
     "branch_as_env": false,
     "branch": "main",
     "sync_mode": "SYNC_MODE_FULL",
@@ -13,6 +15,9 @@
     "database": "vartrack",
     "collection": "vault_test",
     "update_strategy": "STRATEGY_KEY_VALUE",
-    "destination_template": "vault-test"
+    "destination_template": "vault-test",
+    "branch_map": {
+      "main": "default"
+    }
   }
 ]

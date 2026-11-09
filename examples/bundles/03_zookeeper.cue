@@ -7,7 +7,6 @@ bundle: {
 				protocol:    "https"
 				token:       "ghp_xxxxxxxxxxxxxxxxxxxx"
 				org_name:    "my-org"
-				verify_ssl:  true
 				timeout:     "30s"
 				max_retries: 3
 			}
@@ -29,15 +28,15 @@ bundle: {
 		},
 		{
 			redis: {
-				tag:      "redis"
-				hosts:    ["redis-host:6379"]
+				tag: "redis"
+				hosts: ["redis-host:6379"]
 				database: 0
 			}
 		},
 		{
 			redis: {
-				tag:      "redis-results"
-				hosts:    ["redis-host:6379"]
+				tag: "redis-results"
+				hosts: ["redis-host:6379"]
 				database: 1
 			}
 		},
@@ -48,7 +47,11 @@ bundle: {
 		{
 			platform:   "github"
 			datasource: "zookeeper"
-			self_heal:  true
+			file_name:  "app.yaml"
+			repositories: ["acme-corp/configs"]
+			// Where the environments come from: a rule that names none is refused.
+			branch_map: {main: "production"}
+			self_heal: true
 		},
 	]
 

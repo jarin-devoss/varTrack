@@ -17,7 +17,6 @@ import pytest
 
 from app import config_validator
 from app.pipeline import rule_options
-from app.pipeline.datasource_settings import _MAPPINGS
 from app.ui import views
 
 APP = pathlib.Path(__file__).resolve().parents[2] / "app"
@@ -36,12 +35,34 @@ def test_what_merges_what_only_config_cue_sets_and_what_a_repo_may_set():
     assert rule_options.ADMIN_ONLY == {
         "repositories", "exclude_repositories", "overrides", "secret_manager", "self_heal", "force", "tenants"}
     assert rule_options.REPO_OVERRIDABLE == {
-        "branch_map", "dry_run", "branch_as_env", "pr_as_env", "tag_as_env", "file_name", "file_path_map",
+        "branch_map", "branch_as_env", "pr_as_env", "tag_as_env", "file_name", "file_path_map",
         "prune", "root_key", "strict_validation", "sync_mode", "variables_map"}
 
 
 def test_an_option_cannot_be_both_admin_only_and_open_to_a_repository():
     assert rule_options.ADMIN_ONLY.isdisjoint(rule_options.REPO_OVERRIDABLE)
+
+
+def test_each_option_has_exactly_one_layer_and_a_tenant_may_set_all_but_the_admin_ones():
+    assert set(rule_options.SETTABLE_IN) == set(rule_options.FIELDS)
+    assert rule_options.TENANT_SETTABLE == set(rule_options.FIELDS) - rule_options.ADMIN_ONLY
+    assert rule_options.REPO_OVERRIDABLE <= rule_options.TENANT_SETTABLE
+
+
+def test_the_sink_options_a_tenant_may_set_are_declared_options():
+    # They were read by the sinks and declared nowhere, which left them settable by accident.
+    # A tenant's bundle.json may set them, a repository's vartrack.json may not.
+    declared = {"key_format", "file_format", "env_as_filename", "helm_values_mode", "s3_object_tags",
+                "s3_tag_keys"}
+    assert declared <= rule_options.TENANT_SETTABLE
+    assert declared.isdisjoint(rule_options.REPO_OVERRIDABLE | rule_options.ADMIN_ONLY)
+
+
+def test_what_runs_a_program_or_reaches_a_destination_is_never_a_rule_option():
+    # Helm's flags and values file are the datasource's (config.cue); which binary runs is the
+    # operator's HELM_BINARY. None of them is something a bundle.json or vartrack.json can set.
+    for key in ("helm_binary", "helm_extra_flags", "helm_values_file_path", "post_write_commands", "token"):
+        assert key not in rule_options.TENANT_SETTABLE
 
 
 def test_suspend_and_drift_ignore_are_neither_admin_only_nor_overridable_by_a_repo():
@@ -51,12 +72,13 @@ def test_suspend_and_drift_ignore_are_neither_admin_only_nor_overridable_by_a_re
         assert name not in rule_options.ADMIN_ONLY and name not in rule_options.REPO_OVERRIDABLE
 
 
-def test_the_former_names_are_the_four_there_are():
+def test_the_former_names_are_the_five_there_are():
     assert rule_options.RENAMED == {
         "env_as_branch": "branch_as_env",
         "env_as_pr": "pr_as_env",
         "env_as_tags": "tag_as_env",
         "env_as_prefix": "prefix_as_env",  # S3's, from its own proto
+        "zk_path_template": "destination_template",  # ZooKeeper's own name for it
     }
 
 
@@ -89,14 +111,18 @@ def test_the_validator_checks_every_option_not_only_the_ones_it_once_listed():
     ]
 
 
-def test_branch_and_max_changed_files_are_options_neither_admin_only_nor_open_to_a_repo():
-    # Both were read from a rule and declared nowhere, so the gateway's strict
-    # loader rejected them in config.cue.
-    for name in ("branch", "max_changed_files"):
-        assert name in rule_options.FIELDS
-        assert name not in rule_options.ADMIN_ONLY and name not in rule_options.REPO_OVERRIDABLE
-    assert isinstance(500, rule_options.TYPES["max_changed_files"])
-    assert not isinstance("500", rule_options.TYPES["max_changed_files"])
+def test_branch_is_an_option_neither_admin_only_nor_open_to_a_repo():
+    # It was read from a rule and declared nowhere, so the gateway's strict loader rejected it in config.cue.
+    assert "branch" in rule_options.FIELDS
+    assert "branch" not in rule_options.ADMIN_ONLY and "branch" not in rule_options.REPO_OVERRIDABLE
+
+
+def test_max_changed_files_is_gone_with_the_fallback_it_cut():
+    """It cut the "every file the push changed" fallback of a rule that named no file. A rule reads the file it names."""
+    from app.pipeline.renamed_options import REMOVED_OPTIONS
+
+    assert "max_changed_files" not in rule_options.FIELDS
+    assert "files it names" in REMOVED_OPTIONS["max_changed_files"]
 
 
 def test_strict_validation_is_a_rule_option_a_repo_may_set():
@@ -112,38 +138,33 @@ def test_strict_validation_is_a_rule_option_a_repo_may_set():
 # A new key does not belong here: it is a proto field. These are the ones that
 # are not, and why.
 NOT_OPTIONS: dict[str, str] = {
-    "repo_url": "filled in when the rule is built (the clone URL of its repository)",
-    "tenant_id": "filled in when the rule is built (the tenant it was loaded for)",
+    "tenant_id": "set by varTrack when the rule is built (the tenant whose schema repository it was loaded from)",
     "token": "filled in when the rule is built (the platform's token)",
     "extends": "preset syntax, resolved before the rule is built",
-    "dry_run_prune": "the former flat name of prune.dry_run, still read",
     "prune_protection": "the former flat name of prune.protection, still read",
-    # Sink options a tenant's bundle.json sets and config.cue has no field for
-    # (docs/configuration/schema-registry.md: "sink options with no config.cue field").
-    "helm_binary": "a Helm sink option, set in bundle.json only",
-    "helm_values_file_path": "a Helm sink option, set in bundle.json only",
-    "helm_values_mode": "a Helm sink option, set in bundle.json only",
-    "zk_path_template": "the ZooKeeper sink's former name for destination_template, still read",
-    "env_as_filename": "a Linux-server sink option, set in bundle.json only",
 }
 
 _RECEIVERS = {"rule_config", "rule"}
+# The sinks are handed the rule as `cfg`.
+_SINK_RECEIVERS = _RECEIVERS | {"cfg"}
 
 
 def _rule_keys_read() -> dict[str, set[str]]:
     """Every literal rule_config.get("key") / rule_config["key"] in the pipeline,
     the tasks, the web UI's read model and the CLI operations, with its files."""
     files = [*APP.glob("pipeline/**/*.py"), *APP.glob("tasks/*.py"), *APP.glob("ui/*.py"), APP / "cli_ops.py"]
+    sinks = set(APP.glob("pipeline/sinks/**/*.py"))
     keys: dict[str, set[str]] = {}
     for path in files:
+        receivers = _SINK_RECEIVERS if path in sinks else _RECEIVERS
         for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
             key = None
             if (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr == "get"
-                    and isinstance(node.func.value, ast.Name) and node.func.value.id in _RECEIVERS
+                    and isinstance(node.func.value, ast.Name) and node.func.value.id in receivers
                     and node.args and isinstance(node.args[0], ast.Constant) and isinstance(node.args[0].value, str)):
                 key = node.args[0].value
             elif (isinstance(node, ast.Subscript) and isinstance(node.value, ast.Name)
-                  and node.value.id in _RECEIVERS and isinstance(node.slice, ast.Constant)
+                  and node.value.id in receivers and isinstance(node.slice, ast.Constant)
                   and isinstance(node.slice.value, str)):
                 key = node.slice.value
             if key:
@@ -152,10 +173,11 @@ def _rule_keys_read() -> dict[str, set[str]]:
 
 
 def test_every_rule_key_the_orchestrator_reads_is_an_option_or_says_why_not():
-    datasource_keys = {key for mapping in _MAPPINGS.values() for key, _ in mapping}
+    # A datasource's settings are not read from the rule at all (app/pipeline/sinks/settings.py), so a
+    # key read from a rule is a rule option or on NOT_OPTIONS, nothing else.
     undeclared = {
         key: sorted(files) for key, files in _rule_keys_read().items()
-        if key not in rule_options.FIELDS and key not in datasource_keys and key not in NOT_OPTIONS
+        if key not in rule_options.FIELDS and key not in NOT_OPTIONS
     }
     assert not undeclared, (
         f"read from a rule but not an option of rule.proto: {undeclared}. Add the option to rule.proto "
@@ -213,3 +235,23 @@ def test_nothing_in_not_shown_is_shown_or_not_an_option():
         if n not in rule_options.FIELDS or views.UI_NAMES.get(n, _camel(n)) in shown
     )
     assert not stale, f"take these off NOT_SHOWN_IN_UI: {stale}"
+
+
+# ── Fields varTrack sets are not options ─────────────────────────────────────
+
+def test_the_reference_lists_no_field_varTrack_sets():
+    """last_applied_at is OUTPUT_ONLY and tenant_id was: the tenant is where a file lives, never something it
+    says, so neither is an option a person reads about in rule-options.md (the generator skips every
+    OUTPUT_ONLY field, and a new one cannot appear there by accident)."""
+    text = (DOCS / "configuration" / "rule-options.md").read_text(encoding="utf-8")
+    for name in ("tenant_id", "last_applied_at"):
+        assert name not in text, name
+        assert name not in rule_options.FIELDS
+    assert "tenant_id" in NOT_OPTIONS          # varTrack's own key on a built rule, said to be one
+
+
+def test_tenant_id_is_a_reserved_field_of_rule():
+    from vartrack.v1.models import rule_pb2
+
+    assert "tenant_id" not in rule_pb2.Rule.DESCRIPTOR.fields_by_name
+    assert 49 not in {f.number for f in rule_pb2.Rule.DESCRIPTOR.fields}

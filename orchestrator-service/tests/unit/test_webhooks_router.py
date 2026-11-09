@@ -40,6 +40,7 @@ def _app_with_tenant(tenant_id: str | None = "acme"):
     rule = {"tenant_id": tenant_id} if tenant_id else {}
     mgr = MagicMock()
     mgr.resolve_rule.return_value = rule
+    mgr.tenant_for_repo.return_value = tenant_id   # the tenant whose schema repository the push is for
     app.state.schema_manager = mgr
     return app
 
@@ -76,31 +77,27 @@ async def test_webhook_accepted_returns_202_with_task_id():
 
 
 @pytest.mark.asyncio
-async def test_webhook_missing_tenant_id_returns_400():
-    """
-    When no tenant_id is in rule_config AND payload has no repository.full_name,
-    the endpoint must reject with 400.
-    """
+async def test_a_rule_without_a_tenant_is_the_default_tenants():
+    """No tenants declared, and the rule names none: the push is the implicit tenant "default"'s."""
     app = _app_with_tenant(tenant_id=None)
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as c:
-        resp = await c.post(
-            "/v1/webhooks/mongo",
-            content=b'{"ref":"refs/heads/main"}',
-            headers={"x-github-event": "push"},
-        )
-    assert resp.status_code == 400
-    assert "tenant_id" in resp.text
+    with patch("app.tasks.etl.process_webhook_task") as mock_task_cls:
+        mock_task_cls.apply_async.return_value = _mock_task("tid-default")
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as c:
+            resp = await c.post(
+                "/v1/webhooks/mongo",
+                content=b'{"ref":"refs/heads/main"}',
+                headers={"x-github-event": "push"},
+            )
+    assert resp.status_code == 200
+    assert mock_task_cls.apply_async.call_args.kwargs["kwargs"]["tenant_id"] == "default"
 
 
 @pytest.mark.asyncio
-async def test_webhook_tenant_derived_from_repo_owner():
-    """
-    When rule_config has no tenant_id, derive it from repository.full_name
-    in the webhook payload.
-    """
+async def test_the_tenant_is_never_the_owner_a_payload_names():
+    """A payload's repository owner used to become the tenant in development. It is not one."""
     app = _app_with_tenant(tenant_id=None)
     with patch("app.tasks.etl.process_webhook_task") as mock_task_cls:
-        mock_task_cls.apply_async.return_value = _mock_task("tid-derived")
+        mock_task_cls.apply_async.return_value = _mock_task("tid-owner")
 
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as c:
             resp = await c.post(
@@ -110,8 +107,7 @@ async def test_webhook_tenant_derived_from_repo_owner():
             )
 
     assert resp.status_code == 200
-    call_kwargs = mock_task_cls.apply_async.call_args.kwargs["kwargs"]
-    assert call_kwargs["tenant_id"] == "myorg"
+    assert mock_task_cls.apply_async.call_args.kwargs["kwargs"]["tenant_id"] == "default"
 
 
 @pytest.mark.parametrize("header,expected_platform", [
@@ -196,7 +192,7 @@ async def test_schema_webhook_enqueued_to_schema_queue():
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as c:
             await c.post(
                 "/v1/webhooks/schema-registry",
-                json={"platform": "github", "repo": "org/s", "branch": "main", "tenant_id": "t"},
+                json={"platform": "github", "repo": "org/s", "branch": "main"},
             )
 
     call_kwargs = mock_task_cls.apply_async.call_args

@@ -26,6 +26,16 @@ CONFIG_REPO="demo-configs"
 SCHEMA_REPO="schemas"
 TENANT_ID="demo"
 
+# The orchestrator accepts a call only with a signed grant (INTERNAL_AUTH_SECRET): this script plays the
+# gateway's part. With no secret the orchestrator runs open and nothing is sent.
+auth_header() {
+    if [ -n "${INTERNAL_AUTH_SECRET:-}" ]; then
+        echo "Authorization: Bearer $(python3 /grant.py mint --audience sync --subject e2e-demo --platform gitea --datasource "${1:-}")"
+    else
+        echo "X-E2E-Auth: none"
+    fi
+}
+
 # ── Helpers ───────────────────────────────────────────────────────────────────
 wait_http() {
     local url=$1 label=$2 max=${3:-120} n=0
@@ -93,12 +103,15 @@ gitea_api POST "/orgs" \
     >/dev/null 2>&1 && ok "Organisation created" || warn "Organisation may already exist"
 
 step "Creating repositories (deleting stale ones first for clean state)"
+# The config repository is private, so an account with no access to it (demo-outsider) sees none of the demo's
+# rules; the schema repository stays public (the services read it without credentials).
 for repo in "$CONFIG_REPO" "$SCHEMA_REPO"; do
+    private=false; [ "$repo" = "$CONFIG_REPO" ] && private=true
     # Delete if exists (idempotent reset)
     gitea_api DELETE "/repos/${GITEA_ORG}/${repo}" >/dev/null 2>&1 || true
     sleep 1
     gitea_api POST "/orgs/${GITEA_ORG}/repos" \
-        -d "{\"name\":\"${repo}\",\"private\":false,\"auto_init\":true,\"default_branch\":\"main\"}" \
+        -d "{\"name\":\"${repo}\",\"private\":${private},\"auto_init\":true,\"default_branch\":\"main\"}" \
         >/dev/null 2>&1 && ok "Repo ${GITEA_ORG}/${repo} created" || warn "Repo ${repo} creation may have failed"
 done
 sleep 2  # give Gitea a moment after repo creation
@@ -112,6 +125,9 @@ step "Pushing schema: bundle.json → $SCHEMA_REPO"
 BUNDLE_B64=$(base64 -w 0 /demo/schemas/bundle.json)
 push_file "$SCHEMA_REPO" "bundle.json" "$BUNDLE_B64" "Add bundle.json" \
     && ok "bundle.json pushed" || warn "File push returned non-200 (may still work)"
+
+step "Setting up web UI sign-in: users, access, protected main, OAuth application"
+python3 /ui_sign_in.py && ok "web UI sign-in ready" || { err "web UI sign-in setup failed"; exit 1; }
 
 step "Resolving HEAD commit SHA"
 COMMIT_SHA=$(gitea_api GET "/repos/${GITEA_ORG}/${CONFIG_REPO}/git/refs" 2>/dev/null \
@@ -128,7 +144,7 @@ log "Cloning schema repo inside the API process…"
 
 WARM_RESP=$(curl -s --fail-with-body -X POST "${ORCHESTRATOR}/v1/tenants/${TENANT_ID}/schemas/warm" \
     -H "Content-Type: application/json" \
-    -d "{\"repo_url\":\"${GITEA}/${GITEA_ORG}/${SCHEMA_REPO}.git\",\"branch\":\"main\"}" \
+    -H "$(auth_header)" \
     2>&1) || { warn "Schema warm returned error: ${WARM_RESP}"; WARM_RESP='{"rules_loaded":0}'; }
 RULES=$(echo "$WARM_RESP" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('rules_loaded',0))" 2>/dev/null || echo "?")
 ok "Schema warmed: $RULES rule(s) loaded (${WARM_RESP})"
@@ -178,8 +194,8 @@ for datasource in mongo zookeeper; do
     step "Webhook → $datasource"
     RESP=$(curl -sf -X POST "${ORCHESTRATOR}/v1/webhooks/${datasource}" \
         -H "Content-Type: application/json" \
-        -H "X-GitHub-Event: push" \
-        -H "X-Tenant-ID: ${TENANT_ID}" \
+        -H "X-Gitea-Event: push" \
+        -H "$(auth_header "$datasource")" \
         -d "$PUSH_PAYLOAD" 2>&1) || { err "Webhook for $datasource failed: $RESP"; continue; }
     TASK_ID=$(echo "$RESP" | python3 -c "import json,sys; print(json.load(sys.stdin).get('task_id','?'))" 2>/dev/null || echo "?")
     TASK_IDS+=("$datasource:$TASK_ID")
@@ -400,6 +416,9 @@ PYEOF
 # ── PHASE 6: Full sink test suite ─────────────────────────────────────────────
 banner "PHASE 6: Full E2E test suite (16 suites / 8 sinks + CUE + Vault)"
 
+# The runner's exit status is this container's: a regression that failed, or did not run, is a failed
+# run. The stack is left up either way, so a failure can be looked at.
+runner_status=0
 if [ -d "/demo/schemas/settings" ]; then
     log "Running test_runner.py..."
     python3 /test_runner.py \
@@ -409,10 +428,15 @@ if [ -d "/demo/schemas/settings" ]; then
         --gitea "${GITEA}" \
         --gitea-user "${GITEA_USER}" \
         --gitea-pass "${GITEA_PASS}" \
-        && ok "Test runner finished — see /results/benchmark.json" \
-        || warn "Test runner exited non-zero (some suites may have failed)"
+        || runner_status=$?
+    if [ "$runner_status" -eq 0 ]; then
+        ok "Test runner finished — see /results/benchmark.json"
+    else
+        err "Test runner failed (exit ${runner_status}) — see /results/benchmark.json"
+    fi
 else
-    warn "No settings dir found at /demo/schemas/settings — skipping test suite"
+    err "No settings dir found at /demo/schemas/settings — the test suite did not run"
+    runner_status=1
 fi
 
 # ── Summary ────────────────────────────────────────────────────────────────────
@@ -440,3 +464,5 @@ echo -e "  docker exec -it \$(docker ps -qf name=zookeeper) zkCli.sh -server loc
 echo -e "  docker exec -it \$(docker ps -qf name=zookeeper) zkCli.sh -server localhost:2181 get /demo/default/api/rate_limit"
 echo -e "  ZooNavigator UI → http://localhost:9000  (auto-connects to zookeeper:2181)"
 echo ""
+
+exit "$runner_status"

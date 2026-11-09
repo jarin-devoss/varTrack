@@ -19,7 +19,6 @@ Every option a rule can have, and where it may be set. A rule is built from up t
 | [`file_name`](#file_name) | string | yes | yes | yes | the upper layer replaces it |
 | [`file_path_map`](#file_path_map) | object (string → string) | yes | yes | yes | merged key by key |
 | [`branch`](#branch) | string | yes | yes | — | the upper layer replaces it |
-| [`max_changed_files`](#max_changed_files) | number | yes | yes | — | the upper layer replaces it |
 | [`root_key`](#root_key) | string | yes | yes | yes | the upper layer replaces it |
 | [`branch_as_env`](#branch_as_env) | boolean | yes | yes | yes | the upper layer replaces it |
 | [`pr_as_env`](#pr_as_env) | boolean | yes | yes | yes | the upper layer replaces it |
@@ -31,14 +30,22 @@ Every option a rule can have, and where it may be set. A rule is built from up t
 | [`sync_mode`](#sync_mode) | string: `AUTO`, `GIT_UPSERT_ALL`, `GIT_SMART_REPAIR`, `LIVE_STATE` | yes | yes | yes | the upper layer replaces it |
 | [`exclude_repositories`](#exclude_repositories) | list | yes | — | — | only `config.cue` sets it |
 | [`overrides`](#overrides) | list | yes | — | — | only `config.cue` sets it |
-| [`prune`](#prune) | boolean, or object (`enabled`, `dry_run`, `protection`) | yes | yes | yes | merged key by key; `protection` patterns add up |
-| [`dry_run`](#dry_run) | boolean | yes | yes | yes | the upper layer replaces it |
+| [`prune`](#prune) | boolean, or object (`enabled`, `protection`) | yes | yes | yes | merged key by key; `protection` patterns add up |
 | [`self_heal`](#self_heal) | boolean | yes | — | — | only `config.cue` sets it |
 | [`force`](#force) | object | yes | — | — | only `config.cue` sets it |
 | [`tenants`](#tenants) | list | yes | — | — | only `config.cue` sets it |
 | [`suspend`](#suspend) | boolean | yes | yes | — | the upper layer replaces it |
 | [`drift_ignore`](#drift_ignore) | list | yes | yes | — | the upper layer replaces it |
 | [`strict_validation`](#strict_validation) | boolean | yes | yes | yes | the upper layer replaces it |
+| [`schema_map`](#schema_map) | list | yes | yes | — | the upper layer replaces it |
+| [`schema_from_file`](#schema_from_file) | boolean | yes | yes | — | the upper layer replaces it |
+| [`repo_url`](#repo_url) | string | yes | yes | — | the upper layer replaces it |
+| [`key_format`](#key_format) | string | yes | yes | — | the upper layer replaces it |
+| [`file_format`](#file_format) | string | yes | yes | — | the upper layer replaces it |
+| [`env_as_filename`](#env_as_filename) | boolean | yes | yes | — | the upper layer replaces it |
+| [`helm_values_mode`](#helm_values_mode) | string | yes | yes | — | the upper layer replaces it |
+| [`s3_object_tags`](#s3_object_tags) | object (string → string) | yes | yes | — | the upper layer replaces it |
+| [`s3_tag_keys`](#s3_tag_keys) | list | yes | yes | — | the upper layer replaces it |
 
 ## `platform`
 
@@ -100,16 +107,6 @@ The branch the periodic self-heal compares when the rule has no branch_map; with
 | | |
 |---|---|
 | Type | string |
-| Set in | `config.cue`, `bundle.json` |
-| Across layers | the upper layer replaces it |
-
-## `max_changed_files`
-
-The most files one push syncs; a push that changed more is cut to the first of them, with a warning. 500 when unset.
-
-| | |
-|---|---|
-| Type | number |
 | Set in | `config.cue`, `bundle.json` |
 | Across layers | the upper layer replaces it |
 
@@ -179,8 +176,12 @@ The tag name is the environment. Formerly env_as_tags. The former names are stil
 ```text
 Branch → environment, e.g. {main: "production", develop: "staging"}.
 A push to a branch that is not listed, and that no file_path_map,
-branch_as_env, pr_as_env or tag_as_env places, is synced to the
-environment "default".
+branch_as_env, pr_as_env or tag_as_env places, feeds no environment of
+the rule: it is skipped, not written anywhere. There is no "default"
+environment; a rule has to name where its environments come from (this,
+file_path_map, branch_as_env, pr_as_env or tag_as_env) in config.cue or the
+tenant's bundle.json, or it is refused when it is loaded. To keep writing
+to an environment called default, map a branch to it: {main: "default"}.
 ```
 
 | | |
@@ -221,6 +222,7 @@ When not set each sink falls back to its own sink-specific config key.
 | Type | string |
 | Set in | `config.cue`, `bundle.json` |
 | Across layers | the upper layer replaces it |
+| Former names | `zk_path_template` — still read, with a warning |
 
 ## `variables_map`
 
@@ -264,32 +266,13 @@ Turns the rule on or off for some repositories: [{match_repositories: ["other-or
 
 ## `prune`
 
-Delete keys varTrack wrote before that Git no longer holds: true, or {enabled, dry_run, protection}. Prune runs once per environment after all its files are written, only on sinks that keep each key separately (Redis, ZooKeeper, Vercel, MongoDB with STRATEGY_KEY_VALUE). A key changed outside varTrack is kept and reported. protection lists glob patterns of keys that are never deleted; every layer's patterns add up. An object with only protection does not turn pruning on.
+Delete keys varTrack wrote before that Git no longer holds: true, or {enabled, protection}. Prune runs once per environment after all its files are written, only on sinks that keep each key separately (Redis, ZooKeeper, MongoDB with STRATEGY_KEY_VALUE). A key changed outside varTrack is kept and reported. protection lists glob patterns of keys that are never deleted; every layer's patterns add up. An object with only protection does not turn pruning on.
 
 | | |
 |---|---|
-| Type | boolean, or object (`enabled`, `dry_run`, `protection`) |
+| Type | boolean, or object (`enabled`, `protection`) |
 | Set in | `config.cue`, `bundle.json`, `vartrack.json` |
 | Across layers | merged key by key; `protection` patterns add up |
-
-## `dry_run`
-
-```text
-When true, the pipeline runs in simulation mode for every webhook that
-matches this rule: Stage 1 (payload) and Stage 2 (ETL) execute fully —
-@secret fields are fetched and then masked as "***" in the report —
-but Stage 3 (sink write) is skipped.  No data is ever written to the sink.
-```
-
-Use case: "shadow" rules that validate config changes in CI/CD without touching the live datasource; canary rules during schema migrations.
-
-This flag is always forced to true by the /dry-run API endpoint even if the rule itself has dry_run = false.
-
-| | |
-|---|---|
-| Type | boolean |
-| Set in | `config.cue`, `bundle.json`, `vartrack.json` |
-| Across layers | the upper layer replaces it |
 
 ## `self_heal`
 
@@ -349,4 +332,94 @@ A file the CUE schema rejects fails the sync instead of being written with a war
 |---|---|
 | Type | boolean |
 | Set in | `config.cue`, `bundle.json`, `vartrack.json` |
+| Across layers | the upper layer replaces it |
+
+## `schema_map`
+
+Which schema checks which file, by the file's path in its repository: the first entry whose `match` matches the path wins. Without a match the schema is found by the file's name (`<name>.cue`, then `default.cue`) as before. A schema the map names that is not in the schema repository fails the file, with or without strict_validation. The layers add up, config.cue's entries first, so a path the operator mapped cannot be remapped by a tenant.
+
+| | |
+|---|---|
+| Type | list |
+| Set in | `config.cue`, `bundle.json` |
+| Across layers | the upper layer replaces it |
+
+## `schema_from_file`
+
+Let a JSON, YAML or TOML file name its own schema with a top-level `$schema` key, when no schema_map entry matched its path (the map wins, and the file's result says so). The value has the syntax of a schema_map `schema`; a URL (an editor's hint) is ignored. `$schema` is never synced as a key, whether this is on or not.
+
+| | |
+|---|---|
+| Type | boolean |
+| Set in | `config.cue`, `bundle.json` |
+| Across layers | the upper layer replaces it |
+
+## `repo_url`
+
+HTTPS clone URL of the config repository. Left out, it is derived from the platform and the rule's only repository.
+
+| | |
+|---|---|
+| Type | string |
+| Set in | `config.cue`, `bundle.json` |
+| Across layers | the upper layer replaces it |
+
+## `key_format`
+
+How a nested key is flattened into a flat destination key: "dot", "flat", …
+
+| | |
+|---|---|
+| Type | string |
+| Set in | `config.cue`, `bundle.json` |
+| Across layers | the upper layer replaces it |
+
+## `file_format`
+
+Linux server: the format the file is written in. Left out, the file's extension.
+
+| | |
+|---|---|
+| Type | string |
+| Set in | `config.cue`, `bundle.json` |
+| Across layers | the upper layer replaces it |
+
+## `env_as_filename`
+
+Linux server: one file per environment, named after it. True when left out.
+
+| | |
+|---|---|
+| Type | boolean |
+| Set in | `config.cue`, `bundle.json` |
+| Across layers | the upper layer replaces it |
+
+## `helm_values_mode`
+
+Helm: how values reach the chart, "set" (--set flags) or "file".
+
+| | |
+|---|---|
+| Type | string |
+| Set in | `config.cue`, `bundle.json` |
+| Across layers | the upper layer replaces it |
+
+## `s3_object_tags`
+
+S3: tags put on every object written.
+
+| | |
+|---|---|
+| Type | object (string → string) |
+| Set in | `config.cue`, `bundle.json` |
+| Across layers | the upper layer replaces it |
+
+## `s3_tag_keys`
+
+S3: keys whose values become object tags.
+
+| | |
+|---|---|
+| Type | list |
+| Set in | `config.cue`, `bundle.json` |
 | Across layers | the upper layer replaces it |

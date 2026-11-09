@@ -71,15 +71,15 @@ func TestSeveralUIProvidersTakeTheShorthandOrTheObjectForm(t *testing.T) {
 }
 
 func TestASecretManagersOwnCredentialsStayPlainStrings(t *testing.T) {
-	// vault token_auth.token is a string in its proto; wrapping it like a
-	// datasource's SecretRef token would make the whole bundle fail to load.
+	// vault token_auth.token is a SecretRef like every other credential: the string shorthand is
+	// wrapped as {value: …}.
 	b := parse(t, `{
 		"secret_managers": [{"vault": {"endpoint": "http://vault:8200", "mount_point": "secret", "kv_version": 2,
 			"token_auth": {"token": "root"}}}],
 		"ui": {"auth": {"providers": [{"platform": "gitea", "client_id": "id",
 			"client_secret": {"ref": {"path": "ui/gitea", "key": "client_secret"}}}], "secret_manager": "vault"}}
 	}`, true)
-	if got := b.GetSecretManagers()[0].GetVault().GetTokenAuth().GetToken(); got != "root" {
+	if got := b.GetSecretManagers()[0].GetVault().GetTokenAuth().GetToken().GetValue(); got != "root" {
 		t.Errorf("vault token = %q", got)
 	}
 	if ref := b.GetUi().GetAuth().GetProviders()[0].GetClientSecret().GetRef(); ref.GetPath() != "ui/gitea" || ref.GetKey() != "client_secret" {

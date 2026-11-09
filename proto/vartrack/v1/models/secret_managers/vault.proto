@@ -3,6 +3,8 @@ syntax = "proto3";
 package vartrack.v1;
 
 import "vartrack/v1/enums/secret_id_type.proto";
+import "vartrack/v1/options.proto";
+import "vartrack/v1/utils/secret_ref.proto";
 import "buf/validate/validate.proto";
 import "google/api/field_behavior.proto";
 import "google/protobuf/duration.proto";
@@ -52,13 +54,33 @@ message VaultConfig {
   }
 
   // --- TLS ---
-  bool            verify_ssl = 10 [(google.api.field_behavior) = OPTIONAL];
-  // CA certificate content (PEM) for server verification.
-  optional string ssl_ca     = 11 [(google.api.field_behavior) = OPTIONAL];
+  //
+  // The server's certificate is always checked unless this is set. It is named for the
+  // unsafe choice so that leaving it out is the safe one; it was `verify_ssl`, whose
+  // unset value (false) meant "do not check" in the Go services.
+  bool            insecure_skip_verify = 40 [(google.api.field_behavior) = OPTIONAL];
+  reserved 10;
+  reserved "verify_ssl";
+  // CA certificate for server verification, as its content (PEM). To give a file, use ssl_ca_file.
+  optional string ssl_ca     = 11 [
+    (google.api.field_behavior) = OPTIONAL,
+    (vartrack.v1.config) = {path_or_content: "content"}
+  ];
+  // CA certificate for server verification, as the path of a PEM file the service reads.
+  optional string ssl_ca_file = 41 [
+    (google.api.field_behavior) = OPTIONAL,
+    (vartrack.v1.config) = {path_or_content: "path"}
+  ];
   // Client certificate content (PEM) for mutual TLS.
-  optional string ssl_cert   = 12 [(google.api.field_behavior) = OPTIONAL];
+  optional string ssl_cert   = 12 [
+    (google.api.field_behavior) = OPTIONAL,
+    (vartrack.v1.config) = {path_or_content: "content"}
+  ];
   // Client private key content (PEM) for mutual TLS.
-  optional string ssl_key    = 13 [(google.api.field_behavior) = OPTIONAL];
+  optional string ssl_key    = 13 [
+    (google.api.field_behavior) = OPTIONAL,
+    (vartrack.v1.config) = {path_or_content: "content"}
+  ];
 
   // --- Reliability ---
   // Per-request timeout. Uses google.protobuf.Duration instead of raw int32
@@ -82,10 +104,9 @@ message VaultConfig {
 // --- Auth method messages ---
 
 message TokenAuth {
-  string token = 1 [
-    (buf.validate.field).string.min_len = 1,
-    (google.api.field_behavior) = REQUIRED
-  ];
+  // A credential: a string, {file: "/run/secrets/…"} (optionally with key), never a {ref:}: Vault cannot
+  // log in with a secret it would first have to read from itself.
+  SecretRef token = 1 [(google.api.field_behavior) = REQUIRED];
 
   // When this token was last successfully used (OUTPUT_ONLY).
   google.protobuf.Timestamp last_used_at = 2 [(google.api.field_behavior) = OUTPUT_ONLY];
@@ -99,10 +120,10 @@ message AppRoleAuth {
     (buf.validate.field).string.min_len = 1,
     (google.api.field_behavior) = REQUIRED
   ];
-  string secret_id = 2 [
-    (buf.validate.field).string.min_len = 1,
-    (google.api.field_behavior) = REQUIRED
-  ];
+  // A credential: a string, {file: "/run/secrets/…"} (optionally with key), never a {ref:}: Vault cannot
+  // log in with a secret it would first have to read from itself.
+  // With secret_id_type ENVIRONMENT its value names the environment variable that holds it.
+  SecretRef secret_id = 2 [(google.api.field_behavior) = REQUIRED];
 
   SecretIDType secret_id_type = 3 [
     (buf.validate.field).enum.defined_only = true,
@@ -134,10 +155,9 @@ message UserPassAuth {
     (buf.validate.field).string.min_len = 1,
     (google.api.field_behavior) = REQUIRED
   ];
-  string password = 2 [
-    (buf.validate.field).string.min_len = 1,
-    (google.api.field_behavior) = REQUIRED
-  ];
+  // A credential: a string, {file: "/run/secrets/…"} (optionally with key), never a {ref:}: Vault cannot
+  // log in with a secret it would first have to read from itself.
+  SecretRef password = 2 [(google.api.field_behavior) = REQUIRED];
 
   // Mount path for the userpass auth method (defaults to "userpass").
   string mount_path = 3 [(google.api.field_behavior) = OPTIONAL];
