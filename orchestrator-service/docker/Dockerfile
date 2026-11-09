@@ -7,7 +7,7 @@
 # here with the same buf.gen.yaml CI and developers use, so an image never
 # depends on what a checkout happens to hold. (buf generate also writes the Go
 # code under libs/go/gen in this stage; it is discarded with the stage.)
-FROM bufbuild/buf:1.50.0@sha256:c34c81ac26044490a10fb5009eb618640834b9048f38d4717538421c6a25e4d7 AS proto
+FROM bufbuild/buf:1.75.0@sha256:adf82c7170be6629ec81dc907921ac1699407cd11c4f7fd7521b13c74152f849 AS proto
 WORKDIR /src
 COPY buf.yaml buf.lock buf.gen.yaml ./
 COPY proto proto
