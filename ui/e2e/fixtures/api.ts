@@ -118,6 +118,11 @@ export class UiApi {
     expect(response.status(), `POST sync ${rule}: ${await response.text()}`).toBe(200);
     return ((await response.json()) as { taskIds: string[] }).taskIds;
   }
+  /** Forget an environment the rule no longer produces (an administrator may; one still fed is refused). */
+  async forget(rule: string, env: string, tenant = 'demo'): Promise<void> {
+    const response = await this.request.delete(`/api/orchestrator/v1/ui/rules/${rule}/targets/${encodeURIComponent(env)}?tenant=${tenant}`);
+    expect(response.status(), `forget ${env} of ${rule}: ${await response.text()}`).toBe(204);
+  }
   async events(query = ''): Promise<ApiEvent[]> {
     return (await this.json<{ events: ApiEvent[] }>(`/v1/ui/events?limit=400${query}`)).events;
   }

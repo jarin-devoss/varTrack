@@ -22,10 +22,10 @@ const read = (...parts: string[]) => fs.readFileSync(path.join(repoRoot, ...part
  *
  *   redis-hash      branch_map {main: production, develop: staging}   production (main, protected), staging (develop)
  *   redis-string    branch_as_env                                      main (protected), develop
- *   zookeeper       no environment strategy, self-heal                 default (main, protected)
+ *   zookeeper       branch_map {main: production}, self-heal           production (main, protected)
  *   mongo-document  file_path_map, branch develop                      team-a, team-b
- *   mongo           no strategy, branch develop, self-heal             default (develop)
- *   mongo-primary   no strategy, branch develop, no self-heal          default (develop)
+ *   mongo           branch_map {develop: staging}, self-heal           staging (develop)
+ *   mongo-primary   branch_map {develop: staging}, no self-heal        staging (develop)
  */
 export const WORLD = {
   tenant: 'demo',
@@ -72,14 +72,64 @@ export async function buildWorld(baseURL: string): Promise<void> {
     // Every environment synced once, with the admin's own session reading the tasks.
     const admin = await request.newContext({ baseURL, storageState: PEOPLE.admin.storageState });
     try {
-      const done = await seedEnvironments(gitea, stack, new UiApi(admin));
+      const api = new UiApi(admin);
+      const done = await seedEnvironments(gitea, stack, api);
       if (done !== FIRST_PUSHES.length) throw new Error(`${done} of ${FIRST_PUSHES.length} first syncs succeeded`);
+      // An environment an earlier run left behind (one no rule produces now) would be in every spec's way: forget it, and say which.
+      const forgotten = await forgetLeftovers(api);
+      if (forgotten.length) console.log(`world: forgot ${forgotten.length} leftover environment(s): ${forgotten.join(', ')}`);
     } finally {
       await admin.dispose();
     }
   } finally {
     await gitea.dispose();
     await http.dispose();
+  }
+}
+
+/** Forget every environment that no rule produces any more, as an administrator does. Returns `rule env` for each. */
+export async function forgetLeftovers(api: UiApi): Promise<string[]> {
+  const forgotten: string[] = [];
+  for (const rule of await api.rules()) {
+    for (const target of rule.targets.filter(t => t.notFed)) {
+      await api.forget(rule.name, target.env);
+      forgotten.push(`${rule.name} ${target.env}`);
+    }
+  }
+  return forgotten;
+}
+
+/**
+ * Leave an environment behind on purpose, for a spec about leftovers: the rule feeds `env` from `branch` for the moment it takes
+ * to write it, then is put back as the world has it, so nothing feeds `env` any more. `forgetLeftover` takes it away again.
+ */
+export async function leaveBehind(baseURL: string, datasource: string, env: string, branch: string): Promise<void> {
+  const gitea = await Gitea.connect();
+  const http = await request.newContext();
+  const admin = await request.newContext({ baseURL, storageState: PEOPLE.admin.storageState });
+  try {
+    const stack = new Stack(http);
+    const rules = JSON.parse(read('ui', 'e2e', 'world', 'bundle.json')) as Array<Record<string, unknown>>;
+    Object.assign(rules.find(r => r.datasource === datasource)!, { branch_map: { [branch]: env } });
+    await gitea.put(SCHEMA_REPO, 'bundle.json', JSON.stringify(rules, null, 2), `ui-e2e: ${branch} feeds ${env} for a moment`);
+    await stack.warm(WORLD.tenant);
+    const api = new UiApi(admin);
+    await api.succeeded((await api.sync(`gitea/${datasource}`, [env]))[0], 90_000);
+    await gitea.put(SCHEMA_REPO, 'bundle.json', read('ui', 'e2e', 'world', 'bundle.json'), 'ui-e2e: the rules, as they were');
+    await stack.warm(WORLD.tenant);
+  } finally {
+    await admin.dispose();
+    await http.dispose();
+    await gitea.dispose();
+  }
+}
+
+export async function forgetLeftover(baseURL: string, rule: string, env: string): Promise<void> {
+  const admin = await request.newContext({ baseURL, storageState: PEOPLE.admin.storageState });
+  try {
+    await new UiApi(admin).forget(rule, env);
+  } finally {
+    await admin.dispose();
   }
 }
 
