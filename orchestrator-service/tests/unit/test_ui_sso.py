@@ -527,7 +527,18 @@ class TestAccess:
         viewer.visible_rules([MONGO, REDIS], [
             {"datasource": "mongo", "env": "production"}, {"datasource": "mongo", "env": "staging"},
             {"datasource": "redis", "env": "qa"}, {"datasource": "other", "env": "x"}])
+        # the written ones; a rule that names no environment produces none (there is no "default")
         assert seen["envs"] == [["production", "staging"], ["qa"]]
+
+    def test_an_environment_the_rule_produces_is_asked_about_before_it_is_written(self, cfg, engine, monkeypatch):
+        """A rule whose only written environment is a leftover nothing feeds any more is still judged by the one it
+        produces: asking only about the leftover made `canSync` false for everyone, an administrator included."""
+        seen = {}
+        monkeypatch.setattr(engine, "readable_rules", lambda ids, rules, envs=None, tenant="": seen.update(envs=envs) or (False, {}))
+        _, viewer = _session(cfg, "gitea", "tok-alice")
+        rule = {**MONGO, "branch_map": {"develop": "staging"}}
+        viewer.visible_rules([rule], [{"datasource": "mongo", "env": "main"}])
+        assert seen["envs"] == [["main", "staging"]]
 
     def test_an_environment_follows_the_repository_it_was_synced_from(self, cfg, engine):
         engine.valid.add("tok-alice")
@@ -828,11 +839,11 @@ class TestApi:
 
 TENANT_RULES = {
     "acme": [
-        {"platform": "gitea", "datasource": "mongo", "repositories": ["acme/configs"]},
+        {"platform": "gitea", "datasource": "mongo", "repositories": ["acme/configs"], "branch_map": {"main": "default"}},
         {"platform": "github", "datasource": "zookeeper", "repositories": ["acme/configs"]},
     ],
     "corp": [
-        {"platform": "gitea", "datasource": "mongo", "repositories": ["corp/configs"]},  # same name as acme's
+        {"platform": "gitea", "datasource": "mongo", "repositories": ["corp/configs"], "branch_map": {"main": "default"}},  # same name as acme's
         {"platform": "gitea", "datasource": "s3", "repositories": ["payments/billing"]},
         {"platform": "github", "datasource": "zookeeper", "repositories": ["corp/configs"]},
     ],
@@ -1000,7 +1011,8 @@ class TestWhatFeedsAnEnvironment:
     """The rule view marks each environment with the branch that feeds it, or why none does. The answer is the
     permission engine's own, so what the UI shows is what a sync would do."""
 
-    RULE = {"platform": "gitea", "datasource": "redis", "branch_map": {"develop": "staging"}}
+    # main feeds an environment that happens to be called default: there is no special default, only this entry
+    RULE = {"platform": "gitea", "datasource": "redis", "branch_map": {"develop": "staging", "main": "default"}}
 
     def test_each_environment_says_which_branch_feeds_it_or_why_none_does(self):
         from app.api.routers.ui import _say_what_feeds
@@ -1009,7 +1021,7 @@ class TestWhatFeedsAnEnvironment:
         targets = [{"env": "staging"}, {"env": "default"}, {"env": "main"}]
         _say_what_feeds(access.Viewer(), self.RULE, "acme", targets)
         assert targets[0] == {"env": "staging", "fedBy": "develop"}
-        assert targets[1] == {"env": "default", "fedBy": "main"}           # the rule's own branch feeds default
+        assert targets[1] == {"env": "default", "fedBy": "main"}           # the branch_map sends main to it
         assert "fedBy" not in targets[2]
         assert targets[2]["notFed"].startswith("nothing feeds main in the redis rule")
 
@@ -1078,7 +1090,7 @@ class TestForgetAnEnvironment:
     def test_an_environment_a_branch_still_feeds_is_refused(self, tenants, monkeypatch):
         monkeypatch.setattr(sessions, "config", lambda: None)
         forgotten = self._forgotten(monkeypatch)
-        resp = tenants.delete(self.URL.format(env="default"), params={"tenant": "acme"})   # the rule's own branch feeds `default`
+        resp = tenants.delete(self.URL.format(env="default"), params={"tenant": "acme"})   # the branch_map sends main to `default`
         assert resp.status_code == 409 and "still fed" in resp.json()["detail"] and forgotten == []
 
     def test_a_signed_in_person_who_is_not_an_administrator_is_refused(self, tenants, cfg, engine, monkeypatch):

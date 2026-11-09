@@ -140,6 +140,10 @@ def _file_result(r: Any, dry_run_file: dict | None = None) -> dict[str, Any]:
             "validation": dry_run_file.get("validation"),
             "schema": dry_run_file.get("schema"),
             "schemaSource": dry_run_file.get("schema_source"),
+            **({"schemaNote": dry_run_file["schema_note"]} if dry_run_file.get("schema_note") else {}),
+            **({"validationError": dry_run_file["validation_error"]} if dry_run_file.get("validation_error") else {}),
+            # What a sync would add or change, key by key (views.would_change); a dry run only.
+            **({"wouldChange": dry_run_file["would_change"]} if dry_run_file.get("would_change") else {}),
         }
     status = r.status
     if status == "error" and r.error and "validation" in r.error.lower():

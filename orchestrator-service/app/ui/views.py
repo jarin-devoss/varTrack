@@ -111,7 +111,6 @@ NOT_SHOWN_IN_UI: dict[str, str] = {
     "schema_map": "an ETL detail; each file of a task shows which schema checked it",
     "schema_from_file": "an ETL detail; each file of a task shows which schema checked it",
     "branch": "which branch the periodic heal compares; the page lists the branches of the branch map",
-    "max_changed_files": "an ETL limit; a push cut to it logs a warning",
     "repo_url": "where the rule's files are cloned from; the page lists the repositories",
     "key_format": "a sink's layout choice; the page shows the keys as written",
     "file_format": "a sink's layout choice; the page shows the keys as written",
@@ -175,6 +174,50 @@ def _read_current(rule: dict, tenant: str, env: str, keys: list[str]) -> tuple[d
             sink.close()
         except Exception:
             pass
+
+
+WOULD_CHANGE_LIMIT = 200      # keys listed per kind: the counts say how many there are
+_VALUE_LIMIT = 200            # characters of a value shown
+
+
+def _shown(value: Any) -> str:
+    text = str(value)
+    return text if len(text) <= _VALUE_LIMIT else text[:_VALUE_LIMIT] + "…"
+
+
+def would_change(rule: dict, tenant: str, env: str, desired: dict[str, str],
+                 secret_keys: frozenset[str] | set[str] = frozenset()) -> dict[str, Any]:
+    """What a sync of *desired* would do to *env*: the values to write against what the sink holds now, key by key
+    (the drift view's own comparison, ledger.key_state). {"added": keys the sink lacks, "changed": [{key, from, to}],
+    "unchanged": a count}, each list cut to WOULD_CHANGE_LIMIT with its full count beside it. A secret is not compared
+    (a dry run holds it masked): it is counted under "secrets". {"error": why} when the sink cannot be read."""
+    keys = sorted(desired)
+    current, error = _read_current(rule, tenant, env, keys)
+    if current is None:
+        return {"error": error}
+    added: list[str] = []
+    changed: list[dict[str, str]] = []
+    unchanged = unreadable = 0
+    for key in keys:
+        if key in secret_keys:
+            continue
+        live = current.get(key)
+        state = ledger.key_state(str(desired[key]), live)
+        if state == "unreadable":
+            unreadable += 1
+        elif state == "missing":
+            added.append(key)
+        elif state == "drifted":
+            changed.append({"key": key, "from": _shown(live), "to": _shown(desired[key])})
+        else:
+            unchanged += 1
+    return {
+        "added": added[:WOULD_CHANGE_LIMIT], "addedCount": len(added),
+        "changed": changed[:WOULD_CHANGE_LIMIT], "changedCount": len(changed),
+        "unchanged": unchanged,
+        "secrets": sum(1 for key in keys if key in secret_keys),
+        **({"unreadable": unreadable} if unreadable else {}),
+    }
 
 
 def _cache_key(rule: dict, tenant: str, record: dict) -> tuple:
@@ -377,9 +420,9 @@ def target_view(rule: dict, tenant: str, record: dict, *, recent_tasks: list[dic
 
 def produced_envs(rule: dict) -> dict[str, str]:
     """The environments the rule says it produces, and the branch that feeds each: every branch_map value, every
-    file_path_map environment, and the environment of a rule with no strategy ("default"). With branch_as_env the
-    environment of the rule's own branch (the others depend on which branches exist, which Git says, not the rule).
-    Written or not: the first sync of one writes it."""
+    file_path_map environment. With branch_as_env the environment of the rule's own branch (the others depend on
+    which branches exist, which Git says, not the rule). A rule that names none of these is refused when it is loaded
+    (rule_layers.refusal), so there is no "default" to produce. Written or not: the first sync of one writes it."""
     out: dict[str, str] = {}
     for branch, env in sorted((rule.get("branch_map") or {}).items()):
         out.setdefault(env, branch)
@@ -388,8 +431,6 @@ def produced_envs(rule: dict) -> dict[str, str]:
         out.setdefault(env, own)
     if rule.get("branch_as_env"):
         out.setdefault(own or str(rule.get("branch") or "main"), own or str(rule.get("branch") or "main"))
-    elif not out:
-        out["default"] = own
     return {env: branch for env, branch in out.items() if branch and repo_scope.branch_for(rule, env)}
 
 
@@ -416,6 +457,12 @@ def rule_view(rule: dict, tenant: str, records: list[dict], tasks: list[dict]) -
     written = {rec.get("env") for rec in mine}
     targets += [unsynced_target(rule, tenant, env, branch) for env, branch in produced_envs(rule).items() if env not in written]
     return {**rule_base(rule, tenant), "targets": targets}
+
+
+def refused_view(rule: dict, tenant: str, why: str) -> dict[str, Any]:
+    """A rule that names no environments, refused when it was loaded: nothing runs it, so it has no environments and no
+    actions; the page says why."""
+    return {**rule_base(rule, tenant), "targets": [], "refused": why, "canSync": False}
 
 
 def key_entries(rule: dict, tenant: str, record: dict) -> list[dict[str, Any]]:

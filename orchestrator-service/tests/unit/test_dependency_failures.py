@@ -62,7 +62,7 @@ def test_invalid_yaml_is_a_failed_file_with_the_parse_error():
 
     ctx = PayloadContext(platform="github", repo_url="http://gitea/acme/configs.git", ref="refs/heads/main",
                          branch="main", commit_sha="abc", tag=None, pr_number=None,
-                         rule_config={"file_name": "app.yaml"}, parsed_payload={})
+                         rule_config={"file_name": "app.yaml", "branch_as_env": True}, parsed_payload={})
     with (
         patch.object(stage_etl, "collect_files", return_value=[("app.yaml", "a: b: c: [unclosed")]),
         patch("app.schema_registry.manager.get_schema_manager",
@@ -222,7 +222,7 @@ def test_vault_down_fails_the_file_and_nothing_of_it_is_written():
 
     ctx = PayloadContext(platform="github", repo_url="http://gitea/acme/configs.git", ref="refs/heads/main",
                          branch="main", commit_sha="abc", tag=None, pr_number=None,
-                         rule_config={"file_name": "app.yaml"}, parsed_payload={})
+                         rule_config={"file_name": "app.yaml", "branch_as_env": True}, parsed_payload={})
     unreachable = SecretUnavailable("database.password: cannot read vartrack/configs#database.password "
                                     "from secret manager 'default': vault unreachable")
     with (
@@ -247,7 +247,7 @@ def test_a_secret_field_with_no_secret_manager_in_config_cue_fails_the_file():
 
     ctx = PayloadContext(platform="github", repo_url="http://gitea/acme/configs.git", ref="refs/heads/main",
                          branch="main", commit_sha="abc", tag=None, pr_number=None,
-                         rule_config={"file_name": "app.yaml"}, parsed_payload={})
+                         rule_config={"file_name": "app.yaml", "branch_as_env": True}, parsed_payload={})
     with (
         patch.object(stage_etl, "collect_files", return_value=[("app.yaml", "database:\n  password: placeholder\n")]),
         patch("app.pipeline.secret_resolver.parse_secret_fields", return_value={"database.password": None}),

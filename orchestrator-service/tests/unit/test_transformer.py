@@ -103,11 +103,12 @@ class TestEnvResolve(unittest.TestCase):
             file_path="config/prod/values.yaml",
             file_path_map={"config/prod/values.yaml": "prod"},
         )
-        self.assertEqual(env, "default")
+        self.assertIsNone(env)
 
-    def test_default_fallback(self):
-        env = resolve()
-        self.assertEqual(env, "default")
+    def test_nothing_names_an_environment_so_there_is_none(self):
+        """There is no "default" environment: a push nothing names feeds none of the rule's environments."""
+        self.assertIsNone(resolve())
+        self.assertIsNone(resolve(branch="feature/x", branch_map={"main": "production"}))
 
     def test_tag_env(self):
         env = resolve(tag="v1.2.3", tag_as_env=True)

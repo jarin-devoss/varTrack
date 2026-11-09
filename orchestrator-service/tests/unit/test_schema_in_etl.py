@@ -50,7 +50,7 @@ def vet(monkeypatch):
 def ctx(rule):
     return PayloadContext(platform="gitea", repo_url="https://git/acme/configs", ref="refs/heads/main", branch="main",
                           commit_sha="abc", tag=None, pr_number=None,
-                          rule_config={"platform": "gitea", "datasource": "mongo", "root_key": "", **rule},
+                          rule_config={"platform": "gitea", "datasource": "mongo", "root_key": "", "branch_as_env": True, **rule},
                           parsed_payload={})
 
 
