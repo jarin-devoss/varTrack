@@ -19,7 +19,21 @@ varTrack tries each strategy in order and uses the first one that produces a mat
 | 3 | `pr_as_env: true` | PR #42 → `pr-42` |
 | 4 | `branch_as_env: true` | branch `develop` → `develop` |
 | 5 | `tag_as_env: true` | tag `v1.2.3` → `v1.2.3` |
-| 6 | fallback | always → `default` |
+| 6 | none | the push feeds no environment of the rule: it is **skipped** |
+
+There is **no `default` environment**. A push that none of the strategies places feeds nothing of the rule, so it is skipped: the task ends *Succeeded · nothing to do* and says so (`branch feature/x feeds no environment of gitea/redis-hash`), and nothing is written to an environment nobody declared. `vt sync --env X` to an environment the rule does not produce is refused the same way (`nothing feeds X in the … rule`).
+
+### A rule must name its environments
+
+A rule has to say where its environments come from: `branch_map`, `file_path_map`, `branch_as_env`, `pr_as_env` or `tag_as_env`, **in `config.cue` or the tenant's `bundle.json`** (a repository's `vartrack.json` may add to them, but cannot be the only place). A rule that names none is **refused** when it is loaded (so is a rule that names no file to read: it needs `file_name` or `file_path_map` in the same two places): nothing runs it, the Rules page lists it as *Refused* with the reason, an event (`RuleRefused`) says so, `vt validate` reports it for a `bundle.json`, and the rest of the bundle loads.
+
+To keep writing to an environment called `default`, map a branch to it. The environment, its destinations and its data are the same as before:
+
+```cue
+branch_map: {main: "default"}
+```
+
+`default` is then an ordinary name: when the `branch_map` stops mapping it, it is a leftover like any other ("No longer synced by this rule": not compared with Git, its Diff, Sync and Dry run disabled, **Forget** to drop it).
 
 `pr_as_env`, `branch_as_env` and `tag_as_env` used to be called `env_as_pr`, `env_as_branch` and `env_as_tags` (the S3 option `prefix_as_env` was `env_as_prefix`, and ZooKeeper's `zk_path_template` is now `destination_template`). The old names still work in `config.cue`, `bundle.json` and `vartrack.json`; varTrack logs a warning with the new name.
 
@@ -33,6 +47,7 @@ Map specific branch names to environment names:
 rules: [{
   platform:   "github"
   datasource: "mongo"
+  file_name: "app-settings.yaml"
   branch_map: {
     main:    "production"
     develop: "staging"
@@ -355,6 +370,7 @@ Strategies can be combined. varTrack uses the first one that matches:
 rules: [{
   platform:   "github"
   datasource: "mongo"
+  file_name: "app-settings.yaml"
   branch_map: {
     main:    "production"   // explicit — highest priority
     develop: "staging"

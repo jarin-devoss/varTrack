@@ -45,7 +45,7 @@ Open the UI at http://localhost:5173. Two Git servers feed the demo, so sign-in 
 | Sign in to gitea as… | then connect gitea-team as… | you see |
 |---|---|---|
 | `demo-admin` | `team-admin` | all 7 rules on one page, and can sync them: the 6 demo rules of tenant `default` and the payments rule of tenant `payments`, with no tenant to switch to |
-| `demo-viewer` | `demo-viewer` | the 6 demo rules, dry runs only; the payments rule stays hidden — not in that team |
+| `demo-viewer` | `demo-viewer` | the 6 demo rules, dry runs only (Sync is disabled and says why; a dry run's log shows in the panel); the payments rule stays hidden — not in that team |
 
 The demo's rule settings come in layers ([how a rule is built](configuration/schema-registry.md#how-a-rule-is-built)):
 

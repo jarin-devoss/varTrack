@@ -127,6 +127,8 @@ The watcher asks the orchestrator each poll; the orchestrator reads the remote f
 rules: [{
   platform:   "github"
   datasource: "linux_server"
+  file_name: "app-settings.yaml"
+  branch_map: {main: "production"}
   self_heal:  true
 }]
 ```

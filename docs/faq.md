@@ -29,7 +29,9 @@ carry its own.
 
 ## What happens on a push to a branch I did not map?
 
-It is synced to the environment `default`. Map every branch you push to — see
+Nothing is written: the push feeds no environment of the rule, so it is skipped and the task
+says so ("nothing to do: branch feature/x feeds no environment of …"). There is no `default`
+environment. Map every branch you push to — see
 [Environment resolution](concepts/environment-resolution.md).
 
 ## Can a repository turn on `self_heal`, or change where data is written?

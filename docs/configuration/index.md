@@ -132,6 +132,7 @@ Which option may be set in which file is listed for every option in the
       {
         "platform":   "github",
         "datasource": "mongo",
+        "file_name":  "app-settings.yaml",
         "branch_map": {"develop": "staging"},
         "root_key":   "vartrack",
         "self_heal":  false

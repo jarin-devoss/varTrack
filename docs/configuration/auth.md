@@ -148,7 +148,9 @@ The web UI can sign users in with the Git platforms your rules already use (GitH
 |---|---|
 | read at least one repository the rule covers | see the rule, its tasks and its events |
 | read the repository an environment was last synced from | see that environment, its keys and its diff |
-| push to the branch that feeds an environment | can **Sync** it (branch protection counts, as for `vt sync`); with read access only they can **Dry run** it |
+| push to the branch that feeds an environment | can **Sync** it (branch protection counts, as for `vt sync`); with read access only they can **Dry run** it, and **Sync** is shown disabled, with the reason, wherever it would be (the rule's card and page, an environment, the Keys tab) |
+
+A dry run does not close the Sync panel: its **log** is shown there — what was read from Git and at which revision, how the schema judged each file, and the keys a sync would add, change (the value in the store now, the value in Git) and delete — and someone who may sync can start the real sync of the same environments from it. An earlier dry run's log opens again from the rule's *History* tab (*Show log*), over the rule's page; the address (`?run=<task id>`) can be shared. Secret values are counted, never shown.
 
 A rule covers the repositories it names and the ones its patterns (`acme/*`) match, minus its exclusions. The repository an environment was synced from decides whether that *environment* is visible, never what the user may do to the rule. A rule, environment or task the user cannot see answers *not found*, exactly like one that does not exist; a sync the engine refuses answers `403` with its reason (`wes on gitea may not push to main of acme/configs (the branch that feeds production)`). A sync re-reads exactly the branch the permission was judged on. The engine's `OPA` policy and admin list apply to the UI as to the CLI.
 

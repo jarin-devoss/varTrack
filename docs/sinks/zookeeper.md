@@ -39,6 +39,8 @@ The `destination_template` sets the root znode path under which config keys are 
 rules: [{
   platform:             "github"
   datasource:           "zookeeper"
+  file_name:           "app-settings.yaml"
+  branch_map:           {main: "production"}
   destination_template: "/{tenant}/{env}"
 }]
 ```
@@ -122,6 +124,8 @@ The watcher asks the orchestrator each poll; the orchestrator reads the znodes v
 rules: [{
   platform:   "github"
   datasource: "zookeeper"
+  file_name: "app-settings.yaml"
+  branch_map: {main: "production"}
   self_heal:  true
 }]
 ```

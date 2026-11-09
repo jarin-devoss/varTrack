@@ -129,5 +129,6 @@ changed, or a webhook whose secret does not match are the usual causes — see
 
 !!! warning "Unmapped branches"
     A push to a branch that is not in `branch_map` (and that `branch_as_env`, `pr_as_env`
-    or `tag_as_env` does not place) is synced to the environment `default`. Map every branch
-    you push to, or give `default` a destination you expect.
+    or `tag_as_env` does not place) feeds no environment of the rule: it is skipped, and the
+    task says so. Map every branch you push to. There is no `default` environment to catch
+    the rest.

@@ -29,6 +29,8 @@ The `destination_template` sets the Helm release name:
 rules: [{
   platform:             "github"
   datasource:           "helm"
+  file_name:           "app-settings.yaml"
+  branch_map:           {main: "production"}
   destination_template: "myapp-{env}"
 }]
 ```
@@ -111,6 +113,8 @@ The watcher asks the orchestrator each poll; the orchestrator reads the release'
 rules: [{
   platform:   "github"
   datasource: "helm"
+  file_name: "app-settings.yaml"
+  branch_map: {main: "production"}
   self_heal:  true
 }]
 ```

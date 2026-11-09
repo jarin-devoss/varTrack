@@ -213,7 +213,7 @@ The Kubernetes fields (`replicaCount`, `image`, `resources`) are never touched.
 
 A rule is identified by its **platform and datasource**: there is at most one rule for the pair, and varTrack refuses to start when two share it. There are two ways to sync more than one file.
 
-**To one destination**, use one rule. Leave out `file_name` and every file a push touches is synced, or list the files in `file_path_map`. When a sync writes several files to one environment, prune runs once afterwards, so a key that moved from one file to the other is not deleted.
+**To one destination**, use one rule. Name the file in `file_name`, or one file for each environment in `file_path_map`; a rule reads only the files it names, and a push that touched others does not sync them. When a sync writes several files to one environment, prune runs once afterwards, so a key that moved from one file to the other is not deleted.
 
 **To different destinations in the same database**, declare a datasource for each (a datasource has an optional `tag`, so these are `mongo-app` and `mongo-db`), and give each its own rule:
 
@@ -227,6 +227,7 @@ rules: [
   {
     platform:             "github"
     datasource:           "mongo-app"
+    branch_map:           {main: "production"}
     file_name:            "configs/app.yaml"
     repositories:         ["my-org/*"]
     destination_template: "{env}-app"
@@ -234,6 +235,7 @@ rules: [
   {
     platform:             "github"
     datasource:           "mongo-db"
+    branch_map:           {main: "production"}
     file_name:            "configs/database.yaml"
     repositories:         ["my-org/*"]
     destination_template: "{env}-db"
