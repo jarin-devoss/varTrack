@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { FileResult, Task } from '../api/types';
-import { dryRunVerdict, environmentsLabel, isValidationFailure, pruneImpact, someKeys, syncOutcome } from './outcome';
+import { dryRunVerdict, environmentsLabel, isValidationFailure, pruneImpact, someKeys, syncOutcome, writtenSentence } from './outcome';
 
 const file = (over: Partial<FileResult> = {}): FileResult =>
   ({ file: 'app.yaml', env: 'staging', status: 'ok', syncMode: '', written: 0, pruned: 0, ...over }) as FileResult;
@@ -27,6 +27,16 @@ describe('syncOutcome', () => {
       false,
     );
     expect(out).toMatchObject({ title: 'Synced 2 environments', detail: '20 keys written, 2 keys deleted' });
+  });
+
+  it('says how many keys a smart repair left alone', () => {
+    const out = syncOutcome([task({ files: [file({ written: 3, unchanged: 812 })] })], ['staging'], false);
+    expect(out).toMatchObject({ title: 'Synced staging', detail: '3 keys written, 812 unchanged' });
+  });
+
+  it('says nothing needed changing, not "0 keys written"', () => {
+    const out = syncOutcome([task({ files: [file({ written: 0, unchanged: 812 })] })], ['staging'], false);
+    expect(out).toMatchObject({ title: 'Synced staging', detail: 'nothing to change (812 keys already match Git)' });
   });
 
   it('says a dry run checked and wrote nothing', () => {
@@ -129,5 +139,16 @@ describe('isValidationFailure', () => {
     expect(isValidationFailure(task({ state: 'FAILED', message: 'app.yaml: strict_validation: bad' }))).toBe(true);
     expect(isValidationFailure(task({ state: 'FAILED', message: 'gitea/s3 could not read the repository' }))).toBe(false);
     expect(isValidationFailure(task({ state: 'SUCCEEDED', message: 'strict_validation' }))).toBe(false);
+  });
+});
+
+describe('writtenSentence', () => {
+  it('counts what was written and what was left alone', () => {
+    expect(writtenSentence(19, 0)).toBe('19 keys written');
+    expect(writtenSentence(1, 0)).toBe('1 key written');
+    expect(writtenSentence(3, 812)).toBe('3 keys written, 812 unchanged');
+    expect(writtenSentence(0, 812)).toBe('nothing to change (812 keys already match Git)');
+    expect(writtenSentence(0, 1)).toBe('nothing to change (1 key already matches Git)');
+    expect(writtenSentence(0, 0)).toBe('0 keys written');
   });
 });

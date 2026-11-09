@@ -4,6 +4,7 @@ import { Revision, Timestamp } from '../components/common';
 import { ExpandRow, NameLabel } from '../components/Row';
 import { FilePill, StatusIcon, TaskIcon, TaskPill } from '../components/Status';
 import type { IconName } from '../components/Icon';
+import { writtenSentence } from '../lib/outcome';
 import { TRIGGER, type Tone } from '../lib/status';
 import { formatDuration } from '../lib/time';
 import { useNow } from '../lib/useQuery';
@@ -19,9 +20,10 @@ export function taskSummary(t: Task): string {
   if (t.state === 'PENDING') return 'queued';
   if (t.state === 'RUNNING' || t.state === 'RETRYING') return 'pipeline running';
   const written = t.files.reduce((n, f) => n + f.written, 0);
+  const unchanged = t.files.reduce((n, f) => n + (f.unchanged ?? 0), 0);
   const pruned = t.files.reduce((n, f) => n + f.pruned, 0);
   if (t.dryRun) return `dry run · ${t.files.reduce((n, f) => n + (f.keys ?? 0), 0)} keys checked, nothing written`;
-  return `${t.files.length} file${t.files.length === 1 ? '' : 's'} · wrote ${written} key${written === 1 ? '' : 's'}${pruned ? `, pruned ${pruned}` : ''}`;
+  return `${t.files.length} file${t.files.length === 1 ? '' : 's'} · ${writtenSentence(written, unchanged)}${pruned ? `, pruned ${pruned}` : ''}`;
 }
 
 export type StageState = 'done' | 'active' | 'failed' | 'pending' | 'skipped';
@@ -150,9 +152,12 @@ export function TaskInline({ task: t }: { task: Task }) {
                   <td>
                     <FilePill status={f.status} dryRun={t.dryRun} />
                   </td>
-                  <td className="num">{t.dryRun ? f.keys ?? '—' : f.written}</td>
+                  <td className="num">
+                    {t.dryRun ? f.keys ?? '—' : f.written}
+                    {!t.dryRun && f.unchanged ? <span className="muted"> · {f.unchanged} unchanged</span> : null}
+                  </td>
                   <td className="num">{f.pruned}</td>
-                  <td style={{ color: f.error ? 'var(--red-text)' : undefined }}>{f.error ?? <span className="muted">—</span>}</td>
+                  <td style={{ color: f.error ? 'var(--red-text)' : undefined }}>{f.error ?? (f.syncNote ? <span className="secondary">{f.syncNote}</span> : <span className="muted">—</span>)}</td>
                 </tr>
               ))}
             </tbody>

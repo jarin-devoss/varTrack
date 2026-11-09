@@ -161,7 +161,10 @@ export function TaskPage() {
                       <FilePill status={f.status} dryRun={t.dryRun} />
                     </td>
                     <td className="mono muted">{f.syncMode || '—'}</td>
-                    <td className="num">{t.dryRun ? f.keys ?? '—' : f.written}</td>
+                    <td className="num">
+                      {t.dryRun ? f.keys ?? '—' : f.written}
+                      {!t.dryRun && f.unchanged ? <span className="muted"> · {f.unchanged} unchanged</span> : null}
+                    </td>
                     <td className="num">{f.pruned}</td>
                     <td style={{ minWidth: 240 }}>
                       {f.error ? (
@@ -181,6 +184,7 @@ export function TaskPage() {
                         </details>
                       ) : (
                         <span className="muted" title={f.schemaNote}>
+                          {f.syncNote ? `${f.syncNote} · ` : ''}
                           {f.validation ? `validation: ${f.validation}` : '—'}
                           {f.schema ? ` · schema: ${f.schema} (${f.schemaSource ?? '?'})` : ''}
                         </span>
