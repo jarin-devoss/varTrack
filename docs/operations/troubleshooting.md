@@ -48,10 +48,11 @@ With a `202` and no task, or a task that synced nothing:
   `vartrack` key syncs only that section; `root_key=… not found in …, skipping` means the
   `root_key` set is not in the file.
 
-!!! warning "A branch that is not mapped still syncs"
+!!! note "A branch that is not mapped is skipped"
     A push to a branch that is not in `branch_map`, and that no `file_path_map`,
-    `branch_as_env`, `pr_as_env` or `tag_as_env` places, is synced to the environment
-    **`default`**. See [Environment resolution](../concepts/environment-resolution.md).
+    `branch_as_env`, `pr_as_env` or `tag_as_env` places, feeds no environment of the rule:
+    the task ends *nothing to do: branch … feeds no environment of …* and nothing is written.
+    There is no `default` environment. See [Environment resolution](../concepts/environment-resolution.md).
 
 ---
 
@@ -99,7 +100,7 @@ TTL`, and clones are refetched only after `SCHEMA_TTL_SECONDS`.
 
 | What the UI says | Meaning | Fix |
 |---|---|---|
-| `nothing feeds <env> in the <datasource> rule: no branch_map entry maps a branch to it, branch_as_env is off, and it is not default or a file_path_map environment` | The environment is in the store (an earlier version of the rule wrote it, for example before `branch_as_env` was turned off) but the rule as it is now produces nothing that lands in it. This is the answer for admins too: there is no branch to read, so nothing could be synced. Sync and Dry run are disabled on it, and its keys and history stay visible | Map a branch to it (`branch_map`), turn `branch_as_env` back on, or leave it: nothing writes it any more |
+| `nothing feeds <env> in the <datasource> rule: no branch_map entry maps a branch to it, branch_as_env is off, and it is not a file_path_map environment (an earlier version of the rule wrote it; it is not synced any more)` | The environment is in the store (an earlier version of the rule wrote it, for example before `branch_as_env` was turned off) but the rule as it is now produces nothing that lands in it. This is the answer for admins too: there is no branch to read, so nothing could be synced. Sync and Dry run are disabled on it, and its keys and history stay visible | Map a branch to it (`branch_map`), turn `branch_as_env` back on, or leave it: nothing writes it any more |
 | `<platform>/<datasource> names no file to read: set file_name (for example "app-settings.yaml") or file_path_map in config.cue or the tenant's bundle.json` | The rule says nothing about which file it reads, so it is **refused** when loaded, like a rule with no environments: nothing runs it, the Rules page lists it as *Refused*, and a push, sync or dry run of it answers with this. A repository's `vartrack.json` can still change the file, but cannot be the only place that names one | Give the rule a `file_name` or a `file_path_map` in `config.cue` or the tenant's `bundle.json` |
 | `<platform>/<datasource> names no environments: set branch_map (for example {"main": "production"}), file_path_map, branch_as_env, pr_as_env or tag_as_env in config.cue or the tenant's bundle.json` | The rule says nothing about where its environments come from, so it is **refused** when loaded: nothing runs it, the Rules page lists it as *Refused*, and a push, sync or dry run of it answers with this | Name them in `config.cue` or the tenant's `bundle.json`. To keep writing to an environment called `default`, set `branch_map: {"main": "default"}` |
 | `nothing to do: branch <branch> feeds no environment of <rule>` | A push to a branch the rule's `branch_map` (and `branch_as_env`, `pr_as_env`, `tag_as_env`) does not place. It is skipped; nothing is written to an environment nobody declared | Map the branch, or ignore the push |
@@ -109,7 +110,7 @@ A page shows such an environment as *No longer synced by this rule*. Every envir
 
 An environment the rule produces and has never written (a new rule, or a `branch_map` entry just added) is listed on the rule's page as *Not synced yet*, with the branch that feeds it; **Sync** (or **Dry run**) writes it the first time. If Sync and Dry run have nothing to start, the panel says why: no branch feeds any environment of the rule, and a dry run, which writes nothing, still reads the branch that feeds the environment.
 
-Which branch feeds an environment is the same answer everywhere: a `branch_map` entry, else (for a `file_path_map` environment) the rule's own `branch`, else (with `branch_as_env`) the environment's own name, else (for `default`) the rule's own `branch`. Self-heal reads the same branches.
+Which branch feeds an environment is the same answer everywhere: a `branch_map` entry, else (for a `file_path_map` environment) the rule's own `branch`, else (with `branch_as_env`) the environment's own name; otherwise nothing feeds it. Self-heal reads the same branches.
 
 ---
 

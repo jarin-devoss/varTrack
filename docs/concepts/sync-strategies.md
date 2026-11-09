@@ -154,7 +154,7 @@ POST /v1/webhooks/mongo/dry-run
 
 `@secret`-annotated fields are fetched from Vault but masked as `***` in the report.
 
-In the web UI, **Dry run** on a rule runs the same simulation for the environments you pick:
+In the web UI, **Dry run** on a rule (or on one environment) runs the same simulation for the environments you pick. It is not a sync: the Sync panel stays open and shows its log — each task's stages, the files it read, what a sync would change and why a file was refused — and ends with a verdict:
 
 ![Dry run panel for an S3 rule: production and staging selected, Dry run checked](../assets/screenshots/dry-run.png)
 

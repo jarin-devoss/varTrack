@@ -246,8 +246,9 @@ type Rule struct {
 	// Maps environment label → file path for per-env config files.
 	// e.g. { "production": "config/prod.json", "staging": "config/staging.json" }
 	FilePathMap map[string]string `protobuf:"bytes,11,rep,name=file_path_map,json=filePathMap,proto3" json:"file_path_map,omitempty" protobuf_key:"bytes,1,opt,name=key,proto3" protobuf_val:"bytes,2,opt,name=value,proto3"`
-	// The branch the periodic self-heal compares when the rule has no
-	// branch_map; with a branch_map, every branch in it is healed. "main" when
+	// The rule's own branch: it feeds the file_path_map environments, and it is
+	// the branch the periodic self-heal compares when the rule has no
+	// branch_map (with a branch_map, every branch in it is healed). "main" when
 	// unset.
 	Branch *string `protobuf:"bytes,31,opt,name=branch,proto3,oneof" json:"branch,omitempty"`
 	// ── root_key ─────────────────────────────────────────────────────────────────

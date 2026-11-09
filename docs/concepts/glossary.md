@@ -87,7 +87,17 @@ The words varTrack's docs, logs and web UI use, and what each one means here.
     datasource still matches Git, and having it write Git's values back when it does not.
 
 **Dry run**
-:   A sync that reads, validates and reports everything but writes nothing.
+:   Not a sync: it reads, validates and reports what a sync would change, and writes nothing.
+    In the web UI its log shows in the Sync panel.
+
+**Leftover environment**
+:   An environment in the store that the rule as it is now no longer produces (*No longer synced
+    by this rule*). It is not compared with Git, its Sync, Dry run and Diff are disabled, and an
+    administrator can **Forget** it.
+
+**Refused rule**
+:   A rule that names no environments or no file to read, in `config.cue` or the tenant's
+    `bundle.json`. It is not loaded: nothing runs it, and the Rules page lists it with why.
 
 **Shape**
 :   How a MongoDB datasource stores a file: one document per key (`STRATEGY_KEY_VALUE`) or one

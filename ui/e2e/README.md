@@ -40,8 +40,10 @@ restart `orchestrator-api` and `orchestrator-worker` after changing Python.
    Gitea's consent page, and saves each browser state to `e2e/.auth/<role>.json`.
 2. `fixtures/world.ts` builds what the specs expect to find, the same whatever an earlier run left behind: a `develop` branch
    next to `main`, team folders, the schema repository with the CUE schemas and `world/bundle.json` (a rule for each kind of
-   environment: `branch_map`, `branch_as_env`, a default environment, `file_path_map`, with and without self-heal and
-   strict validation), and the first syncs, pushed as signed webhooks.
+   environment: `branch_map`, `branch_as_env`, `file_path_map`, with and without self-heal and
+   strict validation), and the first syncs, pushed as signed webhooks. Every rule names its file and its environments (one that does not is refused).
+   Last, it forgets every environment no rule produces any more (an earlier run's leftovers) and logs which; a spec about
+   leftovers makes its own (`leaveBehind`) and forgets it after.
 3. Specs run **one after the other** (`workers: 1`): they share the stack. **No spec relies on another**: each makes what it reads
    (`made`, `tasks`, `stack`), puts back what it changes, and passes alone and in any order.
 

@@ -102,7 +102,7 @@ e.g. { "production": "config/prod.json", "staging": "config/staging.json" }
 
 ## `branch`
 
-The branch the periodic self-heal compares when the rule has no branch_map; with a branch_map, every branch in it is healed. "main" when unset.
+The rule's own branch: it feeds the file_path_map environments, and it is the branch the periodic self-heal compares when the rule has no branch_map (with a branch_map, every branch in it is healed). "main" when unset.
 
 | | |
 |---|---|

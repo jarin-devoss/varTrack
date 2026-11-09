@@ -295,7 +295,8 @@ When a webhook fires, VarTrack resolves the target environment in this order:
 3. `pr_as_env: true` → environment = `pr-{number}`
 4. `branch_as_env: true` → environment = branch name
 5. `tag_as_env: true` → environment = tag name
-6. `"default"` fallback
+
+There is no `default` fallback: a push none of these places is skipped. A rule that names no environments, or no file to read (`file_name` or `file_path_map`), is refused when it is loaded.
 
 ---
 

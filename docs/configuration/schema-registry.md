@@ -356,7 +356,7 @@ Every option, with the files that may set it, is in [Rule options](rule-options.
 | `repo_url` | No | HTTPS clone URL of the config repository (default: derived from the platform and the rule's only repository) |
 | `file_name` | One of the two | Single file path to track in all repos. A rule that names neither this nor `file_path_map` is refused |
 | `file_path_map` | One of the two | `{ env → file_path }` for per-environment file selection — merged |
-| `branch` | No | Branch to heal when there is no `branch_map` (default: `main`) |
+| `branch` | No | The rule's own branch: it feeds the `file_path_map` environments, and self-heal compares it when there is no `branch_map` (default: `main`) |
 | `branch_map` | No | `{ branch → env }` label mapping — merged |
 | `variables_map` | No | Key renames, `{NEW_NAME: flat.key}` — merged |
 | `sync_mode` | No | `AUTO`, `GIT_UPSERT_ALL`, `GIT_SMART_REPAIR`, `LIVE_STATE` (`FULL` reads as `GIT_UPSERT_ALL`) |
