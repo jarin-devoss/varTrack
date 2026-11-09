@@ -1137,8 +1137,6 @@
       
         
       
-        
-      
     
     
       
@@ -1315,27 +1313,6 @@
   
   
     <li class="md-nav__item">
-      <a href="../sinks/vercel/" class="md-nav__link">
-        
-  
-  <span class="md-ellipsis">
-    Vercel
-  </span>
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
       <a href="../sinks/linux-server/" class="md-nav__link">
         
   
@@ -1373,6 +1350,8 @@
   
     
     
+      
+        
       
         
       
@@ -1491,6 +1470,27 @@
   
   
     <li class="md-nav__item">
+      <a href="../operations/internal-auth/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Internal Authentication
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../operations/monitoring/" class="md-nav__link">
         
   
@@ -1574,10 +1574,10 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5_7" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5_8" >
         
           
-          <label class="md-nav__link" for="__nav_5_7" id="__nav_5_7_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_5_8" id="__nav_5_8_label" tabindex="0">
             
   
   <span class="md-ellipsis">
@@ -1588,8 +1588,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_5_7_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_5_7">
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_5_8_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5_8">
             <span class="md-nav__icon md-icon"></span>
             Services
           </label>
@@ -1982,12 +1982,16 @@
 </span></code></pre></div>
 <hr />
 <h2 id="authentication">Authentication<a class="headerlink" href="#authentication" title="Permanent link">&para;</a></h2>
-<p><code>vt</code> authenticates with your Git token — a GitHub or Gitea personal access token. What it may do is what that token may do in the rule's repositories: push access syncs, read access validates and dry-runs (<a href="../configuration/auth/">Authentication &amp; Authorization</a>).</p>
+<p><code>vt</code> authenticates with your Git token — a GitHub or Gitea personal access token. What it may do is what that token may do in the rule's repositories: push access to the branch that feeds the environment syncs (branch protection counts), read access validates and dry-runs (<a href="../configuration/auth/">Authentication &amp; Authorization</a>). The web UI asks the same permission engine, so it never allows what <code>vt</code> refuses.</p>
 <div class="language-bash highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>vt<span class="w"> </span>login<span class="w"> </span>--server<span class="w"> </span>https://gateway.example.com<span class="w"> </span>--token<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$GIT_TOKEN</span><span class="s2">&quot;</span>
 </span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>
-</span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="c1"># Or skip login entirely — set env vars</span>
-</span><span id="__span-1-4"><a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="nb">export</span><span class="w"> </span><span class="nv">VARTRACK_SERVER</span><span class="o">=</span>https://gateway.example.com
-</span><span id="__span-1-5"><a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="nb">export</span><span class="w"> </span><span class="nv">VARTRACK_TOKEN</span><span class="o">=</span>&lt;your<span class="w"> </span>Git<span class="w"> </span>token&gt;
+</span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="c1"># With rules on several Git platforms, say which one the token is for</span>
+</span><span id="__span-1-4"><a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>vt<span class="w"> </span>login<span class="w"> </span>--server<span class="w"> </span>https://gateway.example.com<span class="w"> </span>--token<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$GIT_TOKEN</span><span class="s2">&quot;</span><span class="w"> </span>--platform<span class="w"> </span>gitea
+</span><span id="__span-1-5"><a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>
+</span><span id="__span-1-6"><a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a><span class="c1"># Or skip login entirely — set env vars</span>
+</span><span id="__span-1-7"><a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a><span class="nb">export</span><span class="w"> </span><span class="nv">VARTRACK_SERVER</span><span class="o">=</span>https://gateway.example.com
+</span><span id="__span-1-8"><a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a><span class="nb">export</span><span class="w"> </span><span class="nv">VARTRACK_TOKEN</span><span class="o">=</span>&lt;your<span class="w"> </span>Git<span class="w"> </span>token&gt;
+</span><span id="__span-1-9"><a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a><span class="nb">export</span><span class="w"> </span><span class="nv">VARTRACK_PLATFORM</span><span class="o">=</span>gitea<span class="w">   </span><span class="c1"># only with several platforms</span>
 </span></code></pre></div>
 <hr />
 <h2 id="commands">Commands<a class="headerlink" href="#commands" title="Permanent link">&para;</a></h2>
@@ -2050,7 +2054,7 @@
 <tr>
 <td><code>--tenant</code></td>
 <td>from context</td>
-<td>Tenant ID</td>
+<td>Tenant to act for. Left out, the one tenant your Git access reaches is used; with several, <code>vt</code> asks you to name one. A tenant you cannot reach is refused</td>
 </tr>
 <tr>
 <td><code>--dry-run</code></td>
@@ -2118,7 +2122,7 @@
 <tr>
 <td><code>--tenant</code></td>
 <td>from context</td>
-<td>Tenant ID</td>
+<td>Tenant to act for. Left out, the one tenant your Git access reaches is used; with several, <code>vt</code> asks you to name one. A tenant you cannot reach is refused</td>
 </tr>
 <tr>
 <td><code>--format</code></td>
@@ -2242,6 +2246,10 @@
 <tr>
 <td><code>VARTRACK_TOKEN</code></td>
 <td>Your Git token — skips <code>vt login</code></td>
+</tr>
+<tr>
+<td><code>VARTRACK_PLATFORM</code></td>
+<td>Git platform the token is for — needed with several platforms</td>
 </tr>
 <tr>
 <td><code>VARTRACK_TENANT</code></td>

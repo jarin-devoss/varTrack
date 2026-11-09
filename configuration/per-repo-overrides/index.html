@@ -1245,8 +1245,6 @@
       
         
       
-        
-      
     
     
       
@@ -1426,27 +1424,6 @@
   
   
     <li class="md-nav__item">
-      <a href="../../sinks/vercel/" class="md-nav__link">
-        
-  
-  <span class="md-ellipsis">
-    Vercel
-  </span>
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
       <a href="../../sinks/linux-server/" class="md-nav__link">
         
   
@@ -1484,6 +1461,8 @@
   
     
     
+      
+        
       
         
       
@@ -1602,6 +1581,27 @@
   
   
     <li class="md-nav__item">
+      <a href="../../operations/internal-auth/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Internal Authentication
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../../operations/monitoring/" class="md-nav__link">
         
   
@@ -1685,10 +1685,10 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5_7" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5_8" >
         
           
-          <label class="md-nav__link" for="__nav_5_7" id="__nav_5_7_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_5_8" id="__nav_5_8_label" tabindex="0">
             
   
   <span class="md-ellipsis">
@@ -1699,8 +1699,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_5_7_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_5_7">
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_5_8_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5_8">
             <span class="md-nav__icon md-icon"></span>
             Services
           </label>
@@ -2026,7 +2026,8 @@
 <li>Applies the <code>config.cue</code> rule's <code>force</code> keys, which win over <code>vartrack.json</code></li>
 <li>Runs ETL and Sync with the merged settings (Stages 2 and 3)</li>
 </ol>
-<p>If <code>vartrack.json</code> is absent or empty, the central rule is used unchanged. If it is there but cannot be used — not valid JSON, not a JSON object, or extending a preset that cannot be read — the sync fails with that error: it does not go ahead without settings the repository asked for, such as a <code>dry_run</code>. The schema registry is never affected by per-repo overrides.</p>
+<p>A <code>vartrack.json</code> can change which file a rule reads or where its environments come from, but cannot be the only place that names them: a rule whose <code>config.cue</code> and tenant <code>bundle.json</code> give no <code>file_name</code> or <code>file_path_map</code> (or no environment strategy) is refused when it is loaded, before any repository's file is read.</p>
+<p>If <code>vartrack.json</code> is absent or empty, the central rule is used unchanged. If it is there but cannot be used — not valid JSON, not a JSON object, or extending a preset that cannot be read — the sync fails with that error: it does not go ahead without settings the repository asked for, such as a <code>branch_map</code>. The schema registry is never affected by per-repo overrides.</p>
 <hr />
 <h2 id="example">Example<a class="headerlink" href="#example" title="Permanent link">&para;</a></h2>
 <div class="language-json highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="p">{</span>
@@ -2059,7 +2060,6 @@
 <ul>
 <li><a href="../rule-options/#branch_as_env"><code>branch_as_env</code></a></li>
 <li><a href="../rule-options/#branch_map"><code>branch_map</code></a></li>
-<li><a href="../rule-options/#dry_run"><code>dry_run</code></a></li>
 <li><a href="../rule-options/#file_name"><code>file_name</code></a></li>
 <li><a href="../rule-options/#file_path_map"><code>file_path_map</code></a></li>
 <li><a href="../rule-options/#pr_as_env"><code>pr_as_env</code></a></li>
@@ -2077,12 +2077,13 @@
 <h2 id="security-model">Security model<a class="headerlink" href="#security-model" title="Permanent link">&para;</a></h2>
 <p>Infrastructure and security-critical keys are <strong>always</strong> taken from the central bundle and cannot be changed by the repository:</p>
 <ul>
-<li><code>platform</code>, <code>datasource</code>, <code>repo_url</code>, <code>tenant_id</code></li>
+<li><code>platform</code>, <code>datasource</code>, <code>repo_url</code></li>
 <li><code>token</code>, <code>secret_manager</code>, <code>secret_managers</code></li>
 <li><code>repositories</code>, <code>exclude_repositories</code></li>
 <li><code>self_heal</code> and all Celery wiring keys</li>
 </ul>
 <p>Any key in <code>vartrack.json</code> that is not in the overridable list above is silently ignored and logged at <code>INFO</code> level.</p>
+<p>The tenant is not a setting at all: it is the tenant that owns the pushed repository, and no key in <code>vartrack.json</code> names it (<code>vt validate-config</code> reports one as an error).</p>
 <p>A key the <code>config.cue</code> rule lists under <code>force</code> cannot be overridden either: <code>force</code> is applied after <code>vartrack.json</code>. For example, <code>force: {prune: {enabled: false}}</code> keeps a production rule from pruning whatever a repository asks for.</p>
 <hr />
 <h2 id="interaction-with-the-schema-registry">Interaction with the schema registry<a class="headerlink" href="#interaction-with-the-schema-registry" title="Permanent link">&para;</a></h2>

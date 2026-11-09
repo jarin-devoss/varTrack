@@ -13,7 +13,7 @@
         <link rel="canonical" href="https://jarin-devoss.github.io/varTrack/operations/monitoring/">
       
       
-        <link rel="prev" href="../high-availability/">
+        <link rel="prev" href="../internal-auth/">
       
       
         <link rel="next" href="../troubleshooting/">
@@ -1137,8 +1137,6 @@
       
         
       
-        
-      
     
     
       
@@ -1315,27 +1313,6 @@
   
   
     <li class="md-nav__item">
-      <a href="../../sinks/vercel/" class="md-nav__link">
-        
-  
-  <span class="md-ellipsis">
-    Vercel
-  </span>
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
       <a href="../../sinks/linux-server/" class="md-nav__link">
         
   
@@ -1375,6 +1352,8 @@
   
     
     
+      
+        
       
         
       
@@ -1480,6 +1459,27 @@
   
   <span class="md-ellipsis">
     High Availability & Scaling
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../internal-auth/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Internal Authentication
   </span>
   
 
@@ -1691,10 +1691,10 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5_7" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5_8" >
         
           
-          <label class="md-nav__link" for="__nav_5_7" id="__nav_5_7_label" tabindex="">
+          <label class="md-nav__link" for="__nav_5_8" id="__nav_5_8_label" tabindex="">
             
   
   <span class="md-ellipsis">
@@ -1705,8 +1705,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_5_7_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_5_7">
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_5_8_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5_8">
             <span class="md-nav__icon md-icon"></span>
             Services
           </label>
@@ -2052,9 +2052,19 @@ shipped to Elasticsearch.</p>
 </tr>
 </tbody>
 </table>
+<p>Readiness answers with more than a status. The orchestrator lists every dependency it has
+checked (<code>config.cue</code>, <code>git</code>, <code>secrets</code>, <code>redis</code>, <code>schemas:&lt;tenant&gt;</code>) as <code>ok</code>, <code>stale</code> (the last
+good value is in use, with why and since when) or <code>unavailable</code>, and every weaker mode that is on
+under <code>degraded</code>. It is <strong>not ready while <code>config.cue</code> cannot be read</strong>; a tenant whose schema
+repository is down is listed but does not take the service out of rotation. The gateway is not
+ready while the Redis that remembers webhook deliveries does not answer, and lists <code>degraded</code> too.</p>
 <p><code>/healthz</code> is an alias of readiness on the gateway and of liveness on the orchestrator and
 the watcher. The gateway's admin port also serves <code>/debug/pprof/</code> and, with <code>auth.opa</code>,
 <code>POST /admin/opa/reload</code>; keep it off the public network.</p>
+<p>The orchestrator's admin port binds to loopback unless <code>ADMIN_HOST</code> says otherwise, and once
+<code>INTERNAL_AUTH_SECRET</code> is set everything on it except the health probes needs an admin grant
+(<a href="../internal-auth/#scraping-the-admin-port">Internal authentication</a>). For Kubernetes probes,
+use the API port's <code>/v1/health/liveness</code> and <code>/v1/health/readiness</code>, which stay open.</p>
 <p>The orchestrator also starts a Prometheus scrape server of its own when <code>PROM_ENABLED=true</code>,
 on <code>PROM_PORT</code> (<code>9090</code>) at <code>PROM_METRICS_PATH</code> (<code>/metrics</code>). When both are on one host, give
 them different ports — the e2e stack uses <code>ADMIN_PORT=9093</code> and <code>PROM_PORT=9090</code>.</p>
@@ -2169,6 +2179,12 @@ them different ports — the e2e stack uses <code>ADMIN_PORT=9093</code> and <co
 </thead>
 <tbody>
 <tr>
+<td><code>vartrack_dependency_up</code></td>
+<td>gauge</td>
+<td><code>dependency</code></td>
+<td><code>1</code> while <code>config.cue</code>, <code>git</code>, <code>secrets</code>, <code>redis</code> or <code>schemas:&lt;tenant&gt;</code> is usable (a stale last-good value counts), <code>0</code> when it is not</td>
+</tr>
+<tr>
 <td><code>orch_webhooks_total</code></td>
 <td>counter</td>
 <td><code>datasource</code>, <code>platform</code>, <code>outcome</code></td>
@@ -2223,28 +2239,40 @@ them different ports — the e2e stack uses <code>ADMIN_PORT=9093</code> and <co
 <td>Flat keys read</td>
 </tr>
 <tr>
-<td><code>orch_mongo_write_duration_seconds</code></td>
+<td><code>orch_sink_write_duration_seconds</code></td>
 <td>histogram</td>
-<td><code>sync_mode</code></td>
-<td>Write time per file — for <strong>every</strong> sink, despite the name</td>
+<td><code>sink</code>, <code>sync_mode</code></td>
+<td>Write time per file</td>
 </tr>
 <tr>
-<td><code>orch_mongo_documents_written_total</code></td>
+<td><code>orch_sink_keys_written_total</code></td>
 <td>counter</td>
-<td><code>datasource</code>, <code>sync_mode</code></td>
-<td>Keys written — every sink</td>
+<td><code>sink</code>, <code>datasource</code></td>
+<td>Keys written</td>
 </tr>
 <tr>
-<td><code>orch_mongo_documents_pruned_total</code></td>
+<td><code>orch_sink_keys_pruned_total</code></td>
 <td>counter</td>
-<td><code>datasource</code></td>
-<td>Keys pruned — every sink</td>
+<td><code>sink</code>, <code>datasource</code></td>
+<td>Keys pruned</td>
 </tr>
 <tr>
-<td><code>orch_mongo_errors_total</code></td>
+<td><code>orch_sink_errors_total</code></td>
 <td>counter</td>
-<td><code>operation</code></td>
-<td>Write and rollback errors — every sink</td>
+<td><code>sink</code>, <code>operation</code></td>
+<td>Write, prune and rollback errors (<code>operation</code>: <code>write</code>, <code>prune</code>, <code>rollback</code>)</td>
+</tr>
+<tr>
+<td><code>orch_sink_not_rolled_back_total</code></td>
+<td>counter</td>
+<td><code>sink</code></td>
+<td>Files a failed sync left written: the sink cannot take a write back (every sink but MongoDB), or tried to and could not</td>
+</tr>
+<tr>
+<td><code>orch_mongo_write_duration_seconds</code>, <code>orch_mongo_documents_written_total</code>, <code>orch_mongo_documents_pruned_total</code>, <code>orch_mongo_errors_total</code></td>
+<td></td>
+<td>as above for the MongoDB sink</td>
+<td>Deprecated: the former names of the <code>orch_sink_*</code> series, which they counted for <strong>every</strong> sink. They are now fed by the MongoDB sink only, and go in the next release</td>
 </tr>
 <tr>
 <td><code>orch_git_fetch_duration_seconds</code></td>
@@ -2348,6 +2376,14 @@ drift with the web UI's <strong>Environments</strong> page and the <code>DriftDe
 <td>Service down</td>
 <td>the readiness check failing</td>
 </tr>
+<tr>
+<td>A dependency is down</td>
+<td><code>vartrack_dependency_up == 0</code> — the label says which</td>
+</tr>
+<tr>
+<td>A weaker mode is on</td>
+<td><code>/health/readiness</code> shows a non-empty <code>degraded</code></td>
+</tr>
 </tbody>
 </table>
 <p>The label values (<code>outcome</code>, <code>status</code>) are the ones the services emit; look at a scrape
@@ -2420,7 +2456,7 @@ drift with the web UI's <strong>Environments</strong> page and the <code>DriftDe
       <nav class="md-footer__inner md-grid" aria-label="Footer" >
         
           
-          <a href="../high-availability/" class="md-footer__link md-footer__link--prev" aria-label="Previous: High Availability &amp; Scaling">
+          <a href="../internal-auth/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Internal Authentication">
             <div class="md-footer__button md-icon">
               
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
@@ -2430,7 +2466,7 @@ drift with the web UI's <strong>Environments</strong> page and the <code>DriftDe
                 Previous
               </span>
               <div class="md-ellipsis">
-                High Availability & Scaling
+                Internal Authentication
               </div>
             </div>
           </a>

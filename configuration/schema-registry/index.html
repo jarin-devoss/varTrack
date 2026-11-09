@@ -1067,6 +1067,30 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="Which schema a file gets">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#schema_map-a-schema-for-a-path" class="md-nav__link">
+    <span class="md-ellipsis">
+      schema_map: a schema for a path
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#a-file-names-its-own-schema" class="md-nav__link">
+    <span class="md-ellipsis">
+      A file names its own schema
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
         
           <li class="md-nav__item">
@@ -1338,8 +1362,6 @@
       
         
       
-        
-      
     
     
       
@@ -1519,27 +1541,6 @@
   
   
     <li class="md-nav__item">
-      <a href="../../sinks/vercel/" class="md-nav__link">
-        
-  
-  <span class="md-ellipsis">
-    Vercel
-  </span>
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
       <a href="../../sinks/linux-server/" class="md-nav__link">
         
   
@@ -1577,6 +1578,8 @@
   
     
     
+      
+        
       
         
       
@@ -1695,6 +1698,27 @@
   
   
     <li class="md-nav__item">
+      <a href="../../operations/internal-auth/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Internal Authentication
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../../operations/monitoring/" class="md-nav__link">
         
   
@@ -1778,10 +1802,10 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5_7" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5_8" >
         
           
-          <label class="md-nav__link" for="__nav_5_7" id="__nav_5_7_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_5_8" id="__nav_5_8_label" tabindex="0">
             
   
   <span class="md-ellipsis">
@@ -1792,8 +1816,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_5_7_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_5_7">
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_5_8_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5_8">
             <span class="md-nav__icon md-icon"></span>
             Services
           </label>
@@ -2038,6 +2062,30 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="Which schema a file gets">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#schema_map-a-schema-for-a-path" class="md-nav__link">
+    <span class="md-ellipsis">
+      schema_map: a schema for a path
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#a-file-names-its-own-schema" class="md-nav__link">
+    <span class="md-ellipsis">
+      A file names its own schema
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
         
           <li class="md-nav__item">
@@ -2200,10 +2248,12 @@
 </span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>├── config.toml.cue              ← CUE schema for every file named config.toml
 </span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>├── .env.cue                     ← CUE schema for every file named .env
 </span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>├── default.cue                  ← schema for any other file (optional)
-</span><span id="__span-0-7"><a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>└── presets/
-</span><span id="__span-0-8"><a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>    └── team.json                ← a preset bundle.json can extend (optional)
+</span><span id="__span-0-7"><a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>├── teams/
+</span><span id="__span-0-8"><a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>│   └── payments.cue             ← a schema a `schema_map` entry names (optional)
+</span><span id="__span-0-9"><a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>└── presets/
+</span><span id="__span-0-10"><a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a>    └── team.json                ← a preset bundle.json can extend (optional)
 </span></code></pre></div>
-<p>Schemas are read from the repository's root only; a <code>.cue</code> file in a folder is not used. See <a href="#cue-schemas">CUE schemas</a> for what goes in one.</p>
+<p>Schemas found by a file's name are read from the repository's root only. A schema in a folder is used when a rule's <a href="#which-schema-a-file-gets"><code>schema_map</code></a> names it. See <a href="#cue-schemas">CUE schemas</a> for what goes in one.</p>
 <p>The schema repo is pointed to from <code>config.cue</code>:</p>
 <div class="language-text highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>schema_registry: {
 </span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>  platform: &quot;github&quot;
@@ -2212,63 +2262,133 @@
 </span><span id="__span-1-5"><a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>}
 </span></code></pre></div>
 <p>varTrack clones this repo for each tenant on first use and refreshes it automatically on a TTL (default 5 minutes) or immediately when the schema repo itself receives a push webhook.</p>
+<p><strong>A tenant is something the operator declares; a request only names one.</strong> The repository, branch and credential of a tenant's schema repo are its <code>schema_repo</code> in <a href="../bundle/#tenants"><code>tenants</code></a> (the <code>SCHEMA_TENANT_&lt;ID&gt;_*</code> variables still work for one release and log a warning), and nothing a request carries can add or change them:</p>
+<ul>
+<li>A <strong>schema push</strong> belongs to the tenant whose registered schema repository it came from. A push from a repository no tenant registered is refused (<code>404</code> on the HTTP route, <code>NOT_FOUND</code> over gRPC), and what is re-read is the registered repository with the registered credential, never the pushed one and never a token from the webhook's headers. A push to a branch the registry does not follow is ignored. A <code>tenant_id</code> in the body, when there is one, must be that tenant's.</li>
+<li><code>POST /v1/tenants/{tenant}/schemas/warm</code> takes no repository, branch or token; an unregistered tenant is <code>404</code>.</li>
+<li>A tenant name is letters, digits, <code>-</code> and <code>_</code>, starting with a letter or digit, up to 63 characters, wherever it is given (a header, a body, a URL, <code>vt --tenant</code>); anything else is <code>400</code>.</li>
+<li><strong>A file never says which tenant it belongs to.</strong> A rule's tenant is the tenant whose schema repository holds the <code>bundle.json</code> that layers it, or, for a <code>config.cue</code> rule no <code>bundle.json</code> names, the first of its <code>tenants</code> (else the declared tenant whose repositories it covers, else <code>default</code>). A <code>tenant_id</code> written in a <code>bundle.json</code> or a <code>vartrack.json</code> is not a setting: a sync drops it with a warning, and <code>vt validate-config</code> reports it as an error. A file that could name its own tenant could act as another one.</li>
+</ul>
 <hr />
 <h2 id="cue-schemas">CUE schemas<a class="headerlink" href="#cue-schemas" title="Permanent link">&para;</a></h2>
 <p>A schema says which keys a config file must have and what their values may be. varTrack checks every file a sync reads against its schema before writing it to a sink.</p>
 <h3 id="which-schema-a-file-gets">Which schema a file gets<a class="headerlink" href="#which-schema-a-file-gets" title="Permanent link">&para;</a></h3>
-<ol>
-<li><code>&lt;file name&gt;.cue</code> at the schema repo's root, by the file's name without its folder: <code>configs/app.yaml</code> and <code>services/api/app.yaml</code> both get <code>app.yaml.cue</code></li>
-<li>else <code>default.cue</code></li>
-<li>else the file is not checked</li>
-</ol>
-<p>If the <code>cue</code> binary is not on the orchestrator's <code>PATH</code> (or at <code>CUE_BINARY</code>), files are not checked and a warning is logged.</p>
+<p>In this order, the first that applies:</p>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>Source</th>
+<th>When it names a schema the schema repository does not have</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>the first <a href="#schema_map-a-schema-for-a-path"><code>schema_map</code></a> entry whose <code>match</code> matches the file's path</td>
+<td><strong>the file fails</strong>, <code>strict_validation</code> or not</td>
+</tr>
+<tr>
+<td>2</td>
+<td>the file's own <code>$schema</code> key, when the rule sets <a href="#a-file-names-its-own-schema"><code>schema_from_file</code></a></td>
+<td><strong>the file fails</strong>, the same way</td>
+</tr>
+<tr>
+<td>3</td>
+<td><code>&lt;file name&gt;.cue</code> at the schema repo's root, by the file's name without its folder: <code>configs/app.yaml</code> and <code>services/api/app.yaml</code> both get <code>app.yaml.cue</code></td>
+<td>not a miss: go on</td>
+</tr>
+<tr>
+<td>4</td>
+<td><code>default.cue</code></td>
+<td>not a miss: go on</td>
+</tr>
+<tr>
+<td>5</td>
+<td>none: the file is <strong>not checked</strong></td>
+<td>with <a href="../rule-options/#strict_validation"><code>strict_validation</code></a> the file fails</td>
+</tr>
+</tbody>
+</table>
+<p>An explicit choice that cannot be honoured is an error, never a quiet fall-back to the next step: the failure reads <code>schema api/settings.cue (schema_map[0], services/api/**/*.yaml) is not in the schema repository of tenant acme at 5c4e1f0a2b3c</code>. The file is not written, so a placeholder its missing schema would have replaced with a <a href="../annotations/#secret"><code>@secret()</code></a> value never reaches the store.</p>
+<p>If the <code>cue</code> binary is not on the orchestrator's <code>PATH</code> (or at <code>CUE_BINARY</code>), files are not checked and a warning is logged; with <code>strict_validation</code> they fail.</p>
+<p><strong>Every file says what checked it.</strong> A task's files, a dry run's report, the web UI and <code>vt validate</code> show <code>validation</code> (<code>ok</code>: checked and passed, <code>warn</code>: checked, failed, not strict, <code>failed</code>: strict and failed, <code>none</code>: nothing checked it), the <code>schema</code> (its path in the schema repository, or <code>none</code>) and the <code>schema_source</code> (<code>schema_map[N]</code>, <code>file</code>, <code>name</code>, <code>default</code> or <code>none</code>). Next to the task's <code>schema_commit</code>, that answers "which schema, at which commit, checked this file?". A file nothing checked reports <code>none</code>, never <code>ok</code>.</p>
+<h4 id="schema_map-a-schema-for-a-path"><code>schema_map</code>: a schema for a path<a class="headerlink" href="#schema_map-a-schema-for-a-path" title="Permanent link">&para;</a></h4>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>rules: [{
+</span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>  platform: &quot;gitea&quot;, datasource: &quot;mongo&quot;, repositories: [&quot;acme/configs&quot;]
+</span><span id="__span-2-3"><a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>  schema_map: [
+</span><span id="__span-2-4"><a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a>    {match: &quot;services/api/**/*.yaml&quot;,  schema: &quot;api/settings.cue&quot;},
+</span><span id="__span-2-5"><a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a>    {match: &quot;services/web/config.yaml&quot;, schema: &quot;web.cue&quot;},
+</span><span id="__span-2-6"><a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a>    {match: &quot;legacy/**&quot;,                schema: &quot;none&quot;},   // on purpose not checked
+</span><span id="__span-2-7"><a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a>  ]
+</span><span id="__span-2-8"><a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a>}]
+</span></code></pre></div>
+<ul>
+<li><code>match</code> is a glob over the file's path in its repository, with forward slashes: <code>*</code> stays inside one folder, <code>**</code> crosses folders (<code>services/**/app.yaml</code> also matches <code>services/app.yaml</code>), <code>?</code> is one character, <code>[abc]</code> a set. Dotfiles match (<code>.env</code>). Case counts. There are no regular expressions.</li>
+<li><code>schema</code> is a path inside the schema repository ending in <code>.cue</code>, or <code>none</code> for "not checked, on purpose". An absolute path, a <code>..</code> segment or a backslash is refused when the configuration loads; at sync time the path is joined to the clone and has to stay inside it, symlinks included.</li>
+<li><strong>The first match wins.</strong> A file no entry matches is found by its name, as before: <code>schema_map</code> adds to the name lookup, it does not replace it.</li>
+<li><code>config.cue</code> and a tenant's <code>bundle.json</code> may set it; a repository's <code>vartrack.json</code> may not, because the people who write the data must not choose what checks it. The layers <strong>add up</strong>, <code>config.cue</code>'s entries first, so a path the operator mapped cannot be remapped by a tenant.</li>
+<li>Every entry is checked when the configuration loads, and all the bad ones are named in one error. For a <code>bundle.json</code> that makes the tenant's <code>bundle.json</code> unusable until it is fixed, as for any invalid <code>bundle.json</code>. When the schema repository is cloned or refreshed, an entry whose schema is not in it is logged once with the rule that names it.</li>
+</ul>
+<h4 id="a-file-names-its-own-schema">A file names its own schema<a class="headerlink" href="#a-file-names-its-own-schema" title="Permanent link">&para;</a></h4>
+<p>With <code>schema_from_file: true</code> in the rule (<code>config.cue</code> or <code>bundle.json</code>), a top-level <code>$schema</code> key in a JSON, YAML or TOML file names its schema, in the syntax of a <code>schema_map</code> <code>schema</code>:</p>
+<div class="language-yaml highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="nt">$schema</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">teams/payments.cue</span>
+</span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="nt">database</span><span class="p">:</span>
+</span><span id="__span-3-3"><a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="w">  </span><span class="nt">host</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">db.internal</span>
+</span></code></pre></div>
+<ul>
+<li>It is read only when <strong>no <code>schema_map</code> entry matched</strong> the file. If one did and the file names a different schema, the map's schema is used and the file's result says so (<code>the file's $schema (…) was overridden by schema_map[0]</code>): the operator outranks the one who writes the data.</li>
+<li>A URL (<code>https://json.schemastore.org/…</code>, an editor's hint) is not a schema in the schema repository: it is ignored, with a note in the file's result.</li>
+<li><strong><code>$schema</code> is never synced as a key</strong>, whether it is honoured or not. Editors add it to YAML and JSON files for completion; it is taken out before the file is flattened.</li>
+</ul>
 <h3 id="what-a-schema-sees">What a schema sees<a class="headerlink" href="#what-a-schema-sees" title="Permanent link">&para;</a></h3>
 <p>A schema checks the data as the sink receives it, not the file as written: after <a href="../rule-options/#root_key"><code>root_key</code></a> is taken out, the <a href="../../concepts/environment-resolution/">environment slice</a> is picked, the data is flattened to dotted keys, <a href="../rule-options/#variables_map"><code>variables_map</code></a> renames are applied and <a href="../annotations/#secret"><code>@secret()</code></a> values are read.</p>
 <p><strong>Every value is a string by then:</strong> <code>5432</code> is <code>"5432"</code>, <code>true</code> is <code>"true"</code>, <code>null</code> is <code>""</code>. Write <code>string &amp; =~"^[0-9]+$"</code> for a number — <code>int</code> rejects every value.</p>
 <h3 id="example">Example<a class="headerlink" href="#example" title="Permanent link">&para;</a></h3>
 <p>The config repository has <code>configs/app.yaml</code>:</p>
-<div class="language-yaml highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="nt">app</span><span class="p">:</span>
-</span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="w">  </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">checkout</span>
-</span><span id="__span-2-3"><a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="nt">database</span><span class="p">:</span>
-</span><span id="__span-2-4"><a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="w">  </span><span class="nt">host</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">db.internal</span>
-</span><span id="__span-2-5"><a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a><span class="w">  </span><span class="nt">port</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">5432</span>
-</span><span id="__span-2-6"><a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a><span class="nt">log</span><span class="p">:</span>
-</span><span id="__span-2-7"><a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a><span class="w">  </span><span class="nt">level</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">info</span>
-</span><span id="__span-2-8"><a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a><span class="nt">features</span><span class="p">:</span>
-</span><span id="__span-2-9"><a id="__codelineno-2-9" name="__codelineno-2-9" href="#__codelineno-2-9"></a><span class="w">  </span><span class="nt">dark_mode</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
+<div class="language-yaml highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="nt">app</span><span class="p">:</span>
+</span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="w">  </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">checkout</span>
+</span><span id="__span-4-3"><a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="nt">database</span><span class="p">:</span>
+</span><span id="__span-4-4"><a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="w">  </span><span class="nt">host</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">db.internal</span>
+</span><span id="__span-4-5"><a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a><span class="w">  </span><span class="nt">port</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">5432</span>
+</span><span id="__span-4-6"><a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a><span class="nt">log</span><span class="p">:</span>
+</span><span id="__span-4-7"><a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a><span class="w">  </span><span class="nt">level</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">info</span>
+</span><span id="__span-4-8"><a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a><span class="nt">features</span><span class="p">:</span>
+</span><span id="__span-4-9"><a id="__codelineno-4-9" name="__codelineno-4-9" href="#__codelineno-4-9"></a><span class="w">  </span><span class="nt">dark_mode</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
 </span></code></pre></div>
 <p>which the schema sees as:</p>
-<div class="language-json highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="p">{</span>
-</span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="w">  </span><span class="nt">&quot;app.name&quot;</span><span class="p">:</span><span class="w">           </span><span class="s2">&quot;checkout&quot;</span><span class="p">,</span>
-</span><span id="__span-3-3"><a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="w">  </span><span class="nt">&quot;database.host&quot;</span><span class="p">:</span><span class="w">      </span><span class="s2">&quot;db.internal&quot;</span><span class="p">,</span>
-</span><span id="__span-3-4"><a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="w">  </span><span class="nt">&quot;database.port&quot;</span><span class="p">:</span><span class="w">      </span><span class="s2">&quot;5432&quot;</span><span class="p">,</span>
-</span><span id="__span-3-5"><a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a><span class="w">  </span><span class="nt">&quot;log.level&quot;</span><span class="p">:</span><span class="w">          </span><span class="s2">&quot;info&quot;</span><span class="p">,</span>
-</span><span id="__span-3-6"><a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a><span class="w">  </span><span class="nt">&quot;features.dark_mode&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;true&quot;</span>
-</span><span id="__span-3-7"><a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a><span class="p">}</span>
+<div class="language-json highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="p">{</span>
+</span><span id="__span-5-2"><a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="w">  </span><span class="nt">&quot;app.name&quot;</span><span class="p">:</span><span class="w">           </span><span class="s2">&quot;checkout&quot;</span><span class="p">,</span>
+</span><span id="__span-5-3"><a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="w">  </span><span class="nt">&quot;database.host&quot;</span><span class="p">:</span><span class="w">      </span><span class="s2">&quot;db.internal&quot;</span><span class="p">,</span>
+</span><span id="__span-5-4"><a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="w">  </span><span class="nt">&quot;database.port&quot;</span><span class="p">:</span><span class="w">      </span><span class="s2">&quot;5432&quot;</span><span class="p">,</span>
+</span><span id="__span-5-5"><a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a><span class="w">  </span><span class="nt">&quot;log.level&quot;</span><span class="p">:</span><span class="w">          </span><span class="s2">&quot;info&quot;</span><span class="p">,</span>
+</span><span id="__span-5-6"><a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a><span class="w">  </span><span class="nt">&quot;features.dark_mode&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;true&quot;</span>
+</span><span id="__span-5-7"><a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a><span class="p">}</span>
 </span></code></pre></div>
 <p>The schema repo has <code>app.yaml.cue</code>:</p>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>// Required: a file without one of these keys fails.
-</span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>&quot;app.name&quot;:      string &amp; !=&quot;&quot;
-</span><span id="__span-4-3"><a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>&quot;database.host&quot;: string &amp; !=&quot;&quot;
-</span><span id="__span-4-4"><a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a>&quot;database.port&quot;: string &amp; =~&quot;^[0-9]{1,5}$&quot;
-</span><span id="__span-4-5"><a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a>
-</span><span id="__span-4-6"><a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a>// One of a fixed set of values.
-</span><span id="__span-4-7"><a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a>&quot;log.level&quot;: &quot;debug&quot; | &quot;info&quot; | &quot;warn&quot; | &quot;error&quot;
-</span><span id="__span-4-8"><a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a>
-</span><span id="__span-4-9"><a id="__codelineno-4-9" name="__codelineno-4-9" href="#__codelineno-4-9"></a>// Optional: checked only when the file has it.
-</span><span id="__span-4-10"><a id="__codelineno-4-10" name="__codelineno-4-10" href="#__codelineno-4-10"></a>&quot;features.dark_mode&quot;?: &quot;true&quot; | &quot;false&quot;
+<p>```cue notest
+// Required: a file without one of these keys fails.
+"app.name":      string &amp; !=""
+"database.host": string &amp; !=""
+"database.port": string &amp; =~"^[0-9]{1,5}$"</p>
+<p>// One of a fixed set of values.
+"log.level": "debug" | "info" | "warn" | "error"</p>
+<p>// Optional: checked only when the file has it.
+"features.dark_mode"?: "true" | "false"
+<div class="language-text highlight"><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>This file passes. With `port: 55x` and `level: verbose` it fails with:
 </span></code></pre></div>
-<p>This file passes. With <code>port: 55x</code> and <code>level: verbose</code> it fails with:</p>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>&quot;log.level&quot;: 4 errors in empty disjunction: …
-</span><span id="__span-5-2"><a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>&quot;database.port&quot;: invalid value &quot;55x&quot; (out of bound =~&quot;^[0-9]{1,5}$&quot;)
-</span></code></pre></div>
-<p>and without <code>app.name</code> with <code>"app.name": incomplete value !=""</code>.</p>
-<p>Keys the schema does not name are allowed. To reject them, wrap the schema in <code>close({ … })</code>:</p>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>close({
-</span><span id="__span-6-2"><a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>  &quot;app.name&quot;:      string &amp; !=&quot;&quot;
-</span><span id="__span-6-3"><a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a>  &quot;database.host&quot;: string &amp; !=&quot;&quot;
-</span><span id="__span-6-4"><a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a>})
-</span></code></pre></div>
+"log.level": 4 errors in empty disjunction: …
+"database.port": invalid value "55x" (out of bound =~"^[0-9]{1,5}$")
+<div class="language-text highlight"><pre><span></span><code><span id="__span-7-1"><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>and without `app.name` with `&quot;app.name&quot;: incomplete value !=&quot;&quot;`.
+</span><span id="__span-7-2"><a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>
+</span><span id="__span-7-3"><a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a>Keys the schema does not name are allowed. To reject them, wrap the schema in `close({ … })`:
+</span><span id="__span-7-4"><a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a>
+</span><span id="__span-7-5"><a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a>```cue notest
+</span><span id="__span-7-6"><a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a>close({
+</span><span id="__span-7-7"><a id="__codelineno-7-7" name="__codelineno-7-7" href="#__codelineno-7-7"></a>  &quot;app.name&quot;:      string &amp; !=&quot;&quot;
+</span><span id="__span-7-8"><a id="__codelineno-7-8" name="__codelineno-7-8" href="#__codelineno-7-8"></a>  &quot;database.host&quot;: string &amp; !=&quot;&quot;
+</span><span id="__span-7-9"><a id="__codelineno-7-9" name="__codelineno-7-9" href="#__codelineno-7-9"></a>})
+</span></code></pre></div></p>
 <p>A field can also carry <a href="../annotations/"><code>@secret()</code> and <code>@logger()</code></a>.</p>
 <h3 id="when-a-file-fails">When a file fails<a class="headerlink" href="#when-a-file-fails" title="Permanent link">&para;</a></h3>
 <table>
@@ -2289,6 +2409,7 @@
 </tr>
 </tbody>
 </table>
+<p>With <code>strict_validation</code> <strong>every file has to be checked</strong>: a file no schema checks (step 5 above) fails with <code>strict_validation: no schema checks configs/app.yaml (rule gitea/mongo): add a schema_map entry for it, or map it to "none" to leave it unchecked on purpose</code>. A rule that relied on "strict, but nothing checks this file" needs one <code>schema_map</code> entry for it.</p>
 <p><a href="../../cli/#vt-validate"><code>vt validate</code></a> always treats a failure as an error and exits 1, so a pull request check catches it before the merge.</p>
 <p>To try a schema on your machine, put the flat form above in <code>data.json</code> and run <code>cue vet app.yaml.cue data.json</code>.</p>
 <hr />
@@ -2327,9 +2448,9 @@
 </table>
 <p><code>branch_map</code>, <code>file_path_map</code>, <code>variables_map</code> and <code>prune</code> are merged key by key across layers: a <code>branch_map</code> of <code>{develop: staging}</code> in <code>bundle.json</code> adds to the <code>{main: production}</code> of <code>config.cue</code>. The <code>prune.protection</code> patterns of every layer add up — a layer can protect more keys, never fewer. Every other key is replaced.</p>
 <p><code>bundle.json</code> and <code>vartrack.json</code> can also pull in shared settings with <code>extends</code> — see <a href="#presets-extends">Presets</a>.</p>
-<p><strong>Keys only <code>config.cue</code> sets.</strong> These are dropped from <code>bundle.json</code> with a warning (<code>… sets mongo_uri, self_heal, which only config.cue sets — ignored</code>). The gateway routes pushes by <code>config.cue</code>'s repositories and the watcher heals the rules <code>config.cue</code> marks <code>self_heal</code>, so another value further down would split the services:</p>
+<p><strong>Keys only <code>config.cue</code> sets.</strong> These are dropped from <code>bundle.json</code> with a warning (<code>… sets endpoint, self_heal, which only config.cue sets — ignored</code>). The gateway routes pushes by <code>config.cue</code>'s repositories and the watcher heals the rules <code>config.cue</code> marks <code>self_heal</code>, so another value further down would split the services:</p>
 <ul>
-<li>the datasource's connection settings and credentials: every sink key a <a href="../bundle/#datasources">datasource block</a> sets (<code>mongo_uri</code>, <code>database</code>, <code>collection</code>, <code>update_strategy</code>, <code>redis_hosts</code>, <code>s3_bucket</code>, <code>ssh_host</code>, …)</li>
+<li>the datasource's connection settings and credentials: every field of a <a href="../bundle/#datasources">datasource block</a> (<code>endpoint</code>, <code>database</code>, <code>collection</code>, <code>update_strategy</code>, <code>hosts</code>, <code>bucket</code>, <code>host</code>, …). A sink reads them from that block alone, under the names the block uses; a rule's copy of one, in any layer, is never read. The old flat names (<code>mongo_uri</code>, <code>s3_bucket</code>, <code>ssh_host</code>, …) are not options at all and are dropped as undeclared.</li>
 <li>these rule options:</li>
 </ul>
 <!-- rule-options:admin-only -->
@@ -2346,15 +2467,15 @@
 
 <p><code>force</code> cannot pin these either; they are set on the rule itself.</p>
 <p><strong>Which rules exist.</strong> The rules are <code>config.cue</code>'s, since the gateway only routes pushes to those. A <code>bundle.json</code> rule for a platform and datasource with no rule in <code>config.cue</code> is ignored with a warning. A <code>config.cue</code> rule that no tenant's <code>bundle.json</code> names still syncs, as tenant <code>default</code>'s. Its <code>repo_url</code> is derived from the platform's <code>endpoint</code> and the rule's only repository (<code>http://gitea:3000</code> + <code>acme/configs</code> → <code>http://gitea:3000/acme/configs.git</code>); a webhook for a rule covering several repositories reads the pushed one.</p>
-<p>A bundle whose <code>config.cue</code> has no <code>rules</code> gets only the second layer: <code>bundle.json</code>'s rules are used as they are, and a datasource's <code>config.cue</code> settings still win over the same keys in a rule.</p>
+<p>A bundle whose <code>config.cue</code> has no <code>rules</code> gets only the second layer: <code>bundle.json</code>'s rules are used as they are. Where the sink connects still comes from the datasource's block in <code>config.cue</code> only; a datasource <code>config.cue</code> does not declare runs on the sink's defaults.</p>
 <hr />
 <h2 id="presets-extends">Presets (<code>extends</code>)<a class="headerlink" href="#presets-extends" title="Permanent link">&para;</a></h2>
 <p>A preset is a JSON file of rule settings in a Git repository, shared by every <code>bundle.json</code> or <code>vartrack.json</code> that names it in <code>extends</code>. A presets repository might hold:</p>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-7-1"><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>my-org/presets/
-</span><span id="__span-7-2"><a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>├── default.json        ← {&quot;prune&quot;: {&quot;protection&quot;: [&quot;_vt_*&quot;]}}
-</span><span id="__span-7-3"><a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a>├── production.json     ← {&quot;extends&quot;: [&quot;local&gt;my-org/presets&quot;], &quot;prune&quot;: {&quot;protection&quot;: [&quot;manual.*&quot;]}}
-</span><span id="__span-7-4"><a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a>└── repos/
-</span><span id="__span-7-5"><a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a>    └── checkout.json   ← {&quot;prune&quot;: {&quot;protection&quot;: [&quot;features.*&quot;]}}
+<div class="language-text highlight"><pre><span></span><code><span id="__span-8-1"><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>my-org/presets/
+</span><span id="__span-8-2"><a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>├── default.json        ← {&quot;prune&quot;: {&quot;protection&quot;: [&quot;_vt_*&quot;]}}
+</span><span id="__span-8-3"><a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a>├── production.json     ← {&quot;extends&quot;: [&quot;local&gt;my-org/presets&quot;], &quot;prune&quot;: {&quot;protection&quot;: [&quot;manual.*&quot;]}}
+</span><span id="__span-8-4"><a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a>└── repos/
+</span><span id="__span-8-5"><a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a>    └── checkout.json   ← {&quot;prune&quot;: {&quot;protection&quot;: [&quot;features.*&quot;]}}
 </span></code></pre></div>
 <p>A preset is named like this:</p>
 <table>
@@ -2388,19 +2509,20 @@
 </tbody>
 </table>
 <p><code>local&gt;</code> (or no prefix) is the Git server of the file naming the preset: the schema repo's for <code>bundle.json</code>, the pushed repo's for <code>vartrack.json</code>, and the preset's own inside a preset.</p>
+<p><strong>Where a tenant's presets may come from.</strong> Once <a href="../bundle/#tenants"><code>tenants</code></a> are declared, a preset is read only from a repository the tenant owns: one of its <code>repositories</code> (with the platform credential a sync of them uses), its <code>schema_repo</code> (with that repository's <code>token</code>), or one its <code>presets</code> lists (with its <code>presets_token</code>). A preset anywhere else is refused with the preset named, before anything is fetched, and the platform's own token is never sent to it; <code>vt validate-config</code> reports it. Without declared tenants presets are unrestricted, as before.</p>
 <p>So an entry reads as <strong><code>&lt;server&gt;&gt;&lt;owner&gt;/&lt;repo&gt;</code></strong>, then optionally <strong><code>:&lt;file&gt;</code></strong> (a file at the repository's root, without <code>.json</code>) or <strong><code>//&lt;path&gt;</code></strong> (a file in a folder, without <code>.json</code>), then optionally <strong><code>#&lt;branch or tag&gt;</code></strong>. With neither <code>:</code> nor <code>//</code> the file is <code>default.json</code>.</p>
 <p><strong>Example — one setting shared by every checkout repository.</strong> Create a repository <code>my-org/presets</code> with the file <code>repos/checkout.json</code>:</p>
-<div class="language-json highlight"><pre><span></span><code><span id="__span-8-1"><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="p">{</span>
-</span><span id="__span-8-2"><a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a><span class="w">  </span><span class="nt">&quot;description&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Settings every checkout service repository uses&quot;</span><span class="p">,</span>
-</span><span id="__span-8-3"><a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a><span class="w">  </span><span class="nt">&quot;prune&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nt">&quot;protection&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;features.*&quot;</span><span class="p">]},</span>
-</span><span id="__span-8-4"><a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a><span class="w">  </span><span class="nt">&quot;branch_map&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nt">&quot;release&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;production&quot;</span><span class="p">}</span>
-</span><span id="__span-8-5"><a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a><span class="p">}</span>
+<div class="language-json highlight"><pre><span></span><code><span id="__span-9-1"><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="p">{</span>
+</span><span id="__span-9-2"><a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a><span class="w">  </span><span class="nt">&quot;description&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Settings every checkout service repository uses&quot;</span><span class="p">,</span>
+</span><span id="__span-9-3"><a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a><span class="w">  </span><span class="nt">&quot;prune&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nt">&quot;protection&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;features.*&quot;</span><span class="p">]},</span>
+</span><span id="__span-9-4"><a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a><span class="w">  </span><span class="nt">&quot;branch_map&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nt">&quot;release&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;production&quot;</span><span class="p">}</span>
+</span><span id="__span-9-5"><a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a><span class="p">}</span>
 </span></code></pre></div>
 <p>Then each repository that wants it names it in its <code>vartrack.json</code>, and adds what is its own:</p>
-<div class="language-json highlight"><pre><span></span><code><span id="__span-9-1"><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="p">{</span>
-</span><span id="__span-9-2"><a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a><span class="w">  </span><span class="nt">&quot;extends&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;local&gt;my-org/presets//repos/checkout&quot;</span><span class="p">],</span>
-</span><span id="__span-9-3"><a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a><span class="w">  </span><span class="nt">&quot;root_key&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;checkout&quot;</span>
-</span><span id="__span-9-4"><a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a><span class="p">}</span>
+<div class="language-json highlight"><pre><span></span><code><span id="__span-10-1"><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="p">{</span>
+</span><span id="__span-10-2"><a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a><span class="w">  </span><span class="nt">&quot;extends&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;local&gt;my-org/presets//repos/checkout&quot;</span><span class="p">],</span>
+</span><span id="__span-10-3"><a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a><span class="w">  </span><span class="nt">&quot;root_key&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;checkout&quot;</span>
+</span><span id="__span-10-4"><a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a><span class="p">}</span>
 </span></code></pre></div>
 <p>The sync of that repository runs with <code>features.*</code> added to the rule's <code>prune.protection</code>, <code>release: production</code> added to its <code>branch_map</code>, and <code>root_key</code> <code>checkout</code>. Change <code>repos/checkout.json</code> once and every repository that extends it gets the change on its next sync. A preset can hold any option the file extending it may set — for a <code>vartrack.json</code> that is the <a href="../per-repo-overrides/#overridable-keys">overridable keys</a>; <code>description</code> is only a note and is dropped.</p>
 <p>How presets are resolved:</p>
@@ -2418,44 +2540,43 @@
 <h3 id="format">Format<a class="headerlink" href="#format" title="Permanent link">&para;</a></h3>
 <p>Two formats are accepted:</p>
 <p><strong>Array (recommended):</strong>
-<div class="language-json highlight"><pre><span></span><code><span id="__span-10-1"><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="p">[</span>
-</span><span id="__span-10-2"><a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a><span class="w">  </span><span class="p">{</span><span class="w"> </span><span class="err">...</span><span class="w"> </span><span class="err">rule</span><span class="w"> </span><span class="err">objec</span><span class="kc">t</span><span class="w"> </span><span class="err">...</span><span class="w"> </span><span class="p">},</span>
-</span><span id="__span-10-3"><a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a><span class="w">  </span><span class="p">{</span><span class="w"> </span><span class="err">...</span><span class="w"> </span><span class="err">rule</span><span class="w"> </span><span class="err">objec</span><span class="kc">t</span><span class="w"> </span><span class="err">...</span><span class="w"> </span><span class="p">}</span>
-</span><span id="__span-10-4"><a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a><span class="p">]</span>
+<div class="language-json highlight"><pre><span></span><code><span id="__span-11-1"><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="p">[</span>
+</span><span id="__span-11-2"><a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a><span class="w">  </span><span class="p">{</span><span class="w"> </span><span class="err">...</span><span class="w"> </span><span class="err">rule</span><span class="w"> </span><span class="err">objec</span><span class="kc">t</span><span class="w"> </span><span class="err">...</span><span class="w"> </span><span class="p">},</span>
+</span><span id="__span-11-3"><a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a><span class="w">  </span><span class="p">{</span><span class="w"> </span><span class="err">...</span><span class="w"> </span><span class="err">rule</span><span class="w"> </span><span class="err">objec</span><span class="kc">t</span><span class="w"> </span><span class="err">...</span><span class="w"> </span><span class="p">}</span>
+</span><span id="__span-11-4"><a id="__codelineno-11-4" name="__codelineno-11-4" href="#__codelineno-11-4"></a><span class="p">]</span>
 </span></code></pre></div></p>
 <p><strong>Object with a <code>rules</code> key</strong> — which can also <code>extends</code> presets for every rule in it:
-<div class="language-json highlight"><pre><span></span><code><span id="__span-11-1"><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="p">{</span>
-</span><span id="__span-11-2"><a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a><span class="w">  </span><span class="nt">&quot;extends&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;local&gt;my-org/presets:production&quot;</span><span class="p">],</span>
-</span><span id="__span-11-3"><a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a><span class="w">  </span><span class="nt">&quot;rules&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
-</span><span id="__span-11-4"><a id="__codelineno-11-4" name="__codelineno-11-4" href="#__codelineno-11-4"></a><span class="w">    </span><span class="p">{</span><span class="w"> </span><span class="err">...</span><span class="w"> </span><span class="err">rule</span><span class="w"> </span><span class="err">objec</span><span class="kc">t</span><span class="w"> </span><span class="err">...</span><span class="w"> </span><span class="p">}</span>
-</span><span id="__span-11-5"><a id="__codelineno-11-5" name="__codelineno-11-5" href="#__codelineno-11-5"></a><span class="w">  </span><span class="p">]</span>
-</span><span id="__span-11-6"><a id="__codelineno-11-6" name="__codelineno-11-6" href="#__codelineno-11-6"></a><span class="p">}</span>
+<div class="language-json highlight"><pre><span></span><code><span id="__span-12-1"><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a><span class="p">{</span>
+</span><span id="__span-12-2"><a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a><span class="w">  </span><span class="nt">&quot;extends&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;local&gt;my-org/presets:production&quot;</span><span class="p">],</span>
+</span><span id="__span-12-3"><a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a><span class="w">  </span><span class="nt">&quot;rules&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+</span><span id="__span-12-4"><a id="__codelineno-12-4" name="__codelineno-12-4" href="#__codelineno-12-4"></a><span class="w">    </span><span class="p">{</span><span class="w"> </span><span class="err">...</span><span class="w"> </span><span class="err">rule</span><span class="w"> </span><span class="err">objec</span><span class="kc">t</span><span class="w"> </span><span class="err">...</span><span class="w"> </span><span class="p">}</span>
+</span><span id="__span-12-5"><a id="__codelineno-12-5" name="__codelineno-12-5" href="#__codelineno-12-5"></a><span class="w">  </span><span class="p">]</span>
+</span><span id="__span-12-6"><a id="__codelineno-12-6" name="__codelineno-12-6" href="#__codelineno-12-6"></a><span class="p">}</span>
 </span></code></pre></div></p>
 <p>A rule can <code>extends</code> presets of its own as well; they come after the file's.</p>
 <h3 id="example_1">Example<a class="headerlink" href="#example_1" title="Permanent link">&para;</a></h3>
 <p>With this rule in <code>config.cue</code>:</p>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-12-1"><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a>rules: [{
-</span><span id="__span-12-2"><a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a>  platform:     &quot;github&quot;
-</span><span id="__span-12-3"><a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a>  datasource:   &quot;mongo&quot;
-</span><span id="__span-12-4"><a id="__codelineno-12-4" name="__codelineno-12-4" href="#__codelineno-12-4"></a>  repositories: [&quot;acme/app-configs&quot;]
-</span><span id="__span-12-5"><a id="__codelineno-12-5" name="__codelineno-12-5" href="#__codelineno-12-5"></a>  file_name:    &quot;configs/app.yaml&quot;
-</span><span id="__span-12-6"><a id="__codelineno-12-6" name="__codelineno-12-6" href="#__codelineno-12-6"></a>  branch_map:   {main: &quot;production&quot;}
-</span><span id="__span-12-7"><a id="__codelineno-12-7" name="__codelineno-12-7" href="#__codelineno-12-7"></a>  self_heal:    true
-</span><span id="__span-12-8"><a id="__codelineno-12-8" name="__codelineno-12-8" href="#__codelineno-12-8"></a>  force:        {prune: {enabled: false}}   // production never prunes
-</span><span id="__span-12-9"><a id="__codelineno-12-9" name="__codelineno-12-9" href="#__codelineno-12-9"></a>}]
+<div class="language-text highlight"><pre><span></span><code><span id="__span-13-1"><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a>rules: [{
+</span><span id="__span-13-2"><a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a>  platform:     &quot;github&quot;
+</span><span id="__span-13-3"><a id="__codelineno-13-3" name="__codelineno-13-3" href="#__codelineno-13-3"></a>  datasource:   &quot;mongo&quot;
+</span><span id="__span-13-4"><a id="__codelineno-13-4" name="__codelineno-13-4" href="#__codelineno-13-4"></a>  repositories: [&quot;acme/app-configs&quot;]
+</span><span id="__span-13-5"><a id="__codelineno-13-5" name="__codelineno-13-5" href="#__codelineno-13-5"></a>  file_name:    &quot;configs/app.yaml&quot;
+</span><span id="__span-13-6"><a id="__codelineno-13-6" name="__codelineno-13-6" href="#__codelineno-13-6"></a>  branch_map:   {main: &quot;production&quot;}
+</span><span id="__span-13-7"><a id="__codelineno-13-7" name="__codelineno-13-7" href="#__codelineno-13-7"></a>  self_heal:    true
+</span><span id="__span-13-8"><a id="__codelineno-13-8" name="__codelineno-13-8" href="#__codelineno-13-8"></a>  force:        {prune: {enabled: false}}   // production never prunes
+</span><span id="__span-13-9"><a id="__codelineno-13-9" name="__codelineno-13-9" href="#__codelineno-13-9"></a>}]
 </span></code></pre></div>
 <p>the tenant's <code>bundle.json</code> adds a staging branch, a root key and the smart-repair sync mode:</p>
-<div class="language-json highlight"><pre><span></span><code><span id="__span-13-1"><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a><span class="p">[</span>
-</span><span id="__span-13-2"><a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a><span class="w">  </span><span class="p">{</span>
-</span><span id="__span-13-3"><a id="__codelineno-13-3" name="__codelineno-13-3" href="#__codelineno-13-3"></a><span class="w">    </span><span class="nt">&quot;platform&quot;</span><span class="p">:</span><span class="w">   </span><span class="s2">&quot;github&quot;</span><span class="p">,</span>
-</span><span id="__span-13-4"><a id="__codelineno-13-4" name="__codelineno-13-4" href="#__codelineno-13-4"></a><span class="w">    </span><span class="nt">&quot;datasource&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;mongo&quot;</span><span class="p">,</span>
-</span><span id="__span-13-5"><a id="__codelineno-13-5" name="__codelineno-13-5" href="#__codelineno-13-5"></a><span class="w">    </span><span class="nt">&quot;tenant_id&quot;</span><span class="p">:</span><span class="w">  </span><span class="s2">&quot;acme&quot;</span><span class="p">,</span>
-</span><span id="__span-13-6"><a id="__codelineno-13-6" name="__codelineno-13-6" href="#__codelineno-13-6"></a><span class="w">    </span><span class="nt">&quot;branch_map&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nt">&quot;develop&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;staging&quot;</span><span class="p">},</span>
-</span><span id="__span-13-7"><a id="__codelineno-13-7" name="__codelineno-13-7" href="#__codelineno-13-7"></a><span class="w">    </span><span class="nt">&quot;root_key&quot;</span><span class="p">:</span><span class="w">   </span><span class="s2">&quot;vartrack&quot;</span><span class="p">,</span>
-</span><span id="__span-13-8"><a id="__codelineno-13-8" name="__codelineno-13-8" href="#__codelineno-13-8"></a><span class="w">    </span><span class="nt">&quot;sync_mode&quot;</span><span class="p">:</span><span class="w">  </span><span class="s2">&quot;GIT_SMART_REPAIR&quot;</span><span class="p">,</span>
-</span><span id="__span-13-9"><a id="__codelineno-13-9" name="__codelineno-13-9" href="#__codelineno-13-9"></a><span class="w">    </span><span class="nt">&quot;prune&quot;</span><span class="p">:</span><span class="w">      </span><span class="kc">true</span>
-</span><span id="__span-13-10"><a id="__codelineno-13-10" name="__codelineno-13-10" href="#__codelineno-13-10"></a><span class="w">  </span><span class="p">}</span>
-</span><span id="__span-13-11"><a id="__codelineno-13-11" name="__codelineno-13-11" href="#__codelineno-13-11"></a><span class="p">]</span>
+<div class="language-json highlight"><pre><span></span><code><span id="__span-14-1"><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a><span class="p">[</span>
+</span><span id="__span-14-2"><a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a><span class="w">  </span><span class="p">{</span>
+</span><span id="__span-14-3"><a id="__codelineno-14-3" name="__codelineno-14-3" href="#__codelineno-14-3"></a><span class="w">    </span><span class="nt">&quot;platform&quot;</span><span class="p">:</span><span class="w">   </span><span class="s2">&quot;github&quot;</span><span class="p">,</span>
+</span><span id="__span-14-4"><a id="__codelineno-14-4" name="__codelineno-14-4" href="#__codelineno-14-4"></a><span class="w">    </span><span class="nt">&quot;datasource&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;mongo&quot;</span><span class="p">,</span>
+</span><span id="__span-14-5"><a id="__codelineno-14-5" name="__codelineno-14-5" href="#__codelineno-14-5"></a><span class="w">    </span><span class="nt">&quot;branch_map&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nt">&quot;develop&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;staging&quot;</span><span class="p">},</span>
+</span><span id="__span-14-6"><a id="__codelineno-14-6" name="__codelineno-14-6" href="#__codelineno-14-6"></a><span class="w">    </span><span class="nt">&quot;root_key&quot;</span><span class="p">:</span><span class="w">   </span><span class="s2">&quot;vartrack&quot;</span><span class="p">,</span>
+</span><span id="__span-14-7"><a id="__codelineno-14-7" name="__codelineno-14-7" href="#__codelineno-14-7"></a><span class="w">    </span><span class="nt">&quot;sync_mode&quot;</span><span class="p">:</span><span class="w">  </span><span class="s2">&quot;GIT_SMART_REPAIR&quot;</span><span class="p">,</span>
+</span><span id="__span-14-8"><a id="__codelineno-14-8" name="__codelineno-14-8" href="#__codelineno-14-8"></a><span class="w">    </span><span class="nt">&quot;prune&quot;</span><span class="p">:</span><span class="w">      </span><span class="kc">true</span>
+</span><span id="__span-14-9"><a id="__codelineno-14-9" name="__codelineno-14-9" href="#__codelineno-14-9"></a><span class="w">  </span><span class="p">}</span>
+</span><span id="__span-14-10"><a id="__codelineno-14-10" name="__codelineno-14-10" href="#__codelineno-14-10"></a><span class="p">]</span>
 </span></code></pre></div>
 <p>The rule a sync runs with: <code>file_name</code> <code>configs/app.yaml</code>, <code>branch_map</code> <code>{main: production, develop: staging}</code>, <code>root_key</code> <code>vartrack</code>, <code>sync_mode</code> <code>GIT_SMART_REPAIR</code>, <code>self_heal</code> true, <code>prune</code> <code>{enabled: false}</code> (forced), and the <code>mongo</code> datasource's connection settings from <code>config.cue</code>.</p>
 <h3 id="rule-object-fields">Rule object fields<a class="headerlink" href="#rule-object-fields" title="Permanent link">&para;</a></h3>
@@ -2480,34 +2601,24 @@
 <td>Datasource name — <code>mongo</code>, <code>redis-cfg</code>, <code>s3-minio</code>, …</td>
 </tr>
 <tr>
-<td><code>tenant_id</code></td>
-<td>No</td>
-<td>Tenant this rule belongs to (default: the schema repo's tenant)</td>
-</tr>
-<tr>
 <td><code>repo_url</code></td>
 <td>No</td>
 <td>HTTPS clone URL of the config repository (default: derived from the platform and the rule's only repository)</td>
 </tr>
 <tr>
 <td><code>file_name</code></td>
-<td>No</td>
-<td>Single file path to track in all repos</td>
+<td>One of the two</td>
+<td>Single file path to track in all repos. A rule that names neither this nor <code>file_path_map</code> is refused</td>
 </tr>
 <tr>
 <td><code>file_path_map</code></td>
-<td>No</td>
+<td>One of the two</td>
 <td><code>{ env → file_path }</code> for per-environment file selection — merged</td>
 </tr>
 <tr>
 <td><code>branch</code></td>
 <td>No</td>
 <td>Branch to heal when there is no <code>branch_map</code> (default: <code>main</code>)</td>
-</tr>
-<tr>
-<td><code>max_changed_files</code></td>
-<td>No</td>
-<td>The most files one push syncs (default: 500). A push that changed more is cut to the first of them, with a warning in the log</td>
 </tr>
 <tr>
 <td><code>branch_map</code></td>
@@ -2527,7 +2638,7 @@
 <tr>
 <td><code>prune</code></td>
 <td>No</td>
-<td><code>true</code>, or <code>{enabled, dry_run, protection}</code> — merged with the other layers; <code>protection</code> patterns add up, and an object with only <code>protection</code> does not enable pruning</td>
+<td><code>true</code>, or <code>{enabled, protection}</code> — merged with the other layers; <code>protection</code> patterns add up, and an object with only <code>protection</code> does not enable pruning</td>
 </tr>
 <tr>
 <td><code>prune_protection</code></td>
@@ -2545,14 +2656,19 @@
 <td>Environment from the branch name, <code>pr-{number}</code>, or the tag</td>
 </tr>
 <tr>
-<td><code>destination_template</code>, <code>dry_run</code>, <code>strict_validation</code></td>
+<td><code>destination_template</code>, <code>strict_validation</code></td>
 <td>No</td>
 <td>As in <a href="../bundle/#rules"><code>config.cue</code></a></td>
 </tr>
 <tr>
-<td>sink options with no <code>config.cue</code> field</td>
+<td><code>schema_map</code>, <code>schema_from_file</code></td>
 <td>No</td>
-<td>e.g. <code>key_format</code>, <code>helm_values_mode</code></td>
+<td>Which schema checks which file; see <a href="#which-schema-a-file-gets">Which schema a file gets</a>. <code>schema_map</code> adds to <code>config.cue</code>'s entries</td>
+</tr>
+<tr>
+<td><code>key_format</code>, <code>file_format</code>, <code>env_as_filename</code>, <code>helm_values_mode</code>, <code>s3_object_tags</code>, <code>s3_tag_keys</code></td>
+<td>No</td>
+<td>Sink layout options with no <code>config.cue</code> datasource field: how a key is flattened, how a file or object is laid out. They never say where a destination is or how to reach it, so a tenant may set them. See <a href="../rule-options/">Rule options</a></td>
 </tr>
 <tr>
 <td><code>extends</code></td>
@@ -2561,28 +2677,28 @@
 </tr>
 </tbody>
 </table>
-<p><code>repositories</code>, <code>self_heal</code>, <code>secret_manager</code> and the sink connection settings are set in <code>config.cue</code> only (see above).</p>
+<p><code>repositories</code>, <code>self_heal</code>, <code>secret_manager</code> and the sink connection settings are set in <code>config.cue</code> only (see above). <strong>A key that is not an option at all is dropped too</strong>, with a warning that names it (<code>… sets helm_binary, which is not an option a tenant may set — ignored</code>): a <code>bundle.json</code> can set exactly the options listed here, whatever a sink happens to read. Helm's <code>extra_flags</code> and <code>values_file_path</code> are fields of the <code>helm</code> datasource in <code>config.cue</code>; which <code>helm</code> program runs is the orchestrator's <code>HELM_BINARY</code> environment variable.</p>
 <hr />
 <h2 id="rulesjson"><code>rules.json</code><a class="headerlink" href="#rulesjson" title="Permanent link">&para;</a></h2>
 <p><code>rules.json</code> is a drop-in alias for <code>bundle.json</code>. If both files exist, <code>bundle.json</code> takes precedence. Use <code>rules.json</code> if you prefer a shorter name or want to distinguish the manifest from other bundle exports.</p>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-14-1"><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a>my-org/schemas/
-</span><span id="__span-14-2"><a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a>├── rules.json     ← identical format to bundle.json
-</span><span id="__span-14-3"><a id="__codelineno-14-3" name="__codelineno-14-3" href="#__codelineno-14-3"></a>└── *.cue
+<div class="language-text highlight"><pre><span></span><code><span id="__span-15-1"><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a>my-org/schemas/
+</span><span id="__span-15-2"><a id="__codelineno-15-2" name="__codelineno-15-2" href="#__codelineno-15-2"></a>├── rules.json     ← identical format to bundle.json
+</span><span id="__span-15-3"><a id="__codelineno-15-3" name="__codelineno-15-3" href="#__codelineno-15-3"></a>└── *.cue
 </span></code></pre></div>
 <hr />
 <h2 id="tenant-configuration">Tenant configuration<a class="headerlink" href="#tenant-configuration" title="Permanent link">&para;</a></h2>
-<p>Tenants are registered via environment variables on the orchestrator-service and its Celery workers:</p>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-15-1"><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a><span class="nv">SCHEMA_TENANT_ACME_REPO</span><span class="o">=</span>https://github.com/acme/schemas.git
-</span><span id="__span-15-2"><a id="__codelineno-15-2" name="__codelineno-15-2" href="#__codelineno-15-2"></a><span class="nv">SCHEMA_TENANT_ACME_BRANCH</span><span class="o">=</span>main
-</span><span id="__span-15-3"><a id="__codelineno-15-3" name="__codelineno-15-3" href="#__codelineno-15-3"></a><span class="nv">SCHEMA_TENANT_ACME_TOKEN</span><span class="o">=</span>ghp_xxx
+<p>Tenants are declared in <code>config.cue</code>'s <a href="../bundle/#tenants"><code>tenants</code></a>. Before that existed they were registered with environment variables on the orchestrator-service and its Celery workers; those still work for one release, log a warning, and lose to a declared tenant of the same name:</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-16-1"><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a><span class="nv">SCHEMA_TENANT_ACME_REPO</span><span class="o">=</span>https://github.com/acme/schemas.git
+</span><span id="__span-16-2"><a id="__codelineno-16-2" name="__codelineno-16-2" href="#__codelineno-16-2"></a><span class="nv">SCHEMA_TENANT_ACME_BRANCH</span><span class="o">=</span>main
+</span><span id="__span-16-3"><a id="__codelineno-16-3" name="__codelineno-16-3" href="#__codelineno-16-3"></a><span class="nv">SCHEMA_TENANT_ACME_TOKEN</span><span class="o">=</span>ghp_xxx
 </span></code></pre></div>
 <p>The tenant ID is derived from the variable name (<code>ACME</code> → <code>acme</code>). Multiple tenants can be registered in the same process:</p>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-16-1"><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a><span class="nv">SCHEMA_TENANT_ACME_REPO</span><span class="o">=</span>https://github.com/acme/schemas.git
-</span><span id="__span-16-2"><a id="__codelineno-16-2" name="__codelineno-16-2" href="#__codelineno-16-2"></a><span class="nv">SCHEMA_TENANT_ACME_TOKEN</span><span class="o">=</span>ghp_xxx
-</span><span id="__span-16-3"><a id="__codelineno-16-3" name="__codelineno-16-3" href="#__codelineno-16-3"></a>
-</span><span id="__span-16-4"><a id="__codelineno-16-4" name="__codelineno-16-4" href="#__codelineno-16-4"></a><span class="nv">SCHEMA_TENANT_BETA_REPO</span><span class="o">=</span>https://github.com/beta-corp/schemas.git
-</span><span id="__span-16-5"><a id="__codelineno-16-5" name="__codelineno-16-5" href="#__codelineno-16-5"></a><span class="nv">SCHEMA_TENANT_BETA_BRANCH</span><span class="o">=</span>production
-</span><span id="__span-16-6"><a id="__codelineno-16-6" name="__codelineno-16-6" href="#__codelineno-16-6"></a><span class="nv">SCHEMA_TENANT_BETA_TOKEN</span><span class="o">=</span>ghp_yyy
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-17-1"><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a><span class="nv">SCHEMA_TENANT_ACME_REPO</span><span class="o">=</span>https://github.com/acme/schemas.git
+</span><span id="__span-17-2"><a id="__codelineno-17-2" name="__codelineno-17-2" href="#__codelineno-17-2"></a><span class="nv">SCHEMA_TENANT_ACME_TOKEN</span><span class="o">=</span>ghp_xxx
+</span><span id="__span-17-3"><a id="__codelineno-17-3" name="__codelineno-17-3" href="#__codelineno-17-3"></a>
+</span><span id="__span-17-4"><a id="__codelineno-17-4" name="__codelineno-17-4" href="#__codelineno-17-4"></a><span class="nv">SCHEMA_TENANT_BETA_REPO</span><span class="o">=</span>https://github.com/beta-corp/schemas.git
+</span><span id="__span-17-5"><a id="__codelineno-17-5" name="__codelineno-17-5" href="#__codelineno-17-5"></a><span class="nv">SCHEMA_TENANT_BETA_BRANCH</span><span class="o">=</span>production
+</span><span id="__span-17-6"><a id="__codelineno-17-6" name="__codelineno-17-6" href="#__codelineno-17-6"></a><span class="nv">SCHEMA_TENANT_BETA_TOKEN</span><span class="o">=</span>ghp_yyy
 </span></code></pre></div>
 <hr />
 <h2 id="caching-and-refresh">Caching and refresh<a class="headerlink" href="#caching-and-refresh" title="Permanent link">&para;</a></h2>

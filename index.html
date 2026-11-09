@@ -1143,8 +1143,6 @@
       
         
       
-        
-      
     
     
       
@@ -1321,27 +1319,6 @@
   
   
     <li class="md-nav__item">
-      <a href="sinks/vercel/" class="md-nav__link">
-        
-  
-  <span class="md-ellipsis">
-    Vercel
-  </span>
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
       <a href="sinks/linux-server/" class="md-nav__link">
         
   
@@ -1379,6 +1356,8 @@
   
     
     
+      
+        
       
         
       
@@ -1497,6 +1476,27 @@
   
   
     <li class="md-nav__item">
+      <a href="operations/internal-auth/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Internal Authentication
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="operations/monitoring/" class="md-nav__link">
         
   
@@ -1580,10 +1580,10 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5_7" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5_8" >
         
           
-          <label class="md-nav__link" for="__nav_5_7" id="__nav_5_7_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_5_8" id="__nav_5_8_label" tabindex="0">
             
   
   <span class="md-ellipsis">
@@ -1594,8 +1594,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_5_7_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_5_7">
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_5_8_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5_8">
             <span class="md-nav__icon md-icon"></span>
             Services
           </label>
@@ -1920,7 +1920,7 @@
 <tbody>
 <tr>
 <td>Target</td>
-<td>MongoDB, Redis, ZooKeeper, S3, ConfigMap, Helm, Vercel, Linux</td>
+<td>MongoDB, Redis, ZooKeeper, S3, ConfigMap, Helm, Linux</td>
 </tr>
 <tr>
 <td>Trigger</td>
@@ -1948,7 +1948,7 @@
 <li>
 <p><span class="twemoji lg middle"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 12v1.5a4 4 0 0 1 4 4c0 .82-.25 1.58-.67 2.21l-1.09-1.09c.17-.34.26-.72.26-1.12A2.5 2.5 0 0 0 19 15v1.5l-2.25-2.25zm0 11v-1.5a4 4 0 0 1-4-4c0-.82.25-1.58.67-2.21l1.09 1.09c-.17.34-.26.72-.26 1.12A2.5 2.5 0 0 0 19 20v-1.5l2.25 2.25zM12 3c4.42 0 8 1.79 8 4s-3.58 4-8 4-8-1.79-8-4 3.58-4 8-4M4 9c0 2.21 3.58 4 8 4 1.11 0 2.17-.11 3.14-.32-.95.86-1.64 1.99-1.96 3.28L12 16c-4.42 0-8-1.79-8-4zm16 0v2h-.5l-.6.03c.7-.6 1.1-1.29 1.1-2.03M4 14c0 2.21 3.58 4 8 4l1-.03c.09 1.06.42 2.03.95 2.91L12 21c-4.42 0-8-1.79-8-4z"/></svg></span> <strong>8 sink types</strong></p>
 <hr />
-<p>MongoDB, Redis, ZooKeeper, S3, Kubernetes ConfigMap, Helm, Vercel, Linux server (SSH)</p>
+<p>MongoDB, Redis, ZooKeeper, S3, Kubernetes ConfigMap, Helm, Linux server (SSH)</p>
 <p><a href="sinks/"><span class="twemoji"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13.22 19.03a.75.75 0 0 1 0-1.06L18.19 13H3.75a.75.75 0 0 1 0-1.5h14.44l-4.97-4.97a.749.749 0 0 1 .326-1.275.75.75 0 0 1 .734.215l6.25 6.25a.75.75 0 0 1 0 1.06l-6.25 6.25a.75.75 0 0 1-1.06 0"/></svg></span> See all sinks</a></p>
 </li>
 <li>
@@ -2017,7 +2017,7 @@
     ORCH --&gt;|write| REDIS["Redis"]
     ORCH --&gt;|write| ZK["ZooKeeper"]
     ORCH --&gt;|write| S3["S3 / MinIO"]
-    ORCH --&gt;|write| OTHER["ConfigMap · Helm\nVercel · Linux"]
+    ORCH --&gt;|write| OTHER["ConfigMap · Helm\nLinux"]
 
     WATCH --&gt;|"CheckDatasource\n(drift check)"| ORCH
     WATCH --&gt;|"SyncDatasource\n(self-heal)"| ORCH</code></pre>

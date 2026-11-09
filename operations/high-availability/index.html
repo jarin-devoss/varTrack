@@ -16,7 +16,7 @@
         <link rel="prev" href="../production-checklist/">
       
       
-        <link rel="next" href="../monitoring/">
+        <link rel="next" href="../internal-auth/">
       
       
       <link rel="icon" href="../../assets/images/favicon.png">
@@ -1137,8 +1137,6 @@
       
         
       
-        
-      
     
     
       
@@ -1315,27 +1313,6 @@
   
   
     <li class="md-nav__item">
-      <a href="../../sinks/vercel/" class="md-nav__link">
-        
-  
-  <span class="md-ellipsis">
-    Vercel
-  </span>
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
       <a href="../../sinks/linux-server/" class="md-nav__link">
         
   
@@ -1375,6 +1352,8 @@
   
     
     
+      
+        
       
         
       
@@ -1572,6 +1551,27 @@
   
   
     <li class="md-nav__item">
+      <a href="../internal-auth/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Internal Authentication
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../monitoring/" class="md-nav__link">
         
   
@@ -1658,10 +1658,10 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5_7" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5_8" >
         
           
-          <label class="md-nav__link" for="__nav_5_7" id="__nav_5_7_label" tabindex="">
+          <label class="md-nav__link" for="__nav_5_8" id="__nav_5_8_label" tabindex="">
             
   
   <span class="md-ellipsis">
@@ -1672,8 +1672,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_5_7_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_5_7">
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_5_8_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5_8">
             <span class="md-nav__icon md-icon"></span>
             Services
           </label>
@@ -1991,14 +1991,26 @@ what has to be shared for replicas to work together, and what one replica does a
 gRPC. One thing has to be shared between replicas — the record of deliveries already seen,
 which refuses a replayed webhook. Point it at a Redis datasource of the bundle:</p>
 <div class="language-text highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>bundle: {
-</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>  datasources: [{redis: {tag: &quot;broker&quot;, host: &quot;redis&quot;, port: 6379}}]
+</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>  datasources: [{redis: {tag: &quot;broker&quot;, hosts: [&quot;redis:6379&quot;]}}]
 </span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>  gateway_nonce_datasource: &quot;redis-broker&quot;
 </span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>}
 </span></code></pre></div>
-<p>Without it each replica remembers the deliveries it saw itself, so a replay sent to another
-replica is not caught. If Redis cannot be reached at startup the gateway logs
-<code>Redis nonce store unavailable — using in-process memory store</code>; if it fails later, a
-delivery is let through rather than all traffic blocked.</p>
+<p>The datasource's <code>password</code> may be a string, a <code>{file: …}</code> or a <code>{ref: …}</code>; any character in
+it is fine.</p>
+<p>Replay protection never quietly gets weaker:</p>
+<ul>
+<li><strong><code>APP_ENV=production</code> without <code>gateway_nonce_datasource</code>, or with one the gateway cannot
+  reach or log in to, does not start.</strong> Each replica would otherwise remember only the
+  deliveries it saw itself, and a replay sent to another replica would not be caught.</li>
+<li><strong>If Redis fails later, a webhook that cannot be checked is refused</strong> with <code>503</code>
+  (<code>GW_REPLAY_PROTECTION_UNAVAILABLE</code>, <code>Retry-After: 5</code>) and is not recorded, so the platform's
+  retry is the first time it is seen. Readiness reports <code>nonce_store unavailable</code> until Redis
+  answers.</li>
+<li><strong>Outside production</strong>, an operator who wants a development gateway with no Redis names the
+  mode: <code>VARTRACK_ALLOW_DEGRADED=nonce_store</code>. The gateway then keeps deliveries in its own
+  process, logs it at startup and lists it under <code>degraded</code> in <code>/health/readiness</code> for as long as
+  it runs. Production refuses the mode whatever is named.</li>
+</ul>
 <p>The rate limiter counts per replica, so the limit a client meets grows with the number of
 replicas.</p>
 <h2 id="orchestrator">orchestrator<a class="headerlink" href="#orchestrator" title="Permanent link">&para;</a></h2>
@@ -2051,10 +2063,6 @@ The watcher keeps no state of its own, so a new leader starts where the last one
 <tr>
 <td><code>POLL_INTERVAL</code> (watcher, 60 s)</td>
 <td>How often drift is checked; each poll makes the orchestrator read every <code>self_heal</code> datasource</td>
-</tr>
-<tr>
-<td><code>max_changed_files</code> (rule, 500)</td>
-<td>The most files one push syncs</td>
 </tr>
 <tr>
 <td><code>sync_mode</code></td>
@@ -2122,13 +2130,13 @@ The watcher keeps no state of its own, so a new leader starts where the last one
         
         
           
-          <a href="../monitoring/" class="md-footer__link md-footer__link--next" aria-label="Next: Monitoring">
+          <a href="../internal-auth/" class="md-footer__link md-footer__link--next" aria-label="Next: Internal Authentication">
             <div class="md-footer__title">
               <span class="md-footer__direction">
                 Next
               </span>
               <div class="md-ellipsis">
-                Monitoring
+                Internal Authentication
               </div>
             </div>
             <div class="md-footer__button md-icon">

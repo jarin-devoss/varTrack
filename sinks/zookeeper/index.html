@@ -1144,8 +1144,6 @@
       
         
       
-        
-      
     
     
       
@@ -1347,6 +1345,15 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#one-write-one-step" class="md-nav__link">
+    <span class="md-ellipsis">
+      One write, one step
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#drift-detection" class="md-nav__link">
     <span class="md-ellipsis">
       Drift detection
@@ -1434,27 +1441,6 @@
   
   
     <li class="md-nav__item">
-      <a href="../vercel/" class="md-nav__link">
-        
-  
-  <span class="md-ellipsis">
-    Vercel
-  </span>
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
       <a href="../linux-server/" class="md-nav__link">
         
   
@@ -1492,6 +1478,8 @@
   
     
     
+      
+        
       
         
       
@@ -1610,6 +1598,27 @@
   
   
     <li class="md-nav__item">
+      <a href="../../operations/internal-auth/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Internal Authentication
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../../operations/monitoring/" class="md-nav__link">
         
   
@@ -1693,10 +1702,10 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5_7" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5_8" >
         
           
-          <label class="md-nav__link" for="__nav_5_7" id="__nav_5_7_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_5_8" id="__nav_5_8_label" tabindex="0">
             
   
   <span class="md-ellipsis">
@@ -1707,8 +1716,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_5_7_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_5_7">
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_5_8_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5_8">
             <span class="md-nav__icon md-icon"></span>
             Services
           </label>
@@ -1988,6 +1997,15 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#one-write-one-step" class="md-nav__link">
+    <span class="md-ellipsis">
+      One write, one step
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#drift-detection" class="md-nav__link">
     <span class="md-ellipsis">
       Drift detection
@@ -2030,9 +2048,9 @@
 <div class="language-text highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>datasources: [{
 </span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>  zookeeper: {
 </span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>    hosts:         [&quot;zookeeper:2181&quot;]
-</span><span id="__span-1-4"><a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>    auth_username: &quot;vartrack&quot;
-</span><span id="__span-1-5"><a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>    auth_password: &quot;secret&quot;
-</span><span id="__span-1-6"><a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a>    auth_scheme:   &quot;digest&quot;    // default
+</span><span id="__span-1-4"><a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>    username:    &quot;vartrack&quot;
+</span><span id="__span-1-5"><a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>    password:    &quot;secret&quot;
+</span><span id="__span-1-6"><a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a>    auth_scheme: &quot;digest&quot;    // default
 </span><span id="__span-1-7"><a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a>  }
 </span><span id="__span-1-8"><a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a>}]
 </span></code></pre></div>
@@ -2042,8 +2060,10 @@
 <div class="language-text highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>rules: [{
 </span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>  platform:             &quot;github&quot;
 </span><span id="__span-2-3"><a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>  datasource:           &quot;zookeeper&quot;
-</span><span id="__span-2-4"><a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a>  destination_template: &quot;/{tenant}/{env}&quot;
-</span><span id="__span-2-5"><a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a>}]
+</span><span id="__span-2-4"><a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a>  file_name:           &quot;app-settings.yaml&quot;
+</span><span id="__span-2-5"><a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a>  branch_map:           {main: &quot;production&quot;}
+</span><span id="__span-2-6"><a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a>  destination_template: &quot;/{tenant}/{env}&quot;
+</span><span id="__span-2-7"><a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a>}]
 </span></code></pre></div>
 <p>Each config key becomes a child znode:</p>
 <div class="language-text highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>/acme/production/database.host     = &quot;mongo.prod.internal&quot;
@@ -2096,23 +2116,31 @@
 <h2 id="acl">ACL<a class="headerlink" href="#acl" title="Permanent link">&para;</a></h2>
 <div class="language-text highlight"><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>datasources: [{
 </span><span id="__span-6-2"><a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>  zookeeper: {
-</span><span id="__span-6-3"><a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a>    hosts: [&quot;zookeeper:2181&quot;]
-</span><span id="__span-6-4"><a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a>    acl: {
-</span><span id="__span-6-5"><a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a>      scheme:         &quot;digest&quot;
-</span><span id="__span-6-6"><a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a>      id:             &quot;vartrack:hashedpassword&quot;
-</span><span id="__span-6-7"><a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a>      world_readable: true   // also grant world:anyone read permission
-</span><span id="__span-6-8"><a id="__codelineno-6-8" name="__codelineno-6-8" href="#__codelineno-6-8"></a>    }
-</span><span id="__span-6-9"><a id="__codelineno-6-9" name="__codelineno-6-9" href="#__codelineno-6-9"></a>  }
-</span><span id="__span-6-10"><a id="__codelineno-6-10" name="__codelineno-6-10" href="#__codelineno-6-10"></a>}]
+</span><span id="__span-6-3"><a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a>    hosts:          [&quot;zookeeper:2181&quot;]
+</span><span id="__span-6-4"><a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a>    acl_scheme:     &quot;digest&quot;
+</span><span id="__span-6-5"><a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a>    acl_id:         &quot;vartrack:hashedpassword&quot;
+</span><span id="__span-6-6"><a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a>    world_readable: true   // also grant world:anyone read permission
+</span><span id="__span-6-7"><a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a>  }
+</span><span id="__span-6-8"><a id="__codelineno-6-8" name="__codelineno-6-8" href="#__codelineno-6-8"></a>}]
 </span></code></pre></div>
+<div class="admonition warning">
+<p class="admonition-title">Not applied yet</p>
+<p>The ZooKeeper sink does not read the ACL settings, <code>auth_scheme</code>, <code>ephemeral</code>, <code>sequential</code> or <code>encoding</code>: they are accepted by the loader and have no effect, and the orchestrator logs that once per datasource. Nodes are created with the open ACL.</p>
+</div>
+<hr />
+<h2 id="one-write-one-step">One write, one step<a class="headerlink" href="#one-write-one-step" title="Permanent link">&para;</a></h2>
+<p>The znodes a file changes and its <code>__vartrack__</code> stamp are written in one ZooKeeper transaction: the server applies all of its operations or none. A refused transaction (no permission, a session that expired) fails the sync and leaves every znode as it was, stamp included. Missing parent znodes are created first, outside the transaction, since a transaction cannot make a path; that is harmless on a failure. A znode that another writer creates or deletes between varTrack looking and committing fails the transaction, and varTrack looks again once.</p>
+<p>A transaction is one request, and the server refuses one over <code>jute.maxbuffer</code> (1 MiB by default). A file whose znodes do not fit is written as several transactions, each whole, with a warning in the log; the stamp goes in the last, and a failure between them leaves the earlier transactions written.</p>
 <hr />
 <h2 id="drift-detection">Drift detection<a class="headerlink" href="#drift-detection" title="Permanent link">&para;</a></h2>
 <p>The watcher asks the orchestrator each poll; the orchestrator reads the znodes varTrack wrote and compares them with what it last synced from Git — a changed or missing key is drift (<a href="../../concepts/drift-detection/">Drift Detection</a>).</p>
 <div class="language-text highlight"><pre><span></span><code><span id="__span-7-1"><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>rules: [{
 </span><span id="__span-7-2"><a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>  platform:   &quot;github&quot;
 </span><span id="__span-7-3"><a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a>  datasource: &quot;zookeeper&quot;
-</span><span id="__span-7-4"><a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a>  self_heal:  true
-</span><span id="__span-7-5"><a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a>}]
+</span><span id="__span-7-4"><a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a>  file_name: &quot;app-settings.yaml&quot;
+</span><span id="__span-7-5"><a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a>  branch_map: {main: &quot;production&quot;}
+</span><span id="__span-7-6"><a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a>  self_heal:  true
+</span><span id="__span-7-7"><a id="__codelineno-7-7" name="__codelineno-7-7" href="#__codelineno-7-7"></a>}]
 </span></code></pre></div>
 
 

@@ -1137,8 +1137,6 @@
       
         
       
-        
-      
     
     
       
@@ -1315,27 +1313,6 @@
   
   
     <li class="md-nav__item">
-      <a href="../../sinks/vercel/" class="md-nav__link">
-        
-  
-  <span class="md-ellipsis">
-    Vercel
-  </span>
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
       <a href="../../sinks/linux-server/" class="md-nav__link">
         
   
@@ -1375,6 +1352,8 @@
   
     
     
+      
+        
       
         
       
@@ -1496,6 +1475,27 @@
   
   
     <li class="md-nav__item">
+      <a href="../internal-auth/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Internal Authentication
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../monitoring/" class="md-nav__link">
         
   
@@ -1584,6 +1584,15 @@
   <a href="#a-sync-failed" class="md-nav__link">
     <span class="md-ellipsis">
       A sync failed
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#sync-is-refused-in-the-web-ui" class="md-nav__link">
+    <span class="md-ellipsis">
+      Sync is refused in the web UI
     </span>
   </a>
   
@@ -1703,10 +1712,10 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5_7" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5_8" >
         
           
-          <label class="md-nav__link" for="__nav_5_7" id="__nav_5_7_label" tabindex="">
+          <label class="md-nav__link" for="__nav_5_8" id="__nav_5_8_label" tabindex="">
             
   
   <span class="md-ellipsis">
@@ -1717,8 +1726,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_5_7_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_5_7">
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_5_8_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5_8">
             <span class="md-nav__icon md-icon"></span>
             Services
           </label>
@@ -1965,6 +1974,15 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#sync-is-refused-in-the-web-ui" class="md-nav__link">
+    <span class="md-ellipsis">
+      Sync is refused in the web UI
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#a-setting-had-no-effect" class="md-nav__link">
     <span class="md-ellipsis">
       A setting had no effect
@@ -2121,6 +2139,11 @@ example which branch rule chose a sync's environment (<code>env_resolve via=bran
 <td>The orchestrator could not be reached, or the gateway stopped trying for a while (circuit breaker)</td>
 <td>Check the orchestrator API's health</td>
 </tr>
+<tr>
+<td><code>503</code> <code>GW_REPLAY_PROTECTION_UNAVAILABLE</code></td>
+<td>The gateway cannot reach the Redis that remembers deliveries, so it cannot tell a replay from a new webhook and refuses it. The platform retries</td>
+<td>Restore Redis; readiness shows <code>nonce_store unavailable</code> meanwhile</td>
+</tr>
 </tbody>
 </table>
 <p>With a <code>202</code> and no task, or a task that synced nothing:</p>
@@ -2129,9 +2152,9 @@ example which branch rule chose a sync's environment (<code>env_resolve via=bran
   <code>owner/name</code>, and <code>exclude_repositories</code> must not. The gateway reads <code>config.cue</code> when it
   starts — restart it after changing rules.</li>
 <li><strong>The rule is suspended.</strong> The worker logs <code>process_webhook task=…: &lt;datasource&gt; is suspended — webhook skipped</code>.</li>
-<li><strong>The pushed files are not the rule's.</strong> A rule syncs <code>file_name</code>, the <code>file_path_map</code> paths,
-  or — with neither — the files the push changed. <code>file_name=… not found in …</code> means the file
-  is not at that path in the pushed commit.</li>
+<li><strong>The pushed files are not the rule's.</strong> A rule syncs only the file it names: <code>file_name</code>, or
+  the <code>file_path_map</code> paths. A push that touched other files does not sync them.
+  <code>file_name=… not found in …</code> means the file is not at that path in the pushed commit.</li>
 <li><strong>The <code>vartrack</code> section is missing.</strong> With the default <code>root_key</code>, a file that has a
   <code>vartrack</code> key syncs only that section; <code>root_key=… not found in …, skipping</code> means the
   <code>root_key</code> set is not in the file.</li>
@@ -2175,19 +2198,137 @@ example which branch rule chose a sync's environment (<code>env_resolve via=bran
 <td>Usually a sync stuck on a slow datasource; the lock is a lease of 600 s, so it frees itself</td>
 </tr>
 <tr>
-<td><code>git_extractor: clone/fetch failed repo=…</code></td>
-<td>The orchestrator cannot reach the repository or its token is refused</td>
-<td>Check the platform's <code>token</code> and that the orchestrator can reach the Git server</td>
+<td><code>git unavailable: cannot read &lt;repo&gt; at &lt;ref&gt;: …</code></td>
+<td>The orchestrator cannot clone or fetch the repository, or its token is refused. The task is <code>FAILED</code>, not "no files": nothing was written and nothing was pruned</td>
+<td>Check the rule's platform <code>token</code> in <code>config.cue</code> (a rule reads its own repositories with it, and only from the server that platform names) and that the orchestrator can reach the Git server</td>
+</tr>
+<tr>
+<td><code>failed: 1 file(s) could not be processed (app.yaml: ScannerError: …)</code></td>
+<td>A pushed file does not parse (or fails <code>strict_validation</code>). The other files of the push are still written, nothing is pruned, and the task is <code>FAILED</code></td>
+<td>Fix the file named, and push again</td>
+</tr>
+<tr>
+<td><code>failed: 2 of 3 file(s): a.yaml: …; b.yaml: …</code></td>
+<td>Some files were written and some were not; each file's reason is listed, the written ones show as written</td>
+<td>Fix the files named</td>
+</tr>
+<tr>
+<td><code>secrets unavailable: database.password: cannot read vartrack/configs#database.password from secret manager 'default': …</code></td>
+<td>Vault (or the secret manager) cannot be read. The file is not written at all, rather than written with the placeholder the file holds; the datasource keeps its last value</td>
+<td>Restore the secret manager; push again, or let the watcher heal</td>
+</tr>
+<tr>
+<td><code>secrets unavailable: … is a @secret field, but config.cue defines no usable secret manager</code></td>
+<td>A schema marks a field <code>@secret</code> and <code>config.cue</code> has no secret manager the rule can use</td>
+<td>Add one to <code>secret_managers</code>, or name it with the rule's <code>secret_manager</code></td>
+</tr>
+<tr>
+<td><code>schemas unavailable: tenant &lt;t&gt;: the schema repository … could not be cloned: …</code></td>
+<td>The tenant's schema repository cannot be read (or its token cannot be). Its rules fail with this reason instead of running as a tenant with no schemas; the clone is retried after <code>SCHEMA_TTL_SECONDS</code></td>
+<td>Check the tenant's <code>schema_repo</code> and its token</td>
+</tr>
+<tr>
+<td><code>the config breaks N rules its protos declare: - datasources[1].redis.database: …</code></td>
+<td><code>config.cue</code> sets a value a proto's rule refuses, or leaves out something a proto requires. Every service refuses it when it starts, and <code>vartrack-bundle check</code> prints the same list</td>
+<td>Fix each line it names; the path says which field. <a href="../../configuration/bundle/#what-the-loader-checks">What the loader checks</a></td>
+</tr>
+<tr>
+<td><code>config.cue unavailable: …</code> (<code>503</code> / gRPC <code>UNAVAILABLE</code>)</td>
+<td>The orchestrator cannot read <code>config.cue</code>: <code>vartrack-bundle</code> fails or is missing. With a bundle it already read, it keeps using that one (readiness: <code>config.cue: stale</code>); with none, nothing is served</td>
+<td>Fix <code>config.cue</code> (<code>vartrack-bundle export config.cue</code> prints the error)</td>
+</tr>
+<tr>
+<td><code>cannot validate app.yaml: the 'cue' program is not installed</code></td>
+<td>The file has a CUE schema and the orchestrator has no <code>cue</code> binary. The file fails under <code>strict_validation</code>, and is written with a <code>warn</code> otherwise</td>
+<td>Install <code>cue</code>; or accept writing unvalidated files with <code>VARTRACK_ALLOW_DEGRADED=schema_validation</code></td>
+</tr>
+<tr>
+<td><code>the sync lock for &lt;datasource&gt;/&lt;env&gt; cannot be taken: …</code></td>
+<td>Redis does not answer, so two syncs of one place cannot be kept apart. In production the sync stops; elsewhere it goes on without a lock</td>
+<td>Restore Redis</td>
+</tr>
+<tr>
+<td><code>schema &lt;name&gt; (schema_map[N], &lt;glob&gt;) is not in the schema repository of tenant &lt;t&gt; at &lt;commit&gt;</code></td>
+<td>A <code>schema_map</code> entry (or a file's <code>$schema</code> with <code>schema_from_file</code>) names a schema the tenant's schema repository does not have at the commit the task ran on. The file is not written, <code>strict_validation</code> or not. The orchestrator logged the same when it cloned or refreshed the schema repository</td>
+<td>Push the schema, or fix the entry; <code>none</code> maps a path to "not checked" on purpose</td>
+</tr>
+<tr>
+<td><code>strict_validation: no schema checks &lt;file&gt; (rule &lt;platform&gt;/&lt;datasource&gt;): add a schema_map entry …</code></td>
+<td>The rule is strict and no schema matches the file by <code>schema_map</code>, by name or as <code>default.cue</code>. Before, such a file was synced unchecked</td>
+<td>Add a <code>schema_map</code> entry for it, or map it to <code>none</code></td>
+</tr>
+<tr>
+<td>A file's <code>validation</code> is <code>none</code></td>
+<td>Nothing checked it: no schema was found, the path is mapped to <code>none</code>, or the <code>cue</code> program is not installed. It is never shown as <code>ok</code></td>
+<td>Map it to a schema if it should be checked</td>
 </tr>
 <tr>
 <td><code>rolled back: &lt;file&gt; failed — …</code></td>
-<td>One file failed, and the files written before it in the same sync were restored</td>
+<td>One file failed, and the files written before it in the same sync were restored (only a MongoDB datasource can: it snapshots a file before writing it)</td>
 <td>Fix the failing file and push again</td>
+</tr>
+<tr>
+<td><code>not rolled back: &lt;file&gt; stays written in &lt;env&gt; (… keeps no snapshot to restore); &lt;file2&gt; failed — …</code></td>
+<td>One file failed after earlier files were written to a datasource that cannot take a write back (Redis, ZooKeeper, S3, a file, a ConfigMap, Helm). Those files are reported <code>partial</code>: they are in the store, and the ledger counts them as desired state. The failed and unattempted files are not</td>
+<td>Fix the failing file and push again; the next sync, or self-heal, writes the desired state over what was left</td>
+</tr>
+<tr>
+<td><code>rollback failed: &lt;file&gt; stays written in &lt;env&gt; (&lt;error&gt;)</code></td>
+<td>The datasource could restore, tried, and could not (the store went away)</td>
+<td>Restore the store and push again</td>
 </tr>
 </tbody>
 </table>
 <p>A tenant whose <code>bundle.json</code> cannot be used has <strong>no rules</strong> until it is fixed; the
 orchestrator logs <code>bundle.json cannot be used — the tenant has no rules until it is fixed: …</code>.</p>
+<p><strong>Which schemas did a sync use?</strong> A finished task reports <code>schema_commit</code>: the commit of the tenant's schema
+repository its files were validated against (<code>GET /v1/tasks/&lt;id&gt;</code>; <code>""</code> when the tenant has no schema repository).
+After a push to the schema repository, a sync whose <code>schema_commit</code> is still the old commit ran on stale schemas:
+every process keeps its own clone and refetches when the tenant's schema generation (a counter in Redis, advanced by
+a schema push or <code>POST /v1/tenants/&lt;t&gt;/schemas/warm</code>) differs from the one it was fetched at. If Redis cannot take the
+new generation, the orchestrator logs <code>schema generation of tenant &lt;t&gt; not published: other processes refresh on their
+TTL</code>, and clones are refetched only after <code>SCHEMA_TTL_SECONDS</code>.</p>
+<hr />
+<h2 id="sync-is-refused-in-the-web-ui">Sync is refused in the web UI<a class="headerlink" href="#sync-is-refused-in-the-web-ui" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>What the UI says</th>
+<th>Meaning</th>
+<th>Fix</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>nothing feeds &lt;env&gt; in the &lt;datasource&gt; rule: no branch_map entry maps a branch to it, branch_as_env is off, and it is not default or a file_path_map environment</code></td>
+<td>The environment is in the store (an earlier version of the rule wrote it, for example before <code>branch_as_env</code> was turned off) but the rule as it is now produces nothing that lands in it. This is the answer for admins too: there is no branch to read, so nothing could be synced. Sync and Dry run are disabled on it, and its keys and history stay visible</td>
+<td>Map a branch to it (<code>branch_map</code>), turn <code>branch_as_env</code> back on, or leave it: nothing writes it any more</td>
+</tr>
+<tr>
+<td><code>&lt;platform&gt;/&lt;datasource&gt; names no file to read: set file_name (for example "app-settings.yaml") or file_path_map in config.cue or the tenant's bundle.json</code></td>
+<td>The rule says nothing about which file it reads, so it is <strong>refused</strong> when loaded, like a rule with no environments: nothing runs it, the Rules page lists it as <em>Refused</em>, and a push, sync or dry run of it answers with this. A repository's <code>vartrack.json</code> can still change the file, but cannot be the only place that names one</td>
+<td>Give the rule a <code>file_name</code> or a <code>file_path_map</code> in <code>config.cue</code> or the tenant's <code>bundle.json</code></td>
+</tr>
+<tr>
+<td><code>&lt;platform&gt;/&lt;datasource&gt; names no environments: set branch_map (for example {"main": "production"}), file_path_map, branch_as_env, pr_as_env or tag_as_env in config.cue or the tenant's bundle.json</code></td>
+<td>The rule says nothing about where its environments come from, so it is <strong>refused</strong> when loaded: nothing runs it, the Rules page lists it as <em>Refused</em>, and a push, sync or dry run of it answers with this</td>
+<td>Name them in <code>config.cue</code> or the tenant's <code>bundle.json</code>. To keep writing to an environment called <code>default</code>, set <code>branch_map: {"main": "default"}</code></td>
+</tr>
+<tr>
+<td><code>nothing to do: branch &lt;branch&gt; feeds no environment of &lt;rule&gt;</code></td>
+<td>A push to a branch the rule's <code>branch_map</code> (and <code>branch_as_env</code>, <code>pr_as_env</code>, <code>tag_as_env</code>) does not place. It is skipped; nothing is written to an environment nobody declared</td>
+<td>Map the branch, or ignore the push</td>
+</tr>
+<tr>
+<td><code>&lt;login&gt; on &lt;platform&gt; may not push to &lt;branch&gt; of &lt;repo&gt; (the branch that feeds &lt;env&gt;)</code></td>
+<td>A Sync is judged as a direct push to the branch that feeds the environment, so branch protection counts. A rule's environments come only from the strategies it names, so there is no fallback branch</td>
+<td>Ask for push rights, or use Dry run</td>
+</tr>
+</tbody>
+</table>
+<p>A page shows such an environment as <em>No longer synced by this rule</em>. Every environment has its own <strong>Diff</strong>, but this one's is disabled ("no branch feeds it, so there is nothing in Git to compare with"), its keys are not compared with Git (<code>GET …/targets/{env}/keys</code> answers <code>409</code>), and its panel shows only <em>Summary</em> and <em>History</em>; what varTrack last wrote there is labelled <strong>Last written by varTrack</strong>, not <em>Desired</em>. An environment the rule produces and has never written has a disabled Diff too ("Not synced yet"). It is not compared with the rule (its keys sit under a destination the rule no longer writes, so it would read drifted for ever), it does not count in the rule's status, and the watcher does not heal it. An administrator can drop it from varTrack's record with <strong>Forget</strong> on its box (or <code>DELETE /v1/ui/rules/{platform}/{datasource}/targets/{env}</code>); its events and tasks stay, and the keys in the store are left alone.</p>
+<p>An environment the rule produces and has never written (a new rule, or a <code>branch_map</code> entry just added) is listed on the rule's page as <em>Not synced yet</em>, with the branch that feeds it; <strong>Sync</strong> (or <strong>Dry run</strong>) writes it the first time. If Sync and Dry run have nothing to start, the panel says why: no branch feeds any environment of the rule, and a dry run, which writes nothing, still reads the branch that feeds the environment.</p>
+<p>Which branch feeds an environment is the same answer everywhere: a <code>branch_map</code> entry, else (for a <code>file_path_map</code> environment) the rule's own <code>branch</code>, else (with <code>branch_as_env</code>) the environment's own name, else (for <code>default</code>) the rule's own <code>branch</code>. Self-heal reads the same branches.</p>
 <hr />
 <h2 id="a-setting-had-no-effect">A setting had no effect<a class="headerlink" href="#a-setting-had-no-effect" title="Permanent link">&para;</a></h2>
 <table>
@@ -2199,8 +2340,16 @@ orchestrator logs <code>bundle.json cannot be used — the tenant has no rules u
 </thead>
 <tbody>
 <tr>
-<td><code>… sets mongo_uri, self_heal, which only config.cue sets — ignored</code></td>
-<td>A <code>bundle.json</code> set an option only <code>config.cue</code> sets</td>
+<td><code>… sets endpoint, self_heal, which only config.cue sets — ignored</code></td>
+<td>A <code>bundle.json</code> set an option only <code>config.cue</code> sets (a datasource field such as <code>endpoint</code> belongs in the datasource's block)</td>
+</tr>
+<tr>
+<td><code>… sets mongo_uri, which is not an option a tenant may set — ignored</code></td>
+<td>A key no rule option and no datasource field declares, such as an old flat connection name</td>
+</tr>
+<tr>
+<td><code>… sets tenant_id, which no file may set — the tenant is the one whose schema repository holds this file (acme); ignored</code></td>
+<td>A <code>bundle.json</code> or <code>vartrack.json</code> wrote a <code>tenant_id</code>. The tenant is where a file lives, never something it says, so the key never did anything (when it names another tenant the line says so). <code>vt validate-config</code> fails the file; delete the key</td>
 </tr>
 <tr>
 <td><code>repo_overrides: ignoring non-overridable keys [...]</code></td>
@@ -2216,7 +2365,15 @@ orchestrator logs <code>bundle.json cannot be used — the tenant has no rules u
 </tr>
 <tr>
 <td><code>&lt;file&gt;: &lt;option&gt; was removed and has no effect</code></td>
-<td>A removed option (<code>prune.last</code>, <code>retry_backoff</code>, <code>watcher_state_datasource</code>)</td>
+<td>A removed option (<code>prune.last</code>, <code>retry_backoff</code>, <code>watcher_state_datasource</code>, and <code>tenant_id</code> in a <code>config.cue</code> rule)</td>
+</tr>
+<tr>
+<td><code>&lt;file&gt;: dry_run was removed and has no effect; a dry run is started, not configured …</code></td>
+<td>A rule set <code>dry_run: true</code>, which made it a "shadow rule" that never wrote. <strong>The rule now writes on every push.</strong> Delete the line, and check a change in CI with <code>vt sync --dry-run</code> (or the dry-run webhook) instead</td>
+</tr>
+<tr>
+<td><code>&lt;file&gt;: prune.dry_run was removed …</code></td>
+<td>A prune block set <code>dry_run: true</code>, which reported deletes instead of running them. Delete the line: a dry run reports what a prune would delete, and a rule with <code>prune</code> off deletes nothing. A block that had only <code>dry_run</code> is now an empty, disabled block</td>
 </tr>
 </tbody>
 </table>
@@ -2239,7 +2396,7 @@ orchestrator logs <code>bundle.json cannot be used — the tenant has no rules u
 </tr>
 <tr>
 <td>The sink does not delete single keys</td>
-<td>Prune applies to Redis, ZooKeeper, Vercel and MongoDB with <code>STRATEGY_KEY_VALUE</code>; whole-object sinks replace the object instead</td>
+<td>Prune applies to Redis, ZooKeeper and MongoDB with <code>STRATEGY_KEY_VALUE</code>; whole-object sinks replace the object instead</td>
 </tr>
 <tr>
 <td>It is the environment's first sync</td>
@@ -2302,11 +2459,19 @@ the file was last written: the documents of the other shape were removed. A data
 </tr>
 <tr>
 <td><code>403</code></td>
-<td>The token's account may not do this: syncing needs push access to the rule's repository, validating needs read access</td>
+<td>The token's account may not do this: syncing needs push access to the branch that feeds the environment (a protected branch counts), validating needs read access. The message says which branch and why; a web UI <em>Sync</em> is refused for the same reason</td>
 </tr>
 <tr>
 <td><code>datasource … has rules on github, gitea; say which with --platform</code></td>
 <td>Rules on more than one platform write it: pass <code>--platform</code></td>
+</tr>
+<tr>
+<td><code>say which Git platform the token is for (--platform): …</code></td>
+<td>The request names no rule and the gateway has several platforms: <code>vt login --platform</code>, <code>VARTRACK_PLATFORM</code> or <code>--platform</code></td>
+</tr>
+<tr>
+<td><code>503 permissions are unavailable</code> from the web UI</td>
+<td>The orchestrator cannot reach the gateway's permission engine: check <code>AUTHZ_ADDR</code> on the gateway and <code>GATEWAY_AUTHZ_ADDR</code> on the orchestrator, and that they share <code>INTERNAL_AUTH_SECRET</code> (<a href="../internal-auth/#the-permission-engine">Internal authentication</a>)</td>
 </tr>
 <tr>
 <td><code>limit must be a whole number from 0 to 2147483647</code></td>

@@ -1152,8 +1152,6 @@
       
         
       
-        
-      
     
     
       
@@ -1330,27 +1328,6 @@
   
   
     <li class="md-nav__item">
-      <a href="../../sinks/vercel/" class="md-nav__link">
-        
-  
-  <span class="md-ellipsis">
-    Vercel
-  </span>
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
       <a href="../../sinks/linux-server/" class="md-nav__link">
         
   
@@ -1388,6 +1365,8 @@
   
     
     
+      
+        
       
         
       
@@ -1506,6 +1485,27 @@
   
   
     <li class="md-nav__item">
+      <a href="../../operations/internal-auth/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Internal Authentication
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../../operations/monitoring/" class="md-nav__link">
         
   
@@ -1589,10 +1589,10 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5_7" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5_8" >
         
           
-          <label class="md-nav__link" for="__nav_5_7" id="__nav_5_7_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_5_8" id="__nav_5_8_label" tabindex="0">
             
   
   <span class="md-ellipsis">
@@ -1603,8 +1603,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_5_7_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_5_7">
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_5_8_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5_8">
             <span class="md-nav__icon md-icon"></span>
             Services
           </label>
@@ -1846,7 +1846,7 @@ caller is and what they may do, for the CLI API and the web UI.</dd>
 credentials. Each datasource type is written by a <strong>sink</strong>.</dd>
 <dt><strong>Sink</strong></dt>
 <dd>The code that writes one datasource type — MongoDB, Redis, ZooKeeper, S3, Kubernetes
-ConfigMap, Helm, Vercel, Linux server. See <a href="../../sinks/">Sinks</a>.</dd>
+ConfigMap, Helm, Linux server. See <a href="../../sinks/">Sinks</a>.</dd>
 <dt><strong>Rule</strong></dt>
 <dd>What is synced, from where, to where and how: one entry of <code>rules</code> in <code>config.cue</code>,
 named by its <strong>platform</strong> and <strong>datasource</strong> (at most one rule per pair). A tenant's
@@ -1856,7 +1856,7 @@ named by its <strong>platform</strong> and <strong>datasource</strong> (at most 
 <dd>One of the files a rule is built from — <code>config.cue</code>, <code>bundle.json</code>, <code>vartrack.json</code> —
 plus <code>config.cue</code>'s <code>force</code>, applied last. Each overrides the one before.</dd>
 <dt><strong>Tenant</strong></dt>
-<dd>A team with its own <strong>schema repository</strong>, registered with <code>SCHEMA_TENANT_&lt;ID&gt;_REPO</code>.
+<dd>A team the operator declares in <code>config.cue</code>'s <a href="../../configuration/bundle/#tenants"><code>tenants</code></a>, with its own repositories and <strong>schema repository</strong>. A push belongs to the tenant whose repositories it came from.
 Its <code>bundle.json</code> holds its layer of the rules, its CUE schemas validate its files, and
 the web UI shows each user the tenants' rules their Git account can read.
 A rule no tenant's <code>bundle.json</code> names belongs to tenant <code>default</code>.</dd>
@@ -1885,8 +1885,8 @@ in the sync ledger (Redis). Secrets are kept as digests, never as values.</dd>
 format is read as flat keys; a sink stores them as they are, or nested again (MongoDB's
 document strategy, the JSON structure of Redis).</dd>
 <dt><strong>Key space</strong></dt>
-<dd>Where in a store a target's keys land — a Redis hash or prefix, a ZooKeeper path, a
-Vercel target. Two targets with the same key space write the same keys; prune never
+<dd>Where in a store a target's keys land — a Redis hash or prefix, a ZooKeeper path.
+Two targets with the same key space write the same keys; prune never
 deletes a key another target still holds there.</dd>
 <dt><strong>Sync</strong></dt>
 <dd>One run that reads the pushed files at the pushed commit, validates them, and writes them

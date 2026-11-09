@@ -1248,8 +1248,6 @@
       
         
       
-        
-      
     
     
       
@@ -1426,27 +1424,6 @@
   
   
     <li class="md-nav__item">
-      <a href="../sinks/vercel/" class="md-nav__link">
-        
-  
-  <span class="md-ellipsis">
-    Vercel
-  </span>
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
       <a href="../sinks/linux-server/" class="md-nav__link">
         
   
@@ -1484,6 +1461,8 @@
   
     
     
+      
+        
       
         
       
@@ -1602,6 +1581,27 @@
   
   
     <li class="md-nav__item">
+      <a href="../operations/internal-auth/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Internal Authentication
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../operations/monitoring/" class="md-nav__link">
         
   
@@ -1685,10 +1685,10 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5_7" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5_8" >
         
           
-          <label class="md-nav__link" for="__nav_5_7" id="__nav_5_7_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_5_8" id="__nav_5_8_label" tabindex="0">
             
   
   <span class="md-ellipsis">
@@ -1699,8 +1699,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_5_7_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_5_7">
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_5_8_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5_8">
             <span class="md-nav__icon md-icon"></span>
             Services
           </label>
@@ -2039,7 +2039,7 @@
 <tbody>
 <tr>
 <td><strong>What it syncs</strong></td>
-<td>Configuration data: MongoDB, Redis, ZooKeeper, S3, ConfigMap, Helm values, Vercel env vars, Linux files</td>
+<td>Configuration data: MongoDB, Redis, ZooKeeper, S3, ConfigMap, Helm values, Linux files</td>
 </tr>
 <tr>
 <td><strong>Where config lives</strong></td>
@@ -2059,7 +2059,7 @@
 </tr>
 <tr>
 <td><strong>Targets</strong></td>
-<td>Redis, MongoDB, ZooKeeper, S3, Linux SSH, Vercel, ConfigMap, Helm</td>
+<td>Redis, MongoDB, ZooKeeper, S3, Linux SSH, ConfigMap, Helm</td>
 </tr>
 <tr>
 <td><strong>Multi-sink fan-out</strong></td>
@@ -2087,7 +2087,7 @@
 <p>varTrack's Helm sink triggers <code>helm upgrade</code> on push and the watcher can detect if the deployed values diverge from what Git says.</p>
 <hr />
 <h2 id="when-vartrack-is-the-right-fit">When varTrack is the right fit<a class="headerlink" href="#when-vartrack-is-the-right-fit" title="Permanent link">&para;</a></h2>
-<p>✅ You store config, feature flags, or environment variables in MongoDB, Redis, S3, ZooKeeper, ConfigMaps, Helm releases, Vercel, or Linux servers — and want Git as the single authority</p>
+<p>✅ You store config, feature flags, or environment variables in MongoDB, Redis, S3, ZooKeeper, ConfigMaps, Helm releases, or Linux servers — and want Git as the single authority</p>
 <p>✅ You have multiple environments (dev, staging, production) and want changes to flow automatically on push without manual scripts</p>
 <p>✅ You need drift detection — if someone edits a value directly in any sink, varTrack restores the correct state</p>
 <p>✅ You want secrets to stay in Vault and never touch Git — <code>@secret()</code> annotations resolve at sync time</p>

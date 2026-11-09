@@ -13,7 +13,7 @@
         <link rel="canonical" href="https://jarin-devoss.github.io/varTrack/sinks/linux-server/">
       
       
-        <link rel="prev" href="../vercel/">
+        <link rel="prev" href="../helm/">
       
       
         <link rel="next" href="../../deployment/docker-compose/">
@@ -1144,8 +1144,6 @@
       
         
       
-        
-      
     
     
       
@@ -1322,27 +1320,6 @@
                 
   
   
-  
-  
-    <li class="md-nav__item">
-      <a href="../vercel/" class="md-nav__link">
-        
-  
-  <span class="md-ellipsis">
-    Vercel
-  </span>
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
     
   
   
@@ -1492,6 +1469,8 @@
       
         
       
+        
+      
     
     
       
@@ -1595,6 +1574,27 @@
   
   
     <li class="md-nav__item">
+      <a href="../../operations/internal-auth/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Internal Authentication
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../../operations/monitoring/" class="md-nav__link">
         
   
@@ -1678,10 +1678,10 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5_7" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5_8" >
         
           
-          <label class="md-nav__link" for="__nav_5_7" id="__nav_5_7_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_5_8" id="__nav_5_8_label" tabindex="0">
             
   
   <span class="md-ellipsis">
@@ -1692,8 +1692,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_5_7_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_5_7">
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_5_8_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5_8">
             <span class="md-nav__icon md-icon"></span>
             Services
           </label>
@@ -2042,8 +2042,15 @@
 </span></code></pre></div>
 <hr />
 <h2 id="host-keys">Host keys<a class="headerlink" href="#host-keys" title="Permanent link">&para;</a></h2>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>host_key_verification: &quot;strict&quot;     // &quot;strict&quot; (default), &quot;accept-new&quot;, &quot;off&quot;
-</span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>known_hosts_file:      &quot;/etc/vartrack/known_hosts&quot;
+<div class="language-text highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>linux_server: {
+</span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>  host:       &quot;app-01.example.com&quot;
+</span><span id="__span-2-3"><a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>  username:   &quot;deploy&quot;
+</span><span id="__span-2-4"><a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a>  password:   {file: &quot;/run/secrets/ssh-password&quot;}
+</span><span id="__span-2-5"><a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a>  file_paths: [&quot;/etc/myapp/app.env&quot;]
+</span><span id="__span-2-6"><a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a>
+</span><span id="__span-2-7"><a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a>  host_key_verification: &quot;strict&quot;     // &quot;strict&quot; (default), &quot;accept-new&quot;, &quot;off&quot;
+</span><span id="__span-2-8"><a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a>  known_hosts_file:      &quot;/etc/vartrack/known_hosts&quot;
+</span><span id="__span-2-9"><a id="__codelineno-2-9" name="__codelineno-2-9" href="#__codelineno-2-9"></a>}
 </span></code></pre></div>
 <table>
 <thead>
@@ -2070,19 +2077,27 @@
 <hr />
 <h2 id="writing-the-file">Writing the file<a class="headerlink" href="#writing-the-file" title="Permanent link">&para;</a></h2>
 <div class="language-text highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>linux_server: {
-</span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>  // …connection, file_paths…
-</span><span id="__span-3-3"><a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>  file_mode:           &quot;0640&quot;
-</span><span id="__span-3-4"><a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a>  file_owner:          &quot;app:app&quot;          // chown; usually needs use_sudo
-</span><span id="__span-3-5"><a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a>  create_directories:  true               // default; false fails when the directory is missing
-</span><span id="__span-3-6"><a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a>  backup_before_write: true
-</span><span id="__span-3-7"><a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a>  backup_suffix:       &quot;.bak&quot;             // default
-</span><span id="__span-3-8"><a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a>  validation_command:          &quot;nginx -t -c {file}&quot;
-</span><span id="__span-3-9"><a id="__codelineno-3-9" name="__codelineno-3-9" href="#__codelineno-3-9"></a>  rollback_on_validation_fail: true
-</span><span id="__span-3-10"><a id="__codelineno-3-10" name="__codelineno-3-10" href="#__codelineno-3-10"></a>  post_write_commands:         [&quot;systemctl reload nginx&quot;]
-</span><span id="__span-3-11"><a id="__codelineno-3-11" name="__codelineno-3-11" href="#__codelineno-3-11"></a>  continue_on_command_error:   false
-</span><span id="__span-3-12"><a id="__codelineno-3-12" name="__codelineno-3-12" href="#__codelineno-3-12"></a>}
+</span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>  host:       &quot;app-01.example.com&quot;
+</span><span id="__span-3-3"><a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>  username:   &quot;deploy&quot;
+</span><span id="__span-3-4"><a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a>  password:   {file: &quot;/run/secrets/ssh-password&quot;}
+</span><span id="__span-3-5"><a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a>  file_paths: [&quot;/etc/myapp/app.env&quot;]
+</span><span id="__span-3-6"><a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a>
+</span><span id="__span-3-7"><a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a>  file_mode:           &quot;0640&quot;
+</span><span id="__span-3-8"><a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a>  file_owner:          &quot;app:app&quot;          // chown; usually needs use_sudo
+</span><span id="__span-3-9"><a id="__codelineno-3-9" name="__codelineno-3-9" href="#__codelineno-3-9"></a>  create_directories:  true               // default; false fails when the directory is missing
+</span><span id="__span-3-10"><a id="__codelineno-3-10" name="__codelineno-3-10" href="#__codelineno-3-10"></a>  backup_before_write: true
+</span><span id="__span-3-11"><a id="__codelineno-3-11" name="__codelineno-3-11" href="#__codelineno-3-11"></a>  backup_suffix:       &quot;.bak&quot;             // default
+</span><span id="__span-3-12"><a id="__codelineno-3-12" name="__codelineno-3-12" href="#__codelineno-3-12"></a>  validation_command:          &quot;nginx -t -c {file}&quot;
+</span><span id="__span-3-13"><a id="__codelineno-3-13" name="__codelineno-3-13" href="#__codelineno-3-13"></a>  validate_after_rename:       false          // default; true checks the file in place instead (see below)
+</span><span id="__span-3-14"><a id="__codelineno-3-14" name="__codelineno-3-14" href="#__codelineno-3-14"></a>  rollback_on_validation_fail: true           // only with validate_after_rename
+</span><span id="__span-3-15"><a id="__codelineno-3-15" name="__codelineno-3-15" href="#__codelineno-3-15"></a>  post_write_commands:         [&quot;systemctl reload nginx&quot;]
+</span><span id="__span-3-16"><a id="__codelineno-3-16" name="__codelineno-3-16" href="#__codelineno-3-16"></a>  continue_on_command_error:   false
+</span><span id="__span-3-17"><a id="__codelineno-3-17" name="__codelineno-3-17" href="#__codelineno-3-17"></a>}
 </span></code></pre></div>
-<p>In order: missing directories are created, the previous file is copied to <code>{file}{backup_suffix}</code> when <code>backup_before_write</code> is on, the new file is written, then <code>file_mode</code> and <code>file_owner</code> are applied. <code>validation_command</code> runs next — <code>{file}</code> is the written file — and when it fails the sync fails; with <code>rollback_on_validation_fail</code> the previous file is put back first. Last, <code>post_write_commands</code> run in order: a failing one fails the sync unless <code>continue_on_command_error</code> is on.</p>
+<p>In order: missing directories are created, the previous file is copied to <code>{file}{backup_suffix}</code> when <code>backup_before_write</code> is on, and the new content is written to a temp file next to the target (<code>.&lt;name&gt;.vt-&lt;id&gt;.tmp</code>, in the same directory so the rename stays on one filesystem). The temp file gets the mode and owner of the file it replaces, then <code>file_mode</code> and <code>file_owner</code> are applied. <code>validation_command</code> runs on the temp file — <code>{file}</code> is the temp file, <code>{target}</code> the path it is going to — and when it fails the sync fails and the target is untouched. Then one rename puts the new file in place, so a service reading (or reloading on change) sees the old file or the new one, never half of either. Last, <code>post_write_commands</code> run in order: a failing one fails the sync unless <code>continue_on_command_error</code> is on.</p>
+<p>A write that dies between its steps leaves the old file and at most a temp file, which the next write of that path removes.</p>
+<p>Over SFTP the rename is OpenSSH's <code>posix-rename</code>; a server without it is refused with an error naming <code>use_sftp: false</code>, which replaces the file with <code>mv -f</code> over a shell. varTrack does not fall back to remove-then-rename, which has a moment with no file.</p>
+<p>A <code>validation_command</code> that needs the file at its final path (an include path, a path inside the file) can set <code>validate_after_rename: true</code>: the file is replaced first and validated in place, and <code>rollback_on_validation_fail</code> then puts the previous file back when it fails. A reader can see the new file before it is validated in that mode.</p>
 <h2 id="transfer-sudo-and-connection">Transfer, sudo and connection<a class="headerlink" href="#transfer-sudo-and-connection" title="Permanent link">&para;</a></h2>
 <table>
 <thead>
@@ -2121,8 +2136,10 @@
 <div class="language-text highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>rules: [{
 </span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>  platform:   &quot;github&quot;
 </span><span id="__span-4-3"><a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>  datasource: &quot;linux_server&quot;
-</span><span id="__span-4-4"><a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a>  self_heal:  true
-</span><span id="__span-4-5"><a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a>}]
+</span><span id="__span-4-4"><a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a>  file_name: &quot;app-settings.yaml&quot;
+</span><span id="__span-4-5"><a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a>  branch_map: {main: &quot;production&quot;}
+</span><span id="__span-4-6"><a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a>  self_heal:  true
+</span><span id="__span-4-7"><a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a>}]
 </span></code></pre></div>
 
 
@@ -2159,7 +2176,7 @@
       <nav class="md-footer__inner md-grid" aria-label="Footer" >
         
           
-          <a href="../vercel/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Vercel">
+          <a href="../helm/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Helm">
             <div class="md-footer__button md-icon">
               
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
@@ -2169,7 +2186,7 @@
                 Previous
               </span>
               <div class="md-ellipsis">
-                Vercel
+                Helm
               </div>
             </div>
           </a>

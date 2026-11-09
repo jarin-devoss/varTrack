@@ -909,9 +909,9 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#2-register-the-tenant-with-the-orchestrator" class="md-nav__link">
+  <a href="#2-declare-the-tenant-in-configcue" class="md-nav__link">
     <span class="md-ellipsis">
-      2. Register the tenant with the orchestrator
+      2. Declare the tenant in config.cue
     </span>
   </a>
   
@@ -1227,8 +1227,6 @@
       
         
       
-        
-      
     
     
       
@@ -1405,27 +1403,6 @@
   
   
     <li class="md-nav__item">
-      <a href="../../sinks/vercel/" class="md-nav__link">
-        
-  
-  <span class="md-ellipsis">
-    Vercel
-  </span>
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
       <a href="../../sinks/linux-server/" class="md-nav__link">
         
   
@@ -1463,6 +1440,8 @@
   
     
     
+      
+        
       
         
       
@@ -1581,6 +1560,27 @@
   
   
     <li class="md-nav__item">
+      <a href="../../operations/internal-auth/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Internal Authentication
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../../operations/monitoring/" class="md-nav__link">
         
   
@@ -1664,10 +1664,10 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5_7" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5_8" >
         
           
-          <label class="md-nav__link" for="__nav_5_7" id="__nav_5_7_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_5_8" id="__nav_5_8_label" tabindex="0">
             
   
   <span class="md-ellipsis">
@@ -1678,8 +1678,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_5_7_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_5_7">
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_5_8_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5_8">
             <span class="md-nav__icon md-icon"></span>
             Services
           </label>
@@ -1908,9 +1908,9 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#2-register-the-tenant-with-the-orchestrator" class="md-nav__link">
+  <a href="#2-declare-the-tenant-in-configcue" class="md-nav__link">
     <span class="md-ellipsis">
-      2. Register the tenant with the orchestrator
+      2. Declare the tenant in config.cue
     </span>
   </a>
   
@@ -1982,11 +1982,12 @@ by the rule's platform and datasource:</p>
 </span><span id="__span-1-4"><a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="w">    </span><span class="p">{</span>
 </span><span id="__span-1-5"><a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="w">      </span><span class="nt">&quot;platform&quot;</span><span class="p">:</span><span class="w">   </span><span class="s2">&quot;github&quot;</span><span class="p">,</span>
 </span><span id="__span-1-6"><a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a><span class="w">      </span><span class="nt">&quot;datasource&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;mongo&quot;</span><span class="p">,</span>
-</span><span id="__span-1-7"><a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a><span class="w">      </span><span class="nt">&quot;branch_map&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nt">&quot;develop&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;staging&quot;</span><span class="p">},</span>
-</span><span id="__span-1-8"><a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a><span class="w">      </span><span class="nt">&quot;strict_validation&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span>
-</span><span id="__span-1-9"><a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a><span class="w">    </span><span class="p">}</span>
-</span><span id="__span-1-10"><a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a><span class="w">  </span><span class="p">]</span>
-</span><span id="__span-1-11"><a id="__codelineno-1-11" name="__codelineno-1-11" href="#__codelineno-1-11"></a><span class="p">}</span>
+</span><span id="__span-1-7"><a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a><span class="w">      </span><span class="nt">&quot;file_name&quot;</span><span class="p">:</span><span class="w">  </span><span class="s2">&quot;app-settings.yaml&quot;</span><span class="p">,</span>
+</span><span id="__span-1-8"><a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a><span class="w">      </span><span class="nt">&quot;branch_map&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nt">&quot;develop&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;staging&quot;</span><span class="p">},</span>
+</span><span id="__span-1-9"><a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a><span class="w">      </span><span class="nt">&quot;strict_validation&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span>
+</span><span id="__span-1-10"><a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a><span class="w">    </span><span class="p">}</span>
+</span><span id="__span-1-11"><a id="__codelineno-1-11" name="__codelineno-1-11" href="#__codelineno-1-11"></a><span class="w">  </span><span class="p">]</span>
+</span><span id="__span-1-12"><a id="__codelineno-1-12" name="__codelineno-1-12" href="#__codelineno-1-12"></a><span class="p">}</span>
 </span></code></pre></div>
 <p>Options only <code>config.cue</code> sets — <code>repositories</code>, <code>self_heal</code>, <code>secret_manager</code>, connection
 settings, … — are dropped from <code>bundle.json</code> with a warning; <a href="../../configuration/rule-options/">Rule options</a>
@@ -1995,16 +1996,29 @@ that cannot be read, leaves the tenant with <strong>no rules</strong> until it i
 <div class="language-bash highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>vt<span class="w"> </span>validate-config<span class="w"> </span>bundle.json<span class="w"> </span>--tenant<span class="w"> </span>payments
 </span></code></pre></div>
 <p>The schema files and <code>bundle.json</code> formats are in <a href="../../configuration/schema-registry/">Schema registry</a>.</p>
-<h2 id="2-register-the-tenant-with-the-orchestrator">2. Register the tenant with the orchestrator<a class="headerlink" href="#2-register-the-tenant-with-the-orchestrator" title="Permanent link">&para;</a></h2>
-<p>Set these on the orchestrator API <strong>and</strong> every Celery worker, then restart them:</p>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="nv">SCHEMA_TENANT_PAYMENTS_REPO</span><span class="o">=</span>https://github.com/payments/schemas.git
-</span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="nv">SCHEMA_TENANT_PAYMENTS_BRANCH</span><span class="o">=</span>main<span class="w">          </span><span class="c1"># default: main</span>
-</span><span id="__span-3-3"><a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="nv">SCHEMA_TENANT_PAYMENTS_TOKEN</span><span class="o">=</span>ghp_xxx<span class="w">        </span><span class="c1"># read access to the schema repository</span>
+<h2 id="2-declare-the-tenant-in-configcue">2. Declare the tenant in <code>config.cue</code><a class="headerlink" href="#2-declare-the-tenant-in-configcue" title="Permanent link">&para;</a></h2>
+<p>The tenant is yours to declare, not something a request can create. Add it to <code>config.cue</code>'s
+<a href="../../configuration/bundle/#tenants"><code>tenants</code></a>, with the repositories whose pushes are its own
+and its schema repository:</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>tenants: [{
+</span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>  name:         &quot;payments&quot;
+</span><span id="__span-3-3"><a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>  repositories: [&quot;payments/*&quot;]
+</span><span id="__span-3-4"><a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a>  schema_repo: {
+</span><span id="__span-3-5"><a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a>    platform: &quot;github&quot;
+</span><span id="__span-3-6"><a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a>    repo:     &quot;payments/schemas&quot;
+</span><span id="__span-3-7"><a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a>    branch:   &quot;main&quot;
+</span><span id="__span-3-8"><a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a>    token:    {ref: {path: &quot;payments/git&quot;, key: &quot;token&quot;}}   // read access to the schema repository
+</span><span id="__span-3-9"><a id="__codelineno-3-9" name="__codelineno-3-9" href="#__codelineno-3-9"></a>  }
+</span><span id="__span-3-10"><a id="__codelineno-3-10" name="__codelineno-3-10" href="#__codelineno-3-10"></a>}]
 </span></code></pre></div>
-<p>The tenant ID is the part of the name between <code>SCHEMA_TENANT_</code> and the field, lower-cased:
-<code>PAYMENTS</code> → <code>payments</code>. The orchestrator clones the repository on first use into
-<code>SCHEMA_CACHE_DIR</code>; give the API and the workers the same directory (a shared volume) so they
-clone once.</p>
+<p>Restart the orchestrator API and its workers. The orchestrator clones the schema repository on
+first use into <code>SCHEMA_CACHE_DIR</code>; give the API and the workers the same directory (a shared
+volume) so they clone once.</p>
+<blockquote>
+<p>Earlier releases registered a tenant with <code>SCHEMA_TENANT_PAYMENTS_REPO</code>, <code>_BRANCH</code> and
+<code>_TOKEN</code>. Those variables are still read for this release, with a warning; a tenant declared
+in <code>config.cue</code> wins over one of the same name from the environment.</p>
+</blockquote>
 <h2 id="3-let-the-tenant-layer-its-rules">3. Let the tenant layer its rules<a class="headerlink" href="#3-let-the-tenant-layer-its-rules" title="Permanent link">&para;</a></h2>
 <p>In <code>config.cue</code>, a rule's <code>tenants</code> lists the tenants whose <code>bundle.json</code> may layer it; empty
 means any tenant:</p>
@@ -2017,14 +2031,14 @@ means any tenant:</p>
 </span><span id="__span-4-7"><a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a>  tenants:      [&quot;payments&quot;]
 </span><span id="__span-4-8"><a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a>}]
 </span></code></pre></div>
-<p>A <code>config.cue</code> rule that no tenant's <code>bundle.json</code> names still syncs, as its first tenant's
-(<code>default</code> when <code>tenants</code> is empty).</p>
+<p>A <code>config.cue</code> rule that no tenant's <code>bundle.json</code> names still syncs, as its first tenant's;
+with none listed, as the declared tenant whose <code>repositories</code> the rule covers (<code>default</code> when
+there is none).</p>
 <h2 id="4-keep-the-settings-fresh">4. Keep the settings fresh<a class="headerlink" href="#4-keep-the-settings-fresh" title="Permanent link">&para;</a></h2>
 <p>A changed <code>bundle.json</code>, schema or preset is picked up when the tenant's clone is next
 refreshed: every <code>SCHEMA_TTL_SECONDS</code> (300 s by default).</p>
-<p>A push webhook refreshes at once, but only for the schema repository named in <code>config.cue</code>'s
-<code>schema_registry</code> block (<code>POST /webhooks/schema-registry</code> on the gateway); other tenants'
-repositories follow the TTL. If a refresh fails, the rules already loaded stay in use and the
+<p>A push webhook (<code>POST /webhooks/schema-registry</code> on the gateway) refreshes at once the tenant
+whose <code>schema_repo</code> the push came from; a push from any other repository is refused. If a refresh fails, the rules already loaded stay in use and the
 orchestrator logs <code>schema repo of tenant payments could not be refreshed; using the rules
 already loaded</code>.</p>
 <h2 id="5-check-what-the-tenant-sees">5. Check what the tenant sees<a class="headerlink" href="#5-check-what-the-tenant-sees" title="Permanent link">&para;</a></h2>

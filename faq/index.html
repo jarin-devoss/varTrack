@@ -1135,8 +1135,6 @@
       
         
       
-        
-      
     
     
       
@@ -1313,27 +1311,6 @@
   
   
     <li class="md-nav__item">
-      <a href="../sinks/vercel/" class="md-nav__link">
-        
-  
-  <span class="md-ellipsis">
-    Vercel
-  </span>
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
       <a href="../sinks/linux-server/" class="md-nav__link">
         
   
@@ -1371,6 +1348,8 @@
   
     
     
+      
+        
       
         
       
@@ -1489,6 +1468,27 @@
   
   
     <li class="md-nav__item">
+      <a href="../operations/internal-auth/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Internal Authentication
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../operations/monitoring/" class="md-nav__link">
         
   
@@ -1572,10 +1572,10 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5_7" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5_8" >
         
           
-          <label class="md-nav__link" for="__nav_5_7" id="__nav_5_7_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_5_8" id="__nav_5_8_label" tabindex="0">
             
   
   <span class="md-ellipsis">
@@ -1586,8 +1586,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_5_7_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_5_7">
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_5_8_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5_8">
             <span class="md-nav__icon md-icon"></span>
             Services
           </label>
@@ -2126,7 +2126,9 @@ at once on a push when the repository is the one <code>config.cue</code>'s <code
 <p>Yes, to pushes of that branch: the file is read at the pushed commit, so each branch can
 carry its own.</p>
 <h2 id="what-happens-on-a-push-to-a-branch-i-did-not-map">What happens on a push to a branch I did not map?<a class="headerlink" href="#what-happens-on-a-push-to-a-branch-i-did-not-map" title="Permanent link">&para;</a></h2>
-<p>It is synced to the environment <code>default</code>. Map every branch you push to — see
+<p>Nothing is written: the push feeds no environment of the rule, so it is skipped and the task
+says so ("nothing to do: branch feature/x feeds no environment of …"). There is no <code>default</code>
+environment. Map every branch you push to — see
 <a href="../concepts/environment-resolution/">Environment resolution</a>.</p>
 <h2 id="can-a-repository-turn-on-self_heal-or-change-where-data-is-written">Can a repository turn on <code>self_heal</code>, or change where data is written?<a class="headerlink" href="#can-a-repository-turn-on-self_heal-or-change-where-data-is-written" title="Permanent link">&para;</a></h2>
 <p>No. <code>self_heal</code>, <code>repositories</code>, <code>secret_manager</code>, <code>force</code>, <code>tenants</code> and the datasources'
@@ -2140,8 +2142,9 @@ whose value something else changed since (with a <code>PruneSkipped</code> event
 <p>No. Each sync records the key space it wrote to; a prune keeps every key another target holds
 in the same key space, and warns once with a <code>SharedKeySpace</code> event.</p>
 <h2 id="how-do-i-try-a-change-without-writing-anything">How do I try a change without writing anything?<a class="headerlink" href="#how-do-i-try-a-change-without-writing-anything" title="Permanent link">&para;</a></h2>
-<p><code>vt sync --dry-run …</code> (or <code>dry_run: true</code> in the rule) reads, validates and reports what would
-be written. <code>prune: {enabled: true, dry_run: true}</code> reports what prune would delete.</p>
+<p><code>vt sync --dry-run …</code> (or the <em>Dry run</em> button in the web UI, or the dry-run webhook) reads, validates and reports what would
+be written, and which keys a prune would delete. A dry run is something you start, not a setting of a rule (the <code>dry_run</code> rule
+option was removed: a rule that set it never wrote).</p>
 <h2 id="where-are-secrets-kept">Where are secrets kept?<a class="headerlink" href="#where-are-secrets-kept" title="Permanent link">&para;</a></h2>
 <p>Not in Git. <code>config.cue</code> credentials can be <code>{file: …}</code> (a mounted secret) or <code>{ref: …}</code>
 (Vault); a config file's values can be <code>@secret()</code> fields its CUE schema marks, fetched from
@@ -2154,7 +2157,7 @@ whose platform you have not connected, is counted as hidden; <strong>Connect</st
 platform. Without <code>ui.auth</code>, the UI shows every rule.</p>
 <h2 id="can-i-run-several-gateways-workers-and-watchers">Can I run several gateways, workers and watchers?<a class="headerlink" href="#can-i-run-several-gateways-workers-and-watchers" title="Permanent link">&para;</a></h2>
 <p>Yes. Workers and gateways scale out; one watcher leads at a time. Set
-<code>gateway_nonce_datasource</code> and <code>watcher_leader_election_datasource</code> — see
+<code>gateway_nonce_datasource</code> (required in production) and <code>watcher_leader_election_datasource</code> — see
 <a href="../operations/high-availability/">High availability</a>.</p>
 
 

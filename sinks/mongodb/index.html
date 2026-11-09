@@ -1144,8 +1144,6 @@
       
         
       
-        
-      
     
     
       
@@ -1320,6 +1318,15 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#one-write-one-step" class="md-nav__link">
+    <span class="md-ellipsis">
+      One write, one step
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#per-environment-collections" class="md-nav__link">
     <span class="md-ellipsis">
       Per-environment collections
@@ -1467,27 +1474,6 @@
   
   
     <li class="md-nav__item">
-      <a href="../vercel/" class="md-nav__link">
-        
-  
-  <span class="md-ellipsis">
-    Vercel
-  </span>
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
       <a href="../linux-server/" class="md-nav__link">
         
   
@@ -1525,6 +1511,8 @@
   
     
     
+      
+        
       
         
       
@@ -1643,6 +1631,27 @@
   
   
     <li class="md-nav__item">
+      <a href="../../operations/internal-auth/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Internal Authentication
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../../operations/monitoring/" class="md-nav__link">
         
   
@@ -1726,10 +1735,10 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5_7" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5_8" >
         
           
-          <label class="md-nav__link" for="__nav_5_7" id="__nav_5_7_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_5_8" id="__nav_5_8_label" tabindex="0">
             
   
   <span class="md-ellipsis">
@@ -1740,8 +1749,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_5_7_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_5_7">
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_5_8_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5_8">
             <span class="md-nav__icon md-icon"></span>
             Services
           </label>
@@ -2036,6 +2045,15 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#one-write-one-step" class="md-nav__link">
+    <span class="md-ellipsis">
+      One write, one step
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#per-environment-collections" class="md-nav__link">
     <span class="md-ellipsis">
       Per-environment collections
@@ -2094,25 +2112,28 @@
 </span><span id="__span-0-8"><a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>  }
 </span><span id="__span-0-9"><a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>}]
 </span></code></pre></div>
+<p><code>connect_timeout_ms</code> (default <code>0</code>: the driver's own waits) is how long the sink looks for the server before a write or a read fails. Set it (<code>5000</code> is a sensible value): with a stopped server the driver otherwise waits 20 s to connect and 30 s to find a server, more than once per operation, so the web UI keeps saying "in sync" for a minute before it says it cannot read the sink.</p>
 <h3 id="with-authentication">With authentication<a class="headerlink" href="#with-authentication" title="Permanent link">&para;</a></h3>
 <div class="language-text highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>datasources: [{
 </span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>  mongo: {
-</span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>    endpoint:  &quot;mongodb://mongo:27017&quot;
-</span><span id="__span-1-4"><a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>    database:  &quot;vartrack&quot;
-</span><span id="__span-1-5"><a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>    username:  &quot;vartrack&quot;
-</span><span id="__span-1-6"><a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a>    password:  &quot;secret&quot;                        // or a Vault reference
-</span><span id="__span-1-7"><a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a>  }
-</span><span id="__span-1-8"><a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a>}]
+</span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>    endpoint:   &quot;mongodb://mongo:27017&quot;
+</span><span id="__span-1-4"><a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>    database:   &quot;vartrack&quot;
+</span><span id="__span-1-5"><a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>    collection: &quot;variables&quot;
+</span><span id="__span-1-6"><a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a>    username:   &quot;vartrack&quot;
+</span><span id="__span-1-7"><a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a>    password:   &quot;secret&quot;                       // or a Vault reference
+</span><span id="__span-1-8"><a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a>  }
+</span><span id="__span-1-9"><a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a>}]
 </span></code></pre></div>
 <h3 id="with-tls">With TLS<a class="headerlink" href="#with-tls" title="Permanent link">&para;</a></h3>
 <div class="language-text highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>datasources: [{
 </span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>  mongo: {
 </span><span id="__span-2-3"><a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>    endpoint:    &quot;mongodb://mongo:27017&quot;
 </span><span id="__span-2-4"><a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a>    database:    &quot;vartrack&quot;
-</span><span id="__span-2-5"><a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a>    tls_enabled: true
-</span><span id="__span-2-6"><a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a>    tls_ca_file: &quot;/etc/ssl/mongo-ca.pem&quot;
-</span><span id="__span-2-7"><a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a>  }
-</span><span id="__span-2-8"><a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a>}]
+</span><span id="__span-2-5"><a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a>    collection:  &quot;variables&quot;
+</span><span id="__span-2-6"><a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a>    ssl:         true
+</span><span id="__span-2-7"><a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a>    ssl_ca_path: &quot;/etc/ssl/mongo-ca.pem&quot;
+</span><span id="__span-2-8"><a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a>  }
+</span><span id="__span-2-9"><a id="__codelineno-2-9" name="__codelineno-2-9" href="#__codelineno-2-9"></a>}]
 </span></code></pre></div>
 <hr />
 <h2 id="write-strategies">Write strategies<a class="headerlink" href="#write-strategies" title="Permanent link">&para;</a></h2>
@@ -2123,8 +2144,15 @@
 </span><span id="__span-3-4"><a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="nt">max_connections</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">50</span>
 </span><span id="__span-3-5"><a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a><span class="nt">regions</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">eu</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">us</span><span class="p p-Indicator">]</span>
 </span></code></pre></div>
+<div class="admonition info">
+<p class="admonition-title">In the demo</p>
+<p>The demo's <code>mongo</code>, <code>mongo-primary</code> and <code>mongo-dr</code> datasources use <code>STRATEGY_DOCUMENT</code> (collections <code>variables</code>, <code>primary_vars</code>, <code>dr_vars</code>),
+<code>mongo-document</code> uses it with its own collection, <code>mongo-file</code> uses <code>STRATEGY_FILE</code>, and <strong><code>mongo-kv</code></strong> (collection <code>kv_vars</code>) is the one that
+uses <code>STRATEGY_KEY_VALUE</code>: the shape that keeps single keys, so it is where prune and per-key drift show.</p>
+</div>
 <h3 id="strategy_key_value"><code>STRATEGY_KEY_VALUE</code><a class="headerlink" href="#strategy_key_value" title="Permanent link">&para;</a></h3>
-<p>Each config key is stored as a separate document, its value as a string:</p>
+<p>Each config key is stored as a separate document, its value as a string. It is the strategy that keeps a key on its own, so it is the one a
+<a href="../../concepts/sync-strategies/">prune</a> can delete from (a document strategy replaces the whole file's document on every sync):</p>
 <div class="language-json highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="p">{</span><span class="w"> </span><span class="nt">&quot;_vt_env&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;production&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;key&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;database.host&quot;</span><span class="p">,</span><span class="w">   </span><span class="nt">&quot;value&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;mongo.prod.internal&quot;</span><span class="w"> </span><span class="p">}</span>
 </span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="p">{</span><span class="w"> </span><span class="nt">&quot;_vt_env&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;production&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;key&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;max_connections&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;value&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;50&quot;</span><span class="w"> </span><span class="p">}</span>
 </span><span id="__span-4-3"><a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="p">{</span><span class="w"> </span><span class="nt">&quot;_vt_env&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;production&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;key&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;regions.0&quot;</span><span class="p">,</span><span class="w">       </span><span class="nt">&quot;value&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;eu&quot;</span><span class="w"> </span><span class="p">}</span>
@@ -2161,6 +2189,10 @@
 <p>A Mongo datasource that sets no <code>update_strategy</code> used to store one document per key. It now stores one nested document per file. To keep per-key documents, set <code>update_strategy: "STRATEGY_KEY_VALUE"</code>; without it, the next sync replaces the per-key documents of each file with its document, logs how many it removed and shows a <strong>Shape changed</strong> event.</p>
 </div>
 <hr />
+<h2 id="one-write-one-step">One write, one step<a class="headerlink" href="#one-write-one-step" title="Permanent link">&para;</a></h2>
+<p><code>STRATEGY_DOCUMENT</code> and <code>STRATEGY_FILE</code> write a file as its document plus the removal of the documents of another shape it replaces (after an <code>update_strategy</code> change). On a <strong>replica set or a sharded cluster</strong> those two operations are one session transaction, so a failure leaves the file as it was. Transactions need MongoDB 4.4 or later (an <code>env_as_collection</code> collection is created inside the transaction).</p>
+<p>A <strong>standalone</strong> server has no transactions: varTrack asks the server once, on the first write, and logs that it falls back. There the document is replaced in one <code>replace_one</code>, and a sync that fails after writing a file puts it back from the snapshot it took before (see <a href="../../operations/troubleshooting/#a-sync-failed">A sync failed</a>). <code>STRATEGY_KEY_VALUE</code> writes one document per key with one <code>bulk_write</code> and is not wrapped in a transaction: it is not atomic across keys.</p>
+<hr />
 <h2 id="per-environment-collections">Per-environment collections<a class="headerlink" href="#per-environment-collections" title="Permanent link">&para;</a></h2>
 <p>Set <code>env_as_collection: true</code> to write each environment into its own collection instead of a fixed one:</p>
 <div class="language-text highlight"><pre><span></span><code><span id="__span-7-1"><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>datasources: [{
@@ -2177,12 +2209,13 @@
 <div class="language-text highlight"><pre><span></span><code><span id="__span-8-1"><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>rules: [{
 </span><span id="__span-8-2"><a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>  platform:             &quot;github&quot;
 </span><span id="__span-8-3"><a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a>  datasource:           &quot;mongo&quot;
-</span><span id="__span-8-4"><a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a>  destination_template: &quot;{env}-config&quot;
-</span><span id="__span-8-5"><a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a>  branch_map: {
-</span><span id="__span-8-6"><a id="__codelineno-8-6" name="__codelineno-8-6" href="#__codelineno-8-6"></a>    main:    &quot;production&quot;
-</span><span id="__span-8-7"><a id="__codelineno-8-7" name="__codelineno-8-7" href="#__codelineno-8-7"></a>    develop: &quot;staging&quot;
-</span><span id="__span-8-8"><a id="__codelineno-8-8" name="__codelineno-8-8" href="#__codelineno-8-8"></a>  }
-</span><span id="__span-8-9"><a id="__codelineno-8-9" name="__codelineno-8-9" href="#__codelineno-8-9"></a>}]
+</span><span id="__span-8-4"><a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a>  file_name:           &quot;app-settings.yaml&quot;
+</span><span id="__span-8-5"><a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a>  destination_template: &quot;{env}-config&quot;
+</span><span id="__span-8-6"><a id="__codelineno-8-6" name="__codelineno-8-6" href="#__codelineno-8-6"></a>  branch_map: {
+</span><span id="__span-8-7"><a id="__codelineno-8-7" name="__codelineno-8-7" href="#__codelineno-8-7"></a>    main:    &quot;production&quot;
+</span><span id="__span-8-8"><a id="__codelineno-8-8" name="__codelineno-8-8" href="#__codelineno-8-8"></a>    develop: &quot;staging&quot;
+</span><span id="__span-8-9"><a id="__codelineno-8-9" name="__codelineno-8-9" href="#__codelineno-8-9"></a>  }
+</span><span id="__span-8-10"><a id="__codelineno-8-10" name="__codelineno-8-10" href="#__codelineno-8-10"></a>}]
 </span></code></pre></div>
 <table>
 <thead>
@@ -2213,8 +2246,10 @@
 <div class="language-text highlight"><pre><span></span><code><span id="__span-9-1"><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>rules: [{
 </span><span id="__span-9-2"><a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>  platform:   &quot;github&quot;
 </span><span id="__span-9-3"><a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a>  datasource: &quot;mongo&quot;
-</span><span id="__span-9-4"><a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a>  self_heal:  true
-</span><span id="__span-9-5"><a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a>}]
+</span><span id="__span-9-4"><a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a>  file_name: &quot;app-settings.yaml&quot;
+</span><span id="__span-9-5"><a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a>  branch_map: {main: &quot;production&quot;}
+</span><span id="__span-9-6"><a id="__codelineno-9-6" name="__codelineno-9-6" href="#__codelineno-9-6"></a>  self_heal:  true
+</span><span id="__span-9-7"><a id="__codelineno-9-7" name="__codelineno-9-7" href="#__codelineno-9-7"></a>}]
 </span></code></pre></div>
 
 

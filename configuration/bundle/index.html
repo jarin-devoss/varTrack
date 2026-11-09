@@ -1030,6 +1030,15 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#what-the-loader-checks" class="md-nav__link">
+    <span class="md-ellipsis">
+      What the loader checks
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#platforms" class="md-nav__link">
     <span class="md-ellipsis">
       platforms
@@ -1126,6 +1135,24 @@
   <a href="#schema_registry" class="md-nav__link">
     <span class="md-ellipsis">
       schema_registry
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#tenants" class="md-nav__link">
+    <span class="md-ellipsis">
+      tenants
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#tls-to-your-git-platforms-vault-and-s3" class="md-nav__link">
+    <span class="md-ellipsis">
+      TLS to your Git platforms, Vault and S3
     </span>
   </a>
   
@@ -1386,8 +1413,6 @@
       
         
       
-        
-      
     
     
       
@@ -1567,27 +1592,6 @@
   
   
     <li class="md-nav__item">
-      <a href="../../sinks/vercel/" class="md-nav__link">
-        
-  
-  <span class="md-ellipsis">
-    Vercel
-  </span>
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
       <a href="../../sinks/linux-server/" class="md-nav__link">
         
   
@@ -1625,6 +1629,8 @@
   
     
     
+      
+        
       
         
       
@@ -1743,6 +1749,27 @@
   
   
     <li class="md-nav__item">
+      <a href="../../operations/internal-auth/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Internal Authentication
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../../operations/monitoring/" class="md-nav__link">
         
   
@@ -1826,10 +1853,10 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5_7" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5_8" >
         
           
-          <label class="md-nav__link" for="__nav_5_7" id="__nav_5_7_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_5_8" id="__nav_5_8_label" tabindex="0">
             
   
   <span class="md-ellipsis">
@@ -1840,8 +1867,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_5_7_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_5_7">
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_5_8_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5_8">
             <span class="md-nav__icon md-icon"></span>
             Services
           </label>
@@ -2070,6 +2097,15 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#what-the-loader-checks" class="md-nav__link">
+    <span class="md-ellipsis">
+      What the loader checks
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#platforms" class="md-nav__link">
     <span class="md-ellipsis">
       platforms
@@ -2166,6 +2202,24 @@
   <a href="#schema_registry" class="md-nav__link">
     <span class="md-ellipsis">
       schema_registry
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#tenants" class="md-nav__link">
+    <span class="md-ellipsis">
+      tenants
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#tls-to-your-git-platforms-vault-and-s3" class="md-nav__link">
+    <span class="md-ellipsis">
+      TLS to your Git platforms, Vault and S3
     </span>
   </a>
   
@@ -2319,70 +2373,82 @@
 </span><span id="__span-0-31"><a id="__codelineno-0-31" name="__codelineno-0-31" href="#__codelineno-0-31"></a>}
 </span></code></pre></div>
 <hr />
+<h2 id="what-the-loader-checks">What the loader checks<a class="headerlink" href="#what-the-loader-checks" title="Permanent link">&para;</a></h2>
+<p>Every service reads <code>config.cue</code> through one loader and refuses a config it cannot accept; <code>vartrack-bundle check config.cue</code> says why, and CI runs it. In order:</p>
+<ol>
+<li><strong>Names.</strong> A field the protos do not have, a typo, is refused.</li>
+<li><strong>Shorthands.</strong> <code>"30s"</code>, <code>prune: true</code> and a secret written as a plain string are read as what they stand for.</li>
+<li><strong>The rules the protos declare.</strong> Ranges (<code>redis.database</code> is 0 to 15), lengths, allowed values, and the rules that tie fields together: a Mongo <code>username</code> needs its <code>password</code>; a Mongo needs a <code>collection</code> unless <code>env_as_collection</code> is on; <code>host_key_verification: "accept-new"</code> needs <code>known_hosts_file</code>; a ZooKeeper datasource is <code>STRATEGY_KEY_VALUE</code> or unset.</li>
+</ol>
+<p>A rule on a field applies when the config <strong>sets</strong> the field, or when the field is required: at least one platform, datasource and rule, a rule's <code>repositories</code>, a datasource's <code>hosts</code>. A field you leave out is its default, and is not held to a rule. Every broken rule is listed at once, each with the path of the field:</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>the config breaks 2 rules its protos declare:
+</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>  - datasources[1].redis.database: value must be greater than or equal to 0 and less than or equal to 15
+</span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>  - datasources[2].mongo: Password is required when username is provided
+</span></code></pre></div>
+<p>The rules about a rule as a whole (<code>file_name</code> or <code>file_path_map</code>, <code>{env}</code> in a <code>destination_template</code> needing an environment strategy) are about the <em>merged</em> rule, <code>config.cue</code>'s layer with the tenant's <code>bundle.json</code> and a repository's <code>vartrack.json</code> laid over it, so they are not asked of <code>config.cue</code> on its own.</p>
+<hr />
 <h2 id="platforms"><code>platforms</code><a class="headerlink" href="#platforms" title="Permanent link">&para;</a></h2>
 <p>Declares which Git platforms send webhooks to varTrack.</p>
 <h3 id="github">GitHub<a class="headerlink" href="#github" title="Permanent link">&para;</a></h3>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>platforms: [{
-</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>  github: {
-</span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>    endpoint:        &quot;https://github.com&quot;     // or your GHE URL
-</span><span id="__span-1-4"><a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>    protocol:        &quot;https&quot;                  // &quot;https&quot; or &quot;ssh&quot;
-</span><span id="__span-1-5"><a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>    push_event_name: &quot;push&quot;
-</span><span id="__span-1-6"><a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a>    pr_event_name:   &quot;pull_request&quot;
-</span><span id="__span-1-7"><a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a>    secret:          &quot;my-secret&quot;              // webhook HMAC secret
-</span><span id="__span-1-8"><a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a>    token:           &quot;ghp_xxx&quot;               // PAT for cloning + repo listing
-</span><span id="__span-1-9"><a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a>    org_name:        &quot;my-org&quot;                 // optional — scope to one org
-</span><span id="__span-1-10"><a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a>    verify_ssl:      true
-</span><span id="__span-1-11"><a id="__codelineno-1-11" name="__codelineno-1-11" href="#__codelineno-1-11"></a>    timeout:         &quot;30s&quot;
-</span><span id="__span-1-12"><a id="__codelineno-1-12" name="__codelineno-1-12" href="#__codelineno-1-12"></a>  }
-</span><span id="__span-1-13"><a id="__codelineno-1-13" name="__codelineno-1-13" href="#__codelineno-1-13"></a>}]
+<div class="language-text highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>platforms: [{
+</span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>  github: {
+</span><span id="__span-2-3"><a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>    endpoint:        &quot;https://github.com&quot;     // or your GHE URL
+</span><span id="__span-2-4"><a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a>    protocol:        &quot;https&quot;                  // &quot;https&quot; or &quot;ssh&quot;
+</span><span id="__span-2-5"><a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a>    push_event_name: &quot;push&quot;
+</span><span id="__span-2-6"><a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a>    pr_event_name:   &quot;pull_request&quot;
+</span><span id="__span-2-7"><a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a>    secret:          &quot;my-secret&quot;              // webhook HMAC secret
+</span><span id="__span-2-8"><a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a>    token:           &quot;ghp_xxx&quot;               // PAT for cloning + repo listing
+</span><span id="__span-2-9"><a id="__codelineno-2-9" name="__codelineno-2-9" href="#__codelineno-2-9"></a>    org_name:        &quot;my-org&quot;                 // optional — scope to one org
+</span><span id="__span-2-10"><a id="__codelineno-2-10" name="__codelineno-2-10" href="#__codelineno-2-10"></a>    timeout:         &quot;30s&quot;
+</span><span id="__span-2-11"><a id="__codelineno-2-11" name="__codelineno-2-11" href="#__codelineno-2-11"></a>  }
+</span><span id="__span-2-12"><a id="__codelineno-2-12" name="__codelineno-2-12" href="#__codelineno-2-12"></a>}]
 </span></code></pre></div>
 <p>Multiple platform instances can be declared with different <code>tag</code> values:</p>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>platforms: [
-</span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>  { github: { tag: &quot;public&quot;,     endpoint: &quot;https://github.com&quot;, ... } },
-</span><span id="__span-2-3"><a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>  { github: { tag: &quot;enterprise&quot;, endpoint: &quot;https://git.mycompany.com&quot;, ... } },
-</span><span id="__span-2-4"><a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a>]
+<div class="language-text highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>platforms: [
+</span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>  { github: { tag: &quot;public&quot;,     endpoint: &quot;https://github.com&quot;, ... } },
+</span><span id="__span-3-3"><a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>  { github: { tag: &quot;enterprise&quot;, endpoint: &quot;https://git.mycompany.com&quot;, ... } },
+</span><span id="__span-3-4"><a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a>]
 </span></code></pre></div>
 <hr />
 <h2 id="datasources"><code>datasources</code><a class="headerlink" href="#datasources" title="Permanent link">&para;</a></h2>
 <p>Declares where config values should be written. Every datasource has an optional <code>tag</code> to distinguish multiple instances of the same type.</p>
 <h3 id="mongodb">MongoDB<a class="headerlink" href="#mongodb" title="Permanent link">&para;</a></h3>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>datasources: [{
-</span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>  mongo: {
-</span><span id="__span-3-3"><a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>    tag:             &quot;&quot;                        // optional — &quot;mongo-{tag}&quot; if set
-</span><span id="__span-3-4"><a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a>    endpoint:        &quot;mongodb://mongo:27017&quot;
-</span><span id="__span-3-5"><a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a>    database:        &quot;vartrack&quot;
-</span><span id="__span-3-6"><a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a>    collection:      &quot;variables&quot;
-</span><span id="__span-3-7"><a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a>    update_strategy: &quot;STRATEGY_DOCUMENT&quot;       // the default; or &quot;STRATEGY_KEY_VALUE&quot;, &quot;STRATEGY_FILE&quot;: see the MongoDB sink
-</span><span id="__span-3-8"><a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a>  }
-</span><span id="__span-3-9"><a id="__codelineno-3-9" name="__codelineno-3-9" href="#__codelineno-3-9"></a>}]
+<div class="language-text highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>datasources: [{
+</span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>  mongo: {
+</span><span id="__span-4-3"><a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>    tag:             &quot;&quot;                        // optional — &quot;mongo-{tag}&quot; if set
+</span><span id="__span-4-4"><a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a>    endpoint:        &quot;mongodb://mongo:27017&quot;
+</span><span id="__span-4-5"><a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a>    database:        &quot;vartrack&quot;
+</span><span id="__span-4-6"><a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a>    collection:      &quot;variables&quot;
+</span><span id="__span-4-7"><a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a>    update_strategy: &quot;STRATEGY_DOCUMENT&quot;       // the default; or &quot;STRATEGY_KEY_VALUE&quot;, &quot;STRATEGY_FILE&quot;: see the MongoDB sink
+</span><span id="__span-4-8"><a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a>  }
+</span><span id="__span-4-9"><a id="__codelineno-4-9" name="__codelineno-4-9" href="#__codelineno-4-9"></a>}]
 </span></code></pre></div>
 <h3 id="redis">Redis<a class="headerlink" href="#redis" title="Permanent link">&para;</a></h3>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>datasources: [{
-</span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>  redis: {
-</span><span id="__span-4-3"><a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>    host:     &quot;redis&quot;
-</span><span id="__span-4-4"><a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a>    port:     6379
-</span><span id="__span-4-5"><a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a>    password: &quot;secret&quot;
-</span><span id="__span-4-6"><a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a>    db:       0
-</span><span id="__span-4-7"><a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a>  }
-</span><span id="__span-4-8"><a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a>}]
+<div class="language-text highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>datasources: [{
+</span><span id="__span-5-2"><a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>  redis: {
+</span><span id="__span-5-3"><a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>    hosts:    [&quot;redis:6379&quot;]
+</span><span id="__span-5-4"><a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a>    password: &quot;secret&quot;
+</span><span id="__span-5-5"><a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a>    database: 0
+</span><span id="__span-5-6"><a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a>  }
+</span><span id="__span-5-7"><a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a>}]
 </span></code></pre></div>
 <h3 id="zookeeper">ZooKeeper<a class="headerlink" href="#zookeeper" title="Permanent link">&para;</a></h3>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>datasources: [{
-</span><span id="__span-5-2"><a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>  zookeeper: {
-</span><span id="__span-5-3"><a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>    hosts:    [&quot;zookeeper:2181&quot;]
-</span><span id="__span-5-4"><a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a>    base_path: &quot;/vartrack&quot;
-</span><span id="__span-5-5"><a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a>  }
-</span><span id="__span-5-6"><a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a>}]
+<div class="language-text highlight"><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>datasources: [{
+</span><span id="__span-6-2"><a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>  zookeeper: {
+</span><span id="__span-6-3"><a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a>    hosts:    [&quot;zookeeper:2181&quot;]
+</span><span id="__span-6-4"><a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a>    base_path: &quot;/vartrack&quot;
+</span><span id="__span-6-5"><a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a>  }
+</span><span id="__span-6-6"><a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a>}]
 </span></code></pre></div>
 <h3 id="s3">S3<a class="headerlink" href="#s3" title="Permanent link">&para;</a></h3>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>datasources: [{
-</span><span id="__span-6-2"><a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>  s3: {
-</span><span id="__span-6-3"><a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a>    bucket:           &quot;my-config-bucket&quot;
-</span><span id="__span-6-4"><a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a>    region:           &quot;us-east-1&quot;
-</span><span id="__span-6-5"><a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a>    access_key_id:     &quot;AKIA...&quot;
-</span><span id="__span-6-6"><a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a>    secret_access_key: &quot;...&quot;
-</span><span id="__span-6-7"><a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a>  }
-</span><span id="__span-6-8"><a id="__codelineno-6-8" name="__codelineno-6-8" href="#__codelineno-6-8"></a>}]
+<div class="language-text highlight"><pre><span></span><code><span id="__span-7-1"><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>datasources: [{
+</span><span id="__span-7-2"><a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>  s3: {
+</span><span id="__span-7-3"><a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a>    bucket:           &quot;my-config-bucket&quot;
+</span><span id="__span-7-4"><a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a>    region:           &quot;us-east-1&quot;
+</span><span id="__span-7-5"><a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a>    access_key_id:     &quot;AKIA...&quot;
+</span><span id="__span-7-6"><a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a>    secret_access_key: &quot;...&quot;
+</span><span id="__span-7-7"><a id="__codelineno-7-7" name="__codelineno-7-7" href="#__codelineno-7-7"></a>  }
+</span><span id="__span-7-8"><a id="__codelineno-7-8" name="__codelineno-7-8" href="#__codelineno-7-8"></a>}]
 </span></code></pre></div>
 <p>For all datasource options see the individual <a href="../../sinks/">sink pages</a>.</p>
 <hr />
@@ -2390,236 +2456,332 @@
 <p>Rules map a platform + file combination to a datasource and define how data is written. They are the first of the <a href="../schema-registry/#how-a-rule-is-built">layers a rule is built from</a>: a tenant's <code>bundle.json</code> and a repository's <code>vartrack.json</code> can change some of their settings, and <code>force</code> pins the ones they may not.</p>
 <p>A rule is identified by its <code>platform</code> and <code>datasource</code>. Each pair has at most one rule, and varTrack refuses to start when two share it; to write a second destination in the same database, declare a tagged datasource for it and give it its own rule. Rules on <strong>different</strong> platforms may write to the same datasource: a webhook is then told apart by the event header of the platform that sent it (<code>X-Gitea-Event</code>, <code>X-GitHub-Event</code>), and <code>vt sync</code> and <code>vt validate</code> need <code>--platform</code> to say which rule they mean.</p>
 <p>Two platforms of the <strong>same type</strong> (say two GitHub hosts) send the same headers, so the webhook secret tells them apart: the gateway checks the signature of the delivery against each candidate platform's <code>secret</code> and uses the one that signed it. Give each of them its own <code>secret</code>. A delivery signed by none of them is refused (<code>401</code>); when two share a secret, or none has one, or signatures are not checked (a non-production gateway), the webhook is refused as ambiguous (<code>400</code>).</p>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-7-1"><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>rules: [{
-</span><span id="__span-7-2"><a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>  platform:             &quot;github&quot;              // matches platform name (or &quot;github-{tag}&quot;)
-</span><span id="__span-7-3"><a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a>  datasource:           &quot;mongo&quot;               // matches datasource name (or &quot;mongo-{tag}&quot;)
-</span><span id="__span-7-4"><a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a>  repositories:         [&quot;my-org/*&quot;]          // glob patterns — which repos trigger this
-</span><span id="__span-7-5"><a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a>
-</span><span id="__span-7-6"><a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a>  // Where data lands
-</span><span id="__span-7-7"><a id="__codelineno-7-7" name="__codelineno-7-7" href="#__codelineno-7-7"></a>  destination_template: &quot;{env}-config&quot;
-</span><span id="__span-7-8"><a id="__codelineno-7-8" name="__codelineno-7-8" href="#__codelineno-7-8"></a>
-</span><span id="__span-7-9"><a id="__codelineno-7-9" name="__codelineno-7-9" href="#__codelineno-7-9"></a>  // Source (pick one)
-</span><span id="__span-7-10"><a id="__codelineno-7-10" name="__codelineno-7-10" href="#__codelineno-7-10"></a>  file_name:     &quot;configs/app.yaml&quot;           // single file tracked in all repos
-</span><span id="__span-7-11"><a id="__codelineno-7-11" name="__codelineno-7-11" href="#__codelineno-7-11"></a>  // file_path_map: { production: &quot;configs/prod.yaml&quot;, staging: &quot;configs/staging.yaml&quot; }
-</span><span id="__span-7-12"><a id="__codelineno-7-12" name="__codelineno-7-12" href="#__codelineno-7-12"></a>
-</span><span id="__span-7-13"><a id="__codelineno-7-13" name="__codelineno-7-13" href="#__codelineno-7-13"></a>  // Repository filtering
-</span><span id="__span-7-14"><a id="__codelineno-7-14" name="__codelineno-7-14" href="#__codelineno-7-14"></a>  exclude_repositories: [&quot;my-org/legacy-.*&quot;] // negative glob patterns
-</span><span id="__span-7-15"><a id="__codelineno-7-15" name="__codelineno-7-15" href="#__codelineno-7-15"></a>  // overrides: [{match_repositories: [&quot;other-org/*&quot;], enable: true}]
-</span><span id="__span-7-16"><a id="__codelineno-7-16" name="__codelineno-7-16" href="#__codelineno-7-16"></a>
-</span><span id="__span-7-17"><a id="__codelineno-7-17" name="__codelineno-7-17" href="#__codelineno-7-17"></a>  // Root key extraction (optional)
-</span><span id="__span-7-18"><a id="__codelineno-7-18" name="__codelineno-7-18" href="#__codelineno-7-18"></a>  root_key: &quot;vartrack&quot;                        // extract subtree before flattening
-</span><span id="__span-7-19"><a id="__codelineno-7-19" name="__codelineno-7-19" href="#__codelineno-7-19"></a>                                              // set to &quot;&quot; to process the whole file
-</span><span id="__span-7-20"><a id="__codelineno-7-20" name="__codelineno-7-20" href="#__codelineno-7-20"></a>
-</span><span id="__span-7-21"><a id="__codelineno-7-21" name="__codelineno-7-21" href="#__codelineno-7-21"></a>  // Key renames (optional): NEW_NAME ← the flat key in the file
-</span><span id="__span-7-22"><a id="__codelineno-7-22" name="__codelineno-7-22" href="#__codelineno-7-22"></a>  variables_map: {
-</span><span id="__span-7-23"><a id="__codelineno-7-23" name="__codelineno-7-23" href="#__codelineno-7-23"></a>    DB_HOST: &quot;database.host&quot;                  // writes database.host&#39;s value as DB_HOST
-</span><span id="__span-7-24"><a id="__codelineno-7-24" name="__codelineno-7-24" href="#__codelineno-7-24"></a>  }
-</span><span id="__span-7-25"><a id="__codelineno-7-25" name="__codelineno-7-25" href="#__codelineno-7-25"></a>
-</span><span id="__span-7-26"><a id="__codelineno-7-26" name="__codelineno-7-26" href="#__codelineno-7-26"></a>  // Environment resolution
-</span><span id="__span-7-27"><a id="__codelineno-7-27" name="__codelineno-7-27" href="#__codelineno-7-27"></a>  branch_map: {
-</span><span id="__span-7-28"><a id="__codelineno-7-28" name="__codelineno-7-28" href="#__codelineno-7-28"></a>    main:    &quot;production&quot;
-</span><span id="__span-7-29"><a id="__codelineno-7-29" name="__codelineno-7-29" href="#__codelineno-7-29"></a>    develop: &quot;staging&quot;
-</span><span id="__span-7-30"><a id="__codelineno-7-30" name="__codelineno-7-30" href="#__codelineno-7-30"></a>  }
-</span><span id="__span-7-31"><a id="__codelineno-7-31" name="__codelineno-7-31" href="#__codelineno-7-31"></a>  pr_as_env:     false
-</span><span id="__span-7-32"><a id="__codelineno-7-32" name="__codelineno-7-32" href="#__codelineno-7-32"></a>  branch_as_env: false
-</span><span id="__span-7-33"><a id="__codelineno-7-33" name="__codelineno-7-33" href="#__codelineno-7-33"></a>  tag_as_env:    false
-</span><span id="__span-7-34"><a id="__codelineno-7-34" name="__codelineno-7-34" href="#__codelineno-7-34"></a>
-</span><span id="__span-7-35"><a id="__codelineno-7-35" name="__codelineno-7-35" href="#__codelineno-7-35"></a>  // Sync behavior
-</span><span id="__span-7-36"><a id="__codelineno-7-36" name="__codelineno-7-36" href="#__codelineno-7-36"></a>  sync_mode:     &quot;AUTO&quot;                       // AUTO, GIT_UPSERT_ALL, GIT_SMART_REPAIR, LIVE_STATE
-</span><span id="__span-7-37"><a id="__codelineno-7-37" name="__codelineno-7-37" href="#__codelineno-7-37"></a>                                              // (SYNC_MODE_AUTO etc. work too)
-</span><span id="__span-7-38"><a id="__codelineno-7-38" name="__codelineno-7-38" href="#__codelineno-7-38"></a>  prune: {
-</span><span id="__span-7-39"><a id="__codelineno-7-39" name="__codelineno-7-39" href="#__codelineno-7-39"></a>    enabled:    false                         // delete keys no longer in Git
-</span><span id="__span-7-40"><a id="__codelineno-7-40" name="__codelineno-7-40" href="#__codelineno-7-40"></a>    protection: [&quot;SYSTEM_*&quot;, &quot;_vt_*&quot;]         // glob patterns for keys that must never be deleted
-</span><span id="__span-7-41"><a id="__codelineno-7-41" name="__codelineno-7-41" href="#__codelineno-7-41"></a>  }
-</span><span id="__span-7-42"><a id="__codelineno-7-42" name="__codelineno-7-42" href="#__codelineno-7-42"></a>
-</span><span id="__span-7-43"><a id="__codelineno-7-43" name="__codelineno-7-43" href="#__codelineno-7-43"></a>  // Validation
-</span><span id="__span-7-44"><a id="__codelineno-7-44" name="__codelineno-7-44" href="#__codelineno-7-44"></a>  strict_validation: false                    // true: a file the CUE schema rejects fails the sync
-</span><span id="__span-7-45"><a id="__codelineno-7-45" name="__codelineno-7-45" href="#__codelineno-7-45"></a>                                              // (default: the failure is logged and the file is synced)
-</span><span id="__span-7-46"><a id="__codelineno-7-46" name="__codelineno-7-46" href="#__codelineno-7-46"></a>
-</span><span id="__span-7-47"><a id="__codelineno-7-47" name="__codelineno-7-47" href="#__codelineno-7-47"></a>  // Drift detection
-</span><span id="__span-7-48"><a id="__codelineno-7-48" name="__codelineno-7-48" href="#__codelineno-7-48"></a>  self_heal:     true                         // auto-repair on drift
-</span><span id="__span-7-49"><a id="__codelineno-7-49" name="__codelineno-7-49" href="#__codelineno-7-49"></a>  drift_ignore:  [&quot;feature_flags.*&quot;]          // keys the application changes itself: shown, never drift
-</span><span id="__span-7-50"><a id="__codelineno-7-50" name="__codelineno-7-50" href="#__codelineno-7-50"></a>
-</span><span id="__span-7-51"><a id="__codelineno-7-51" name="__codelineno-7-51" href="#__codelineno-7-51"></a>  // Pausing
-</span><span id="__span-7-52"><a id="__codelineno-7-52" name="__codelineno-7-52" href="#__codelineno-7-52"></a>  suspend:       false                        // true: pushes and self-heal skip the rule
-</span><span id="__span-7-53"><a id="__codelineno-7-53" name="__codelineno-7-53" href="#__codelineno-7-53"></a>
-</span><span id="__span-7-54"><a id="__codelineno-7-54" name="__codelineno-7-54" href="#__codelineno-7-54"></a>  // Keys no tenant bundle.json or repo vartrack.json can change: applied last
-</span><span id="__span-7-55"><a id="__codelineno-7-55" name="__codelineno-7-55" href="#__codelineno-7-55"></a>  force: {prune: {enabled: false}}
-</span><span id="__span-7-56"><a id="__codelineno-7-56" name="__codelineno-7-56" href="#__codelineno-7-56"></a>}]
+<div class="language-text highlight"><pre><span></span><code><span id="__span-8-1"><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>rules: [{
+</span><span id="__span-8-2"><a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>  platform:             &quot;github&quot;              // matches platform name (or &quot;github-{tag}&quot;)
+</span><span id="__span-8-3"><a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a>  datasource:           &quot;mongo&quot;               // matches datasource name (or &quot;mongo-{tag}&quot;)
+</span><span id="__span-8-4"><a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a>  repositories:         [&quot;my-org/*&quot;]          // glob patterns — which repos trigger this
+</span><span id="__span-8-5"><a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a>
+</span><span id="__span-8-6"><a id="__codelineno-8-6" name="__codelineno-8-6" href="#__codelineno-8-6"></a>  // Where data lands
+</span><span id="__span-8-7"><a id="__codelineno-8-7" name="__codelineno-8-7" href="#__codelineno-8-7"></a>  destination_template: &quot;{env}-config&quot;
+</span><span id="__span-8-8"><a id="__codelineno-8-8" name="__codelineno-8-8" href="#__codelineno-8-8"></a>
+</span><span id="__span-8-9"><a id="__codelineno-8-9" name="__codelineno-8-9" href="#__codelineno-8-9"></a>  // Source (pick one)
+</span><span id="__span-8-10"><a id="__codelineno-8-10" name="__codelineno-8-10" href="#__codelineno-8-10"></a>  file_name:     &quot;configs/app.yaml&quot;           // single file tracked in all repos
+</span><span id="__span-8-11"><a id="__codelineno-8-11" name="__codelineno-8-11" href="#__codelineno-8-11"></a>  // file_path_map: { production: &quot;configs/prod.yaml&quot;, staging: &quot;configs/staging.yaml&quot; }
+</span><span id="__span-8-12"><a id="__codelineno-8-12" name="__codelineno-8-12" href="#__codelineno-8-12"></a>
+</span><span id="__span-8-13"><a id="__codelineno-8-13" name="__codelineno-8-13" href="#__codelineno-8-13"></a>  // Repository filtering
+</span><span id="__span-8-14"><a id="__codelineno-8-14" name="__codelineno-8-14" href="#__codelineno-8-14"></a>  exclude_repositories: [&quot;my-org/legacy-.*&quot;] // negative glob patterns
+</span><span id="__span-8-15"><a id="__codelineno-8-15" name="__codelineno-8-15" href="#__codelineno-8-15"></a>  // overrides: [{match_repositories: [&quot;other-org/*&quot;], enable: true}]
+</span><span id="__span-8-16"><a id="__codelineno-8-16" name="__codelineno-8-16" href="#__codelineno-8-16"></a>
+</span><span id="__span-8-17"><a id="__codelineno-8-17" name="__codelineno-8-17" href="#__codelineno-8-17"></a>  // Root key extraction (optional)
+</span><span id="__span-8-18"><a id="__codelineno-8-18" name="__codelineno-8-18" href="#__codelineno-8-18"></a>  root_key: &quot;vartrack&quot;                        // extract subtree before flattening
+</span><span id="__span-8-19"><a id="__codelineno-8-19" name="__codelineno-8-19" href="#__codelineno-8-19"></a>                                              // set to &quot;&quot; to process the whole file
+</span><span id="__span-8-20"><a id="__codelineno-8-20" name="__codelineno-8-20" href="#__codelineno-8-20"></a>
+</span><span id="__span-8-21"><a id="__codelineno-8-21" name="__codelineno-8-21" href="#__codelineno-8-21"></a>  // Key renames (optional): NEW_NAME ← the flat key in the file
+</span><span id="__span-8-22"><a id="__codelineno-8-22" name="__codelineno-8-22" href="#__codelineno-8-22"></a>  variables_map: {
+</span><span id="__span-8-23"><a id="__codelineno-8-23" name="__codelineno-8-23" href="#__codelineno-8-23"></a>    DB_HOST: &quot;database.host&quot;                  // writes database.host&#39;s value as DB_HOST
+</span><span id="__span-8-24"><a id="__codelineno-8-24" name="__codelineno-8-24" href="#__codelineno-8-24"></a>  }
+</span><span id="__span-8-25"><a id="__codelineno-8-25" name="__codelineno-8-25" href="#__codelineno-8-25"></a>
+</span><span id="__span-8-26"><a id="__codelineno-8-26" name="__codelineno-8-26" href="#__codelineno-8-26"></a>  // Environment resolution
+</span><span id="__span-8-27"><a id="__codelineno-8-27" name="__codelineno-8-27" href="#__codelineno-8-27"></a>  branch_map: {
+</span><span id="__span-8-28"><a id="__codelineno-8-28" name="__codelineno-8-28" href="#__codelineno-8-28"></a>    main:    &quot;production&quot;
+</span><span id="__span-8-29"><a id="__codelineno-8-29" name="__codelineno-8-29" href="#__codelineno-8-29"></a>    develop: &quot;staging&quot;
+</span><span id="__span-8-30"><a id="__codelineno-8-30" name="__codelineno-8-30" href="#__codelineno-8-30"></a>  }
+</span><span id="__span-8-31"><a id="__codelineno-8-31" name="__codelineno-8-31" href="#__codelineno-8-31"></a>  pr_as_env:     false
+</span><span id="__span-8-32"><a id="__codelineno-8-32" name="__codelineno-8-32" href="#__codelineno-8-32"></a>  branch_as_env: false
+</span><span id="__span-8-33"><a id="__codelineno-8-33" name="__codelineno-8-33" href="#__codelineno-8-33"></a>  tag_as_env:    false
+</span><span id="__span-8-34"><a id="__codelineno-8-34" name="__codelineno-8-34" href="#__codelineno-8-34"></a>
+</span><span id="__span-8-35"><a id="__codelineno-8-35" name="__codelineno-8-35" href="#__codelineno-8-35"></a>  // Sync behavior
+</span><span id="__span-8-36"><a id="__codelineno-8-36" name="__codelineno-8-36" href="#__codelineno-8-36"></a>  sync_mode:     &quot;AUTO&quot;                       // AUTO, GIT_UPSERT_ALL, GIT_SMART_REPAIR, LIVE_STATE
+</span><span id="__span-8-37"><a id="__codelineno-8-37" name="__codelineno-8-37" href="#__codelineno-8-37"></a>                                              // (SYNC_MODE_AUTO etc. work too)
+</span><span id="__span-8-38"><a id="__codelineno-8-38" name="__codelineno-8-38" href="#__codelineno-8-38"></a>  prune: {
+</span><span id="__span-8-39"><a id="__codelineno-8-39" name="__codelineno-8-39" href="#__codelineno-8-39"></a>    enabled:    false                         // delete keys no longer in Git
+</span><span id="__span-8-40"><a id="__codelineno-8-40" name="__codelineno-8-40" href="#__codelineno-8-40"></a>    protection: [&quot;SYSTEM_*&quot;, &quot;_vt_*&quot;]         // glob patterns for keys that must never be deleted
+</span><span id="__span-8-41"><a id="__codelineno-8-41" name="__codelineno-8-41" href="#__codelineno-8-41"></a>  }
+</span><span id="__span-8-42"><a id="__codelineno-8-42" name="__codelineno-8-42" href="#__codelineno-8-42"></a>
+</span><span id="__span-8-43"><a id="__codelineno-8-43" name="__codelineno-8-43" href="#__codelineno-8-43"></a>  // Validation
+</span><span id="__span-8-44"><a id="__codelineno-8-44" name="__codelineno-8-44" href="#__codelineno-8-44"></a>  strict_validation: false                    // true: a file the CUE schema rejects, or no schema checks, fails the sync
+</span><span id="__span-8-45"><a id="__codelineno-8-45" name="__codelineno-8-45" href="#__codelineno-8-45"></a>                                              // (default: the failure is logged and the file is synced)
+</span><span id="__span-8-46"><a id="__codelineno-8-46" name="__codelineno-8-46" href="#__codelineno-8-46"></a>  schema_map: [                               // which schema checks which path; the first match wins
+</span><span id="__span-8-47"><a id="__codelineno-8-47" name="__codelineno-8-47" href="#__codelineno-8-47"></a>    {match: &quot;services/api/**/*.yaml&quot;, schema: &quot;api/settings.cue&quot;},
+</span><span id="__span-8-48"><a id="__codelineno-8-48" name="__codelineno-8-48" href="#__codelineno-8-48"></a>    {match: &quot;legacy/**&quot;,              schema: &quot;none&quot;},        // on purpose not checked
+</span><span id="__span-8-49"><a id="__codelineno-8-49" name="__codelineno-8-49" href="#__codelineno-8-49"></a>  ]
+</span><span id="__span-8-50"><a id="__codelineno-8-50" name="__codelineno-8-50" href="#__codelineno-8-50"></a>  schema_from_file: false                     // true: a file&#39;s top-level $schema may name its schema (never over schema_map)
+</span><span id="__span-8-51"><a id="__codelineno-8-51" name="__codelineno-8-51" href="#__codelineno-8-51"></a>
+</span><span id="__span-8-52"><a id="__codelineno-8-52" name="__codelineno-8-52" href="#__codelineno-8-52"></a>  // Drift detection
+</span><span id="__span-8-53"><a id="__codelineno-8-53" name="__codelineno-8-53" href="#__codelineno-8-53"></a>  self_heal:     true                         // auto-repair on drift
+</span><span id="__span-8-54"><a id="__codelineno-8-54" name="__codelineno-8-54" href="#__codelineno-8-54"></a>  drift_ignore:  [&quot;feature_flags.*&quot;]          // keys the application changes itself: shown, never drift
+</span><span id="__span-8-55"><a id="__codelineno-8-55" name="__codelineno-8-55" href="#__codelineno-8-55"></a>
+</span><span id="__span-8-56"><a id="__codelineno-8-56" name="__codelineno-8-56" href="#__codelineno-8-56"></a>  // Pausing
+</span><span id="__span-8-57"><a id="__codelineno-8-57" name="__codelineno-8-57" href="#__codelineno-8-57"></a>  suspend:       false                        // true: pushes and self-heal skip the rule
+</span><span id="__span-8-58"><a id="__codelineno-8-58" name="__codelineno-8-58" href="#__codelineno-8-58"></a>
+</span><span id="__span-8-59"><a id="__codelineno-8-59" name="__codelineno-8-59" href="#__codelineno-8-59"></a>  // Keys no tenant bundle.json or repo vartrack.json can change: applied last
+</span><span id="__span-8-60"><a id="__codelineno-8-60" name="__codelineno-8-60" href="#__codelineno-8-60"></a>  force: {prune: {enabled: false}}
+</span><span id="__span-8-61"><a id="__codelineno-8-61" name="__codelineno-8-61" href="#__codelineno-8-61"></a>}]
 </span></code></pre></div>
 <p><code>repositories</code>, <code>exclude_repositories</code>, <code>overrides</code>, <code>self_heal</code> and <code>secret_manager</code> are set here only, as are the datasources' connection settings: a tenant's <code>bundle.json</code> cannot change them. <code>force</code> holds the other keys this rule pins.</p>
 <p><strong><code>suspend</code></strong> pauses the rule without removing it, for an incident or a migration. A push and the watcher's self-heal skip a suspended rule, and the drift check does not compare it. A sync started by hand, from the web UI or <code>vt</code>, still runs, so an incident or a migration does not block a deliberate sync. The web UI shows the rule as suspended.</p>
 <p><strong><code>drift_ignore</code></strong> lists glob patterns of keys the application changes itself, such as a feature-flag counter or a rotated token. The drift check still shows them, as <code>ignored</code>, but never counts them as drift and the watcher does not heal them; a sync still writes them.</p>
-<p><strong><code>strict_validation</code></strong> decides what a failed CUE schema check does. Off (the default), the failure is logged as a warning and the file is synced; on, the file is not written and the sync fails. A repository can turn it on in its <code>vartrack.json</code>.</p>
+<p><strong><code>strict_validation</code></strong> decides what a failed CUE schema check does. Off (the default), the failure is logged as a warning and the file is synced; on, the file is not written and the sync fails. On also means every file is checked: a file no schema covers fails too, unless a <code>schema_map</code> entry maps it to <code>none</code>. A repository can turn it on in its <code>vartrack.json</code>.</p>
+<p><strong><code>schema_map</code></strong> sends file paths to CUE schemas, and <strong><code>schema_from_file</code></strong> lets a file name its own; <a href="../schema-registry/#which-schema-a-file-gets">Which schema a file gets</a> has the lookup order and what each miss means.</p>
 <hr />
 <h2 id="per-repo-overrides">Per-repo overrides<a class="headerlink" href="#per-repo-overrides" title="Permanent link">&para;</a></h2>
 <p>A repository can change some of its rule's settings with a <code>vartrack.json</code>, and a tenant with its <code>bundle.json</code>; the rule's <code>force</code> keys are applied after both. <a href="../#how-a-rule-is-built">Configuration files</a> shows how the layers combine, <a href="../rule-options/">Rule options</a> which option each file may set, and <a href="../per-repo-overrides/">Per-Repo Overrides</a> where <code>vartrack.json</code> lives.</p>
 <hr />
 <h2 id="schema_registry"><code>schema_registry</code><a class="headerlink" href="#schema_registry" title="Permanent link">&para;</a></h2>
-<p>Points varTrack to a Git repo containing CUE schemas for validation:</p>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-8-1"><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>schema_registry: {
-</span><span id="__span-8-2"><a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>  platform: &quot;github&quot;
-</span><span id="__span-8-3"><a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a>  repo:     &quot;my-org/schemas&quot;
-</span><span id="__span-8-4"><a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a>  branch:   &quot;main&quot;
-</span><span id="__span-8-5"><a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a>}
+<p>Optional: a tenant declares its own schema repository in <a href="#tenants"><code>tenants</code></a>, and this block is the one every rule shares. It points varTrack to a Git repo containing CUE schemas for validation:</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-9-1"><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>schema_registry: {
+</span><span id="__span-9-2"><a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>  platform: &quot;github&quot;
+</span><span id="__span-9-3"><a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a>  repo:     &quot;my-org/schemas&quot;
+</span><span id="__span-9-4"><a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a>  branch:   &quot;main&quot;
+</span><span id="__span-9-5"><a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a>}
 </span></code></pre></div>
 <p>varTrack checks every file a sync reads against the tenant's CUE schema for it before writing anything. A file that fails is skipped when the rule sets <code>strict_validation</code>, and written with a warning otherwise — see <a href="../schema-registry/#cue-schemas">CUE schemas</a> for how a file's schema is picked and an example.</p>
 <p>The schema repo can also hold <code>bundle.json</code> (or <code>rules.json</code>): the tenant's rule settings, laid over the rules here. It only holds what the tenant adds or changes — nothing has to be repeated or kept in sync. See the <a href="../schema-registry/">Schema Registry reference</a> for how a rule is built from the layers, the full repo structure, the <code>bundle.json</code> format, tenant env vars, and caching behaviour.</p>
 <hr />
+<h2 id="tenants"><code>tenants</code><a class="headerlink" href="#tenants" title="Permanent link">&para;</a></h2>
+<p>A tenant is a team you declare here. Without a <code>tenants</code> block there is one implicit tenant, <code>default</code>, that covers every repository, and nothing below applies.</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-10-1"><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a>tenants: [
+</span><span id="__span-10-2"><a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a>  {
+</span><span id="__span-10-3"><a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a>    name:         &quot;payments&quot;
+</span><span id="__span-10-4"><a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a>    repositories: [&quot;payments/*&quot;]        // pushes from these repositories are payments&#39;
+</span><span id="__span-10-5"><a id="__codelineno-10-5" name="__codelineno-10-5" href="#__codelineno-10-5"></a>    schema_repo: {                      // its bundle.json, CUE schemas and presets
+</span><span id="__span-10-6"><a id="__codelineno-10-6" name="__codelineno-10-6" href="#__codelineno-10-6"></a>      platform: &quot;github&quot;
+</span><span id="__span-10-7"><a id="__codelineno-10-7" name="__codelineno-10-7" href="#__codelineno-10-7"></a>      repo:     &quot;payments/schemas&quot;
+</span><span id="__span-10-8"><a id="__codelineno-10-8" name="__codelineno-10-8" href="#__codelineno-10-8"></a>      branch:   &quot;main&quot;
+</span><span id="__span-10-9"><a id="__codelineno-10-9" name="__codelineno-10-9" href="#__codelineno-10-9"></a>      token:    {ref: {path: &quot;payments/git&quot;, key: &quot;token&quot;}}
+</span><span id="__span-10-10"><a id="__codelineno-10-10" name="__codelineno-10-10" href="#__codelineno-10-10"></a>    }
+</span><span id="__span-10-11"><a id="__codelineno-10-11" name="__codelineno-10-11" href="#__codelineno-10-11"></a>    destinations: [{datasource: &quot;redis&quot;, paths: [&quot;payments:*&quot;]}]
+</span><span id="__span-10-12"><a id="__codelineno-10-12" name="__codelineno-10-12" href="#__codelineno-10-12"></a>  },
+</span><span id="__span-10-13"><a id="__codelineno-10-13" name="__codelineno-10-13" href="#__codelineno-10-13"></a>  {name: &quot;search&quot;, repositories: [&quot;search/app&quot;, &quot;search/infra&quot;]},
+</span><span id="__span-10-14"><a id="__codelineno-10-14" name="__codelineno-10-14" href="#__codelineno-10-14"></a>]
+</span></code></pre></div>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>name</code></td>
+<td>Letters, digits, <code>-</code> and <code>_</code>, starting with a letter or digit, up to 63 characters.</td>
+</tr>
+<tr>
+<td><code>repositories</code></td>
+<td><code>owner/name</code> patterns. A push is the tenant of the repository it came from; no repository may belong to two tenants.</td>
+</tr>
+<tr>
+<td><code>schema_repo</code></td>
+<td>The tenant's schema repository (<code>platform</code>, <code>repo</code>, <code>branch</code>, <code>token</code>). A push to it refreshes this tenant and no other, and it is read with this tenant's own <code>token</code>.</td>
+</tr>
+<tr>
+<td><code>destinations</code></td>
+<td>What the tenant may write, per datasource: <code>datasource</code> and glob <code>paths</code>. Two tenants may not both be allowed one destination of a datasource.</td>
+</tr>
+<tr>
+<td><code>presets</code> / <code>presets_token</code></td>
+<td>Repositories, besides the tenant's own and its schema repository, its presets may be read from, and the credential for them.</td>
+</tr>
+</tbody>
+</table>
+<p>A rule's <code>tenants</code> lists the tenants whose <code>bundle.json</code> may layer it; once tenants are declared, each name in it must be one of them. A rule that lists none belongs to the declared tenant whose <code>repositories</code> it covers (else <code>default</code>). A push that no declared tenant owns is refused (<code>403</code> on the HTTP route, <code>PERMISSION_DENIED</code> over gRPC), and a tenant named in a header or a grant is checked against the repository the push came from, never used in its place.</p>
+<p>The loader refuses a <code>tenants</code> block with a bad name, a repeated name, a repository or a schema repository that belongs to two tenants, overlapping destinations on one datasource, or a rule that names a tenant nobody declared.</p>
+<hr />
+<h2 id="tls-to-your-git-platforms-vault-and-s3">TLS to your Git platforms, Vault and S3<a class="headerlink" href="#tls-to-your-git-platforms-vault-and-s3" title="Permanent link">&para;</a></h2>
+<p>The server's certificate is <strong>always checked</strong>, by every service, unless the setting says otherwise. The
+setting is named for the unsafe choice, so leaving it out is the safe one:</p>
+<table>
+<thead>
+<tr>
+<th>Setting</th>
+<th>On</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>insecure_skip_verify: true</code></td>
+<td><code>platforms[]</code> (<code>github</code>, <code>gitea</code>), <code>secret_managers[].vault</code>, <code>datasources[].s3</code></td>
+<td>Do not check the server's certificate. Leave it out to check</td>
+</tr>
+<tr>
+<td><code>ssl_ca</code></td>
+<td><code>vault</code></td>
+<td>The CA certificate <strong>as content</strong> (PEM)</td>
+</tr>
+<tr>
+<td><code>ssl_ca_file</code></td>
+<td><code>vault</code></td>
+<td>The CA certificate <strong>as a path</strong> to a PEM file the service reads. Give this or <code>ssl_ca</code>, never both</td>
+</tr>
+<tr>
+<td><code>ssl_ca_cert</code></td>
+<td><code>s3</code></td>
+<td>A CA bundle, <strong>as a path</strong></td>
+</tr>
+</tbody>
+</table>
+<p>A field is either a path or content, never both: <code>ssl_ca</code> holding a file name is refused (older configs that did
+that are read as <code>ssl_ca_file</code>, with a log line). <code>verify_ssl: false</code> is the former spelling of
+<code>insecure_skip_verify: true</code>, and still loads; <code>verify_ssl: true</code> was the default and says nothing now. A Vault,
+Gitea or GitHub behind a self-signed certificate therefore needs its CA, or <code>insecure_skip_verify: true</code>.</p>
 <h2 id="secret_managers"><code>secret_managers</code><a class="headerlink" href="#secret_managers" title="Permanent link">&para;</a></h2>
 <p>Secrets referenced in the bundle (tokens, passwords) can be resolved from HashiCorp Vault:</p>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-9-1"><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>secret_managers: [{
-</span><span id="__span-9-2"><a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>  vault: {
-</span><span id="__span-9-3"><a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a>    endpoint:    &quot;https://vault.mycompany.com&quot;
-</span><span id="__span-9-4"><a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a>    mount_point: &quot;secret&quot;
-</span><span id="__span-9-5"><a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a>    kv_version:  2
-</span><span id="__span-9-6"><a id="__codelineno-9-6" name="__codelineno-9-6" href="#__codelineno-9-6"></a>    path_prefix: &quot;myapp/prod&quot;   // optional: where a plain @secret() field is read (see below)
-</span><span id="__span-9-7"><a id="__codelineno-9-7" name="__codelineno-9-7" href="#__codelineno-9-7"></a>
-</span><span id="__span-9-8"><a id="__codelineno-9-8" name="__codelineno-9-8" href="#__codelineno-9-8"></a>    // Auth — pick one:
-</span><span id="__span-9-9"><a id="__codelineno-9-9" name="__codelineno-9-9" href="#__codelineno-9-9"></a>    token_auth: {
-</span><span id="__span-9-10"><a id="__codelineno-9-10" name="__codelineno-9-10" href="#__codelineno-9-10"></a>      token: &quot;hvs.xxxx&quot;
-</span><span id="__span-9-11"><a id="__codelineno-9-11" name="__codelineno-9-11" href="#__codelineno-9-11"></a>    }
-</span><span id="__span-9-12"><a id="__codelineno-9-12" name="__codelineno-9-12" href="#__codelineno-9-12"></a>    // app_role_auth: {
-</span><span id="__span-9-13"><a id="__codelineno-9-13" name="__codelineno-9-13" href="#__codelineno-9-13"></a>    //   role_id:   &quot;role-id&quot;
-</span><span id="__span-9-14"><a id="__codelineno-9-14" name="__codelineno-9-14" href="#__codelineno-9-14"></a>    //   secret_id: &quot;secret-id&quot;
-</span><span id="__span-9-15"><a id="__codelineno-9-15" name="__codelineno-9-15" href="#__codelineno-9-15"></a>    // }
-</span><span id="__span-9-16"><a id="__codelineno-9-16" name="__codelineno-9-16" href="#__codelineno-9-16"></a>    // kubernetes_auth: {
-</span><span id="__span-9-17"><a id="__codelineno-9-17" name="__codelineno-9-17" href="#__codelineno-9-17"></a>    //   role:            &quot;vartrack&quot;
-</span><span id="__span-9-18"><a id="__codelineno-9-18" name="__codelineno-9-18" href="#__codelineno-9-18"></a>    //   jwt_path:        &quot;/var/run/secrets/kubernetes.io/serviceaccount/token&quot;
-</span><span id="__span-9-19"><a id="__codelineno-9-19" name="__codelineno-9-19" href="#__codelineno-9-19"></a>    // }
-</span><span id="__span-9-20"><a id="__codelineno-9-20" name="__codelineno-9-20" href="#__codelineno-9-20"></a>    // userpass_auth: {
-</span><span id="__span-9-21"><a id="__codelineno-9-21" name="__codelineno-9-21" href="#__codelineno-9-21"></a>    //   username: &quot;vartrack&quot;
-</span><span id="__span-9-22"><a id="__codelineno-9-22" name="__codelineno-9-22" href="#__codelineno-9-22"></a>    //   password: &quot;pass&quot;
-</span><span id="__span-9-23"><a id="__codelineno-9-23" name="__codelineno-9-23" href="#__codelineno-9-23"></a>    // }
-</span><span id="__span-9-24"><a id="__codelineno-9-24" name="__codelineno-9-24" href="#__codelineno-9-24"></a>  }
-</span><span id="__span-9-25"><a id="__codelineno-9-25" name="__codelineno-9-25" href="#__codelineno-9-25"></a>}]
+<div class="language-text highlight"><pre><span></span><code><span id="__span-11-1"><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a>secret_managers: [{
+</span><span id="__span-11-2"><a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a>  vault: {
+</span><span id="__span-11-3"><a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a>    endpoint:    &quot;https://vault.mycompany.com&quot;
+</span><span id="__span-11-4"><a id="__codelineno-11-4" name="__codelineno-11-4" href="#__codelineno-11-4"></a>    mount_point: &quot;secret&quot;
+</span><span id="__span-11-5"><a id="__codelineno-11-5" name="__codelineno-11-5" href="#__codelineno-11-5"></a>    kv_version:  2
+</span><span id="__span-11-6"><a id="__codelineno-11-6" name="__codelineno-11-6" href="#__codelineno-11-6"></a>    path_prefix: &quot;myapp/prod&quot;   // optional: where a plain @secret() field is read (see below)
+</span><span id="__span-11-7"><a id="__codelineno-11-7" name="__codelineno-11-7" href="#__codelineno-11-7"></a>
+</span><span id="__span-11-8"><a id="__codelineno-11-8" name="__codelineno-11-8" href="#__codelineno-11-8"></a>    // Auth — pick one:
+</span><span id="__span-11-9"><a id="__codelineno-11-9" name="__codelineno-11-9" href="#__codelineno-11-9"></a>    token_auth: {
+</span><span id="__span-11-10"><a id="__codelineno-11-10" name="__codelineno-11-10" href="#__codelineno-11-10"></a>      token: &quot;hvs.xxxx&quot;
+</span><span id="__span-11-11"><a id="__codelineno-11-11" name="__codelineno-11-11" href="#__codelineno-11-11"></a>    }
+</span><span id="__span-11-12"><a id="__codelineno-11-12" name="__codelineno-11-12" href="#__codelineno-11-12"></a>    // app_role_auth: {
+</span><span id="__span-11-13"><a id="__codelineno-11-13" name="__codelineno-11-13" href="#__codelineno-11-13"></a>    //   role_id:   &quot;role-id&quot;
+</span><span id="__span-11-14"><a id="__codelineno-11-14" name="__codelineno-11-14" href="#__codelineno-11-14"></a>    //   secret_id: &quot;secret-id&quot;
+</span><span id="__span-11-15"><a id="__codelineno-11-15" name="__codelineno-11-15" href="#__codelineno-11-15"></a>    // }
+</span><span id="__span-11-16"><a id="__codelineno-11-16" name="__codelineno-11-16" href="#__codelineno-11-16"></a>    // kubernetes_auth: {
+</span><span id="__span-11-17"><a id="__codelineno-11-17" name="__codelineno-11-17" href="#__codelineno-11-17"></a>    //   role:            &quot;vartrack&quot;
+</span><span id="__span-11-18"><a id="__codelineno-11-18" name="__codelineno-11-18" href="#__codelineno-11-18"></a>    //   jwt_path:        &quot;/var/run/secrets/kubernetes.io/serviceaccount/token&quot;
+</span><span id="__span-11-19"><a id="__codelineno-11-19" name="__codelineno-11-19" href="#__codelineno-11-19"></a>    // }
+</span><span id="__span-11-20"><a id="__codelineno-11-20" name="__codelineno-11-20" href="#__codelineno-11-20"></a>    // userpass_auth: {
+</span><span id="__span-11-21"><a id="__codelineno-11-21" name="__codelineno-11-21" href="#__codelineno-11-21"></a>    //   username: &quot;vartrack&quot;
+</span><span id="__span-11-22"><a id="__codelineno-11-22" name="__codelineno-11-22" href="#__codelineno-11-22"></a>    //   password: &quot;pass&quot;
+</span><span id="__span-11-23"><a id="__codelineno-11-23" name="__codelineno-11-23" href="#__codelineno-11-23"></a>    // }
+</span><span id="__span-11-24"><a id="__codelineno-11-24" name="__codelineno-11-24" href="#__codelineno-11-24"></a>  }
+</span><span id="__span-11-25"><a id="__codelineno-11-25" name="__codelineno-11-25" href="#__codelineno-11-25"></a>}]
 </span></code></pre></div>
 <p><code>path_prefix</code> is for the CUE schema's <a href="../annotations/#secret"><code>@secret()</code> fields</a>. A field whose value in the config file is written as <code>@secret(mount/path#key)</code> names its own secret and does not use it. A field left as a plain value is read from the secret at <code>path_prefix</code>, under the field's own name, so <code>database.password</code> is the key <code>database.password</code> of the secret <code>secret/myapp/prod</code>.</p>
 <p>A rule used to carry its own Vault settings in a <code>secrets</code> block. That block was removed: declare the manager here, and name it in the rule's <code>secret_manager</code> when there is more than one. A config that still sets <code>secrets</code> loads, with a warning that says so.</p>
 <hr />
 <h2 id="secret-value-forms">Secret value forms<a class="headerlink" href="#secret-value-forms" title="Permanent link">&para;</a></h2>
 <p>Credential fields in the bundle — a platform's <code>token</code> and <code>secret</code>, a datasource's <code>password</code>, <code>private_key</code>, <code>access_key_id</code>, <code>secret_access_key</code>, the web UI's <code>client_id</code> and <code>client_secret</code> — accept three forms:</p>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-10-1"><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a>// 1. Plain string — value written directly in the bundle
-</span><span id="__span-10-2"><a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a>token: &quot;ghp_xxx&quot;
-</span><span id="__span-10-3"><a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a>
-</span><span id="__span-10-4"><a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a>// 2. File reference — read from a file on the service&#39;s machine
-</span><span id="__span-10-5"><a id="__codelineno-10-5" name="__codelineno-10-5" href="#__codelineno-10-5"></a>//    Ideal for Docker secrets, Kubernetes secret mounts, or any on-disk secret
-</span><span id="__span-10-6"><a id="__codelineno-10-6" name="__codelineno-10-6" href="#__codelineno-10-6"></a>token:    {file: &quot;/run/secrets/github-token&quot;}                  // the whole file, whitespace stripped
-</span><span id="__span-10-7"><a id="__codelineno-10-7" name="__codelineno-10-7" href="#__codelineno-10-7"></a>password: {file: &quot;/run/secrets/db.env&quot;, key: &quot;DB_PASSWORD&quot;}    // one key of the file
-</span><span id="__span-10-8"><a id="__codelineno-10-8" name="__codelineno-10-8" href="#__codelineno-10-8"></a>
-</span><span id="__span-10-9"><a id="__codelineno-10-9" name="__codelineno-10-9" href="#__codelineno-10-9"></a>// 3. Vault reference — fetched from HashiCorp Vault at ETL time
-</span><span id="__span-10-10"><a id="__codelineno-10-10" name="__codelineno-10-10" href="#__codelineno-10-10"></a>//    Requires a secret_managers block in the bundle
-</span><span id="__span-10-11"><a id="__codelineno-10-11" name="__codelineno-10-11" href="#__codelineno-10-11"></a>token: {ref: {path: &quot;vartrack/github&quot;, key: &quot;token&quot;}}
-</span></code></pre></div>
-<p>Two credentials take only a plain string: a MongoDB datasource's <code>password</code>, and a Vault secret manager's own credentials (<code>token_auth.token</code>, <code>app_role_auth.secret_id</code>, …).</p>
+<p>```cue notest
+// 1. Plain string — value written directly in the bundle
+token: "ghp_xxx"</p>
+<p>// 2. File reference — read from a file on the service's machine
+//    Ideal for Docker secrets, Kubernetes secret mounts, or any on-disk secret
+token:    {file: "/run/secrets/github-token"}                  // the whole file, whitespace stripped
+password: {file: "/run/secrets/db.env", key: "DB_PASSWORD"}    // one key of the file</p>
+<p>// 3. Vault reference — fetched from HashiCorp Vault at ETL time
+//    Requires a secret_managers block in the bundle
+token: {ref: {path: "vartrack/github", key: "token"}}
+<div class="language-text highlight"><pre><span></span><code><span id="__span-12-1"><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a>A Vault secret manager&#39;s own login credentials (`token_auth.token`, `app_role_auth.secret_id`, `userpass_auth.password`) take a string or a `{file: …}`, never a `{ref: …}`: Vault cannot log in with a secret it would first have to read from itself, and the loader refuses it.
+</span><span id="__span-12-2"><a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a>
+</span><span id="__span-12-3"><a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a>```cue
+</span><span id="__span-12-4"><a id="__codelineno-12-4" name="__codelineno-12-4" href="#__codelineno-12-4"></a>secret_managers: [{vault: {endpoint: &quot;https://vault:8200&quot;, token_auth: {token: {file: &quot;/run/secrets/vault-token&quot;}}}}]
+</span></code></pre></div></p>
 <p>A <code>{ref: …}</code> is read from an entry of <code>secret_managers</code>. A rule's <code>secret_manager</code> names the entry for everything that rule uses — its platform's credentials and its datasource's — and for its <code>@secret()</code> fields:</p>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-11-1"><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a>rules: [{
-</span><span id="__span-11-2"><a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a>  platform:       &quot;github&quot;
-</span><span id="__span-11-3"><a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a>  datasource:     &quot;redis&quot;
-</span><span id="__span-11-4"><a id="__codelineno-11-4" name="__codelineno-11-4" href="#__codelineno-11-4"></a>  secret_manager: &quot;vault-prod&quot;    // a secret_managers entry: &quot;vault&quot;, or &quot;vault-{tag}&quot;
-</span><span id="__span-11-5"><a id="__codelineno-11-5" name="__codelineno-11-5" href="#__codelineno-11-5"></a>}]
+<div class="language-text highlight"><pre><span></span><code><span id="__span-13-1"><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a>rules: [{
+</span><span id="__span-13-2"><a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a>  platform:       &quot;github&quot;
+</span><span id="__span-13-3"><a id="__codelineno-13-3" name="__codelineno-13-3" href="#__codelineno-13-3"></a>  datasource:     &quot;redis&quot;
+</span><span id="__span-13-4"><a id="__codelineno-13-4" name="__codelineno-13-4" href="#__codelineno-13-4"></a>  secret_manager: &quot;vault-prod&quot;    // a secret_managers entry: &quot;vault&quot;, or &quot;vault-{tag}&quot;
+</span><span id="__span-13-5"><a id="__codelineno-13-5" name="__codelineno-13-5" href="#__codelineno-13-5"></a>}]
 </span></code></pre></div>
 <p>A rule without one uses the entry tagged <code>default</code>, else the bundle's only one.</p>
 <p>With <code>key</code>, a <code>{file: …}</code> is parsed by its extension — <code>.json</code>, <code>.yaml</code>/<code>.yml</code>, otherwise <code>KEY=value</code> lines (<code>.env</code>, <code>.properties</code>) — and the key's value is the credential; in JSON and YAML a dotted key (<code>db.password</code>) reaches into nested objects. Without <code>key</code> the whole file is the credential. An SSH <code>private_key</code> is the exception: it must be a key file of its own.</p>
 <p><code>{file: …}</code> is read on the machine of the service that uses the credential: the gateway for platform credentials, the orchestrator for datasource credentials. A credential both use — a platform <code>token</code> — needs its file on both.</p>
 <h3 id="file-mounted-secret-files"><code>{file:}</code> — mounted secret files<a class="headerlink" href="#file-mounted-secret-files" title="Permanent link">&para;</a></h3>
 <p>The <code>{file:}</code> form keeps secrets completely out of the bundle. Mount the file via Docker or Kubernetes and point to it:</p>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-12-1"><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a>secret_managers: [{
-</span><span id="__span-12-2"><a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a>  vault: {
-</span><span id="__span-12-3"><a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a>    endpoint:    &quot;https://vault.mycompany.com&quot;
-</span><span id="__span-12-4"><a id="__codelineno-12-4" name="__codelineno-12-4" href="#__codelineno-12-4"></a>    mount_point: &quot;secret&quot;
-</span><span id="__span-12-5"><a id="__codelineno-12-5" name="__codelineno-12-5" href="#__codelineno-12-5"></a>    kv_version:  2
-</span><span id="__span-12-6"><a id="__codelineno-12-6" name="__codelineno-12-6" href="#__codelineno-12-6"></a>    token_auth: {
-</span><span id="__span-12-7"><a id="__codelineno-12-7" name="__codelineno-12-7" href="#__codelineno-12-7"></a>      token: {file: &quot;/run/secrets/vault-token&quot;}   // Docker secret or K8s secret volume
-</span><span id="__span-12-8"><a id="__codelineno-12-8" name="__codelineno-12-8" href="#__codelineno-12-8"></a>    }
-</span><span id="__span-12-9"><a id="__codelineno-12-9" name="__codelineno-12-9" href="#__codelineno-12-9"></a>  }
-</span><span id="__span-12-10"><a id="__codelineno-12-10" name="__codelineno-12-10" href="#__codelineno-12-10"></a>}]
-</span><span id="__span-12-11"><a id="__codelineno-12-11" name="__codelineno-12-11" href="#__codelineno-12-11"></a>
-</span><span id="__span-12-12"><a id="__codelineno-12-12" name="__codelineno-12-12" href="#__codelineno-12-12"></a>platforms: [{
-</span><span id="__span-12-13"><a id="__codelineno-12-13" name="__codelineno-12-13" href="#__codelineno-12-13"></a>  github: {
-</span><span id="__span-12-14"><a id="__codelineno-12-14" name="__codelineno-12-14" href="#__codelineno-12-14"></a>    endpoint: &quot;https://github.com&quot;
-</span><span id="__span-12-15"><a id="__codelineno-12-15" name="__codelineno-12-15" href="#__codelineno-12-15"></a>    token:    {file: &quot;/run/secrets/github-pat&quot;}
-</span><span id="__span-12-16"><a id="__codelineno-12-16" name="__codelineno-12-16" href="#__codelineno-12-16"></a>    secret:   {file: &quot;/run/secrets/github-webhook-secret&quot;}
-</span><span id="__span-12-17"><a id="__codelineno-12-17" name="__codelineno-12-17" href="#__codelineno-12-17"></a>  }
-</span><span id="__span-12-18"><a id="__codelineno-12-18" name="__codelineno-12-18" href="#__codelineno-12-18"></a>}]
+<div class="language-text highlight"><pre><span></span><code><span id="__span-14-1"><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a>secret_managers: [{
+</span><span id="__span-14-2"><a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a>  vault: {
+</span><span id="__span-14-3"><a id="__codelineno-14-3" name="__codelineno-14-3" href="#__codelineno-14-3"></a>    endpoint:    &quot;https://vault.mycompany.com&quot;
+</span><span id="__span-14-4"><a id="__codelineno-14-4" name="__codelineno-14-4" href="#__codelineno-14-4"></a>    mount_point: &quot;secret&quot;
+</span><span id="__span-14-5"><a id="__codelineno-14-5" name="__codelineno-14-5" href="#__codelineno-14-5"></a>    kv_version:  2
+</span><span id="__span-14-6"><a id="__codelineno-14-6" name="__codelineno-14-6" href="#__codelineno-14-6"></a>    token_auth: {
+</span><span id="__span-14-7"><a id="__codelineno-14-7" name="__codelineno-14-7" href="#__codelineno-14-7"></a>      token: &quot;hvs.xxxx&quot;   // Vault&#39;s own login is a plain string; mount the bundle as a secret
+</span><span id="__span-14-8"><a id="__codelineno-14-8" name="__codelineno-14-8" href="#__codelineno-14-8"></a>    }
+</span><span id="__span-14-9"><a id="__codelineno-14-9" name="__codelineno-14-9" href="#__codelineno-14-9"></a>  }
+</span><span id="__span-14-10"><a id="__codelineno-14-10" name="__codelineno-14-10" href="#__codelineno-14-10"></a>}]
+</span><span id="__span-14-11"><a id="__codelineno-14-11" name="__codelineno-14-11" href="#__codelineno-14-11"></a>
+</span><span id="__span-14-12"><a id="__codelineno-14-12" name="__codelineno-14-12" href="#__codelineno-14-12"></a>platforms: [{
+</span><span id="__span-14-13"><a id="__codelineno-14-13" name="__codelineno-14-13" href="#__codelineno-14-13"></a>  github: {
+</span><span id="__span-14-14"><a id="__codelineno-14-14" name="__codelineno-14-14" href="#__codelineno-14-14"></a>    endpoint: &quot;https://github.com&quot;
+</span><span id="__span-14-15"><a id="__codelineno-14-15" name="__codelineno-14-15" href="#__codelineno-14-15"></a>    token:    {file: &quot;/run/secrets/github-pat&quot;}
+</span><span id="__span-14-16"><a id="__codelineno-14-16" name="__codelineno-14-16" href="#__codelineno-14-16"></a>    secret:   {file: &quot;/run/secrets/github-webhook-secret&quot;}
+</span><span id="__span-14-17"><a id="__codelineno-14-17" name="__codelineno-14-17" href="#__codelineno-14-17"></a>  }
+</span><span id="__span-14-18"><a id="__codelineno-14-18" name="__codelineno-14-18" href="#__codelineno-14-18"></a>}]
 </span></code></pre></div>
 <p><strong>Docker Compose example:</strong></p>
-<div class="language-yaml highlight"><pre><span></span><code><span id="__span-13-1"><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a><span class="nt">services</span><span class="p">:</span>
-</span><span id="__span-13-2"><a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a><span class="w">  </span><span class="nt">gateway</span><span class="p">:</span>
-</span><span id="__span-13-3"><a id="__codelineno-13-3" name="__codelineno-13-3" href="#__codelineno-13-3"></a><span class="w">    </span><span class="nt">image</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">vartrack/gateway</span>
-</span><span id="__span-13-4"><a id="__codelineno-13-4" name="__codelineno-13-4" href="#__codelineno-13-4"></a><span class="w">    </span><span class="nt">secrets</span><span class="p">:</span>
-</span><span id="__span-13-5"><a id="__codelineno-13-5" name="__codelineno-13-5" href="#__codelineno-13-5"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">github-pat</span>
-</span><span id="__span-13-6"><a id="__codelineno-13-6" name="__codelineno-13-6" href="#__codelineno-13-6"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">github-webhook-secret</span>
-</span><span id="__span-13-7"><a id="__codelineno-13-7" name="__codelineno-13-7" href="#__codelineno-13-7"></a>
-</span><span id="__span-13-8"><a id="__codelineno-13-8" name="__codelineno-13-8" href="#__codelineno-13-8"></a><span class="nt">secrets</span><span class="p">:</span>
-</span><span id="__span-13-9"><a id="__codelineno-13-9" name="__codelineno-13-9" href="#__codelineno-13-9"></a><span class="w">  </span><span class="nt">github-pat</span><span class="p">:</span>
-</span><span id="__span-13-10"><a id="__codelineno-13-10" name="__codelineno-13-10" href="#__codelineno-13-10"></a><span class="w">    </span><span class="nt">file</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">./secrets/github-pat.txt</span>
-</span><span id="__span-13-11"><a id="__codelineno-13-11" name="__codelineno-13-11" href="#__codelineno-13-11"></a><span class="w">  </span><span class="nt">github-webhook-secret</span><span class="p">:</span>
-</span><span id="__span-13-12"><a id="__codelineno-13-12" name="__codelineno-13-12" href="#__codelineno-13-12"></a><span class="w">    </span><span class="nt">file</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">./secrets/github-webhook-secret.txt</span>
+<div class="language-yaml highlight"><pre><span></span><code><span id="__span-15-1"><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a><span class="nt">services</span><span class="p">:</span>
+</span><span id="__span-15-2"><a id="__codelineno-15-2" name="__codelineno-15-2" href="#__codelineno-15-2"></a><span class="w">  </span><span class="nt">gateway</span><span class="p">:</span>
+</span><span id="__span-15-3"><a id="__codelineno-15-3" name="__codelineno-15-3" href="#__codelineno-15-3"></a><span class="w">    </span><span class="nt">image</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">vartrack/gateway</span>
+</span><span id="__span-15-4"><a id="__codelineno-15-4" name="__codelineno-15-4" href="#__codelineno-15-4"></a><span class="w">    </span><span class="nt">secrets</span><span class="p">:</span>
+</span><span id="__span-15-5"><a id="__codelineno-15-5" name="__codelineno-15-5" href="#__codelineno-15-5"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">github-pat</span>
+</span><span id="__span-15-6"><a id="__codelineno-15-6" name="__codelineno-15-6" href="#__codelineno-15-6"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">github-webhook-secret</span>
+</span><span id="__span-15-7"><a id="__codelineno-15-7" name="__codelineno-15-7" href="#__codelineno-15-7"></a>
+</span><span id="__span-15-8"><a id="__codelineno-15-8" name="__codelineno-15-8" href="#__codelineno-15-8"></a><span class="nt">secrets</span><span class="p">:</span>
+</span><span id="__span-15-9"><a id="__codelineno-15-9" name="__codelineno-15-9" href="#__codelineno-15-9"></a><span class="w">  </span><span class="nt">github-pat</span><span class="p">:</span>
+</span><span id="__span-15-10"><a id="__codelineno-15-10" name="__codelineno-15-10" href="#__codelineno-15-10"></a><span class="w">    </span><span class="nt">file</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">./secrets/github-pat.txt</span>
+</span><span id="__span-15-11"><a id="__codelineno-15-11" name="__codelineno-15-11" href="#__codelineno-15-11"></a><span class="w">  </span><span class="nt">github-webhook-secret</span><span class="p">:</span>
+</span><span id="__span-15-12"><a id="__codelineno-15-12" name="__codelineno-15-12" href="#__codelineno-15-12"></a><span class="w">    </span><span class="nt">file</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">./secrets/github-webhook-secret.txt</span>
 </span></code></pre></div>
 <p><strong>Kubernetes example:</strong></p>
-<div class="language-yaml highlight"><pre><span></span><code><span id="__span-14-1"><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a><span class="nt">apiVersion</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">v1</span>
-</span><span id="__span-14-2"><a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Secret</span>
-</span><span id="__span-14-3"><a id="__codelineno-14-3" name="__codelineno-14-3" href="#__codelineno-14-3"></a><span class="nt">metadata</span><span class="p">:</span>
-</span><span id="__span-14-4"><a id="__codelineno-14-4" name="__codelineno-14-4" href="#__codelineno-14-4"></a><span class="w">  </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">vartrack-secrets</span>
-</span><span id="__span-14-5"><a id="__codelineno-14-5" name="__codelineno-14-5" href="#__codelineno-14-5"></a><span class="nt">stringData</span><span class="p">:</span>
-</span><span id="__span-14-6"><a id="__codelineno-14-6" name="__codelineno-14-6" href="#__codelineno-14-6"></a><span class="w">  </span><span class="nt">github-pat</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">ghp_xxx</span>
-</span><span id="__span-14-7"><a id="__codelineno-14-7" name="__codelineno-14-7" href="#__codelineno-14-7"></a><span class="w">  </span><span class="nt">github-webhook-secret</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">my-secret</span>
-</span><span id="__span-14-8"><a id="__codelineno-14-8" name="__codelineno-14-8" href="#__codelineno-14-8"></a><span class="nn">---</span>
-</span><span id="__span-14-9"><a id="__codelineno-14-9" name="__codelineno-14-9" href="#__codelineno-14-9"></a><span class="c1"># In the Pod spec:</span>
-</span><span id="__span-14-10"><a id="__codelineno-14-10" name="__codelineno-14-10" href="#__codelineno-14-10"></a><span class="nt">volumeMounts</span><span class="p">:</span>
-</span><span id="__span-14-11"><a id="__codelineno-14-11" name="__codelineno-14-11" href="#__codelineno-14-11"></a><span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">vartrack-secrets</span>
-</span><span id="__span-14-12"><a id="__codelineno-14-12" name="__codelineno-14-12" href="#__codelineno-14-12"></a><span class="w">    </span><span class="nt">mountPath</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/run/secrets</span>
-</span><span id="__span-14-13"><a id="__codelineno-14-13" name="__codelineno-14-13" href="#__codelineno-14-13"></a><span class="w">    </span><span class="nt">readOnly</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
-</span><span id="__span-14-14"><a id="__codelineno-14-14" name="__codelineno-14-14" href="#__codelineno-14-14"></a><span class="nt">volumes</span><span class="p">:</span>
-</span><span id="__span-14-15"><a id="__codelineno-14-15" name="__codelineno-14-15" href="#__codelineno-14-15"></a><span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">vartrack-secrets</span>
-</span><span id="__span-14-16"><a id="__codelineno-14-16" name="__codelineno-14-16" href="#__codelineno-14-16"></a><span class="w">    </span><span class="nt">secret</span><span class="p">:</span>
-</span><span id="__span-14-17"><a id="__codelineno-14-17" name="__codelineno-14-17" href="#__codelineno-14-17"></a><span class="w">      </span><span class="nt">secretName</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">vartrack-secrets</span>
+<div class="language-yaml highlight"><pre><span></span><code><span id="__span-16-1"><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a><span class="nt">apiVersion</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">v1</span>
+</span><span id="__span-16-2"><a id="__codelineno-16-2" name="__codelineno-16-2" href="#__codelineno-16-2"></a><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Secret</span>
+</span><span id="__span-16-3"><a id="__codelineno-16-3" name="__codelineno-16-3" href="#__codelineno-16-3"></a><span class="nt">metadata</span><span class="p">:</span>
+</span><span id="__span-16-4"><a id="__codelineno-16-4" name="__codelineno-16-4" href="#__codelineno-16-4"></a><span class="w">  </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">vartrack-secrets</span>
+</span><span id="__span-16-5"><a id="__codelineno-16-5" name="__codelineno-16-5" href="#__codelineno-16-5"></a><span class="nt">stringData</span><span class="p">:</span>
+</span><span id="__span-16-6"><a id="__codelineno-16-6" name="__codelineno-16-6" href="#__codelineno-16-6"></a><span class="w">  </span><span class="nt">github-pat</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">ghp_xxx</span>
+</span><span id="__span-16-7"><a id="__codelineno-16-7" name="__codelineno-16-7" href="#__codelineno-16-7"></a><span class="w">  </span><span class="nt">github-webhook-secret</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">my-secret</span>
+</span><span id="__span-16-8"><a id="__codelineno-16-8" name="__codelineno-16-8" href="#__codelineno-16-8"></a><span class="nn">---</span>
+</span><span id="__span-16-9"><a id="__codelineno-16-9" name="__codelineno-16-9" href="#__codelineno-16-9"></a><span class="c1"># In the Pod spec:</span>
+</span><span id="__span-16-10"><a id="__codelineno-16-10" name="__codelineno-16-10" href="#__codelineno-16-10"></a><span class="nt">volumeMounts</span><span class="p">:</span>
+</span><span id="__span-16-11"><a id="__codelineno-16-11" name="__codelineno-16-11" href="#__codelineno-16-11"></a><span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">vartrack-secrets</span>
+</span><span id="__span-16-12"><a id="__codelineno-16-12" name="__codelineno-16-12" href="#__codelineno-16-12"></a><span class="w">    </span><span class="nt">mountPath</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/run/secrets</span>
+</span><span id="__span-16-13"><a id="__codelineno-16-13" name="__codelineno-16-13" href="#__codelineno-16-13"></a><span class="w">    </span><span class="nt">readOnly</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
+</span><span id="__span-16-14"><a id="__codelineno-16-14" name="__codelineno-16-14" href="#__codelineno-16-14"></a><span class="nt">volumes</span><span class="p">:</span>
+</span><span id="__span-16-15"><a id="__codelineno-16-15" name="__codelineno-16-15" href="#__codelineno-16-15"></a><span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">vartrack-secrets</span>
+</span><span id="__span-16-16"><a id="__codelineno-16-16" name="__codelineno-16-16" href="#__codelineno-16-16"></a><span class="w">    </span><span class="nt">secret</span><span class="p">:</span>
+</span><span id="__span-16-17"><a id="__codelineno-16-17" name="__codelineno-16-17" href="#__codelineno-16-17"></a><span class="w">      </span><span class="nt">secretName</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">vartrack-secrets</span>
 </span></code></pre></div>
 <p>If the file cannot be read at startup, the service exits with a descriptive error.</p>
 <hr />
 <h2 id="global_tags"><code>global_tags</code><a class="headerlink" href="#global_tags" title="Permanent link">&para;</a></h2>
 <p>Arbitrary key-value metadata applied to every write across all sinks:</p>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-15-1"><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a>global_tags: {
-</span><span id="__span-15-2"><a id="__codelineno-15-2" name="__codelineno-15-2" href="#__codelineno-15-2"></a>  team:        &quot;platform&quot;
-</span><span id="__span-15-3"><a id="__codelineno-15-3" name="__codelineno-15-3" href="#__codelineno-15-3"></a>  environment: &quot;production&quot;
-</span><span id="__span-15-4"><a id="__codelineno-15-4" name="__codelineno-15-4" href="#__codelineno-15-4"></a>}
+<div class="language-text highlight"><pre><span></span><code><span id="__span-17-1"><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a>global_tags: {
+</span><span id="__span-17-2"><a id="__codelineno-17-2" name="__codelineno-17-2" href="#__codelineno-17-2"></a>  team:        &quot;platform&quot;
+</span><span id="__span-17-3"><a id="__codelineno-17-3" name="__codelineno-17-3" href="#__codelineno-17-3"></a>  environment: &quot;production&quot;
+</span><span id="__span-17-4"><a id="__codelineno-17-4" name="__codelineno-17-4" href="#__codelineno-17-4"></a>}
 </span></code></pre></div>
 <hr />
 <h2 id="infrastructure-wiring">Infrastructure wiring<a class="headerlink" href="#infrastructure-wiring" title="Permanent link">&para;</a></h2>
 <p>Wire varTrack's internal components to specific datasources. Each value is the datasource name (<code>{type}</code> or <code>{type}-{tag}</code>):</p>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-16-1"><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a>bundle: {
-</span><span id="__span-16-2"><a id="__codelineno-16-2" name="__codelineno-16-2" href="#__codelineno-16-2"></a>  celery_broker_datasource:            &quot;redis&quot;        // Celery task queue broker
-</span><span id="__span-16-3"><a id="__codelineno-16-3" name="__codelineno-16-3" href="#__codelineno-16-3"></a>  celery_backend_datasource:           &quot;redis&quot;        // Celery result backend
-</span><span id="__span-16-4"><a id="__codelineno-16-4" name="__codelineno-16-4" href="#__codelineno-16-4"></a>  gateway_nonce_datasource:            &quot;redis&quot;        // replay-protection nonce store
-</span><span id="__span-16-5"><a id="__codelineno-16-5" name="__codelineno-16-5" href="#__codelineno-16-5"></a>  watcher_leader_election_datasource:  &quot;redis&quot;        // distributed leader election (Redis or ZooKeeper)
-</span><span id="__span-16-6"><a id="__codelineno-16-6" name="__codelineno-16-6" href="#__codelineno-16-6"></a>}
+<div class="language-text highlight"><pre><span></span><code><span id="__span-18-1"><a id="__codelineno-18-1" name="__codelineno-18-1" href="#__codelineno-18-1"></a>bundle: {
+</span><span id="__span-18-2"><a id="__codelineno-18-2" name="__codelineno-18-2" href="#__codelineno-18-2"></a>  celery_broker_datasource:            &quot;redis&quot;        // Celery task queue broker
+</span><span id="__span-18-3"><a id="__codelineno-18-3" name="__codelineno-18-3" href="#__codelineno-18-3"></a>  celery_backend_datasource:           &quot;redis&quot;        // Celery result backend
+</span><span id="__span-18-4"><a id="__codelineno-18-4" name="__codelineno-18-4" href="#__codelineno-18-4"></a>  gateway_nonce_datasource:            &quot;redis&quot;        // replay-protection nonce store
+</span><span id="__span-18-5"><a id="__codelineno-18-5" name="__codelineno-18-5" href="#__codelineno-18-5"></a>  watcher_leader_election_datasource:  &quot;redis&quot;        // distributed leader election (Redis or ZooKeeper)
+</span><span id="__span-18-6"><a id="__codelineno-18-6" name="__codelineno-18-6" href="#__codelineno-18-6"></a>}
 </span></code></pre></div>
 <p>In a single-Redis setup, all four can point to the same datasource. In production you may want separate instances for isolation. The <code>watcher_leader_election_datasource</code> also accepts <code>"zookeeper"</code>.</p>
 <p>See <a href="../../concepts/drift-detection/">Drift Detection</a> for how the watcher uses these.</p>
 <hr />
 <h2 id="ui"><code>ui</code><a class="headerlink" href="#ui" title="Permanent link">&para;</a></h2>
 <p>The web UI: where users open it, and sign-in with your Git platforms. Each user sees the rules whose repositories their own account on the rule's platform can read, and syncs the ones it can write to. Without <code>ui.auth</code> the UI is open.</p>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-17-1"><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a>ui: {
-</span><span id="__span-17-2"><a id="__codelineno-17-2" name="__codelineno-17-2" href="#__codelineno-17-2"></a>  public_url: &quot;https://vartrack.example.com&quot;
-</span><span id="__span-17-3"><a id="__codelineno-17-3" name="__codelineno-17-3" href="#__codelineno-17-3"></a>  auth: {
-</span><span id="__span-17-4"><a id="__codelineno-17-4" name="__codelineno-17-4" href="#__codelineno-17-4"></a>    providers: [
-</span><span id="__span-17-5"><a id="__codelineno-17-5" name="__codelineno-17-5" href="#__codelineno-17-5"></a>      {platform: &quot;github&quot;, client_id: &quot;Iv1.8a61…&quot;, client_secret: {file: &quot;/run/secrets/github-oauth&quot;}},
-</span><span id="__span-17-6"><a id="__codelineno-17-6" name="__codelineno-17-6" href="#__codelineno-17-6"></a>      {platform: &quot;gitea&quot;,  client_id: {file: &quot;/run/secrets/gitea-id&quot;}, client_secret: {ref: {path: &quot;ui/gitea&quot;, key: &quot;client_secret&quot;}},
-</span><span id="__span-17-7"><a id="__codelineno-17-7" name="__codelineno-17-7" href="#__codelineno-17-7"></a>       browser_url: &quot;https://gitea.example.com&quot;},
-</span><span id="__span-17-8"><a id="__codelineno-17-8" name="__codelineno-17-8" href="#__codelineno-17-8"></a>    ]
-</span><span id="__span-17-9"><a id="__codelineno-17-9" name="__codelineno-17-9" href="#__codelineno-17-9"></a>    admins: [&quot;github:octo-admin&quot;]
-</span><span id="__span-17-10"><a id="__codelineno-17-10" name="__codelineno-17-10" href="#__codelineno-17-10"></a>    secret_manager: &quot;vault&quot;   // where {ref: …} values come from; optional with one secret manager
-</span><span id="__span-17-11"><a id="__codelineno-17-11" name="__codelineno-17-11" href="#__codelineno-17-11"></a>  }
-</span><span id="__span-17-12"><a id="__codelineno-17-12" name="__codelineno-17-12" href="#__codelineno-17-12"></a>}
+<div class="language-text highlight"><pre><span></span><code><span id="__span-19-1"><a id="__codelineno-19-1" name="__codelineno-19-1" href="#__codelineno-19-1"></a>ui: {
+</span><span id="__span-19-2"><a id="__codelineno-19-2" name="__codelineno-19-2" href="#__codelineno-19-2"></a>  public_url: &quot;https://vartrack.example.com&quot;
+</span><span id="__span-19-3"><a id="__codelineno-19-3" name="__codelineno-19-3" href="#__codelineno-19-3"></a>  auth: {
+</span><span id="__span-19-4"><a id="__codelineno-19-4" name="__codelineno-19-4" href="#__codelineno-19-4"></a>    providers: [
+</span><span id="__span-19-5"><a id="__codelineno-19-5" name="__codelineno-19-5" href="#__codelineno-19-5"></a>      {platform: &quot;github&quot;, client_id: &quot;Iv1.8a61…&quot;, client_secret: {file: &quot;/run/secrets/github-oauth&quot;}},
+</span><span id="__span-19-6"><a id="__codelineno-19-6" name="__codelineno-19-6" href="#__codelineno-19-6"></a>      {platform: &quot;gitea&quot;,  client_id: {file: &quot;/run/secrets/gitea-id&quot;}, client_secret: {ref: {path: &quot;ui/gitea&quot;, key: &quot;client_secret&quot;}},
+</span><span id="__span-19-7"><a id="__codelineno-19-7" name="__codelineno-19-7" href="#__codelineno-19-7"></a>       browser_url: &quot;https://gitea.example.com&quot;},
+</span><span id="__span-19-8"><a id="__codelineno-19-8" name="__codelineno-19-8" href="#__codelineno-19-8"></a>    ]
+</span><span id="__span-19-9"><a id="__codelineno-19-9" name="__codelineno-19-9" href="#__codelineno-19-9"></a>    admins: [&quot;github:octo-admin&quot;]
+</span><span id="__span-19-10"><a id="__codelineno-19-10" name="__codelineno-19-10" href="#__codelineno-19-10"></a>    secret_manager: &quot;vault&quot;   // where {ref: …} values come from; optional with one secret manager
+</span><span id="__span-19-11"><a id="__codelineno-19-11" name="__codelineno-19-11" href="#__codelineno-19-11"></a>  }
+</span><span id="__span-19-12"><a id="__codelineno-19-12" name="__codelineno-19-12" href="#__codelineno-19-12"></a>}
 </span></code></pre></div>
 <p>Every field, and how sessions work: <a href="../auth/#web-ui-sign-in-with-your-git-platform">Web UI sign-in</a>. Full example: <a href="https://github.com/jarin-devoss/varTrack/blob/main/examples/bundles/15_web_ui_sign_in.cue"><code>15_web_ui_sign_in.cue</code></a>.</p>
 <hr />
 <h2 id="auth"><code>auth</code><a class="headerlink" href="#auth" title="Permanent link">&para;</a></h2>
 <p>The CLI API (<code>/v1/cli/*</code>, used by <code>vt</code> and the web UI's Playground) lets a caller do what their own Git token may do in the rule's repositories. <code>auth</code> adds an optional OPA policy on top:</p>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-18-1"><a id="__codelineno-18-1" name="__codelineno-18-1" href="#__codelineno-18-1"></a>auth: {
-</span><span id="__span-18-2"><a id="__codelineno-18-2" name="__codelineno-18-2" href="#__codelineno-18-2"></a>  opa: {policy_file: &quot;/etc/vartrack/vartrack_authz.rego&quot;}
-</span><span id="__span-18-3"><a id="__codelineno-18-3" name="__codelineno-18-3" href="#__codelineno-18-3"></a>}
+<div class="language-text highlight"><pre><span></span><code><span id="__span-20-1"><a id="__codelineno-20-1" name="__codelineno-20-1" href="#__codelineno-20-1"></a>auth: {
+</span><span id="__span-20-2"><a id="__codelineno-20-2" name="__codelineno-20-2" href="#__codelineno-20-2"></a>  opa: {policy_file: &quot;/etc/vartrack/vartrack_authz.rego&quot;}
+</span><span id="__span-20-3"><a id="__codelineno-20-3" name="__codelineno-20-3" href="#__codelineno-20-3"></a>}
 </span></code></pre></div>
 <p>How callers are checked, the OPA input document and the evaluation order: <a href="../auth/">Authentication &amp; Authorization</a>. Full example: <a href="https://github.com/jarin-devoss/varTrack/blob/main/examples/bundles/13_cli_auth_opa.cue"><code>13_cli_auth_opa.cue</code></a>.</p>
 <hr />
@@ -2627,9 +2789,9 @@
 <p>Fine-tune gateway-service behaviour directly from the bundle:</p>
 <h3 id="max_webhook_body_bytes"><code>max_webhook_body_bytes</code><a class="headerlink" href="#max_webhook_body_bytes" title="Permanent link">&para;</a></h3>
 <p>Maximum size of an incoming webhook request body. Requests larger than this limit are rejected with <strong>HTTP 413</strong>. Defaults to <strong>10 MiB</strong> when unset.</p>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-19-1"><a id="__codelineno-19-1" name="__codelineno-19-1" href="#__codelineno-19-1"></a>bundle: {
-</span><span id="__span-19-2"><a id="__codelineno-19-2" name="__codelineno-19-2" href="#__codelineno-19-2"></a>  max_webhook_body_bytes: 5242880   // 5 MiB
-</span><span id="__span-19-3"><a id="__codelineno-19-3" name="__codelineno-19-3" href="#__codelineno-19-3"></a>}
+<div class="language-text highlight"><pre><span></span><code><span id="__span-21-1"><a id="__codelineno-21-1" name="__codelineno-21-1" href="#__codelineno-21-1"></a>bundle: {
+</span><span id="__span-21-2"><a id="__codelineno-21-2" name="__codelineno-21-2" href="#__codelineno-21-2"></a>  max_webhook_body_bytes: 5242880   // 5 MiB
+</span><span id="__span-21-3"><a id="__codelineno-21-3" name="__codelineno-21-3" href="#__codelineno-21-3"></a>}
 </span></code></pre></div>
 <table>
 <thead>

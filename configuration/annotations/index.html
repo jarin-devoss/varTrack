@@ -1145,15 +1145,6 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#config-file-side" class="md-nav__link">
-    <span class="md-ellipsis">
-      Config file side
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
   <a href="#what-happens-at-etl-time" class="md-nav__link">
     <span class="md-ellipsis">
       What happens at ETL time
@@ -1199,24 +1190,6 @@
   <a href="#syntax_1" class="md-nav__link">
     <span class="md-ellipsis">
       Syntax
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#log-output" class="md-nav__link">
-    <span class="md-ellipsis">
-      Log output
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#combining-with-secret" class="md-nav__link">
-    <span class="md-ellipsis">
-      Combining with @secret()
     </span>
   </a>
   
@@ -1277,8 +1250,6 @@
       
         
           
-        
-      
         
       
         
@@ -1474,27 +1445,6 @@
   
   
     <li class="md-nav__item">
-      <a href="../../sinks/vercel/" class="md-nav__link">
-        
-  
-  <span class="md-ellipsis">
-    Vercel
-  </span>
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
       <a href="../../sinks/linux-server/" class="md-nav__link">
         
   
@@ -1532,6 +1482,8 @@
   
     
     
+      
+        
       
         
       
@@ -1650,6 +1602,27 @@
   
   
     <li class="md-nav__item">
+      <a href="../../operations/internal-auth/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Internal Authentication
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../../operations/monitoring/" class="md-nav__link">
         
   
@@ -1733,10 +1706,10 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5_7" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5_8" >
         
           
-          <label class="md-nav__link" for="__nav_5_7" id="__nav_5_7_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_5_8" id="__nav_5_8_label" tabindex="0">
             
   
   <span class="md-ellipsis">
@@ -1747,8 +1720,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_5_7_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_5_7">
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_5_8_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5_8">
             <span class="md-nav__icon md-icon"></span>
             Services
           </label>
@@ -1987,15 +1960,6 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#config-file-side" class="md-nav__link">
-    <span class="md-ellipsis">
-      Config file side
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
   <a href="#what-happens-at-etl-time" class="md-nav__link">
     <span class="md-ellipsis">
       What happens at ETL time
@@ -2046,24 +2010,6 @@
   
 </li>
         
-          <li class="md-nav__item">
-  <a href="#log-output" class="md-nav__link">
-    <span class="md-ellipsis">
-      Log output
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#combining-with-secret" class="md-nav__link">
-    <span class="md-ellipsis">
-      Combining with @secret()
-    </span>
-  </a>
-  
-</li>
-        
       </ul>
     </nav>
   
@@ -2102,104 +2048,113 @@
 <h2 id="secret"><code>@secret()</code><a class="headerlink" href="#secret" title="Permanent link">&para;</a></h2>
 <p>Marks a field whose value is a Vault path at ETL time instead of a real value. Before writing to any sink, the orchestrator reads the schema, finds every <code>@secret</code>-annotated field, fetches the real value from Vault, and injects it in-place.</p>
 <h3 id="syntax">Syntax<a class="headerlink" href="#syntax" title="Permanent link">&para;</a></h3>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>// default secret manager
-</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>&quot;db.password&quot;: string @secret()
-</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>
-</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>// named secret manager (matches secret_managers[].vault tag in the bundle)
-</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>&quot;api_key&quot;: string @secret(ref=&quot;other-vault&quot;)
-</span></code></pre></div>
-<h3 id="config-file-side">Config file side<a class="headerlink" href="#config-file-side" title="Permanent link">&para;</a></h3>
-<p>In the actual config file being synced (YAML, JSON, TOML, etc.) the field value is the Vault path:</p>
-<div class="language-yaml highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="c1"># configs/app.yaml</span>
-</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="nt">database</span><span class="p">:</span>
-</span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="w">  </span><span class="nt">password</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;@secret(secret/myapp/db#password)&quot;</span>
-</span><span id="__span-1-4"><a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>
-</span><span id="__span-1-5"><a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="nt">auth</span><span class="p">:</span>
-</span><span id="__span-1-6"><a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a><span class="w">  </span><span class="nt">jwt_secret</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;@secret(secret/myapp/auth#jwt_secret)&quot;</span>
-</span></code></pre></div>
+<p>```cue notest
+// default secret manager
+"db.password": string @secret()</p>
+<p>// named secret manager (matches secret_managers[].vault tag in the bundle)
+"api_key": string @secret(ref="other-vault")
+<div class="language-text highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>### Config file side
+</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>
+</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>In the actual config file being synced (YAML, JSON, TOML, etc.) the field value is the Vault path:
+</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>
+</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>```yaml
+</span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a># configs/app.yaml
+</span><span id="__span-0-7"><a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>database:
+</span><span id="__span-0-8"><a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>  password: &quot;@secret(secret/myapp/db#password)&quot;
+</span><span id="__span-0-9"><a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>
+</span><span id="__span-0-10"><a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a>auth:
+</span><span id="__span-0-11"><a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a>  jwt_secret: &quot;@secret(secret/myapp/auth#jwt_secret)&quot;
+</span></code></pre></div></p>
 <p>The format is <code>@secret(mount/path#field)</code> — mount path + <code>#</code> + field name inside the Vault secret.</p>
 <h3 id="what-happens-at-etl-time">What happens at ETL time<a class="headerlink" href="#what-happens-at-etl-time" title="Permanent link">&para;</a></h3>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>1. Parse schema → find @secret-annotated fields
-</span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>2. For each field present in flat_data:
-</span><span id="__span-2-3"><a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>   a. Determine secret manager: ref= or &quot;default&quot;
-</span><span id="__span-2-4"><a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a>   b. Fetch value from Vault: the path and field from &quot;@secret(mount/path#field)&quot;
-</span><span id="__span-2-5"><a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a>      (the manager&#39;s mount point may lead the path)
-</span><span id="__span-2-6"><a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a>   c. Replace flat_data[field] with the real value
-</span><span id="__span-2-7"><a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a>3. Write to sink — Vault value arrives, not the path string
+<div class="language-text highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>1. Parse schema → find @secret-annotated fields
+</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>2. For each field present in flat_data:
+</span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>   a. Determine secret manager: ref= or &quot;default&quot;
+</span><span id="__span-1-4"><a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>   b. Fetch value from Vault: the path and field from &quot;@secret(mount/path#field)&quot;
+</span><span id="__span-1-5"><a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>      (the manager&#39;s mount point may lead the path)
+</span><span id="__span-1-6"><a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a>   c. Replace flat_data[field] with the real value
+</span><span id="__span-1-7"><a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a>3. Write to sink — Vault value arrives, not the path string
 </span></code></pre></div>
 <h3 id="dry-run-behaviour">Dry-run behaviour<a class="headerlink" href="#dry-run-behaviour" title="Permanent link">&para;</a></h3>
 <p>In dry-run mode, <code>@secret</code> fields are <strong>masked as <code>***</code></strong> in the report. The real value is fetched from Vault but never returned to the caller.</p>
 <h3 id="bundle-wiring">Bundle wiring<a class="headerlink" href="#bundle-wiring" title="Permanent link">&para;</a></h3>
 <p>The <code>ref=</code> value must match the <code>tag</code> of a secret manager declared in the bundle:</p>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>bundle: {
-</span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>  secret_managers: [
-</span><span id="__span-3-3"><a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>    {
-</span><span id="__span-3-4"><a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a>      vault: {
-</span><span id="__span-3-5"><a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a>        tag:         &quot;default&quot;   // matched by @secret()
-</span><span id="__span-3-6"><a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a>        endpoint:    &quot;https://vault.mycompany.com&quot;
-</span><span id="__span-3-7"><a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a>        mount_point: &quot;secret&quot;
-</span><span id="__span-3-8"><a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a>        kv_version:  2
-</span><span id="__span-3-9"><a id="__codelineno-3-9" name="__codelineno-3-9" href="#__codelineno-3-9"></a>        token_auth: { token: &quot;hvs.xxxx&quot; }
-</span><span id="__span-3-10"><a id="__codelineno-3-10" name="__codelineno-3-10" href="#__codelineno-3-10"></a>      }
-</span><span id="__span-3-11"><a id="__codelineno-3-11" name="__codelineno-3-11" href="#__codelineno-3-11"></a>    },
-</span><span id="__span-3-12"><a id="__codelineno-3-12" name="__codelineno-3-12" href="#__codelineno-3-12"></a>    {
-</span><span id="__span-3-13"><a id="__codelineno-3-13" name="__codelineno-3-13" href="#__codelineno-3-13"></a>      vault: {
-</span><span id="__span-3-14"><a id="__codelineno-3-14" name="__codelineno-3-14" href="#__codelineno-3-14"></a>        tag:         &quot;other-vault&quot;   // matched by @secret(ref=&quot;other-vault&quot;)
-</span><span id="__span-3-15"><a id="__codelineno-3-15" name="__codelineno-3-15" href="#__codelineno-3-15"></a>        endpoint:    &quot;https://vault2.mycompany.com&quot;
-</span><span id="__span-3-16"><a id="__codelineno-3-16" name="__codelineno-3-16" href="#__codelineno-3-16"></a>        mount_point: &quot;secret&quot;
-</span><span id="__span-3-17"><a id="__codelineno-3-17" name="__codelineno-3-17" href="#__codelineno-3-17"></a>        kv_version:  2
-</span><span id="__span-3-18"><a id="__codelineno-3-18" name="__codelineno-3-18" href="#__codelineno-3-18"></a>        token_auth: { token: &quot;hvs.yyyy&quot; }
-</span><span id="__span-3-19"><a id="__codelineno-3-19" name="__codelineno-3-19" href="#__codelineno-3-19"></a>      }
-</span><span id="__span-3-20"><a id="__codelineno-3-20" name="__codelineno-3-20" href="#__codelineno-3-20"></a>    },
-</span><span id="__span-3-21"><a id="__codelineno-3-21" name="__codelineno-3-21" href="#__codelineno-3-21"></a>  ]
-</span><span id="__span-3-22"><a id="__codelineno-3-22" name="__codelineno-3-22" href="#__codelineno-3-22"></a>}
+<div class="language-text highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>bundle: {
+</span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>  secret_managers: [
+</span><span id="__span-2-3"><a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>    {
+</span><span id="__span-2-4"><a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a>      vault: {
+</span><span id="__span-2-5"><a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a>        tag:         &quot;default&quot;   // matched by @secret()
+</span><span id="__span-2-6"><a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a>        endpoint:    &quot;https://vault.mycompany.com&quot;
+</span><span id="__span-2-7"><a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a>        mount_point: &quot;secret&quot;
+</span><span id="__span-2-8"><a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a>        kv_version:  2
+</span><span id="__span-2-9"><a id="__codelineno-2-9" name="__codelineno-2-9" href="#__codelineno-2-9"></a>        token_auth: { token: &quot;hvs.xxxx&quot; }
+</span><span id="__span-2-10"><a id="__codelineno-2-10" name="__codelineno-2-10" href="#__codelineno-2-10"></a>      }
+</span><span id="__span-2-11"><a id="__codelineno-2-11" name="__codelineno-2-11" href="#__codelineno-2-11"></a>    },
+</span><span id="__span-2-12"><a id="__codelineno-2-12" name="__codelineno-2-12" href="#__codelineno-2-12"></a>    {
+</span><span id="__span-2-13"><a id="__codelineno-2-13" name="__codelineno-2-13" href="#__codelineno-2-13"></a>      vault: {
+</span><span id="__span-2-14"><a id="__codelineno-2-14" name="__codelineno-2-14" href="#__codelineno-2-14"></a>        tag:         &quot;other-vault&quot;   // matched by @secret(ref=&quot;other-vault&quot;)
+</span><span id="__span-2-15"><a id="__codelineno-2-15" name="__codelineno-2-15" href="#__codelineno-2-15"></a>        endpoint:    &quot;https://vault2.mycompany.com&quot;
+</span><span id="__span-2-16"><a id="__codelineno-2-16" name="__codelineno-2-16" href="#__codelineno-2-16"></a>        mount_point: &quot;secret&quot;
+</span><span id="__span-2-17"><a id="__codelineno-2-17" name="__codelineno-2-17" href="#__codelineno-2-17"></a>        kv_version:  2
+</span><span id="__span-2-18"><a id="__codelineno-2-18" name="__codelineno-2-18" href="#__codelineno-2-18"></a>        token_auth: { token: &quot;hvs.yyyy&quot; }
+</span><span id="__span-2-19"><a id="__codelineno-2-19" name="__codelineno-2-19" href="#__codelineno-2-19"></a>      }
+</span><span id="__span-2-20"><a id="__codelineno-2-20" name="__codelineno-2-20" href="#__codelineno-2-20"></a>    },
+</span><span id="__span-2-21"><a id="__codelineno-2-21" name="__codelineno-2-21" href="#__codelineno-2-21"></a>  ]
+</span><span id="__span-2-22"><a id="__codelineno-2-22" name="__codelineno-2-22" href="#__codelineno-2-22"></a>}
 </span></code></pre></div>
 <p><code>@secret()</code> without <code>ref=</code> uses the rule's <code>secret_manager</code> when it names one, else the entry tagged <code>default</code>, else the bundle's only one. Secret managers are declared in <code>config.cue</code>'s <a href="../bundle/#secret_managers"><code>secret_managers</code></a> only; a rule's own <code>secrets</code> block was removed. A field whose value is not in the <code>@secret(path#field)</code> form is read at the manager's <code>path_prefix</code>, under the field's own name.</p>
 <hr />
 <h2 id="logger"><code>@logger()</code><a class="headerlink" href="#logger" title="Permanent link">&para;</a></h2>
 <p>Marks a field for <strong>structured change logging</strong>. Every time a value changes between ETL runs, the orchestrator emits an INFO log entry showing the field name, old value, new value, datasource, and environment.</p>
 <h3 id="syntax_1">Syntax<a class="headerlink" href="#syntax_1" title="Permanent link">&para;</a></h3>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>app_port:      int    @logger()
-</span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>database.host: string @logger()
+<p>```cue notest
+app_port:      int    @logger()
+database.host: string @logger()
+<div class="language-text highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>### Log output
+</span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>
+</span><span id="__span-3-3"><a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>When a non-secret field changes:
 </span></code></pre></div>
-<h3 id="log-output">Log output<a class="headerlink" href="#log-output" title="Permanent link">&para;</a></h3>
-<p>When a non-secret field changes:</p>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>field changed  datasource=mongo  env=production  field=app_port
-</span><span id="__span-5-2"><a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>               from=8080  to=9090  file=configs/app.yaml
+field changed  datasource=mongo  env=production  field=app_port
+               from=8080  to=9090  file=configs/app.yaml
+<div class="language-text highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>When a field is written for the first time (no old value):
 </span></code></pre></div>
-<p>When a field is written for the first time (no old value):</p>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>field changed  datasource=mongo  env=production  field=database.host
-</span><span id="__span-6-2"><a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>               to=&quot;db.prod.internal&quot;  file=configs/app.yaml
-</span></code></pre></div>
-<h3 id="combining-with-secret">Combining with <code>@secret()</code><a class="headerlink" href="#combining-with-secret" title="Permanent link">&para;</a></h3>
-<p>You can annotate a field with both. The change is logged but the values are <strong>never revealed</strong> — only <code>changed=true</code> is recorded:</p>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-7-1"><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>&quot;database.password&quot;: string @secret() @logger()
-</span></code></pre></div>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-8-1"><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>field changed  datasource=mongo  env=production  field=database.password
-</span><span id="__span-8-2"><a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>               changed=true  file=configs/app.yaml
+field changed  datasource=mongo  env=production  field=database.host
+               to="db.prod.internal"  file=configs/app.yaml
+<div class="language-text highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>### Combining with `@secret()`
+</span><span id="__span-5-2"><a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>
+</span><span id="__span-5-3"><a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>You can annotate a field with both. The change is logged but the values are **never revealed** — only `changed=true` is recorded:
+</span><span id="__span-5-4"><a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a>
+</span><span id="__span-5-5"><a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a>```cue notest
+</span><span id="__span-5-6"><a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a>&quot;database.password&quot;: string @secret() @logger()
+</span></code></pre></div></p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>field changed  datasource=mongo  env=production  field=database.password
+</span><span id="__span-6-2"><a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>               changed=true  file=configs/app.yaml
 </span></code></pre></div>
 <hr />
 <h2 id="full-schema-example">Full schema example<a class="headerlink" href="#full-schema-example" title="Permanent link">&para;</a></h2>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-9-1"><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>// app.yaml.cue at the root of the schema repo — checks every file named app.yaml
-</span><span id="__span-9-2"><a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>&quot;app.port&quot;:          string &amp; =~&quot;^[0-9]+$&quot;   @logger()
-</span><span id="__span-9-3"><a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a>&quot;log.level&quot;:         &quot;debug&quot; | &quot;info&quot; | &quot;warn&quot; | &quot;error&quot;
-</span><span id="__span-9-4"><a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a>&quot;database.host&quot;:     string &amp; !=&quot;&quot;            @logger()
-</span><span id="__span-9-5"><a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a>&quot;database.port&quot;:     string &amp; =~&quot;^[0-9]+$&quot;   @logger()
-</span><span id="__span-9-6"><a id="__codelineno-9-6" name="__codelineno-9-6" href="#__codelineno-9-6"></a>&quot;database.password&quot;: string &amp; !=&quot;&quot;            @secret() @logger()
-</span><span id="__span-9-7"><a id="__codelineno-9-7" name="__codelineno-9-7" href="#__codelineno-9-7"></a>&quot;api.secret_key&quot;:    string &amp; !=&quot;&quot;            @secret()
-</span><span id="__span-9-8"><a id="__codelineno-9-8" name="__codelineno-9-8" href="#__codelineno-9-8"></a>&quot;max_connections&quot;?:  string &amp; =~&quot;^[0-9]+$&quot;
-</span></code></pre></div>
-<p>The fields are at the top level, not inside a <code>#Definition</code> — <code>cue vet</code> checks the data only against top-level fields. Values are strings, as the file is flattened first, so a number is a string matching a pattern; see <a href="../schema-registry/#cue-schemas">CUE schemas</a>.</p>
-<p>Register the schema in your bundle:</p>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-10-1"><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a>bundle: {
-</span><span id="__span-10-2"><a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a>  schema_registry: {
-</span><span id="__span-10-3"><a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a>    platform: &quot;github&quot;
-</span><span id="__span-10-4"><a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a>    repo:     &quot;my-org/schemas&quot;
-</span><span id="__span-10-5"><a id="__codelineno-10-5" name="__codelineno-10-5" href="#__codelineno-10-5"></a>    branch:   &quot;main&quot;
-</span><span id="__span-10-6"><a id="__codelineno-10-6" name="__codelineno-10-6" href="#__codelineno-10-6"></a>  }
-</span><span id="__span-10-7"><a id="__codelineno-10-7" name="__codelineno-10-7" href="#__codelineno-10-7"></a>  // ...
-</span><span id="__span-10-8"><a id="__codelineno-10-8" name="__codelineno-10-8" href="#__codelineno-10-8"></a>}
-</span></code></pre></div>
+<p>```cue notest
+// app.yaml.cue at the root of the schema repo — checks every file named app.yaml
+"app.port":          string &amp; =~"^[0-9]+$"   @logger()
+"log.level":         "debug" | "info" | "warn" | "error"
+"database.host":     string &amp; !=""            @logger()
+"database.port":     string &amp; =~"^[0-9]+$"   @logger()
+"database.password": string &amp; !=""            @secret() @logger()
+"api.secret_key":    string &amp; !=""            @secret()
+"max_connections"?:  string &amp; =~"^[0-9]+$"
+<div class="language-text highlight"><pre><span></span><code><span id="__span-7-1"><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>The fields are at the top level, not inside a `#Definition` — `cue vet` checks the data only against top-level fields. Values are strings, as the file is flattened first, so a number is a string matching a pattern; see [CUE schemas](schema-registry.md#cue-schemas).
+</span><span id="__span-7-2"><a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>
+</span><span id="__span-7-3"><a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a>Register the schema in your bundle:
+</span><span id="__span-7-4"><a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a>
+</span><span id="__span-7-5"><a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a>```cue
+</span><span id="__span-7-6"><a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a>bundle: {
+</span><span id="__span-7-7"><a id="__codelineno-7-7" name="__codelineno-7-7" href="#__codelineno-7-7"></a>  schema_registry: {
+</span><span id="__span-7-8"><a id="__codelineno-7-8" name="__codelineno-7-8" href="#__codelineno-7-8"></a>    platform: &quot;github&quot;
+</span><span id="__span-7-9"><a id="__codelineno-7-9" name="__codelineno-7-9" href="#__codelineno-7-9"></a>    repo:     &quot;my-org/schemas&quot;
+</span><span id="__span-7-10"><a id="__codelineno-7-10" name="__codelineno-7-10" href="#__codelineno-7-10"></a>    branch:   &quot;main&quot;
+</span><span id="__span-7-11"><a id="__codelineno-7-11" name="__codelineno-7-11" href="#__codelineno-7-11"></a>  }
+</span><span id="__span-7-12"><a id="__codelineno-7-12" name="__codelineno-7-12" href="#__codelineno-7-12"></a>  // ...
+</span><span id="__span-7-13"><a id="__codelineno-7-13" name="__codelineno-7-13" href="#__codelineno-7-13"></a>}
+</span></code></pre></div></p>
 <p>varTrack fetches the schema from Git, runs <code>cue vet</code> to validate the payload, then processes <code>@secret</code> and <code>@logger</code> annotations before writing to any sink.</p>
 
 

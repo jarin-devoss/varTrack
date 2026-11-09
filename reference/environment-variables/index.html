@@ -1137,8 +1137,6 @@
       
         
       
-        
-      
     
     
       
@@ -1315,27 +1313,6 @@
   
   
     <li class="md-nav__item">
-      <a href="../../sinks/vercel/" class="md-nav__link">
-        
-  
-  <span class="md-ellipsis">
-    Vercel
-  </span>
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
       <a href="../../sinks/linux-server/" class="md-nav__link">
         
   
@@ -1373,6 +1350,8 @@
   
     
     
+      
+        
       
         
       
@@ -1491,6 +1470,27 @@
   
   
     <li class="md-nav__item">
+      <a href="../../operations/internal-auth/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Internal Authentication
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../../operations/monitoring/" class="md-nav__link">
         
   
@@ -1574,10 +1574,10 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5_7" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5_8" >
         
           
-          <label class="md-nav__link" for="__nav_5_7" id="__nav_5_7_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_5_8" id="__nav_5_8_label" tabindex="0">
             
   
   <span class="md-ellipsis">
@@ -1588,8 +1588,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_5_7_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_5_7">
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_5_8_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5_8">
             <span class="md-nav__icon md-icon"></span>
             Services
           </label>
@@ -2056,6 +2056,31 @@ the directories above its code).</p>
 <td>—</td>
 <td>Added to the addresses of the self-signed certificate the gateway makes when it has none (Kubernetes downward API)</td>
 </tr>
+<tr>
+<td><code>INTERNAL_AUTH_SECRET</code> (or <code>INTERNAL_AUTH_SECRET_FILE</code>)</td>
+<td>—</td>
+<td>Signs the grants the gateway presents to the orchestrator; 32+ characters, the same on every service. Required in production — see <a href="../../operations/internal-auth/">Internal authentication</a></td>
+</tr>
+<tr>
+<td><code>INTERNAL_AUTH_INSECURE</code></td>
+<td><code>false</code></td>
+<td>Production only: start without <code>INTERNAL_AUTH_SECRET</code> on purpose</td>
+</tr>
+<tr>
+<td><code>AUTHZ_ADDR</code></td>
+<td>—</td>
+<td>Where the permission engine is served to the orchestrator's web UI (e.g. <code>:5658</code>). Unset serves nothing: the CLI API still asks the engine in-process, but a web UI with sign-in on then answers <code>503</code>. In production it needs <code>INTERNAL_AUTH_SECRET</code> and <code>GATEWAY_TLS_CERT</code>/<code>GATEWAY_TLS_KEY</code>. See <a href="../../operations/internal-auth/#the-permission-engine">Internal authentication</a></td>
+</tr>
+<tr>
+<td><code>INTERNAL_AUTH_AUTHZ_SECRET</code> (or <code>*_FILE</code>)</td>
+<td><code>INTERNAL_AUTH_SECRET</code></td>
+<td>Optional separate key for the grants the orchestrator presents to <code>AUTHZ_ADDR</code>; 32+ characters</td>
+</tr>
+<tr>
+<td><code>AUTHZ_CACHE_TTL</code></td>
+<td><code>60s</code></td>
+<td>How long the engine remembers what a Git platform said (a duration; <code>0</code> turns the cache off). A revoked permission keeps working for up to this long</td>
+</tr>
 </tbody>
 </table>
 <p>The replay store for several replicas is set in <code>config.cue</code> (<code>gateway_nonce_datasource</code>),
@@ -2087,9 +2112,9 @@ not in the environment — see <a href="../../operations/high-availability/#gate
 <td>The bundle; re-read when the file changes</td>
 </tr>
 <tr>
-<td><code>ORCHESTRATOR_ADDR</code></td>
+<td><code>ORCHESTRATOR_HTTP_ADDR</code></td>
 <td><code>0.0.0.0:8000</code></td>
-<td>HTTP listener (API and web UI read API)</td>
+<td>HTTP listener (API and web UI read API). Formerly <code>ORCHESTRATOR_ADDR</code>, which still works here for one release with a warning: everywhere else that name is the orchestrator's gRPC address to dial</td>
 </tr>
 <tr>
 <td><code>GRPC_PORT</code></td>
@@ -2098,13 +2123,53 @@ not in the environment — see <a href="../../operations/high-availability/#gate
 </tr>
 <tr>
 <td><code>ADMIN_HOST</code>, <code>ADMIN_PORT</code></td>
-<td><code>0.0.0.0</code>, <code>9090</code></td>
-<td>Health and metrics</td>
+<td><code>127.0.0.1</code>, <code>9090</code></td>
+<td>Health and metrics. Loopback by default; with <code>INTERNAL_AUTH_SECRET</code> set, everything but the health probes needs an admin grant</td>
+</tr>
+<tr>
+<td><code>ADMIN_ENABLE_PPROF</code></td>
+<td><code>DEBUG</code></td>
+<td>Serves <code>/debug/pprof</code> on the admin listener</td>
+</tr>
+<tr>
+<td><code>VARTRACK_BUNDLE_BINARY</code></td>
+<td><code>vartrack-bundle</code> on the <code>PATH</code></td>
+<td>The program that reads <code>config.cue</code> for the orchestrator exactly as the gateway does (<code>go build ./cmd/vartrack-bundle</code> in <code>libs/go</code>; the image ships it). Without it the orchestrator cannot load its bundle, and a production one does not start</td>
 </tr>
 <tr>
 <td><code>CORS_ORIGINS</code></td>
 <td>—</td>
-<td>Comma-separated origins the web UI is served from; empty allows none, <code>*</code> any</td>
+<td>Comma-separated origins the web UI is served from; empty allows none. <code>*</code> allows any only while running open for development: it is ignored in production or once <code>INTERNAL_AUTH_SECRET</code> is set</td>
+</tr>
+<tr>
+<td><code>INTERNAL_AUTH_SECRET</code> (or <code>INTERNAL_AUTH_SECRET_FILE</code>)</td>
+<td>—</td>
+<td>Verifies the signed grants every call to the HTTP API, the gRPC port and the admin port must carry; 32+ characters, the same on the gateway and the watcher. Without it the orchestrator runs open (development), and in production it refuses to start. See <a href="../../operations/internal-auth/">Internal authentication</a></td>
+</tr>
+<tr>
+<td><code>INTERNAL_AUTH_WATCH_SECRET</code>, <code>INTERNAL_AUTH_ADMIN_SECRET</code> (or <code>*_FILE</code>)</td>
+<td><code>INTERNAL_AUTH_SECRET</code></td>
+<td>Optional separate keys for the watcher's grants and the admin listener's</td>
+</tr>
+<tr>
+<td><code>INTERNAL_AUTH_INSECURE</code></td>
+<td><code>false</code></td>
+<td>Production only: run without <code>INTERNAL_AUTH_SECRET</code> on purpose</td>
+</tr>
+<tr>
+<td><code>GATEWAY_AUTHZ_ADDR</code></td>
+<td>—</td>
+<td><code>host:port</code> of the gateway's <code>AUTHZ_ADDR</code>: the permission engine the web UI asks what a signed-in user may see and do. Unset with sign-in on, the UI answers <code>503</code> rather than deciding itself</td>
+</tr>
+<tr>
+<td><code>GATEWAY_AUTHZ_CA_FILE</code>, <code>GATEWAY_AUTHZ_TIMEOUT</code></td>
+<td><code>TLS_CA_FILE</code>, <code>10</code></td>
+<td>CA that signed the gateway's certificate (the client certificate is <code>TLS_CERT_FILE</code>/<code>TLS_KEY_FILE</code>), and seconds to wait for an answer</td>
+</tr>
+<tr>
+<td><code>INTERNAL_AUTH_AUTHZ_SECRET</code> (or <code>*_FILE</code>)</td>
+<td><code>INTERNAL_AUTH_SECRET</code></td>
+<td>Optional separate key for the grants this service presents to the gateway's engine</td>
 </tr>
 <tr>
 <td><code>CELERY_BROKER_URL</code></td>
@@ -2139,7 +2204,7 @@ not in the environment — see <a href="../../operations/high-availability/#gate
 <tr>
 <td><code>SCHEMA_TENANT_&lt;ID&gt;_REPO</code>, <code>_BRANCH</code> (<code>main</code>), <code>_TOKEN</code></td>
 <td>—</td>
-<td>Registers tenant <code>&lt;id&gt;</code> and its schema repository — see <a href="../../guides/add-a-tenant/">Add a tenant</a></td>
+<td><strong>Deprecated</strong>: registers tenant <code>&lt;id&gt;</code> and its schema repository, with a warning. Declare the tenant in <code>config.cue</code>'s <a href="../../configuration/bundle/#tenants"><code>tenants</code></a> instead — see <a href="../../guides/add-a-tenant/">Add a tenant</a></td>
 </tr>
 <tr>
 <td><code>GIT_ALLOWED_HOSTS</code></td>
@@ -2202,9 +2267,9 @@ not in the environment — see <a href="../../operations/high-availability/#gate
 <td>How long the web UI reuses a datasource read when comparing it with Git</td>
 </tr>
 <tr>
-<td><code>UI_PUBLIC_URL</code>, <code>UI_AUTH_PLATFORMS</code>, <code>UI_AUTH_&lt;P&gt;_CLIENT_ID</code>, <code>_CLIENT_SECRET</code>, <code>_URL</code>, <code>_SCOPES</code>, <code>UI_AUTH_REDIRECT_URL</code>, <code>UI_AUTH_ADMINS</code>, <code>UI_SESSION_TTL_SECONDS</code>, <code>UI_SESSION_SECRET</code></td>
+<td><code>UI_PUBLIC_URL</code>, <code>UI_AUTH_PLATFORMS</code>, <code>UI_AUTH_&lt;P&gt;_CLIENT_ID</code>, <code>_CLIENT_SECRET</code>, <code>_URL</code>, <code>_SCOPES</code>, <code>UI_AUTH_REDIRECT_URL</code>, <code>UI_SESSION_TTL_SECONDS</code>, <code>UI_SESSION_SECRET</code></td>
 <td>—</td>
-<td>Web UI sign-in when <code>config.cue</code> has no <code>ui.auth</code> block; each can be read from a file with <code>_FILE</code> — see <a href="../../configuration/auth/#set-it-up">Web UI sign-in</a></td>
+<td>Web UI sign-in when <code>config.cue</code> has no <code>ui.auth</code> block; each can be read from a file with <code>_FILE</code> — see <a href="../../configuration/auth/#set-it-up">Web UI sign-in</a>. The admins are <code>ui.auth.admins</code> in the bundle; <code>UI_AUTH_ADMINS</code> is no longer read, and the orchestrator refuses to start while it is set</td>
 </tr>
 <tr>
 <td><code>APP_VERSION</code>, <code>GIT_COMMIT</code></td>
@@ -2226,27 +2291,27 @@ not in the environment — see <a href="../../operations/high-availability/#gate
 <tr>
 <td><code>PROM_</code></td>
 <td><code>PROM_ENABLED=true</code></td>
-<td><code>PROM_PORT</code> (<code>9090</code>), <code>PROM_METRICS_PATH</code> (<code>/metrics</code>), <code>PROM_EXTERNAL_LABELS</code>; push to a gateway with <code>PROM_PUSH_ENABLED</code>, <code>PROM_PUSH_URL</code>, <code>PROM_PUSH_INTERVAL</code> (15 s), <code>PROM_JOB_NAME</code>; TLS and basic auth with <code>PROM_ENABLE_TLS</code>, <code>PROM_TLS_*</code>, <code>PROM_BASIC_AUTH_USER</code>/<code>_PASS</code></td>
+<td><code>PROM_PORT</code> (<code>9090</code>), <code>PROM_METRICS_PATH</code> (<code>/metrics</code>), <code>PROM_EXTERNAL_LABELS</code>; push to a gateway with <code>PROM_PUSH_ENABLED</code>, <code>PROM_PUSH_URL</code>, <code>PROM_PUSH_INTERVAL</code> (15 s), <code>PROM_JOB_NAME</code>; TLS and basic auth with <code>PROM_ENABLE_TLS</code>, <code>PROM_TLS_*</code>, <code>PROM_INSECURE_SKIP_VERIFY</code>, <code>PROM_BASIC_AUTH_USER</code>, <code>PROM_BASIC_AUTH_PASS</code></td>
 </tr>
 <tr>
 <td><code>OTEL_</code></td>
 <td><code>OTEL_ENABLED=true</code></td>
-<td><code>OTEL_ENDPOINT</code> (<code>localhost:4317</code>), <code>OTEL_PROTOCOL</code> (<code>grpc</code>), <code>OTEL_SERVICE_NAME</code>, <code>OTEL_ENVIRONMENT</code>, <code>OTEL_SAMPLER_TYPE</code>/<code>_RATIO</code>, <code>OTEL_PROPAGATORS</code> (<code>tracecontext,baggage</code>), <code>OTEL_ENABLE_TRACES</code>, <code>OTEL_ENABLE_METRICS</code>, <code>OTEL_HEADERS</code>, <code>OTEL_RESOURCE_ATTRIBUTES</code>, <code>OTEL_USE_TLS</code> and <code>OTEL_TLS_*</code></td>
+<td><code>OTEL_ENDPOINT</code> (<code>localhost:4317</code>), <code>OTEL_PROTOCOL</code> (<code>grpc</code>), <code>OTEL_SERVICE_NAME</code>, <code>OTEL_ENVIRONMENT</code>, <code>OTEL_SAMPLER_TYPE</code>, <code>OTEL_SAMPLER_RATIO</code>, <code>OTEL_PROPAGATORS</code> (<code>tracecontext,baggage</code>), <code>OTEL_ENABLE_TRACES</code>, <code>OTEL_ENABLE_METRICS</code>, <code>OTEL_HEADERS</code>, <code>OTEL_RESOURCE_ATTRIBUTES</code>, <code>OTEL_BATCH_TIMEOUT</code>, <code>OTEL_MAX_QUEUE_SIZE</code>, <code>OTEL_MAX_EXPORT_BATCH</code> (0 leaves the SDK's own), <code>OTEL_METRICS_INTERVAL</code> (60 s), <code>OTEL_USE_TLS</code>, <code>OTEL_INSECURE_SKIP_VERIFY</code> and <code>OTEL_TLS_*</code></td>
 </tr>
 <tr>
 <td><code>JAEGER_</code></td>
 <td><code>JAEGER_ENABLED=true</code></td>
-<td><code>JAEGER_ENDPOINT</code> (<code>localhost:4317</code>), <code>JAEGER_PROTOCOL</code>, <code>JAEGER_SERVICE_NAME</code>, <code>JAEGER_SAMPLER_TYPE</code>/<code>_PARAM</code>, <code>JAEGER_AUTH_TOKEN</code>, <code>JAEGER_USE_TLS</code> and <code>JAEGER_TLS_*</code></td>
+<td><code>JAEGER_ENDPOINT</code> (<code>localhost:4317</code>), <code>JAEGER_PROTOCOL</code>, <code>JAEGER_SERVICE_NAME</code>, <code>JAEGER_SAMPLER_TYPE</code>, <code>JAEGER_SAMPLER_PARAM</code>, <code>JAEGER_AUTH_TOKEN</code>, <code>JAEGER_SERVICE_VERSION</code>, <code>JAEGER_ENVIRONMENT</code>, <code>JAEGER_RESOURCE_ATTRIBUTES</code>, <code>JAEGER_MAX_QUEUE_SIZE</code>, <code>JAEGER_FLUSH_INTERVAL</code> (0 leaves the SDK's own), <code>JAEGER_USE_TLS</code>, <code>JAEGER_INSECURE_SKIP_VERIFY</code> and <code>JAEGER_TLS_*</code></td>
 </tr>
 <tr>
 <td><code>ES_</code>, <code>ELK_</code></td>
 <td><code>ELK_ENABLED=true</code></td>
-<td><code>ES_ENDPOINTS</code> (<code>http://localhost:9200</code>), <code>ES_INDEX</code> (<code>vartrack-logs</code>), <code>ES_USERNAME</code>/<code>ES_PASSWORD</code>, <code>ES_API_KEY</code> or <code>ES_BEARER_TOKEN</code>, <code>ES_BULK_MAX_DOCS</code> (500), <code>ES_FLUSH_INTERVAL</code> (5 s), <code>ES_PIPELINE</code>, <code>ES_TLS_*</code></td>
+<td><code>ES_ENDPOINTS</code> (<code>http://localhost:9200</code>), <code>ES_INDEX</code> (<code>vartrack-logs</code>), <code>ES_USERNAME</code>/<code>ES_PASSWORD</code>, <code>ES_API_KEY</code> or <code>ES_BEARER_TOKEN</code>, <code>ES_BULK_MAX_DOCS</code> (500), <code>ES_FLUSH_INTERVAL</code> (5 s), <code>ES_PIPELINE</code>, <code>ES_EXTRA_FIELDS</code>, <code>ELK_SERVICE_VERSION</code>, <code>ES_INSECURE_SKIP_VERIFY</code> and <code>ES_TLS_*</code></td>
 </tr>
 <tr>
 <td><code>LOGSTASH_</code></td>
 <td><code>LOGSTASH_ENDPOINT</code> set</td>
-<td><code>LOGSTASH_TIMEOUT</code> (10 s), <code>LOGSTASH_USE_TLS</code> and <code>LOGSTASH_TLS_*</code></td>
+<td><code>LOGSTASH_TIMEOUT</code> (10 s), <code>LOGSTASH_USE_TLS</code>, <code>LOGSTASH_INSECURE_SKIP_VERIFY</code> and <code>LOGSTASH_TLS_*</code></td>
 </tr>
 </tbody>
 </table>
@@ -2264,6 +2329,11 @@ not in the environment — see <a href="../../operations/high-availability/#gate
 <td><code>APP_ENV</code></td>
 <td><code>development</code></td>
 <td><code>production</code> requires the TLS files below</td>
+</tr>
+<tr>
+<td><code>VARTRACK_ALLOW_DEGRADED</code></td>
+<td>—</td>
+<td>Comma-separated weaker modes the operator accepts: <code>config</code> (start on environment variables when <code>config.cue</code> cannot be read), <code>nonce_store</code> (replay protection in-process instead of Redis), <code>tls</code> (no TLS when there is no certificate), <code>schema_validation</code> (write files unvalidated when the <code>cue</code> program is missing). Each is logged when taken and listed by <code>/health/readiness</code> while on. <code>nonce_store</code> and <code>tls</code> are refused in production. Without it, none of these is ever a fallback: the service stops, or the request fails</td>
 </tr>
 <tr>
 <td><code>LOG_LEVEL</code></td>
@@ -2299,6 +2369,16 @@ not in the environment — see <a href="../../operations/high-availability/#gate
 <td><code>TLS_CA_FILE</code>, <code>TLS_CERT_FILE</code>, <code>TLS_KEY_FILE</code></td>
 <td>—</td>
 <td>mTLS to the orchestrator; required in production</td>
+</tr>
+<tr>
+<td><code>INTERNAL_AUTH_WATCH_SECRET</code>, else <code>INTERNAL_AUTH_SECRET</code> (or <code>*_FILE</code>)</td>
+<td>—</td>
+<td>Signs the grants the watcher presents to the orchestrator; required in production, and the same key the orchestrator verifies <code>watch</code> grants with</td>
+</tr>
+<tr>
+<td><code>INTERNAL_AUTH_INSECURE</code></td>
+<td><code>false</code></td>
+<td>Production only: start without a secret on purpose</td>
 </tr>
 <tr>
 <td><code>OTEL_ENABLED</code>, <code>ELK_ENABLED</code></td>

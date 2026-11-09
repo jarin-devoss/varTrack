@@ -1137,8 +1137,6 @@
       
         
       
-        
-      
     
     
       
@@ -1315,27 +1313,6 @@
   
   
     <li class="md-nav__item">
-      <a href="../../sinks/vercel/" class="md-nav__link">
-        
-  
-  <span class="md-ellipsis">
-    Vercel
-  </span>
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
       <a href="../../sinks/linux-server/" class="md-nav__link">
         
   
@@ -1375,6 +1352,8 @@
   
     
     
+      
+        
       
         
       
@@ -1496,6 +1475,27 @@
   
   
     <li class="md-nav__item">
+      <a href="../../operations/internal-auth/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Internal Authentication
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../../operations/monitoring/" class="md-nav__link">
         
   
@@ -1584,10 +1584,10 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5_7" checked>
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5_8" checked>
         
           
-          <label class="md-nav__link" for="__nav_5_7" id="__nav_5_7_label" tabindex="">
+          <label class="md-nav__link" for="__nav_5_8" id="__nav_5_8_label" tabindex="">
             
   
   <span class="md-ellipsis">
@@ -1598,8 +1598,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_5_7_label" aria-expanded="true">
-          <label class="md-nav__title" for="__nav_5_7">
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_5_8_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_5_8">
             <span class="md-nav__icon md-icon"></span>
             Services
           </label>
@@ -2125,9 +2125,14 @@
 <td>CUE schema clone directory</td>
 </tr>
 <tr>
-<td><code>ORCHESTRATOR_ADDR</code></td>
-<td><code>:50051</code></td>
-<td>gRPC listen address</td>
+<td><code>ORCHESTRATOR_HTTP_ADDR</code></td>
+<td><code>0.0.0.0:8000</code></td>
+<td>HTTP listen address (formerly <code>ORCHESTRATOR_ADDR</code>, still read for one release)</td>
+</tr>
+<tr>
+<td><code>GRPC_PORT</code></td>
+<td><code>50051</code></td>
+<td>gRPC listen port</td>
 </tr>
 <tr>
 <td><code>UI_DEFAULT_TENANT</code></td>

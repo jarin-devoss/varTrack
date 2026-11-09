@@ -1137,8 +1137,6 @@
       
         
       
-        
-      
     
     
       
@@ -1315,27 +1313,6 @@
   
   
     <li class="md-nav__item">
-      <a href="../../sinks/vercel/" class="md-nav__link">
-        
-  
-  <span class="md-ellipsis">
-    Vercel
-  </span>
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
       <a href="../../sinks/linux-server/" class="md-nav__link">
         
   
@@ -1375,6 +1352,8 @@
   
     
     
+      
+        
       
         
       
@@ -1496,6 +1475,27 @@
   
   
     <li class="md-nav__item">
+      <a href="../../operations/internal-auth/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Internal Authentication
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../../operations/monitoring/" class="md-nav__link">
         
   
@@ -1584,10 +1584,10 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5_7" checked>
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5_8" checked>
         
           
-          <label class="md-nav__link" for="__nav_5_7" id="__nav_5_7_label" tabindex="">
+          <label class="md-nav__link" for="__nav_5_8" id="__nav_5_8_label" tabindex="">
             
   
   <span class="md-ellipsis">
@@ -1598,8 +1598,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_5_7_label" aria-expanded="true">
-          <label class="md-nav__title" for="__nav_5_7">
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_5_8_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_5_8">
             <span class="md-nav__icon md-icon"></span>
             Services
           </label>
@@ -1713,6 +1713,24 @@
   <a href="#which-rules-it-watches" class="md-nav__link">
     <span class="md-ellipsis">
       Which rules it watches
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#a-heal-already-asked-for" class="md-nav__link">
+    <span class="md-ellipsis">
+      A heal already asked for
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#look-now" class="md-nav__link">
+    <span class="md-ellipsis">
+      Look now
     </span>
   </a>
   
@@ -1943,6 +1961,24 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#a-heal-already-asked-for" class="md-nav__link">
+    <span class="md-ellipsis">
+      A heal already asked for
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#look-now" class="md-nav__link">
+    <span class="md-ellipsis">
+      Look now
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -2029,22 +2065,29 @@
 <li>A rule of two tenants is two targets: each tenant's is checked and healed on its own.</li>
 </ul>
 <p>See <a href="../../concepts/drift-detection/">Drift Detection &amp; Self-Heal</a> for the edge cases (unknown, a heal underway, a sync that died).</p>
+<h3 id="a-heal-already-asked-for">A heal already asked for<a class="headerlink" href="#a-heal-already-asked-for" title="Permanent link">&para;</a></h3>
+<p>After the watcher asks for a heal, a "drifted" answer for <strong>the same environments</strong> within the next two polls (at least 30 s) is the drift that heal is about to fix, and it does not ask again. A <em>different</em> drift (another environment now differs too) is new and is healed at once.</p>
+<h3 id="look-now">Look now<a class="headerlink" href="#look-now" title="Permanent link">&para;</a></h3>
+<p><code>POST /admin/check?platform=&lt;platform&gt;&amp;datasource=&lt;datasource&gt;[&amp;tenant=&lt;tenant&gt;]</code> on the admin port makes the watcher check that rule and heal it if it drifted right away, whatever an earlier heal asked, and answers with what each watcher of the rule found:</p>
+<div class="language-json highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="p">{</span><span class="nt">&quot;results&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[{</span><span class="nt">&quot;watcher&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;gitea/mongo&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;tenant&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;demo&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;state&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;drifted&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;detail&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;differs from Git: gitea/mongo/default&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;healed&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">}]}</span>
+</span></code></pre></div>
+<p><code>404</code> when the rule is not watched (no <code>self_heal</code>, or suspended). With <code>INTERNAL_AUTH_SECRET</code> set the call needs an <code>admin</code> grant signed with it (<code>Authorization: Bearer &lt;grant&gt;</code>); without a secret the watcher runs open, as it does towards the orchestrator, and accepts it unsigned. The end-to-end tests use it to wait for the watcher's answer instead of its next poll; a test stack also lowers <code>POLL_INTERVAL</code> (the demo uses <code>10s</code>).</p>
 <hr />
 <h2 id="running">Running<a class="headerlink" href="#running" title="Permanent link">&para;</a></h2>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="nv">ORCHESTRATOR_ADDR</span><span class="o">=</span>localhost:50051<span class="w"> </span><span class="se">\</span>
-</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="nv">CONFIG_PATH</span><span class="o">=</span>config.cue<span class="w"> </span><span class="se">\</span>
-</span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="nv">POLL_INTERVAL</span><span class="o">=</span>60s<span class="w"> </span><span class="se">\</span>
-</span><span id="__span-1-4"><a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>go<span class="w"> </span>run<span class="w"> </span>./watcher-service/cmd
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="nv">ORCHESTRATOR_ADDR</span><span class="o">=</span>localhost:50051<span class="w"> </span><span class="se">\</span>
+</span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="nv">CONFIG_PATH</span><span class="o">=</span>config.cue<span class="w"> </span><span class="se">\</span>
+</span><span id="__span-2-3"><a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="nv">POLL_INTERVAL</span><span class="o">=</span>60s<span class="w"> </span><span class="se">\</span>
+</span><span id="__span-2-4"><a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a>go<span class="w"> </span>run<span class="w"> </span>./watcher-service/cmd
 </span></code></pre></div>
 <h3 id="with-docker">With Docker<a class="headerlink" href="#with-docker" title="Permanent link">&para;</a></h3>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>docker<span class="w"> </span>run<span class="w"> </span><span class="se">\</span>
-</span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="w">  </span>-p<span class="w"> </span><span class="m">9091</span>:9091<span class="w"> </span><span class="se">\</span>
-</span><span id="__span-2-3"><a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="w">  </span>-v<span class="w"> </span>./config.cue:/app/config.cue:ro<span class="w"> </span><span class="se">\</span>
-</span><span id="__span-2-4"><a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="w">  </span>-e<span class="w"> </span><span class="nv">APP_ENV</span><span class="o">=</span>production<span class="w"> </span><span class="se">\</span>
-</span><span id="__span-2-5"><a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a><span class="w">  </span>-e<span class="w"> </span><span class="nv">ORCHESTRATOR_ADDR</span><span class="o">=</span>orchestrator:50051<span class="w"> </span><span class="se">\</span>
-</span><span id="__span-2-6"><a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a><span class="w">  </span>-e<span class="w"> </span><span class="nv">CONFIG_PATH</span><span class="o">=</span>/app/config.cue<span class="w"> </span><span class="se">\</span>
-</span><span id="__span-2-7"><a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a><span class="w">  </span>-e<span class="w"> </span><span class="nv">POLL_INTERVAL</span><span class="o">=</span>60s<span class="w"> </span><span class="se">\</span>
-</span><span id="__span-2-8"><a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a><span class="w">  </span>jarin-devoss/watcher-service:latest
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>docker<span class="w"> </span>run<span class="w"> </span><span class="se">\</span>
+</span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="w">  </span>-p<span class="w"> </span><span class="m">9091</span>:9091<span class="w"> </span><span class="se">\</span>
+</span><span id="__span-3-3"><a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="w">  </span>-v<span class="w"> </span>./config.cue:/app/config.cue:ro<span class="w"> </span><span class="se">\</span>
+</span><span id="__span-3-4"><a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="w">  </span>-e<span class="w"> </span><span class="nv">APP_ENV</span><span class="o">=</span>production<span class="w"> </span><span class="se">\</span>
+</span><span id="__span-3-5"><a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a><span class="w">  </span>-e<span class="w"> </span><span class="nv">ORCHESTRATOR_ADDR</span><span class="o">=</span>orchestrator:50051<span class="w"> </span><span class="se">\</span>
+</span><span id="__span-3-6"><a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a><span class="w">  </span>-e<span class="w"> </span><span class="nv">CONFIG_PATH</span><span class="o">=</span>/app/config.cue<span class="w"> </span><span class="se">\</span>
+</span><span id="__span-3-7"><a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a><span class="w">  </span>-e<span class="w"> </span><span class="nv">POLL_INTERVAL</span><span class="o">=</span>60s<span class="w"> </span><span class="se">\</span>
+</span><span id="__span-3-8"><a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a><span class="w">  </span>jarin-devoss/watcher-service:latest
 </span></code></pre></div>
 <hr />
 <h2 id="environment-variables">Environment variables<a class="headerlink" href="#environment-variables" title="Permanent link">&para;</a></h2>
@@ -2102,9 +2145,9 @@
 <p>Every variable, with the observability ones, is in <a href="../../reference/environment-variables/">Environment variables</a>.</p>
 <hr />
 <h2 id="health-metrics">Health + metrics<a class="headerlink" href="#health-metrics" title="Permanent link">&para;</a></h2>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>GET /health/liveness    # 200 while alive
-</span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>GET /health/readiness   # 200 when orchestrator connection is ready
-</span><span id="__span-3-3"><a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>GET /metrics            # Prometheus metrics (port 9091)
+<div class="language-text highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>GET /health/liveness    # 200 while alive
+</span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>GET /health/readiness   # 200 when orchestrator connection is ready
+</span><span id="__span-4-3"><a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>GET /metrics            # Prometheus metrics (port 9091)
 </span></code></pre></div>
 <p>Key metrics:</p>
 <table>

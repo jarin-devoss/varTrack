@@ -1323,8 +1323,6 @@
       
         
       
-        
-      
     
     
       
@@ -1501,27 +1499,6 @@
   
   
     <li class="md-nav__item">
-      <a href="../sinks/vercel/" class="md-nav__link">
-        
-  
-  <span class="md-ellipsis">
-    Vercel
-  </span>
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
       <a href="../sinks/linux-server/" class="md-nav__link">
         
   
@@ -1559,6 +1536,8 @@
   
     
     
+      
+        
       
         
       
@@ -1677,6 +1656,27 @@
   
   
     <li class="md-nav__item">
+      <a href="../operations/internal-auth/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Internal Authentication
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../operations/monitoring/" class="md-nav__link">
         
   
@@ -1760,10 +1760,10 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5_7" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5_8" >
         
           
-          <label class="md-nav__link" for="__nav_5_7" id="__nav_5_7_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_5_8" id="__nav_5_8_label" tabindex="0">
             
   
   <span class="md-ellipsis">
@@ -1774,8 +1774,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_5_7_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_5_7">
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_5_8_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5_8">
             <span class="md-nav__icon md-icon"></span>
             Services
           </label>
@@ -2197,7 +2197,7 @@
 <tr>
 <td><code>demo-viewer</code></td>
 <td><code>demo-viewer</code></td>
-<td>the 6 demo rules, dry runs only; the payments rule stays hidden — not in that team</td>
+<td>the 6 demo rules, dry runs only (Sync is disabled and says why; a dry run's log shows in the panel); the payments rule stays hidden — not in that team</td>
 </tr>
 </tbody>
 </table>
@@ -2328,7 +2328,7 @@
 <p>Push a change to a tracked repository, then check MongoDB:</p>
 <div class="language-bash highlight"><pre><span></span><code><span id="__span-7-1"><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>mongosh<span class="w"> </span>vartrack<span class="w"> </span>--eval<span class="w"> </span><span class="s1">&#39;db[&quot;production-config&quot;].find().pretty()&#39;</span>
 </span></code></pre></div>
-<p>You should see your config values written as key-value documents.</p>
+<p>You should see one document for the file, with your config values nested under <code>data</code> (the default <code>STRATEGY_DOCUMENT</code>; set <code>update_strategy: "STRATEGY_KEY_VALUE"</code> for one document per key instead).</p>
 <hr />
 <h2 id="install-the-cli">Install the CLI<a class="headerlink" href="#install-the-cli" title="Permanent link">&para;</a></h2>
 <p>The <code>vt</code> CLI lets you sync files directly without a Git push:</p>
@@ -2349,7 +2349,7 @@
 </span><span id="__span-9-4"><a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a>vt<span class="w"> </span>login<span class="w"> </span>--server<span class="w"> </span>http://localhost:5657<span class="w"> </span>--token<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$TOKEN</span><span class="s2">&quot;</span>
 </span><span id="__span-9-5"><a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a>vt<span class="w"> </span>sync<span class="w"> </span>--file<span class="w"> </span>app-settings.yaml<span class="w"> </span>--datasource<span class="w"> </span>mongo-primary<span class="w"> </span>--env<span class="w"> </span>staging<span class="w"> </span>--wait<span class="w">   </span><span class="c1"># the live demo&#39;s rule tracks app-settings.yaml</span>
 </span></code></pre></div>
-<p><code>demo-admin</code> administers the demo repositories, so it can sync anywhere; <code>demo-viewer</code> can only read them, so it can validate and dry-run but not sync (<a href="https://github.com/jarin-devoss/varTrack/blob/main/examples/policies/vartrack_authz.rego">the example OPA policy</a> adds: writers never sync production or <code>configs/secrets/*</code>). The same token, pasted under <em>API token for the Playground</em> on the UI's sign-in page, drives the Playground.</p>
+<p><code>demo-admin</code> administers the demo repositories, so it can sync anywhere; <code>demo-viewer</code> can only read them, so it can validate and dry-run but not sync (<a href="https://github.com/jarin-devoss/varTrack/blob/main/examples/policies/vartrack_authz.rego">the example OPA policy</a> adds: writers never sync production or <code>configs/secrets/*</code>). The same token, pasted into the <em>Git token</em> card on the UI's Playground page, drives the Playground.</p>
 <p><a href="../cli/"><span class="twemoji"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13.22 19.03a.75.75 0 0 1 0-1.06L18.19 13H3.75a.75.75 0 0 1 0-1.5h14.44l-4.97-4.97a.749.749 0 0 1 .326-1.275.75.75 0 0 1 .734.215l6.25 6.25a.75.75 0 0 1 0 1.06l-6.25 6.25a.75.75 0 0 1-1.06 0"/></svg></span> Full CLI reference</a></p>
 <hr />
 <h2 id="next-steps">Next steps<a class="headerlink" href="#next-steps" title="Permanent link">&para;</a></h2>

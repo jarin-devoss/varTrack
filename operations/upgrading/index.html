@@ -1137,8 +1137,6 @@
       
         
       
-        
-      
     
     
       
@@ -1315,27 +1313,6 @@
   
   
     <li class="md-nav__item">
-      <a href="../../sinks/vercel/" class="md-nav__link">
-        
-  
-  <span class="md-ellipsis">
-    Vercel
-  </span>
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
       <a href="../../sinks/linux-server/" class="md-nav__link">
         
   
@@ -1375,6 +1352,8 @@
   
     
     
+      
+        
       
         
       
@@ -1480,6 +1459,27 @@
   
   <span class="md-ellipsis">
     High Availability & Scaling
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../internal-auth/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Internal Authentication
   </span>
   
 
@@ -1673,10 +1673,10 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5_7" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5_8" >
         
           
-          <label class="md-nav__link" for="__nav_5_7" id="__nav_5_7_label" tabindex="">
+          <label class="md-nav__link" for="__nav_5_8" id="__nav_5_8_label" tabindex="">
             
   
   <span class="md-ellipsis">
@@ -1687,8 +1687,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_5_7_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_5_7">
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_5_8_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5_8">
             <span class="md-nav__icon md-icon"></span>
             Services
           </label>
@@ -2002,6 +2002,10 @@ authorizes the CLI by Git permission. Most configurations keep working; the item
 <td>Give CI a Git token (<code>VARTRACK_TOKEN</code>) instead of a varTrack JWT; see <a href="../../configuration/auth/">Authentication</a></td>
 </tr>
 <tr>
+<td><strong>A rule names its environments and its file, or it is refused.</strong> There is no <code>default</code> environment, and a rule that names no file no longer syncs "every file a push touched". A rule with no <code>branch_map</code>, <code>file_path_map</code>, <code>branch_as_env</code>, <code>pr_as_env</code> or <code>tag_as_env</code>, or with neither <code>file_name</code> nor <code>file_path_map</code>, is not loaded: the Rules page lists it as <em>Refused</em> with why, and nothing runs it. <code>max_changed_files</code> is gone with that fallback (it is dropped with a warning)</td>
+<td>Before upgrading, give every rule a <code>file_name</code> (or <code>file_path_map</code>) and its environments, in <code>config.cue</code> or the tenant's <code>bundle.json</code>; a repository's <code>vartrack.json</code> alone does not count. To keep an environment called <code>default</code>, set <code>branch_map: {"main": "default"}</code>. <code>vt validate-config</code> reports a <code>bundle.json</code> rule that would be refused</td>
+</tr>
+<tr>
 <td><strong>One rule per platform and datasource.</strong> A <code>config.cue</code> with two rules for the same pair is refused at startup</td>
 <td>Give the second destination its own tagged datasource and rule</td>
 </tr>
@@ -2046,6 +2050,10 @@ removal):</p>
 <tr>
 <td><code>retry_backoff</code> (rule)</td>
 <td>removed: nothing read it</td>
+</tr>
+<tr>
+<td><code>max_changed_files</code> (rule)</td>
+<td>removed: a rule reads only the files it names (<code>file_name</code>, <code>file_path_map</code>), so there is nothing to cut</td>
 </tr>
 <tr>
 <td><code>watcher_state_datasource</code></td>

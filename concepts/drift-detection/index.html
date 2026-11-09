@@ -1254,8 +1254,6 @@
       
         
       
-        
-      
     
     
       
@@ -1432,27 +1430,6 @@
   
   
     <li class="md-nav__item">
-      <a href="../../sinks/vercel/" class="md-nav__link">
-        
-  
-  <span class="md-ellipsis">
-    Vercel
-  </span>
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
       <a href="../../sinks/linux-server/" class="md-nav__link">
         
   
@@ -1490,6 +1467,8 @@
   
     
     
+      
+        
       
         
       
@@ -1608,6 +1587,27 @@
   
   
     <li class="md-nav__item">
+      <a href="../../operations/internal-auth/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Internal Authentication
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../../operations/monitoring/" class="md-nav__link">
         
   
@@ -1691,10 +1691,10 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5_7" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5_8" >
         
           
-          <label class="md-nav__link" for="__nav_5_7" id="__nav_5_7_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_5_8" id="__nav_5_8_label" tabindex="0">
             
   
   <span class="md-ellipsis">
@@ -1705,8 +1705,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_5_7_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_5_7">
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_5_8_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5_8">
             <span class="md-nav__icon md-icon"></span>
             Services
           </label>
@@ -2042,7 +2042,7 @@
 </span></code></pre></div>
 <p>A few rules keep this from healing what it shouldn't, or waiting forever:</p>
 <ul>
-<li><strong>Unknown is not drift.</strong> A sink that cannot be read answers <em>unknown</em>, never "every key is missing", so an outage does not set off heals. A value the sink never gives back — a Vercel <em>sensitive</em> variable — is neither missing nor changed.</li>
+<li><strong>Unknown is not drift.</strong> A sink that cannot be read answers <em>unknown</em>, never "every key is missing", so an outage does not set off heals. A value the sink never gives back — a write-only <em>sensitive</em> value — is neither missing nor changed.</li>
 <li><strong>One heal at a time.</strong> After it asks for a heal, the watcher waits two poll intervals (at least 30 s) before asking again for the same drift, so the queued sync has time to start; a check that answers <em>in sync</em> ends the wait.</li>
 <li><strong>A failed heal</strong> is tried again on the next poll; while heal requests keep failing, a circuit breaker stops sending them for a while.</li>
 <li><strong>A sync that died</strong> — a worker killed mid-sync leaves no result. A sync still marked running after 15 minutes (Celery stops any task after 10) no longer counts, so the watcher heals instead of waiting on it.</li>
@@ -2053,8 +2053,10 @@
 <div class="language-text highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>rules: [{
 </span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>  platform:   &quot;github&quot;
 </span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>  datasource: &quot;mongo&quot;
-</span><span id="__span-1-4"><a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>  self_heal:  true    // watcher will restore state on drift
-</span><span id="__span-1-5"><a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>}]
+</span><span id="__span-1-4"><a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>  file_name: &quot;app-settings.yaml&quot;
+</span><span id="__span-1-5"><a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>  branch_map: {main: &quot;production&quot;}
+</span><span id="__span-1-6"><a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a>  self_heal:  true    // watcher will restore state on drift
+</span><span id="__span-1-7"><a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a>}]
 </span></code></pre></div>
 <p>The watcher asks the orchestrator which rules to watch on every poll, so a rule that gains <code>self_heal</code>, or is suspended or removed, is picked up at the next poll, without restarting the watcher. Rules with <code>self_heal: false</code> (or omitted) are not polled by the watcher, and nothing repairs them. The web UI still compares them with Git whenever it reads them, so their drift shows there until someone syncs from Git:</p>
 <p><img alt="A Redis rule with self-heal off: production is out of sync, staging matches Git" src="../../assets/screenshots/rule-drift.png" /></p>
@@ -2108,7 +2110,7 @@ with the web UI's <strong>Environments</strong> page and the <code>DriftDetected
 <p>Lower values mean faster drift detection but more load on the orchestrator, which reads every self-heal datasource each poll.</p>
 <hr />
 <h2 id="why-polling-and-how-its-kept-efficient">Why polling? (and how it's kept efficient)<a class="headerlink" href="#why-polling-and-how-its-kept-efficient" title="Permanent link">&para;</a></h2>
-<p>varTrack uses a <strong>scheduled pull model</strong> rather than event-driven push because it must support eight fundamentally different backends — MongoDB, Redis, ZooKeeper, S3, Kubernetes ConfigMaps, Helm, Vercel, and Linux servers. Each backend exposes a different (or no) change-notification mechanism:</p>
+<p>varTrack uses a <strong>scheduled pull model</strong> rather than event-driven push because it must support eight fundamentally different backends — MongoDB, Redis, ZooKeeper, S3, Kubernetes ConfigMaps, Helm, and Linux servers. Each backend exposes a different (or no) change-notification mechanism:</p>
 <table>
 <thead>
 <tr>
@@ -2136,10 +2138,6 @@ with the web UI's <strong>Environments</strong> page and the <code>DriftDetected
 <tr>
 <td>Linux server</td>
 <td>None — SSH file stat only</td>
-</tr>
-<tr>
-<td>Vercel</td>
-<td>None</td>
 </tr>
 <tr>
 <td>ConfigMap</td>
