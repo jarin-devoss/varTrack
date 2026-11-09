@@ -315,8 +315,12 @@ type Rule struct {
 	VariablesMap map[string]string `protobuf:"bytes,13,rep,name=variables_map,json=variablesMap,proto3" json:"variables_map,omitempty" protobuf_key:"bytes,1,opt,name=key,proto3" protobuf_val:"bytes,2,opt,name=value,proto3"`
 	// How a sync writes. AUTO (the default) uses GIT_UPSERT_ALL for a file of
 	// up to 500 keys and GIT_SMART_REPAIR above. GIT_UPSERT_ALL writes every
-	// key. GIT_SMART_REPAIR, on MongoDB, reads the stored documents and writes
-	// only what differs; other sinks write every key. LIVE_STATE is written like
+	// key. GIT_SMART_REPAIR reads what the sink holds and writes only what
+	// differs, by content: the changed keys in Redis, ZooKeeper and MongoDB
+	// key-value, and in a sink that holds the file as one object (a MongoDB
+	// document, an S3 object, a file, a ConfigMap, a Helm values file or
+	// release) the whole file, or nothing when it already holds the file. If the
+	// sink cannot be read, every key is written. LIVE_STATE is written like
 	// GIT_UPSERT_ALL. The proto names (SYNC_MODE_AUTO, ...) are read too, and
 	// FULL as GIT_UPSERT_ALL.
 	SyncMode enums.SyncMode `protobuf:"varint,14,opt,name=sync_mode,json=syncMode,proto3,enum=vartrack.v1.SyncMode" json:"sync_mode,omitempty"`

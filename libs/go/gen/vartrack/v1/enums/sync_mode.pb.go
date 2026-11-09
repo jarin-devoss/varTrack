@@ -20,18 +20,22 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
-// SyncMode determines how the orchestrator reconciles git state with the sink.
+// SyncMode determines how a file is written to the sink. Keys Git no longer holds are deleted by prune, in
+// every mode.
 type SyncMode int32
 
 const (
 	SyncMode_SYNC_MODE_UNSPECIFIED SyncMode = 0
-	// Upsert every variable from git; never delete.
+	// Write every key of the file. (A ZooKeeper znode that already holds the value is not set again.)
 	SyncMode_SYNC_MODE_GIT_UPSERT_ALL SyncMode = 1
-	// Upsert variables that differ; delete keys absent in git (smart repair).
+	// Read what the sink holds and write only what differs from Git, by content: the changed keys for a store
+	// that keeps each key on its own (Redis, ZooKeeper, MongoDB key-value), and the whole file, or nothing when
+	// it already holds exactly the file, for one that holds it as an object (a MongoDB document, an S3 object, a
+	// file, a ConfigMap, a Helm values file or release). If the sink cannot be read, every key is written.
 	SyncMode_SYNC_MODE_GIT_SMART_REPAIR SyncMode = 2
-	// Continuously reconcile live sink state with git (streaming mode).
+	// Written exactly like GIT_UPSERT_ALL; kept so a config that sets it still loads.
 	SyncMode_SYNC_MODE_LIVE_STATE SyncMode = 3
-	// Let the orchestrator choose the best mode based on the datasource type.
+	// GIT_UPSERT_ALL for a file of up to 500 keys, GIT_SMART_REPAIR above.
 	SyncMode_SYNC_MODE_AUTO SyncMode = 4
 )
 

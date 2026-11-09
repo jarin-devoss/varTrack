@@ -236,7 +236,7 @@ Renames of flat keys before they are written: {"NEW_NAME": "path.in.file"} write
 
 ## `sync_mode`
 
-How a sync writes. AUTO (the default) uses GIT_UPSERT_ALL for a file of up to 500 keys and GIT_SMART_REPAIR above. GIT_UPSERT_ALL writes every key. GIT_SMART_REPAIR, on MongoDB, reads the stored documents and writes only what differs; other sinks write every key. LIVE_STATE is written like GIT_UPSERT_ALL. The proto names (SYNC_MODE_AUTO, ...) are read too, and FULL as GIT_UPSERT_ALL.
+How a sync writes. AUTO (the default) uses GIT_UPSERT_ALL for a file of up to 500 keys and GIT_SMART_REPAIR above. GIT_UPSERT_ALL writes every key. GIT_SMART_REPAIR reads what the sink holds and writes only what differs, by content: the changed keys in Redis, ZooKeeper and MongoDB key-value, and in a sink that holds the file as one object (a MongoDB document, an S3 object, a file, a ConfigMap, a Helm values file or release) the whole file, or nothing when it already holds the file. If the sink cannot be read, every key is written. LIVE_STATE is written like GIT_UPSERT_ALL. The proto names (SYNC_MODE_AUTO, ...) are read too, and FULL as GIT_UPSERT_ALL.
 
 | | |
 |---|---|
