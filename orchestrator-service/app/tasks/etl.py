@@ -78,11 +78,14 @@ def _build_dry_run_report(
     received_at: float,
     datasource:  str = "",
     tenant_id:   str = "default",
+    changes:     bool = True,
 ) -> dict[str, Any]:
-    """Build a dry-run simulation report from Stage 2 output (no writes)."""
+    """Build a dry-run simulation report from Stage 2 output (no writes). *changes* reads the sink to say which keys a
+    sync would add or change; the sync panel's preview only needs what would be deleted, and does not wait for that."""
     from app.pipeline.stage_sync import prune_candidates
 
     would_delete = prune_candidates(etl, datasource, tenant_id, ctx.rule_config, ctx.repo_url) if datasource else {}
+    rule = {**ctx.rule_config, "datasource": ctx.rule_config.get("datasource") or datasource}
     files_report = []
     total_keys   = 0
     for f in etl.files:
@@ -97,7 +100,9 @@ def _build_dry_run_report(
             "schema":     f.schema,
             "schema_source": f.schema_source,
             **({"schema_note": f.schema_note} if f.schema_note else {}),
+            **({"validation_error": f.error} if f.error else {}),
             "sample":     dict(list(f.flat_data.items())[:5]),
+            **({"would_change": _would_change(rule, tenant_id, f)} if changes and f.validation != "failed" else {}),
         })
     for skipped in etl.skipped:
         files_report.append({"file": skipped, "status": "skipped"})
@@ -122,6 +127,17 @@ def _build_dry_run_report(
         "prune": {"would_delete": would_delete},
         "schema_commit": etl.schema_commit,
     })
+
+
+def _would_change(rule: dict, tenant_id: str, f: Any) -> dict[str, Any]:
+    """What a sync of one transformed file would add or change in its environment (see views.would_change). Reading the
+    sink is part of the report, not a reason to fail the dry run: a sink that cannot be read says so."""
+    from app.ui import views
+    try:
+        return views.would_change(rule, tenant_id, f.env, f.flat_data, f.secret_fields)
+    except Exception as exc:
+        logger.warning("dry run: could not compare %s in %s with the sink", f.file_path, f.env, exc_info=True)
+        return {"error": f"read failed: {exc}"}
 
 
 def _failed_message(etl: Any) -> str:
@@ -203,7 +219,9 @@ def process_webhook_task(
             logger.warning("task=%s refused: %s (platform=%s datasource=%s)", task_id, exc, platform, datasource)
             return fail(task_id, str(exc))
         if ctx is None:
-            return fail(task_id, f"no rule for platform={platform} datasource={datasource}")
+            from app.pipeline import rule_layers
+            why = rule_layers.refusal_of(tenant_id, platform, datasource)   # a refused rule is not loaded: say why
+            return fail(task_id, why or f"no rule for platform={platform} datasource={datasource}")
         if not ctx.repo_url or not ctx.ref:
             return fail(task_id, "missing repo_url or ref in rule_config / payload")
 
@@ -271,6 +289,14 @@ def process_webhook_task(
             return fail(task_id, message, dry_run=dry_run, files=_error_files(etl), errors=len(etl.errors),
                         schema_commit=etl.schema_commit)
 
+        if not etl.files and not etl.skipped and etl.unfed:
+            # Every file of the push feeds no environment of this rule (an unmapped branch): nothing to do, and said so.
+            message = "nothing to do: " + "; ".join(dict.fromkeys(etl.unfed.values()))
+            logger.info("stage=etl result=nothing_to_do %s", message)
+            ui_recorder.task_finished(ui_task, tenant=tenant_id, message=message)
+            return ok(task_id, "nothing_to_do", **{"dry_run": dry_run, "files": [], "unfed": etl.unfed,
+                                                   "schema_commit": etl.schema_commit})
+
         if not etl.files and not etl.skipped:
             logger.info("stage=etl result=no_files")
             ui_recorder.task_finished(ui_task, tenant=tenant_id, message="no matching files in this push")
@@ -283,7 +309,8 @@ def process_webhook_task(
 
         # Dry-run exits after ETL — no writes to any datasource.
         if dry_run:
-            report = _build_dry_run_report(task_id, ctx, etl, received_at, datasource, tenant_id)
+            report = _build_dry_run_report(task_id, ctx, etl, received_at, datasource, tenant_id,
+                                           changes=not ledger.is_preview(headers))
             ui_recorder.task_finished(ui_task, tenant=tenant_id, dry_run_files=report.get("files", []),
                                       would_prune=(report.get("prune") or {}).get("would_delete", {}))
             return report
@@ -593,9 +620,18 @@ def process_cli_sync_task(
             return fail(task_id, str(exc), tenant_id=tenant_id)
         if rule_config is None:
             what = f"platform {platform!r} and datasource {datasource!r}" if platform else f"datasource {datasource!r}"
-            return fail(task_id, f"{what} not found in bundle for tenant {tenant_id!r}", tenant_id=tenant_id)
+            from app.pipeline import rule_layers
+            why = next((reason for rule, reason in rule_layers.refused_rules(tenant_id)
+                        if rule.get("datasource") == datasource and (not platform or rule.get("platform") == platform)), "")
+            return fail(task_id, why or f"{what} not found in bundle for tenant {tenant_id!r}", tenant_id=tenant_id)
 
         platform = str(rule_config.get("platform", ""))
+
+        # A CLI sync names its environment: one the rule produces. There is no fallback to write to ("default" is only a
+        # name a branch_map may give), so an environment nothing feeds is refused, in the engine's words.
+        from app.pipeline import repo_scope
+        if not repo_scope.branch_for(rule_config, env):
+            return fail(task_id, repo_scope.nothing_feeds(rule_config, env), tenant_id=tenant_id)
 
         if revision:
             from app.cli_ops import detect_format, file_at_revision

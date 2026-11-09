@@ -150,7 +150,7 @@ def test_stage_etl_records_the_file_in_the_shape_it_parsed_to():
 
     ctx = PayloadContext(platform="github", repo_url="https://github.com/o/r", ref="refs/heads/main",
                          branch="main", commit_sha="abc", tag=None, pr_number=None,
-                         rule_config={"root_key": ""}, parsed_payload={})
+                         rule_config={"root_key": "", "branch_as_env": True}, parsed_payload={})
     schema = MagicMock()
     schema.current_schema_root.return_value = Path("/nonexistent")
     validator = MagicMock()

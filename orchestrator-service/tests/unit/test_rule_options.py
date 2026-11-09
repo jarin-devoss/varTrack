@@ -111,14 +111,18 @@ def test_the_validator_checks_every_option_not_only_the_ones_it_once_listed():
     ]
 
 
-def test_branch_and_max_changed_files_are_options_neither_admin_only_nor_open_to_a_repo():
-    # Both were read from a rule and declared nowhere, so the gateway's strict
-    # loader rejected them in config.cue.
-    for name in ("branch", "max_changed_files"):
-        assert name in rule_options.FIELDS
-        assert name not in rule_options.ADMIN_ONLY and name not in rule_options.REPO_OVERRIDABLE
-    assert isinstance(500, rule_options.TYPES["max_changed_files"])
-    assert not isinstance("500", rule_options.TYPES["max_changed_files"])
+def test_branch_is_an_option_neither_admin_only_nor_open_to_a_repo():
+    # It was read from a rule and declared nowhere, so the gateway's strict loader rejected it in config.cue.
+    assert "branch" in rule_options.FIELDS
+    assert "branch" not in rule_options.ADMIN_ONLY and "branch" not in rule_options.REPO_OVERRIDABLE
+
+
+def test_max_changed_files_is_gone_with_the_fallback_it_cut():
+    """It cut the "every file the push changed" fallback of a rule that named no file. A rule reads the file it names."""
+    from app.pipeline.renamed_options import REMOVED_OPTIONS
+
+    assert "max_changed_files" not in rule_options.FIELDS
+    assert "files it names" in REMOVED_OPTIONS["max_changed_files"]
 
 
 def test_strict_validation_is_a_rule_option_a_repo_may_set():

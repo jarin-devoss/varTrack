@@ -147,6 +147,15 @@ def _viewer(request: Request) -> access.Viewer:
         raise HTTPException(status_code=503, detail="sign-in is misconfigured; the orchestrator's log says why") from exc
 
 
+class _Refused(HTTPException):
+    """The rule exists and was refused when it was loaded (it names no environments): it answers 409 with the reason
+    to whoever may see it, and the rule's own page shows it as refused."""
+
+    def __init__(self, rule: dict, tenant: str, why: str) -> None:
+        super().__init__(status_code=409, detail=why)
+        self.rule, self.tenant = rule, tenant
+
+
 def _find_rule(tenant: str, platform: str, datasource: str) -> dict:
     for rule in _rules(tenant):
         if rule.get("platform") == platform and rule.get("datasource") == datasource:
@@ -156,7 +165,16 @@ def _find_rule(tenant: str, platform: str, datasource: str) -> dict:
 
 def _visible_rule(viewer: access.Viewer, tenant: str, platform: str, datasource: str,
                   records: list[dict]) -> tuple[dict, access.Access]:
-    rule = _find_rule(tenant, platform, datasource)
+    try:
+        rule = _find_rule(tenant, platform, datasource)
+    except HTTPException:
+        # A refused rule is not loaded, but whoever may read it is told why, not that it does not exist.
+        from app.pipeline import rule_layers
+        for refused, why in rule_layers.refused_rules(tenant):
+            if refused.get("platform") == platform and refused.get("datasource") == datasource:
+                if viewer.rule_access(refused, [], tenant).read:
+                    raise _Refused(refused, tenant, why)
+        raise
     perm = viewer.rule_access(rule, records, tenant)
     if not perm.read:
         raise HTTPException(status_code=404, detail=f"no rule {platform}/{datasource} for tenant {tenant!r}")
@@ -177,7 +195,12 @@ def _visible_names(viewer: access.Viewer, tenant: str) -> set[str] | None:
     """Names of the rules the viewer can see; None when everything is visible."""
     if not viewer.authenticated:
         return None
-    return {views.rule_name(rule) for rule, _ in viewer.visible_rules(_rules(tenant), ledger.list_targets(tenant), tenant)}
+    from app.pipeline import rule_layers
+
+    names = {views.rule_name(rule) for rule, _ in viewer.visible_rules(_rules(tenant), ledger.list_targets(tenant), tenant)}
+    # A refused rule is not loaded, but whoever may read it sees its events (the one that says it was refused).
+    refused = [rule for rule, _ in rule_layers.refused_rules(tenant)]
+    return names | {views.rule_name(rule) for rule, _ in viewer.visible_rules(refused, [], tenant)} if refused else names
 
 
 def _visible_everywhere(viewer: access.Viewer, tenants: list[str]) -> list[tuple[str, list[tuple[dict, access.Access]], list[dict]]]:
@@ -255,15 +278,35 @@ def list_rules(request: Request, tenant: str | None = Query(None),
         tasks = ledger.list_tasks(t, limit=200)
         views.compare_all([rule for rule, _ in visible], t, records)
         rules += [{**views.rule_view(rule, t, records, tasks), "canSync": perm.can_sync} for rule, perm in visible]
+    rules += _refused_views(viewer, tenants)
     hidden = _hidden(viewer, tenants)
     return {"rules": rules, **({"hidden": hidden} if hidden else {})}
+
+
+def _refused_views(viewer: access.Viewer, tenants: list[str]) -> list[dict[str, Any]]:
+    """The rules refused when they were loaded (they name no environments) that the viewer may read, with why: listed so
+    they do not simply vanish. (Each tenant's rules were loaded just before, which is what records the refusals.)"""
+    from app.pipeline import rule_layers
+
+    out: list[dict[str, Any]] = []
+    for t in tenants:
+        refused = rule_layers.refused_rules(t)
+        if not refused:
+            continue
+        seen = {views.rule_name(rule): why for rule, why in refused}
+        for rule, _ in viewer.visible_rules([rule for rule, _ in refused], [], t):
+            out.append(views.refused_view(rule, t, seen[views.rule_name(rule)]))
+    return out
 
 
 @router.get("/rules/{platform}/{datasource}")
 def get_rule(request: Request, platform: str, datasource: str, tenant: str | None = Query(None),
              fresh: bool = Query(False, description="read the sinks now instead of answering from the last read"),
              viewer: access.Viewer = Depends(_viewer)) -> dict[str, Any]:
-    tenant, rule, perm, records = _resolve_rule(request, viewer, platform, datasource, tenant)
+    try:
+        tenant, rule, perm, records = _resolve_rule(request, viewer, platform, datasource, tenant)
+    except _Refused as refused:
+        return views.refused_view(refused.rule, refused.tenant, str(refused.detail))
     records = [r for r in records if r.get("datasource") == datasource and viewer.can_see_target(rule, r)]
     if fresh:
         # A person pressed Refresh: they changed something and want to see it, not the last answer. Each environment
@@ -299,14 +342,27 @@ def _say_what_feeds(viewer: access.Viewer, rule: dict, tenant: str, targets: lis
 @router.get("/rules/{platform}/{datasource}/targets/{env}/keys")
 def list_keys(request: Request, platform: str, datasource: str, env: str, tenant: str | None = Query(None),
               viewer: access.Viewer = Depends(_viewer)) -> dict[str, Any]:
+    from app.pipeline import repo_scope
+
     tenant, rule, _, _ = _resolve_rule(request, viewer, platform, datasource, tenant)
     record = ledger.get_target(tenant, datasource, env)
     if record is None or not viewer.can_see_target(rule, record):
         raise HTTPException(status_code=404, detail=f"{env} has not been synced yet")
+    if not repo_scope.branch_for(rule, env):
+        # A leftover: nothing in Git feeds it, so there is nothing to compare what varTrack once wrote with.
+        raise HTTPException(status_code=409, detail=repo_scope.nothing_feeds(rule, env))
     try:
         return {"keys": views.key_entries(rule, tenant, record)}
     except RuntimeError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
+def _git_url(record: dict | None, rule: dict) -> str:
+    """The repository a sync reads: the one the environment was last synced from, else the rule's own. An environment the CLI
+    wrote last (`vt sync --file`: its "repository" is `local`, there is no Git behind it) is read from the rule's repository
+    like any other: the next sync puts Git's file back."""
+    recorded = (record or {}).get("repoUrl") or ""
+    return recorded if "://" in recorded or recorded.startswith("git@") else rule.get("repo_url", "")
 
 
 @router.post("/rules/{platform}/{datasource}/sync")
@@ -349,7 +405,7 @@ def sync_rule(request: Request, platform: str, datasource: str, body: SyncReques
             # caller's: say so rather than guess a branch.
             raise HTTPException(status_code=500, detail=f"the permission engine allowed {env} but named no branch "
                                                         f"to read; nothing was synced")
-        repo_url = (record or {}).get("repoUrl") or rule.get("repo_url", "")
+        repo_url = _git_url(record, rule)
         try:
             from app.pipeline.git_credentials import credential_for
             # fresh: the sync is what the person pressed after their push, so it reads the branch as it is now

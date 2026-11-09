@@ -146,7 +146,7 @@ def test_a_file_that_is_not_a_settings_file_is_an_error():
 
 
 def test_a_vartrack_json_under_a_platform_folder_is_checked_as_one():
-    assert _result(".gitea/vartrack.json", {"branch_map": {"main": "production"}}).errors == []
+    assert _result(".gitea/vartrack.json", {"branch_map": {"main": "production"}, "file_name": "app.yaml"}).errors == []
 
 
 def test_a_vartrack_json_cannot_set_what_only_config_cue_sets():
@@ -158,21 +158,29 @@ def test_a_value_of_the_wrong_type_is_an_error():
     assert _result("vartrack.json", {"branch_map": ["main"]}).errors == ["vartrack.json: branch_map must be an object"]
 
 
-def test_branch_and_max_changed_files_are_options_of_a_bundle_rule():
-    rule = {"platform": "github", "datasource": "mongo", "branch": "develop", "max_changed_files": 50}
+def test_branch_is_an_option_of_a_bundle_rule():
+    rule = {"platform": "github", "datasource": "mongo", "branch": "develop", "branch_map": {"main": "production"}, "file_name": "app.yaml"}
     assert _result("bundle.json", [rule]).errors == []
-    bad = _result("bundle.json", [{**rule, "max_changed_files": "many"}])
-    assert bad.errors == ["bundle.json: the github/mongo rule: max_changed_files must be a number"]
+    bad = _result("bundle.json", [{**rule, "branch": 5}])
+    assert bad.errors == ["bundle.json: the github/mongo rule: branch must be a string"]
 
 
 def test_true_is_not_a_number():
-    rule = {"platform": "github", "datasource": "mongo", "max_changed_files": True}
+    rule = {"platform": "github", "datasource": "mongo", "sync_mode": True, "branch_map": {"main": "production"}, "file_name": "app.yaml"}
     assert _result("bundle.json", [rule]).errors == [
-        "bundle.json: the github/mongo rule: max_changed_files must be a number"]
+        "bundle.json: the github/mongo rule: sync_mode must be a string or a number"]
+
+
+def test_max_changed_files_is_a_removed_option_a_warning_not_an_error():
+    rule = {"platform": "github", "datasource": "mongo", "max_changed_files": 50, "branch_map": {"main": "production"}, "file_name": "app.yaml"}
+    result = _result("bundle.json", [rule])
+    assert result.errors == []
+    [warning] = [w for w in result.warnings if "max_changed_files" in w]
+    assert "max_changed_files was removed and has no effect" in warning and "files it names" in warning
 
 
 def test_a_removed_option_is_a_warning_and_a_former_name_a_migration():
-    result = _result("bundle.json", [{"platform": "github", "datasource": "mongo", "secrets": {}, "env_as_branch": True}])
+    result = _result("bundle.json", [{"platform": "github", "datasource": "mongo", "secrets": {}, "env_as_branch": True, "file_name": "app.yaml"}])
     assert result.errors == []
     assert any("secrets was removed" in w for w in result.warnings)
     assert any("env_as_branch is now branch_as_env" in m for m in result.migrations)
@@ -187,7 +195,7 @@ def test_two_rules_for_one_platform_and_datasource_are_an_error():
 
 def test_a_bundle_json_rule_with_a_tenant_id_is_an_error_that_says_where_the_tenant_comes_from():
     result = config_validator.validate(
-        "bundle.json", json.dumps([{"platform": "gitea", "datasource": "mongo", "tenant_id": "acme"}]), "acme")
+        "bundle.json", json.dumps([{"platform": "gitea", "datasource": "mongo", "tenant_id": "acme", "branch_map": {"main": "production"}, "file_name": "app.yaml"}]), "acme")
     assert result.errors == [
         "bundle.json: the gitea/mongo rule: tenant_id cannot be set — the tenant is the one whose schema "
         "repository holds this bundle.json (acme); delete the key"]
@@ -195,15 +203,15 @@ def test_a_bundle_json_rule_with_a_tenant_id_is_an_error_that_says_where_the_ten
 
 def test_a_tenant_id_that_names_another_tenant_says_so():
     result = config_validator.validate(
-        "bundle.json", json.dumps([{"platform": "gitea", "datasource": "mongo", "tenant_id": "evil"}]), "acme")
+        "bundle.json", json.dumps([{"platform": "gitea", "datasource": "mongo", "tenant_id": "evil", "branch_map": {"main": "production"}, "file_name": "app.yaml"}]), "acme")
     [error] = result.errors
     assert "(it names tenant evil, which this file cannot act as)" in error
 
 
 def test_every_rule_that_writes_it_is_named(monkeypatch):
-    rules = [{"platform": "gitea", "datasource": "mongo", "tenant_id": "a"},
-             {"platform": "gitea", "datasource": "redis"},
-             {"platform": "gitea", "datasource": "s3", "tenant_id": "b"}]
+    rules = [{"platform": "gitea", "datasource": "mongo", "tenant_id": "a", "branch_map": {"main": "production"}, "file_name": "app.yaml"},
+             {"platform": "gitea", "datasource": "redis", "branch_map": {"main": "production"}, "file_name": "app.yaml"},
+             {"platform": "gitea", "datasource": "s3", "tenant_id": "b", "branch_map": {"main": "production"}, "file_name": "app.yaml"}]
     result = config_validator.validate("bundle.json", json.dumps(rules), "acme")
     assert [e.split(":")[1].strip() for e in result.errors] == ["the gitea/mongo rule", "the gitea/s3 rule"]
 
@@ -212,7 +220,7 @@ def test_with_rules_in_config_cue_it_is_one_error_not_also_an_ignored_option(mon
     bundle = {"rules": [{"platform": "gitea", "datasource": "mongo", "repositories": ["acme/*"]}]}
     monkeypatch.setattr("app.pipeline.datasource_settings._bundle", lambda: bundle)
     result = config_validator.validate(
-        "bundle.json", json.dumps([{"platform": "gitea", "datasource": "mongo", "tenant_id": "acme"}]), "acme")
+        "bundle.json", json.dumps([{"platform": "gitea", "datasource": "mongo", "tenant_id": "acme", "branch_map": {"main": "production"}, "file_name": "app.yaml"}]), "acme")
     assert len(result.errors) == 1 and "tenant_id cannot be set" in result.errors[0]
     assert not any("tenant_id" in w for w in result.warnings)
 
@@ -227,5 +235,43 @@ def test_a_vartrack_json_with_a_tenant_id_is_an_error_not_a_warning():
 def test_files_without_it_are_clean():
     assert config_validator.validate("vartrack.json", json.dumps({"prune": True})).errors == []
     clean = config_validator.validate(
-        "bundle.json", json.dumps([{"platform": "gitea", "datasource": "mongo"}]), "acme")
+        "bundle.json", json.dumps([{"platform": "gitea", "datasource": "mongo", "branch_map": {"main": "production"}, "file_name": "app.yaml"}]), "acme")
     assert clean.errors == []
+
+
+# ── a rule that names no environments is an error: it would be refused and not loaded ──
+
+def test_a_bundle_rule_that_names_no_environments_is_an_error_with_the_fix():
+    result = config_validator.validate("bundle.json", json.dumps([{"platform": "gitea", "datasource": "mongo", "file_name": "app.yaml"}]), "acme")
+    [error] = result.errors
+    assert error.startswith("bundle.json: the gitea/mongo rule would be refused and not loaded: gitea/mongo names no environments")
+    assert "branch_map" in error and 'branch_map: {"main": "default"}' in error
+
+
+def test_a_bundle_rule_that_names_no_file_is_an_error_with_the_fix():
+    result = config_validator.validate("bundle.json", json.dumps([{"platform": "gitea", "datasource": "mongo", "branch_map": {"main": "production"}}]), "acme")
+    [error] = result.errors
+    assert error.startswith("bundle.json: the gitea/mongo rule would be refused and not loaded: gitea/mongo names no file to read: set file_name")
+    assert "file_path_map" in error and "A repository's vartrack.json can still change it" in error
+
+
+def test_a_bundle_rule_that_names_neither_gets_one_error_naming_both():
+    result = config_validator.validate("bundle.json", json.dumps([{"platform": "gitea", "datasource": "mongo"}]), "acme")
+    [error] = result.errors
+    assert "names no environments and no file to read" in error and "branch_map" in error and "file_name" in error
+
+
+def test_a_bundle_rule_is_not_refused_for_what_config_cue_left_to_it(monkeypatch):
+    bundle = {"rules": [{"platform": "gitea", "datasource": "mongo", "repositories": ["acme/*"]}]}
+    monkeypatch.setattr("app.pipeline.datasource_settings._bundle", lambda: bundle)
+    named = config_validator.validate(
+        "bundle.json", json.dumps([{"platform": "gitea", "datasource": "mongo", "branch_map": {"develop": "staging"}, "file_name": "app.yaml"}]), "acme")
+    assert named.errors == []
+    unnamed = config_validator.validate("bundle.json", json.dumps([{"platform": "gitea", "datasource": "mongo"}]), "acme")
+    assert len(unnamed.errors) == 1 and "would be refused and not loaded" in unnamed.errors[0]
+
+
+def test_a_rule_whose_config_cue_names_the_environments_needs_nothing_more_of_bundle_json(monkeypatch):
+    bundle = {"rules": [{"platform": "gitea", "datasource": "mongo", "repositories": ["acme/*"], "branch_as_env": True}]}
+    monkeypatch.setattr("app.pipeline.datasource_settings._bundle", lambda: bundle)
+    assert config_validator.validate("bundle.json", json.dumps([{"platform": "gitea", "datasource": "mongo", "file_name": "app.yaml"}]), "acme").errors == []

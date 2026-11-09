@@ -51,16 +51,6 @@ def extract_pr_number(payload: dict, platform: str) -> str | None:
     return None
 
 
-def extract_changed_filenames(payload: dict, platform: str) -> list[str]:
-    names: set[str] = set()
-    for commit in payload.get("commits", []):
-        for key in ("added", "modified", "removed"):
-            names.update(commit.get(key, []))
-    if not names and "object_attributes" in payload:
-        names.update(payload["object_attributes"].get("files", []))
-    return list(names)
-
-
 # ── Structured prune config ───────────────────────────────────────────────────
 
 class PruneConfig:

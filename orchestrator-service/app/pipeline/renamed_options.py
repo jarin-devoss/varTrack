@@ -27,6 +27,8 @@ REMOVED_OPTIONS: dict[str, str] = {
     "dry_run": "a dry run is started, not configured: use the UI's Dry run, `vt sync --dry-run` or the dry-run webhook; "
                "the rule now writes on every push",
     "dry_run_prune": "a dry run reports what a prune would delete; a rule with prune off deletes nothing",
+    "max_changed_files": "a rule reads only the files it names (file_name or file_path_map): a push that touched other "
+                         "files does not sync them, so there is nothing to cut",
 }
 
 # Options of the prune block that were removed.

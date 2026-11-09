@@ -103,15 +103,6 @@ class TestWhichCommitIsRead(_Base):
         self.use(mirrors).extract_file(URL, "main", "c.yaml", revision=SHA)
         self.assertFalse([c for c in mirrors.calls if c[0] == "fetch"])
 
-    def test_every_file_of_a_batch_is_read_at_the_same_commit(self):
-        mirrors = FakeMirrors({"a.yaml": b"a", "b.yaml": b"b"})
-        out = self.use(mirrors).extract_changed_files(
-            URL, "main", ["a.yaml", "b.yaml", "gone.yaml"], revision=SHA,
-        )
-        self.assertEqual([(f.path, f.content) for f in out],
-                         [("a.yaml", "a"), ("b.yaml", "b"), ("gone.yaml", None)])
-        self.assertEqual({c[1] for c in mirrors.calls if c[0] == "read"}, {SHA})
-
 
 class TestExtractFile(_Base):
 
@@ -135,22 +126,6 @@ class TestExtractFile(_Base):
         with self.assertRaises(MirrorError):
             self.use(mirrors).extract_file(URL, "main", "c.yaml")
 
-    def test_a_batch_file_that_cannot_be_read_fails_the_batch(self):
-        mirrors = FakeMirrors({"bad.yaml": MirrorError("boom"), "ok.yaml": b"ok"})
-        with self.assertRaises(SourceUnavailable) as caught:
-            self.use(mirrors).extract_changed_files(URL, "main", ["bad.yaml", "ok.yaml"])
-        self.assertIn("bad.yaml", str(caught.exception))
-
-    def test_an_unreachable_repository_fails_the_whole_batch(self):
-        mirrors = FakeMirrors(resolves=MirrorError("down"))
-        with self.assertRaises(SourceUnavailable):
-            self.use(mirrors).extract_changed_files(URL, "main", ["a", "b"])
-
-    def test_a_missing_file_in_a_batch_is_still_none(self):
-        mirrors = FakeMirrors({"gone.yaml": None, "ok.yaml": b"ok"})
-        out = self.use(mirrors).extract_changed_files(URL, "main", ["gone.yaml", "ok.yaml"])
-        self.assertEqual([(f.path, f.content) for f in out], [("gone.yaml", None), ("ok.yaml", "ok")])
-
     def test_oserror_is_treated_as_unreachable(self):
         mirrors = FakeMirrors(resolves=OSError("no such file"))
         with self.assertRaises(SourceUnavailable):
@@ -162,10 +137,7 @@ class TestExtractFile(_Base):
             self.use(mirrors).extract_file(URL, "main", "c.yaml")
         self.assertNotIn("s3cret", str(caught.exception))
 
-    def test_empty_batch_touches_nothing(self):
-        mirrors = FakeMirrors()
-        self.assertEqual(self.use(mirrors).extract_changed_files(URL, "main", []), [])
-        self.assertEqual(mirrors.calls, [])
+
 
 
 class TestToken(_Base):
@@ -233,10 +205,6 @@ class TestPathTraversal(_Base):
         mirrors = FakeMirrors()
         self.assertIsNone(self.use(mirrors).extract_file(URL, "refs/heads/main", "../../etc/passwd"))
         self.assertEqual(mirrors.calls, [])
-
-    def test_a_batch_path_traversal_is_none(self):
-        out = self.use(FakeMirrors()).extract_changed_files(URL, "main", ["../x"])
-        self.assertEqual([(f.path, f.content) for f in out], [("../x", None)])
 
     def test_normal_relative_path_accepted(self):
         mirrors = FakeMirrors({"config/prod.yaml": b"x: 1"})

@@ -40,6 +40,7 @@ from __future__ import annotations
 import copy
 import functools
 import logging
+import threading
 from typing import Any, Iterable, Optional
 
 from app.pipeline.renamed_options import with_current_names
@@ -212,6 +213,88 @@ def _settable_by_tenant(rule: dict, base: dict, source: str, tenant_id: str = ""
     return kept
 
 
+# ── A rule that names no environments, or no file, is refused ─────────────────
+
+# Where a rule's environments come from. A push nothing names feeds no environment, so a rule has to say.
+ENV_STRATEGIES = ("branch_map", "file_path_map", "branch_as_env", "pr_as_env", "tag_as_env")
+
+# What a rule reads. A sync reads the file or files a rule names; nothing reads files no one named.
+FILE_KEYS = ("file_name", "file_path_map")
+
+
+def refusal(rule: dict) -> str:
+    """Why *rule* (as config.cue and the tenant's bundle.json build it) is refused, or "". A rule must name where its
+    environments come from, and the file it reads, in those layers: a repository's vartrack.json may change them but is
+    not read here, and a rule that waited on it would be loaded by nobody who could say what it reads or writes."""
+    no_env = not any(rule.get(key) for key in ENV_STRATEGIES)
+    no_file = not any(rule.get(key) for key in FILE_KEYS)
+    if not no_env and not no_file:
+        return ""
+    name = f"{rule.get('platform')}/{rule.get('datasource')}"
+    env_fix = ("set branch_map (for example {\"main\": \"production\"}), file_path_map, branch_as_env, pr_as_env or "
+               "tag_as_env in config.cue or the tenant's bundle.json. To keep writing to an environment called default, "
+               "set branch_map: {\"main\": \"default\"}")
+    file_fix = ("set file_name (for example \"app-settings.yaml\") or file_path_map in config.cue or the tenant's "
+                "bundle.json. A repository's vartrack.json can still change it")
+    if no_env and no_file:
+        return f"{name} names no environments and no file to read: for the environments, {env_fix}; for the file, {file_fix}"
+    if no_env:
+        return f"{name} names no environments: {env_fix}"
+    return f"{name} names no file to read: {file_fix}"
+
+
+# What each tenant's refused rules are, as the last lookup found them: {tenant: {(platform, datasource): (rule, why)}}.
+# A refused rule is not loaded, so nothing reaches it; the web UI lists it from here, with the reason.
+_refused: dict[str, dict[tuple, tuple[dict, str]]] = {}
+_refused_lock = threading.Lock()
+_said: set[tuple] = set()
+
+
+def refused_rules(tenant_id: str) -> list[tuple[dict, str]]:
+    """(rule, why) of each of *tenant_id*'s rules that is refused."""
+    with _refused_lock:
+        return list(_refused.get(tenant_id, {}).values())
+
+
+def refusal_of(tenant_id: str, platform: str, datasource: str) -> str:
+    """Why the tenant's rule for *platform* and *datasource* is refused, or ""."""
+    with _refused_lock:
+        found = _refused.get(tenant_id, {}).get((platform, datasource))
+    return found[1] if found else ""
+
+
+def _say_refused(tenant_id: str, rule: dict, why: str) -> None:
+    """Once per rule and reason: an error in the log, and a warning event on the tenant, so it is not silent."""
+    key = (tenant_id, rule.get("platform"), rule.get("datasource"), why)
+    if key in _said:
+        return
+    _said.add(key)
+    logger.error("tenant %s: %s — the rule is refused and not loaded", tenant_id, why)
+    try:
+        from app.ui import ledger
+        ledger.record_event(tenant=tenant_id, reason="RuleRefused", warning=True,
+                            rule=f"{rule.get('platform')}/{rule.get('datasource')}", message=why)
+    except Exception:
+        logger.debug("RuleRefused event not recorded", exc_info=True)
+
+
+def _keep(tenant_id: str, rules: list[dict]) -> list[dict]:
+    """*rules* without the refused ones, which are remembered (and said) instead. Replaces what was remembered
+    for the tenant: a rule that was fixed is no longer refused."""
+    kept: list[dict] = []
+    refused: dict[tuple, tuple[dict, str]] = {}
+    for rule in rules:
+        why = refusal(rule)
+        if why:
+            refused[(rule.get("platform"), rule.get("datasource"))] = (rule, why)
+            _say_refused(tenant_id, rule, why)
+        else:
+            kept.append(rule)
+    with _refused_lock:
+        _refused[tenant_id] = refused
+    return kept
+
+
 def layered_rule(cue_rule: dict, bundle_rule: Optional[dict], tenant_id: str,
                  bundle: Optional[dict] = None, source: str = "bundle.json") -> dict:
     """config.cue's *cue_rule* with *bundle_rule* (bundle.json's, or None)
@@ -273,7 +356,7 @@ def tenant_rules(bundle_rules: list[dict], tenant_id: str, claimed: set[tuple[An
         for r in bundle_rules:
             warn_tenant_claim(r, f"bundle.json: the {r.get('platform')}/{r.get('datasource')} rule",
                               f"the one whose schema repository holds this file ({tenant_id})", tenant_id)
-        return [{**r, "tenant_id": tenant_id} for r in bundle_rules]
+        return _keep(tenant_id, [{**r, "tenant_id": tenant_id} for r in bundle_rules])
     out: list[dict] = []
     for rule in bundle_rules:
         cue = _find(cues, rule.get("platform"), rule.get("datasource"))
@@ -281,7 +364,7 @@ def tenant_rules(bundle_rules: list[dict], tenant_id: str, claimed: set[tuple[An
             out.append(layered_rule(cue, rule, tenant_id, bundle))
     out.extend(layered_rule(cue, None, tenant_id, bundle)
                for cue in unclaimed(cues, claimed) if owner(cue) == tenant_id)
-    return out
+    return _keep(tenant_id, out)
 
 
 def _claimed(cue: dict, claimed: set[tuple[Any, Any, Any]]) -> bool:
@@ -304,7 +387,8 @@ def rule_for(platform: str, datasource: str, bundle_rule: Optional[dict], tenant
         if bundle_rule is not None:
             warn_tenant_claim(bundle_rule, f"bundle.json: the {platform}/{datasource} rule",
                               f"the one whose schema repository holds this file ({tenant_id})", tenant_id)
-        return {**bundle_rule, "tenant_id": tenant_id} if bundle_rule is not None else None
+        found = {**bundle_rule, "tenant_id": tenant_id} if bundle_rule is not None else None
+        return _single(tenant_id, found)
     cue = _find(cues, platform, datasource)
     if bundle_rule is not None and not _usable(cue, bundle_rule, tenant_id):
         return None
@@ -312,4 +396,21 @@ def rule_for(platform: str, datasource: str, bundle_rule: Optional[dict], tenant
         return None
     if bundle_rule is None and (tenant_id != owner(cue) or _claimed(cue, claimed)):
         return None
-    return layered_rule(cue, bundle_rule, tenant_id, bundle)
+    return _single(tenant_id, layered_rule(cue, bundle_rule, tenant_id, bundle))
+
+
+def _single(tenant_id: str, rule: Optional[dict]) -> Optional[dict]:
+    """*rule*, or None when it is refused (remembered, and said, like the lists do)."""
+    if rule is None:
+        return None
+    why = refusal(rule)
+    key = (rule.get("platform"), rule.get("datasource"))
+    with _refused_lock:
+        if why:
+            _refused.setdefault(tenant_id, {})[key] = (rule, why)
+        else:
+            _refused.get(tenant_id, {}).pop(key, None)
+    if why:
+        _say_refused(tenant_id, rule, why)
+        return None
+    return rule

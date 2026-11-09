@@ -52,7 +52,12 @@ FULL_ACCESS = Access(read=True, can_sync=True, permission="admin")
 
 
 def _envs_of(rule: dict, records: Iterable[dict]) -> list[str]:
-    return sorted({r["env"] for r in records if r.get("datasource") == rule.get("datasource") and r.get("env")})
+    """The environments to judge a rule by: the ones the rule produces now, written or not, and the ones it has written.
+    Asking only about the written ones would judge a rule by environments nothing feeds any more (a leftover the engine
+    refuses) and never by the one its next sync would write; one allowed environment is enough to sync."""
+    from app.ui import views
+    written = {r["env"] for r in records if r.get("datasource") == rule.get("datasource") and r.get("env")}
+    return sorted(written | set(views.produced_envs(rule)))
 
 
 class Viewer:

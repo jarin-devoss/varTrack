@@ -58,6 +58,9 @@ class ETLResult:
     # Why each file in `errors` could not be processed: the exception, in words. An error
     # with no reason is a failure nobody can act on.
     error_reasons: dict[str, str] = field(default_factory=dict)
+    # Files no environment of the rule takes (a push to a branch it does not map, a file its file_path_map does not
+    # list): skipped, never written to an environment nobody named. {file: why}.
+    unfed: dict[str, str] = field(default_factory=dict)
     # The commit of the tenant's schema repository these files were validated against ("" when the
     # tenant has none): a task reports it, so a sync that ran on old schemas shows which ones.
     schema_commit: str = ""

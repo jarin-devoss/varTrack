@@ -13,11 +13,8 @@ Key methods:
 
   extract_file(repo_url, ref, file_path, *, token, revision)
       Fetch a single file's content as a string.  Returns None if the file
-      doesn't exist at that commit.  Used by Strategy 1 and 2 in file_collector.
-
-  extract_changed_files(repo_url, ref, filenames, *, token, revision)
-      Fetch a list of specific files and return FileContent namedtuples.
-      Used by Strategy 3 (fetch all files touched by the push).
+      doesn't exist at that commit.  Used by file_collector for the file a
+      rule names (file_name, or each path of file_path_map).
 
   get_commit_sha(repo_url, branch, *, token)
       Return the current HEAD SHA for a branch without cloning anything.
@@ -44,7 +41,7 @@ from __future__ import annotations
 
 import logging
 import time
-from typing import NamedTuple, Optional
+from typing import Optional
 
 from app.dependencies import SourceUnavailable
 from app.utils.git.mirror import RepoMirrors, clean_path, get_default_mirrors, is_commit_sha
@@ -61,12 +58,6 @@ def _obs_git(outcome: str, elapsed: float) -> None:
             m.observe_git_fetch(outcome, elapsed)
     except Exception:
         pass
-
-
-class FileContent(NamedTuple):
-    """Result type for extract_changed_files."""
-    path: str
-    content: Optional[str]   # None if file was deleted or not found
 
 
 def _decode(raw: bytes) -> str:
@@ -171,69 +162,6 @@ class GitExtractor:
         )
         _obs_git("ok", time.perf_counter() - _t0)
         return content
-
-    def extract_changed_files(
-        self,
-        repo_url: str,
-        ref: str,
-        filenames: list[str],
-        *,
-        token: Optional[str] = None,
-        revision: Optional[str] = None,
-    ) -> list[FileContent]:
-        """
-        Fetch a specific list of files at one commit.
-
-        Raises SourceUnavailable when the repository cannot be read at all, or one
-        of the files cannot be read: dropping it would look like "it was deleted".
-
-        Returns a list of FileContent(path, content) where content is None for
-        files that were deleted or couldn't be read.
-
-        Parameters
-        ----------
-        repo_url  : clone URL, without credentials
-        ref       : full git ref; resolved to a commit unless *revision* is given
-        filenames : list of repo-relative file paths to fetch
-        token     : optional OAuth2 / PAT
-        revision  : the commit to read (a full commit id), when it is known
-        """
-        if not filenames:
-            return []
-
-        try:
-            mirrors, sha = self._commit(repo_url, ref, token, revision)
-        except Exception as exc:
-            logger.exception("git_extractor: clone/fetch failed repo=%s ref=%s", repo_url, ref)
-            raise SourceUnavailable(f"cannot read {repo_url} at {ref}: {exc}", what=repo_url) from None
-
-        results: list[FileContent] = []
-        for fp in filenames:
-            try:
-                raw = mirrors.read(repo_url, sha, fp)
-            except ValueError:
-                logger.warning(
-                    "git_extractor: path traversal attempt path=%r repo=%s", fp, repo_url
-                )
-                results.append(FileContent(path=fp, content=None))
-                continue
-            except Exception as exc:
-                # As in extract_file: a file that exists but cannot be read is not a deleted one.
-                logger.exception("git_extractor: read error path=%s", fp)
-                raise SourceUnavailable(f"cannot read {fp} in {repo_url} at {ref}: {exc}", what=repo_url) from None
-
-            if raw is None:
-                logger.debug("git_extractor: file deleted/missing path=%s sha=%s", fp, sha)
-                results.append(FileContent(path=fp, content=None))
-                continue
-            results.append(FileContent(path=fp, content=_decode(raw)))
-
-        logger.debug(
-            "git_extractor: fetched %d/%d files repo=%s ref=%s commit=%s",
-            sum(1 for r in results if r.content is not None), len(filenames),
-            repo_url, ref, sha,
-        )
-        return results
 
     def get_commit_sha(
         self,

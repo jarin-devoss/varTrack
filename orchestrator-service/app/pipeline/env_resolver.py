@@ -9,7 +9,10 @@ Priority order (first match wins):
   3. branch_as_env               branch name IS the env
   4. pr_as_env                   "pr-{number}"
   5. tag_as_env                  tag name IS the env
-  6. "default"                   hardcoded fallback
+
+When none of them matches there is no environment: the push feeds nothing of this rule and is skipped, not written
+somewhere nobody named (resolve returns None). A rule that names no environment strategy at all is refused when it
+is loaded (rule_layers.refusal).
 
 pr_as_env — how pr_number is resolved
 ──────────────────────────────────────
@@ -45,7 +48,7 @@ Flow for a push to "feature/login" (branch has open PR #42):
 
   Push to feature/login after merge:
     → lookup("feature/login") → None
-    → falls through to branch_as_env / "default"
+    → falls through to branch_as_env, and then to no environment
 """
 from __future__ import annotations
 
@@ -83,13 +86,13 @@ def resolve(
     branch_as_env: bool = False,
     pr_as_env: bool = False,
     tag_as_env: bool = False,
-) -> str:
+) -> str | None:
     """
     Resolve the environment string from git event metadata and rule config.
 
     Returns
     -------
-    str — never empty, falls back to "default".
+    str — the environment; None when nothing names one (the push feeds no environment of the rule).
     """
     branch_map    = branch_map    or {}
     file_path_map = file_path_map or {}
@@ -124,7 +127,7 @@ def resolve(
     #   b) PRBranchCache lookup (plain push events to a branch that has an open PR)
     #
     # (b) is the key fix: without it, a plain push to a branch that already has
-    # an open PR would fall through to "default" and miss the PR environment.
+    # an open PR would fall through and miss the PR environment.
     if pr_as_env:
         effective_pr = pr_number
 
@@ -149,6 +152,6 @@ def resolve(
         logger.debug("env_resolve via=tag_as_env tag=%s env=%s", tag, env)
         return env
 
-    # 6. Default fallback
-    logger.debug("env_resolve via=default branch=%s", branch)
-    return "default"
+    # 6. Nothing names an environment: the push feeds none of this rule's environments.
+    logger.debug("env_resolve via=none branch=%s", branch)
+    return None

@@ -126,6 +126,13 @@ def run_stage_etl(ctx: PayloadContext, datasource: str, tenant_id: str) -> ETLRe
                 pr_as_env=rule_config.get("pr_as_env", False),
                 tag_as_env=rule_config.get("tag_as_env", False),
             )
+            if env is None:
+                # Nothing names an environment for this push: it feeds none of the rule's environments. Said, not written
+                # somewhere nobody declared.
+                what = f"branch {ctx.branch}" if ctx.branch else (f"tag {ctx.tag}" if ctx.tag else "this push")
+                result.unfed[file_path] = f"{what} feeds no environment of {ctx.platform}/{datasource}"
+                _record_metric("skipped")
+                continue
 
             # ── 1. Parse raw content ──────────────────────────────────────────
             parsed = parse_file(content, file_path)

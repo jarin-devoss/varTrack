@@ -34,7 +34,7 @@ def _rule(row: dict) -> dict:
     }
 
 
-def _resolve(rule: dict, branch: str, file_path: str | None) -> str:
+def _resolve(rule: dict, branch: str, file_path: str | None) -> str | None:
     return resolve(branch=branch, file_path=file_path, branch_map=rule["branch_map"],
                    file_path_map=rule["file_path_map"], branch_as_env=rule["branch_as_env"])
 
@@ -72,7 +72,6 @@ def test_the_table_covers_every_way_an_environment_is_fed():
     kinds = {
         "branch_map": any(r["rule"].get("branch_map") and r["branch"] for r in ROWS),
         "branch_as_env": any(r["rule"].get("branch_as_env") and r["branch"] for r in ROWS),
-        "default": any(r["env"] == "default" and r["branch"] for r in ROWS),
         "file_path_map": any(r["rule"].get("file_path_envs") and r["branch"] for r in ROWS),
         "nothing": any(not r["branch"] for r in ROWS),
     }
@@ -96,4 +95,6 @@ def test_the_open_viewer_refuses_an_environment_nothing_feeds_as_the_engine_does
     unfed = access.Viewer().decide(rule, "sync", "qa")
     assert not unfed.allowed and unfed.denied_by == "rule" and unfed.branch == ""
     assert unfed.reason.startswith("permission denied: nothing feeds qa in the redis rule")
-    assert access.Viewer().decide({"datasource": "plain"}, "dry_run", "default").branch == "main"
+    # there is no environment called default: it is fed by a branch only when the rule's branch_map says so
+    assert access.Viewer().decide({"datasource": "plain", "branch_map": {"main": "default"}}, "dry_run", "default").branch == "main"
+    assert not access.Viewer().decide({"datasource": "plain", "branch_map": {"main": "production"}}, "dry_run", "default").allowed
