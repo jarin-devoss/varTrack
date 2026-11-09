@@ -282,7 +282,7 @@ You can also include a `default` dict for unknown env fallback:
 
 ### `default` fallback
 
-In all three patterns, if the resolved env has no matching key, varTrack silently falls back to `default`. If there is no `default` either, the data is returned unchanged.
+In all three patterns, if the resolved env has no matching key, varTrack silently falls back to the `default` key. If there is no `default` either, the data is returned unchanged. This `default` is a key inside the file, not an environment: which environment a push feeds is decided above, and there is no `default` environment.
 
 ---
 

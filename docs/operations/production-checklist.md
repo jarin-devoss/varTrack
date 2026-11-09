@@ -46,15 +46,16 @@ without it.
       the secret that signed a delivery; when they share one, their webhooks are refused as
       ambiguous.
 - [ ] **Tokens with the least access.** A platform's `token` needs read access to the config
-      repositories (and the presets); a tenant's `SCHEMA_TENANT_<ID>_TOKEN` read access to its
+      repositories (and the presets); a declared tenant's `schema_repo.token` read access to its
       schema repository.
 
 ## Writing safely
 
 - [ ] **`force` on production rules** for what no tenant or repository may change, e.g.
       `force: {prune: {enabled: false}}` or `{strict_validation: true}`.
-- [ ] **Map every branch you push to.** An unmapped branch is synced to the environment
-      `default` ([Environment resolution](../concepts/environment-resolution.md)).
+- [ ] **Map every branch you push to.** A push to a branch no strategy places is skipped
+      (*nothing to do*): there is no `default` environment
+      ([Environment resolution](../concepts/environment-resolution.md)).
 - [ ] **Prune with a dry run first.** A dry run (the UI's *Dry run*, `vt sync --dry-run`) reports what
       would be deleted; add `protection` patterns for keys other tools own.
 - [ ] **MongoDB shape decided.** Set `update_strategy` explicitly on each Mongo datasource;
