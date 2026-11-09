@@ -137,8 +137,10 @@ func newWorld(t *testing.T, policy string, opts ...authz.Option) *world {
 				BranchMap: map[string]string{"develop": "staging"}},
 			{Platform: "gitea-team", Datasource: "mongo-primary", Repositories: []string{"payments/config"},
 				BranchMap: map[string]string{"develop": "staging"}},
-			// No environment strategy: every push lands in "default"; the rule's own branch feeds it.
-			{Platform: "gitea", Datasource: "plain", Repositories: []string{"acme/configs"}},
+			// An environment called default is only a name: the branch_map sends main to it (the one-line way to keep
+			// writing where a rule with no strategy used to).
+			{Platform: "gitea", Datasource: "plain", Repositories: []string{"acme/configs"},
+				BranchMap: map[string]string{"main": "default"}},
 			// Environments by file path; the rule reads its own branch.
 			{Platform: "gitea", Datasource: "by-path", Repositories: []string{"acme/configs"}, Branch: &develop,
 				FilePathMap: map[string]string{"team-a": "team-a/app.yaml", "team-b": "team-b/app.yaml"}},

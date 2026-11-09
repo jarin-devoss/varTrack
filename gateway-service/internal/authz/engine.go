@@ -140,7 +140,7 @@ type Rule struct {
 	Exclude     []string          // excluded repositories
 	BranchMap   map[string]string // branch → environment
 	BranchAsEnv bool
-	// Branch is the rule's own branch: what feeds "default" and the file_path_map environments,
+	// Branch is the rule's own branch: what feeds the file_path_map environments,
 	// and what self-heal reads when no branch_map names one. "main" when empty.
 	Branch       string
 	FilePathEnvs []string // the environments the rule's file_path_map names
@@ -532,19 +532,17 @@ func (e *Engine) rulePermissionIn(ctx context.Context, rule Rule, c *caller, wit
 	return perm, nil
 }
 
-// defaultEnv is the environment a push resolves to when no environment strategy names another.
-const defaultEnv = "default"
-
 // branchFor is the branch whose files land in env: the inverse of the ETL's environment
 // resolver (orchestrator-service/app/pipeline/env_resolver.py), in its order.
 //
 //  1. a branch_map entry maps a branch to env: that branch;
 //  2. env is one a file_path_map names: the rule's own branch;
-//  3. branch_as_env: env itself;
-//  4. env is "default", what a push resolves to when nothing else applies: the rule's own branch.
+//  3. branch_as_env: env itself.
+//
+// There is no environment called "default": a push nothing names feeds no environment.
 //
 // "" when no branch feeds env: a pull request or tag environment, or one the rule no longer
-// produces (written by an earlier version of it). The rule's own branch does not feed 2 or 4
+// produces (written by an earlier version of it). The rule's own branch does not feed 2
 // when branch_map sends that branch to another environment: its files land there.
 // testdata/branch_for.json holds the cases; the orchestrator's tests check them against the resolver.
 func branchFor(rule Rule, env string) string {
@@ -565,16 +563,13 @@ func branchFor(rule Rule, env string) string {
 	if rule.BranchAsEnv {
 		return env
 	}
-	if env == defaultEnv {
-		return ownBranch(rule)
-	}
 	return ""
 }
 
 // nothingFeeds is why an environment cannot be synced, or dry-run, when no branch feeds it.
 func nothingFeeds(rule Rule, env string) string {
 	return "nothing feeds " + env + " in the " + rule.Datasource + " rule: no branch_map entry maps a branch " +
-		"to it, branch_as_env is off, and it is not default or a file_path_map environment " +
+		"to it, branch_as_env is off, and it is not a file_path_map environment " +
 		"(an earlier version of the rule wrote it; it is not synced any more)"
 }
 
@@ -931,7 +926,7 @@ func (e *Engine) ReadableRules(ctx context.Context, ids []Identity, rules []Rule
 
 // canSyncAny is whether the caller may sync at least one of the rule's environments:
 // the ones the caller listed, else the ones the rule itself produces: its branch_map's, its
-// file_path_map's, and "default" when branch names are not environments.
+// file_path_map's.
 func (e *Engine) canSyncAny(ctx context.Context, rule Rule, c *caller, tenant string) bool {
 	envs := rule.Envs
 	if len(envs) == 0 {
@@ -947,9 +942,6 @@ func (e *Engine) canSyncAny(ctx context.Context, rule Rule, c *caller, tenant st
 		}
 		for _, env := range rule.FilePathEnvs {
 			add(env)
-		}
-		if !rule.BranchAsEnv {
-			add(defaultEnv)
 		}
 	}
 	if len(envs) == 0 && c.admin {
