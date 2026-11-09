@@ -4,7 +4,7 @@ import { RulePage } from '../pages/RulePage';
 
 /**
  * A dry run runs the whole pipeline and writes nothing. covers: action:rule.dryrun, action:syncpanel.dryrun,
- * action:toast.dismiss, state:task.dryrun, state:file.checked, state:validation.ok, state:validation.failed
+ * state:dryrun.log, state:dryrun.would-change, state:task.dryrun, state:file.checked, state:validation.ok, state:validation.failed
  */
 
 const HASH = 'ui-redis-hash-staging:vartrack';
@@ -14,7 +14,7 @@ for (const role of ['admin', 'writer', 'reader'] as Role[]) {
   test.describe(`as ${role}`, () => {
     test.use(as(role));
 
-    test('the Dry run button starts a dry run of every environment: the task is marked, its files are checked, the sink is unchanged', async ({ page, api, stores, gitea }) => {
+    test('the Dry run button starts a dry run of every environment: the log shows in the panel, the tasks are marked, the files are checked, the sink is unchanged', async ({ page, api, stores, gitea }) => {
       // Git has a new value; a dry run must report it without writing it.
       const value = unique(`dry-${role}`);
       const settings = (await gitea.read(CONFIG_REPO, 'app-settings.yaml', 'develop'))!;
@@ -26,17 +26,30 @@ for (const role of ['admin', 'writer', 'reader'] as Role[]) {
         await rule.open('gitea/redis-hash');
         await rule.dryRunAll.click();
         await expect(rule.sync.dialog).toBeVisible();
-        await expect(rule.sync.dryRun).toBeChecked();
+        // someone who may sync ticks Dry run as an option; someone who may not has nothing to choose, and is told why
+        if (role === 'reader') {
+          await expect(rule.sync.dryRun).toHaveCount(0);
+          await expect(rule.sync.dialog).toContainText("You can read this rule's repository but not write to it");
+        } else {
+          await expect(rule.sync.dryRun).toBeChecked();
+        }
         const taskIds = await rule.sync.startAndCollect();
         expect(taskIds, 'one task per environment the rule produces').toHaveLength(2);
 
-        // the toast says how it ended: both environments passed, nothing written; it links to the task, and can be dismissed
-        const toast = page.getByRole('status').filter({ hasText: 'Dry run of 2 environments passed' });
-        await expect(toast).toBeVisible();
-        await expect(toast).toContainText(/\d+ keys checked, nothing written/);
-        await expect(toast.getByRole('link', { name: 'Details' })).toHaveAttribute('href', `/tasks/${taskIds[0]}`);
-        await toast.getByRole('button', { name: 'Dismiss' }).click();
-        await expect(toast).toBeHidden();
+        // the panel stays open and shows the log: both environments passed, and what a sync would change in staging
+        await expect(rule.sync.dialog).toBeVisible();
+        await expect(rule.sync.log).toBeVisible();
+        await expect(rule.sync.verdicts).toHaveCount(2);
+        const staging = rule.sync.report('staging');
+        await expect(staging).toContainText('Read from Git');
+        await expect(staging).toContainText('app-settings.yaml.cue');
+        await expect(staging.getByTestId('would-change')).toContainText('app.name');
+        // the key is in the sink with another value: the log says what it holds now and what Git has
+        if (before) await expect(staging.getByTestId('would-change-keys')).toContainText(value);
+        // someone who may sync is offered the real sync of what was checked; someone who may not is not
+        if (role === 'reader') await expect(rule.sync.syncThese).toHaveCount(0);
+        else await expect(rule.sync.syncThese).toBeEnabled();
+        await expect(rule.sync.runAgain).toBeEnabled();
 
         for (const taskId of taskIds) {
           const task = await api.finished(taskId);
@@ -48,6 +61,8 @@ for (const role of ['admin', 'writer', 'reader'] as Role[]) {
             expect(file.schemaSource).toBe('name');
           }
         }
+        await rule.sync.close.click();
+        await expect(rule.sync.dialog).toBeHidden();
         expect(stores.redisGet(DB, HASH, 'app.name'), 'a dry run writes nothing').toBe(before);
       } finally {
         await gitea.put(CONFIG_REPO, 'app-settings.yaml', settings, 'ui-e2e: put the file back', 'develop');

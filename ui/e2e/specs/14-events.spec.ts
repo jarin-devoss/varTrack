@@ -24,6 +24,7 @@ const REASONS: [id: string, label: string][] = [
   ['HealSucceeded', 'Healed'],
   ['HealFailed', 'Heal failed'],
   ['SchemaRefreshed', 'Schema refreshed'],
+  ['RuleRefused', 'Rule refused'],
 ];
 
 const RULE = 'gitea/redis-string'; // strict_validation, branch_as_env: develop reads app-settings.yaml on develop

@@ -13,11 +13,15 @@ import { PlaygroundPage } from '../pages/PlaygroundPage';
 test.use(as('admin'));
 
 const DATASOURCE = 'redis-string'; // strict_validation, so Validate has something to refuse
-// The Playground goes through the gateway's CLI API, which judges an environment by the rule in the gateway's own configuration:
-// there `default` is always allowed, and nothing feeds any other name.
-const ENV = 'default';
+// The Playground goes through the gateway's CLI API, which judges an environment by the rule in the gateway's own configuration
+// (config.cue): there redis-string maps develop and main, so `develop` is fed, and nothing feeds any other name.
+const ENV = 'develop';
 const NOT_FED = 'playground-e2e';
 const KEYS = `ui-redis-string-${ENV}*`;
+
+/** What the environment holds now: every key of it and its value. */
+const snapshot = (stores: { redisKeys: (db: number, pattern: string) => string[]; redisGet: (db: number, key: string) => string }) =>
+  Object.fromEntries(stores.redisKeys(3, KEYS).map(key => [key, stores.redisGet(3, key)]));
 
 let valid = '';
 let token = '';
@@ -117,6 +121,7 @@ test('Validate refuses a value the schema forbids, and says which', async ({ pag
 });
 
 test('Dry run starts a task, follows it on the page, writes nothing, and Details opens the task', async ({ page, stores }) => {
+  const before = snapshot(stores);
   const playground = new PlaygroundPage(page);
   await playground.environment.fill(ENV);
   await playground.paste(valid.replace(/log_level: \w+/, 'log_level: ERROR'));
@@ -127,7 +132,7 @@ test('Dry run starts a task, follows it on the page, writes nothing, and Details
   await expect(playground.run).toContainText('Succeeded', { timeout: 30_000 });
   await expect(playground.run).toContainText('dry run');
   await expect(playground.run).toContainText(/\d+ keys parsed and validated/);
-  expect(stores.redisKeys(3, KEYS), 'a dry run writes nothing').toEqual([]);
+  expect(snapshot(stores), 'a dry run writes nothing').toEqual(before);
 
   await playground.run.getByRole('link', { name: 'Details' }).click();
   await expect(page).toHaveURL(/\/tasks\/[0-9a-f-]{36}$/);
@@ -154,10 +159,10 @@ test('an environment no branch feeds is refused with the reason, for a dry run a
   await expect(playground.error).toContainText(`nothing feeds ${NOT_FED} in the redis-string rule`);
 });
 
-test('Sync asks first, Cancel leaves everything as it was, and Sync writes the file to the environment', async ({ page, stores }) => {
+test('Sync asks first, Cancel leaves everything as it was, and Sync writes the file to the environment', async ({ page, stores, adminApi }) => {
   const playground = new PlaygroundPage(page);
   const key = `ui-redis-string-${ENV}:observability_log_level`;
-  expect(stores.redisKeys(3, KEYS), 'nothing is written under this environment yet').toEqual([]);
+  const before = snapshot(stores);
   await playground.environment.fill(ENV);
   await playground.paste(valid.replace(/log_level: \w+/, 'log_level: WARN'));
   await expect(playground.sync).toHaveText(`Sync to ${ENV}`);
@@ -168,7 +173,7 @@ test('Sync asks first, Cancel leaves everything as it was, and Sync writes the f
   await expect(playground.confirm).not.toContainText('looks like a production environment');
   await playground.confirm.getByRole('button', { name: 'Cancel' }).click();
   await expect(playground.confirm).toBeHidden();
-  expect(stores.redisKeys(3, KEYS), 'Cancel writes nothing').toEqual([]);
+  expect(snapshot(stores), 'Cancel writes nothing').toEqual(before);
 
   try {
     await playground.sync.click();
@@ -178,7 +183,8 @@ test('Sync asks first, Cancel leaves everything as it was, and Sync writes the f
     await expect(playground.run).toContainText(/\d+ keys written/);
     expect(stores.redisGet(3, key)).toBe('WARN');
   } finally {
-    stores.redisDelete(3, ...stores.redisKeys(3, KEYS)); // pasted, not pushed: nothing in Git to put back
+    // pasted, not pushed: put the environment back as Git says
+    await adminApi.succeeded((await adminApi.sync('gitea/redis-string', [ENV]))[0]);
   }
 });
 

@@ -70,15 +70,15 @@ test('while a sync runs the toast says so and the environment shows "Syncing…"
   await zookeeper.open('gitea/zookeeper');
   faults.pause('zookeeper');                        // the sink hangs: the task is picked up and cannot finish
 
-  await zookeeper.syncEnv('default', { dryRun: false });
-  const running = page.getByRole('status').filter({ hasText: 'Syncing default…' });
+  await zookeeper.syncEnv('production', { dryRun: false });
+  const running = page.getByRole('status').filter({ hasText: 'Syncing production…' });
   await expect(running).toBeVisible();
   await expect(running.getByRole('link', { name: 'Follow the task' })).toBeVisible();
-  await expect(zookeeper.envSync('default')).toBeDisabled({ timeout: 15_000 });
-  await expect(zookeeper.envSync('default')).toHaveText('Syncing…');
+  await expect(zookeeper.envSync('production')).toBeDisabled({ timeout: 15_000 });
+  await expect(zookeeper.envSync('production')).toHaveText('Syncing…');
 
   faults.unpause('zookeeper');
-  await expect(page.getByRole('status').filter({ hasText: /Synced default/ })).toBeVisible({ timeout: 60_000 });
-  await expect(zookeeper.envSync('default')).toBeEnabled();
-  await expect(zookeeper.envSync('default')).toHaveText(/^\s*Sync$/);
+  await expect(page.getByRole('status').filter({ hasText: /Synced production/ })).toBeVisible({ timeout: 60_000 });
+  await expect(zookeeper.envSync('production')).toBeEnabled();
+  await expect(zookeeper.envSync('production')).toHaveText(/^\s*Sync$/);
 });

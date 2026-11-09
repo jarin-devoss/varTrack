@@ -71,13 +71,13 @@ test.describe('reading the tasks', () => {
     const settings = (await gitea.read(CONFIG_REPO, 'app-settings.yaml', 'develop'))!;
     const started = {
       webhook: await stack.push('redis-string', 'develop', await gitea.head(CONFIG_REPO, 'develop')),
-      cli: await adminApi.cliDryRun(await Gitea.tokenFor('demo-admin', 'VarTrack123'), 'redis-string', 'default', settings),
+      cli: await adminApi.cliDryRun(await Gitea.tokenFor('demo-admin', 'VarTrack123'), 'redis-string', 'develop', settings),
       ui: ids.ok,
       self_heal: '',
     };
-    const [seed] = await adminApi.sync('gitea/mongo', ['default']);
+    const [seed] = await adminApi.sync('gitea/mongo', ['staging']);
     await adminApi.succeeded(seed);
-    stores.mongoSet('ui-mongo', 'default', 'api.rate_limit', unique('outside'));
+    stores.mongoSet('ui-mongo', 'staging', 'api.rate_limit', unique('outside'));
     expect((await stack.checkNow('gitea', 'mongo'))[0].healed).toBe(true);
     await expect.poll(async () => {
       started.self_heal = (await adminApi.tasks(40)).find(t => t.trigger === 'self_heal')?.taskId ?? '';

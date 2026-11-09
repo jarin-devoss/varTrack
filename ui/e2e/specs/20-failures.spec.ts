@@ -137,7 +137,7 @@ test.describe('a service of the stack stops', () => {
     await rule.open('gitea/zookeeper');
     faults.pause('zookeeper');
 
-    const taskId = await rule.syncEnv('default', { dryRun: false });
+    const taskId = await rule.syncEnv('production', { dryRun: false });
     await expect.poll(async () => {
       const response = await page.request.get(`/api/orchestrator/v1/ui/tasks/${taskId}`);
       return response.status() === 200 ? ((await response.json()) as { state: string }).state : 'not recorded';
@@ -194,25 +194,25 @@ test.describe('a service of the stack stops', () => {
     const RULE = 'gitea/mongo-primary';
     const rule = new RulePage(page);
     await rule.open(RULE);
-    await expect(rule.env('default')).toHaveAccessibleName(/default: Synced/);
+    await expect(rule.env('staging')).toHaveAccessibleName(/staging: Synced/);
 
     faults.stop('mongo');
     // The datasource's connect_timeout_ms (5 s in config.cue) bounds how long the driver looks for the server, so the read
     // fails within seconds; Refresh reads the sink now, not the last answer.
-    await expect.poll(async () => (await api.fresh(RULE)).targets.find(t => t.env === 'default')?.drift, { timeout: 40_000, intervals: [2_000] }).toBe('unknown');
+    await expect.poll(async () => (await api.fresh(RULE)).targets.find(t => t.env === 'staging')?.drift, { timeout: 40_000, intervals: [2_000] }).toBe('unknown');
     await page.getByRole('button', { name: 'Refresh' }).click();
-    await expect(rule.env('default')).toHaveAccessibleName(/default: Unknown/, { timeout: 30_000 });
+    await expect(rule.env('staging')).toHaveAccessibleName(/staging: Unknown/, { timeout: 30_000 });
 
-    const taskId = await rule.syncEnv('default', { dryRun: false });
+    const taskId = await rule.syncEnv('staging', { dryRun: false });
     const task = await api.finished(taskId, 60_000);
     expect(task.state).toBe('FAILED');
     await new TaskPage(page).open(taskId);
     await expect(page.locator('.hero')).toHaveClass(/hero--red/);
 
     await faults.start('mongo');
-    await expect.poll(async () => (await api.fresh(RULE)).targets.find(t => t.env === 'default')?.drift, { timeout: 40_000, intervals: [2_000] }).toBe('in_sync');
+    await expect.poll(async () => (await api.fresh(RULE)).targets.find(t => t.env === 'staging')?.drift, { timeout: 40_000, intervals: [2_000] }).toBe('in_sync');
     await rule.open(RULE);
-    await expect(rule.env('default')).toHaveAccessibleName(/default: Synced/);
+    await expect(rule.env('staging')).toHaveAccessibleName(/staging: Synced/);
   });
 
   test('gateway: pages that need a permission answer say permissions are unavailable, and the stack mends when it is back', async ({ page, faults }) => {
