@@ -83,6 +83,13 @@ class HelmSink(BaseSink):
         total_sources: int,
         data: Any = None,
     ) -> dict[str, Any]:
+        # GIT_SMART_REPAIR: values the release (or values file) already holds are not applied again, so a
+        # sync that changes nothing is not a new release revision.
+        plan = self._plan_object(flat_data, sync_mode, lambda: self._held_values(flat_data, env))
+        outcome = {"unchanged": plan.unchanged, **({"note": plan.note, "sync_mode": plan.mode} if plan.note else {})}
+        if not plan.write:
+            return {"written": 0, **outcome}
+
         # Inject VarTrack annotations into the flat_data under a reserved prefix
         # so strategies can attach them appropriately (--set or values block)
         annotated_data = {**flat_data}
@@ -94,7 +101,7 @@ class HelmSink(BaseSink):
             if self._dest_tpl
             else self._release_name
         )
-        return self._strategy.apply(
+        return {**self._strategy.apply(
             flat_data=annotated_data,
             release_name=release_name,
             namespace=self._namespace,
@@ -103,7 +110,29 @@ class HelmSink(BaseSink):
             context=self._context,
             extra_flags=self._extra_flags,
             dry_run=False,
-        )
+        ), **outcome}
+
+    def _held_values(self, desired: dict[str, str], env: str) -> "dict[str, str] | None":
+        """What the release (or values file) holds of the values this sink sets, to compare with *desired*: None
+        when there is no values file yet. The labels VarTrack stamps are not values. A release applied with
+        --reuse-values keeps values other tools set, which are not ours to compare."""
+        from app.pipeline.sinks.strategies.helm.values_file import ValuesFileStrategy
+
+        if isinstance(self._strategy, ValuesFileStrategy):
+            return self._values_file()
+        held = {k: v for k, v in _flatten(self._release_values(env)).items() if not k.startswith("commonAnnotations.")}
+        return {k: v for k, v in held.items() if k in desired} if getattr(self._strategy, "_reuse_values", False) else held
+
+    def _values_file(self) -> "dict[str, str] | None":
+        import yaml
+        try:
+            with open(self._strategy._path, encoding="utf-8") as fh:        # type: ignore[attr-defined]
+                values = yaml.safe_load(fh) or {}
+        except FileNotFoundError:
+            return None
+        values.pop("_vartrack", None)
+        # The file holds keys without the strategy's values_prefix.
+        return {self._strategy._prefix + k: v for k, v in _flatten(values).items()}   # type: ignore[attr-defined]
 
     def close(self) -> None:
         pass
@@ -124,16 +153,11 @@ class HelmSink(BaseSink):
 
         try:
             if isinstance(self._strategy, ValuesFileStrategy):
-                import yaml
-                with open(self._strategy._path, encoding="utf-8") as fh:
-                    values = yaml.safe_load(fh) or {}
-                values.pop("_vartrack", None)
-                # The file holds keys without the strategy's values_prefix.
-                flat = {self._strategy._prefix + k: v for k, v in _flatten(values).items()}
+                flat = self._values_file()
+                if flat is None:
+                    return {}
             else:
                 flat = _flatten(self._release_values(env))
-        except FileNotFoundError:
-            return {}
         except Exception as exc:
             return self._read_failed(exc, "HelmSink.read_values")
         return {k: flat[k] for k in keys if k in flat}

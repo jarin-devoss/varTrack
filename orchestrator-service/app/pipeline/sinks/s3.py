@@ -146,12 +146,31 @@ class S3Sink(BaseSink):
         # Build final tag string: static → dynamic → vartrack labels (last wins)
         tagging = self._resolve_tags(flat_data, labels)
 
+        # GIT_SMART_REPAIR: an object that already holds the file is not put again; one per key, only the
+        # keys whose object differs.
         if self._one_per_key:
-            written = self._put_per_key(flat_data, datasource, env, tagging)
+            plan = self._plan(flat_data, sync_mode, datasource, env)
+        else:
+            plan = self._plan_object(flat_data, sync_mode, lambda: self._stored_flat(env))
+        outcome = {"unchanged": plan.unchanged, **({"note": plan.note, "sync_mode": plan.mode} if plan.note else {})}
+        if not plan.write:
+            return {"written": 0, **outcome}
+
+        if self._one_per_key:
+            written = self._put_per_key(plan.write, datasource, env, tagging)
         else:
             written = self._put_single(flat_data, self._document(flat_data, data), env, tagging)
 
-        return {"written": written}
+        return {"written": written, **outcome}
+
+    def _stored_flat(self, env: str) -> "dict[str, str] | None":
+        """Everything the single object holds now, as the flat keys the ETL makes of it; None when there is none."""
+        key = f"{self._key_prefix(env)}/{self._object_name(env)}"
+        try:
+            obj = self._s3.get_object(Bucket=self._bucket, Key=key)
+        except self._s3.exceptions.NoSuchKey:
+            return None
+        return _flatten(json.loads(obj["Body"].read()))
 
     def close(self) -> None:
         pass

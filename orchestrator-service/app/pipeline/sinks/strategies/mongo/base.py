@@ -15,11 +15,13 @@ from typing import Any, NamedTuple
 
 
 class Written(NamedTuple):
-    """What a write did: documents written, and documents of the other shape
+    """What a write did: documents written, documents of the other shape
     removed because the datasource's update_strategy changed since the file
-    was last written (a key-value document per key vs one document per file)."""
-    written:  int
-    replaced: int = 0
+    was last written (a key-value document per key vs one document per file),
+    and keys a smart repair found already as Git has them and left alone."""
+    written:   int
+    replaced:  int = 0
+    unchanged: int = 0
 
 
 def deleted(result: Any) -> int:
@@ -85,8 +87,8 @@ class MongoWriteStrategy(ABC):
         data: Any = None,
         session: Any = None,
     ) -> Written:
-        """Re-write docs that are missing or out of sync. Returns the count repaired
-        and the other-shape docs replaced."""
+        """Re-write docs that are missing or whose content differs from Git's, and leave the rest.
+        Returns the count repaired, the other-shape docs replaced and the keys left as they were."""
 
     def read_values(self, collection, keys: list[str], doc_filter: dict) -> dict[str, str]:
         """Current values of *keys* (the ETL's flat keys), from one document per key."""

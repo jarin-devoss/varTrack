@@ -346,6 +346,7 @@ function EnvSummary({ rule, target: t }: { rule: RuleView; target: Target }) {
                 </span>
                 <span className="muted" style={{ fontSize: 13 }}>
                   {TRIGGER[t.lastSync.trigger]} · <Timestamp iso={t.lastSync.finishedAt ?? t.lastSync.startedAt} /> · {t.lastSync.written} written
+                  {t.lastSync.unchanged ? `, ${t.lastSync.unchanged} unchanged` : ''}
                   {t.lastSync.pruned ? `, ${t.lastSync.pruned} pruned` : ''}
                 </span>
               </>

@@ -172,12 +172,27 @@ class LinuxServerSink(BaseSink):
     ) -> dict[str, Any]:
         target = self._resolve_path(env)
         formatted = format_keys(flat_data, self._key_format)
-        content   = _render(formatted, self._file_format, labels, env)
+
+        # GIT_SMART_REPAIR: a file that already holds exactly these keys is not written (no temp file, no
+        # rename, no backup copy).
+        plan = self._plan_object(formatted, sync_mode, lambda: self._stored_flat(target))
+        outcome = {"unchanged": plan.unchanged, **({"note": plan.note, "sync_mode": plan.mode} if plan.note else {})}
+        if not plan.write:
+            return {"written": 0, "path": str(target), **outcome}
+
+        content = _render(formatted, self._file_format, labels, env)
 
         _write_file(self._fs, target.as_posix(), content, self._write_opts)
         logger.info("LinuxServerSink: wrote %s env=%s%s", target.as_posix(), env, " over SSH" if self._ssh else "")
 
-        return {"written": len(flat_data), "path": str(target)}
+        return {"written": len(flat_data), "path": str(target), **outcome}
+
+    def _stored_flat(self, target: Any) -> "dict[str, str] | None":
+        """The keys the file holds now, in the sink's key format; None when there is no file."""
+        try:
+            return _parse(self._fs.read(target.as_posix()), self._file_format)
+        except FileNotFoundError:
+            return None
 
     def close(self) -> None:
         if self._ssh:

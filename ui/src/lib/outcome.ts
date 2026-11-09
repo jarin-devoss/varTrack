@@ -17,6 +17,12 @@ export function environmentsLabel(envs: string[]): string {
 
 const keys = (n: number) => `${n} key${n === 1 ? '' : 's'}`;
 
+/** What a sync did to the keys: "19 keys written", "3 keys written, 812 unchanged", or (a smart repair that found everything in place) "nothing to change (812 keys already match Git)". */
+export function writtenSentence(written: number, unchanged: number): string {
+  if (!written && unchanged) return `nothing to change (${keys(unchanged)} already match${unchanged === 1 ? 'es' : ''} Git)`;
+  return `${keys(written)} written${unchanged ? `, ${unchanged} unchanged` : ''}`;
+}
+
 /** The first line of a message (a task's message can carry a whole traceback). */
 function firstLine(message: string): string {
   const line = message.split('\n')[0].trim();
@@ -41,13 +47,14 @@ export function syncOutcome(tasks: Task[], envs: string[], dryRun: boolean): Syn
   }
   const written = tasks.reduce((n, t) => n + t.files.reduce((m, f) => m + f.written, 0), 0);
   const checked = tasks.reduce((n, t) => n + t.files.reduce((m, f) => m + (f.keys ?? 0), 0), 0);
+  const unchanged = tasks.reduce((n, t) => n + t.files.reduce((m, f) => m + (f.unchanged ?? 0), 0), 0);
   const pruned = tasks.reduce((n, t) => n + t.files.reduce((m, f) => m + f.pruned, 0), 0);
   return dryRun
     ? { tone: 'good', title: `Dry run of ${what} passed`, detail: `${keys(checked)} checked, nothing written`, taskId: tasks[0]?.taskId }
     : {
         tone: 'good',
         title: `Synced ${what}`,
-        detail: `${keys(written)} written${pruned ? `, ${keys(pruned)} deleted` : ''}`,
+        detail: `${writtenSentence(written, unchanged)}${pruned ? `, ${keys(pruned)} deleted` : ''}`,
         taskId: tasks[0]?.taskId,
       };
 }

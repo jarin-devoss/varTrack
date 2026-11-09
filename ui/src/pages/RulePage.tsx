@@ -24,6 +24,7 @@ import { usePinned } from '../lib/prefs';
 import { isPinned, runRights } from '../lib/rules';
 import { useRules } from '../lib/useRules';
 import { DRIFT_SEVERITY, diffable, ruleDrift, ruleSync, TRIGGER, targetSync, type SyncStatus } from '../lib/status';
+import { writtenSentence } from '../lib/outcome';
 import { peekQuery, useQuery } from '../lib/useQuery';
 import { useToast } from '../components/Toasts';
 
@@ -333,7 +334,7 @@ function RuleStatus({ rule: r, onRetry }: { rule: RuleView; onRetry?: (envs: str
                 </>
               )}
               <Link to={taskHref(op.taskId)} className="stat__link">
-                {op.error ?? (op.state === 'SUCCEEDED' ? `${op.written} key${op.written === 1 ? '' : 's'} written${op.pruned ? `, ${op.pruned} pruned` : ''}` : op.message)}
+                {op.error ?? (op.state === 'SUCCEEDED' ? `${writtenSentence(op.written, op.unchanged ?? 0)}${op.pruned ? `, ${op.pruned} pruned` : ''}` : op.message)}
               </Link>
             </>
           ) : (

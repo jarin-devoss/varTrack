@@ -24,7 +24,6 @@ indexmap = { version = "2", features = ["serde"] }
 
 # Hashing
 xxhash-rust = { version = "0.8", features = ["xxh3"] }
-blake3 = "1"
 
 # Error handling
 thiserror = "1"

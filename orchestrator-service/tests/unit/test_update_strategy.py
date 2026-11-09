@@ -11,6 +11,7 @@ ETL hands it: the flat keys, and the file in the shape it parsed to.
 """
 from __future__ import annotations
 
+import copy
 import json
 from pathlib import Path
 from types import SimpleNamespace
@@ -252,7 +253,7 @@ def test_the_mongo_sink_logs_a_change_of_shape_and_returns_the_count(caplog):
         out = sink._write(flat_data=TREE_FLAT, sync_mode=SyncMode.GIT_SMART_REPAIR, datasource="mongo", env="production",
                          repo="r", branch="main", commit_sha="abc", file_path="app.yaml",
                          labels=MagicMock(as_mongo_meta=lambda: {}), total_sources=1, data=TREE)
-    assert out == {"written": len(TREE_FLAT), "replaced": 4, "strategy": "STRATEGY_DOCUMENT"}
+    assert out == {"written": len(TREE_FLAT), "replaced": 4, "unchanged": 0, "strategy": "STRATEGY_DOCUMENT"}
     assert "replaced 4 documents" in caplog.text and "file=app.yaml" in caplog.text
 
 
@@ -300,3 +301,68 @@ def test_zookeeper_stores_flat_keys_only(strategy):
 
 def test_zookeeper_takes_key_value():
     ZookeeperSink(settings=Settings.of("zookeeper", update_strategy="STRATEGY_KEY_VALUE"))
+
+
+# ── a smart repair compares content, not the commit that stamped the document ─
+
+def _document(strategy_cls, data, commit="abc"):
+    """The document a write at *commit* left, as the strategy stores it."""
+    col = FakeCollection()
+    # a copy: the fake keeps the object it is given, and a test that edits the document must not edit TREE
+    strategy_cls().upsert(col, TREE_FLAT, SCOPE, commit, "app.yaml", {"_vt_commit": commit}, data=copy.deepcopy(data))
+    return col
+
+
+@pytest.mark.parametrize("strategy", [DocumentStrategy, FileStrategy])
+def test_a_document_edited_in_mongodb_is_rewritten_at_the_same_commit(strategy):
+    """The heal runs at the commit that is already there: the stamp matches, the content does not."""
+    col = _document(strategy, TREE)
+    col.docs[0]["data"]["api"]["rate_limit"] = 1          # someone edits the document
+    out = strategy().repair(col, TREE_FLAT, SCOPE, "abc", "app.yaml", {"_vt_commit": "abc"}, data=TREE)
+    assert out.written == len(TREE_FLAT) and out.unchanged == 0
+    assert col.docs[0]["data"]["api"]["rate_limit"] == 6000
+
+
+@pytest.mark.parametrize("strategy", [DocumentStrategy, FileStrategy])
+def test_a_document_that_holds_the_file_is_left_alone_whatever_commit_stamped_it(strategy):
+    col = _document(strategy, TREE, commit="abc")
+    out = strategy().repair(col, TREE_FLAT, SCOPE, "def", "app.yaml", {"_vt_commit": "def"}, data=TREE)
+    assert out == (0, 0, len(TREE_FLAT))
+    assert col.docs[0]["_vt_commit"] == "abc"             # not rewritten: its stamp is the one that wrote it
+
+
+def test_a_document_missing_is_written():
+    out = DocumentStrategy().repair(FakeCollection(), TREE_FLAT, SCOPE, "abc", "app.yaml", {}, data=TREE)
+    assert out.written == len(TREE_FLAT) and out.unchanged == 0
+
+
+def test_a_value_of_another_type_is_a_difference():
+    """True is not 1 and "5" is not 5: the copy that was edited to look alike is still different."""
+    col = _document(FileStrategy, {"debug": False})
+    col.docs[0]["data"]["debug"] = 0
+    out = FileStrategy().repair(col, {"debug": "false"}, SCOPE, "abc", "app.yaml", {}, data={"debug": False})
+    assert out.written == 1
+
+
+def test_a_repair_that_leaves_the_document_still_removes_the_other_shape():
+    col = _document(DocumentStrategy, TREE)
+    col.docs += _per_key("app.yaml", 2)
+    out = DocumentStrategy().repair(col, TREE_FLAT, SCOPE, "abc", "app.yaml", {}, data=TREE)
+    assert out.replaced == 2 and out.written == 0 and out.unchanged == len(TREE_FLAT)
+
+
+class _Recorder(FakeCollection):
+    def bulk_write(self, ops, ordered=True):
+        self.ops = list(ops)
+
+
+def test_key_value_repair_writes_only_the_keys_that_differ():
+    col = _Recorder([{**SCOPE, "key": "db.host", "value": "x"}, {**SCOPE, "key": "db.port", "value": "1"}])
+    out = KeyValueStrategy().repair(col, PROPERTIES, SCOPE, "abc", "app.yaml", {})
+    assert out == (1, 0, 1) and len(col.ops) == 1         # db.port differs; db.host does not
+
+
+def test_key_value_repair_with_nothing_different_writes_nothing():
+    col = _Recorder([{**SCOPE, "key": k, "value": v} for k, v in PROPERTIES.items()])
+    assert KeyValueStrategy().repair(col, PROPERTIES, SCOPE, "abc", "app.yaml", {}) == (0, 0, 2)
+    assert not hasattr(col, "ops")

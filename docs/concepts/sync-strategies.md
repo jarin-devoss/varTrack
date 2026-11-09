@@ -13,6 +13,7 @@ A sync strategy controls how varTrack applies the flattened config values to a d
     - ≤ 500 keys → `GIT_UPSERT_ALL`
     - > 500 keys → `GIT_SMART_REPAIR`
 
+    The size is the number of keys in one file.
     This is the default and works well for most configurations. No tuning needed.
 
     ```cue
@@ -21,7 +22,7 @@ A sync strategy controls how varTrack applies the flattened config values to a d
 
 === "GIT_UPSERT_ALL"
 
-    Writes every key from the flattened Git payload to the datasource in one bulk operation. Does not read the current state first.
+    Writes every key from the flattened Git payload to the datasource, without reading what it holds first. (ZooKeeper is the one exception: a znode that already holds the value is not set again, so its version and its watches are left alone.)
 
     **Best for:** Small configs (< 500 keys), initial bootstrapping, or when you always want a clean overwrite.
 
@@ -38,9 +39,19 @@ A sync strategy controls how varTrack applies the flattened config values to a d
 
 === "GIT_SMART_REPAIR"
 
-    Reads what the datasource holds first and writes only what differs. Uses BLAKE3 content hashing to detect unchanged values.
+    Reads what the datasource holds first and writes only what differs from Git. What is compared is the content the store holds now, not the commit that last wrote it, so a value someone changed directly in the store is written back.
 
-    Only the MongoDB sink reads before writing: with `STRATEGY_KEY_VALUE` it writes the keys whose value changed, with a document strategy it rewrites the file's document when it was written from another commit. Every other sink writes every key, as with `GIT_UPSERT_ALL`.
+    What "only what differs" means depends on how the sink stores the file:
+
+    | Sink | Writes |
+    |---|---|
+    | Redis (hash or strings), ZooKeeper, MongoDB `STRATEGY_KEY_VALUE`, S3 with one object per key | only the keys whose value differs, and the sink's stamp; nothing at all when none does |
+    | Redis `JSON`, MongoDB `STRATEGY_DOCUMENT` / `STRATEGY_FILE`, S3 `config.json`, a file on a Linux server, a ConfigMap, a Helm values file | the whole object, or nothing when it already holds exactly the file |
+    | Helm release | one `helm upgrade`, or none (so no new release revision) when the release already holds the values |
+
+    The task says what it left alone: *3 keys written, 812 unchanged*, or *nothing to change (812 keys already match Git)*. A sink that already holds the file keeps the stamp (commit, time) of the sync that wrote it.
+
+    If the datasource cannot be read, every key is written, as `GIT_UPSERT_ALL` would, and the file's result says so (`sync_mode: GIT_UPSERT_ALL`, with the reason): a failed read never makes a write smaller.
 
     **Best for:** Large configs (> 500 keys), or datasources where minimizing write operations matters.
 
@@ -51,13 +62,13 @@ A sync strategy controls how varTrack applies the flattened config values to a d
     | | |
     |---|---|
     | Read before write | Yes |
-    | Keys written | Changed only |
+    | Keys written | Changed only (a whole object is written whole, or not at all) |
     | Stale key cleanup | Only if `prune: true` set |
     | Best for | Large configs |
 
 === "LIVE_STATE"
 
-    Written like `GIT_UPSERT_ALL`: every key, without reading the datasource first. Keys Git no longer holds are deleted only by [prune](#stale-key-pruning).
+    Written exactly like `GIT_UPSERT_ALL`: every key, without reading the datasource first. It is kept so a configuration that sets it still loads; the log (and `vt validate-config`) says to set `GIT_UPSERT_ALL` or `AUTO` instead. Keys Git no longer holds are deleted only by [prune](#stale-key-pruning), in every mode.
 
     ```cue
     sync_mode: "SYNC_MODE_LIVE_STATE"

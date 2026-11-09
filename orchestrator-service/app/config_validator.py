@@ -94,6 +94,7 @@ def _repo_config(data: Any, result: Result, tenant_id: str = "default") -> None:
                                f"{'it' if len(ignored) == 1 else 'them'}")
     _types({k: v for k, v in data.items() if k in _OVERRIDABLE_KEYS}, "vartrack.json", result)
     _prune_last(data, "vartrack.json", result)
+    _live_state(data, "vartrack.json", result)
 
 
 def _bundle(data: Any, name: str, tenant_id: str, result: Result) -> None:
@@ -125,6 +126,7 @@ def _bundle(data: Any, name: str, tenant_id: str, result: Result) -> None:
         rule = _current(rule, where, result)
         _types(rule, where, result)
         _prune_last(rule, where, result)
+        _live_state(rule, where, result)
         _tenant_claim(rule, where, f"the one whose schema repository holds this {name} ({tenant_id})", result,
                       tenant=tenant_id)
         if not cues:
@@ -174,6 +176,15 @@ def _repeated_rules(rules: list[dict], name: str, result: Result) -> None:
                 f"datasource (for example {kind}-db) and give it its own rule")
         else:
             first[key] = i
+
+
+def _live_state(options: dict, where: str, result: Result) -> None:
+    """LIVE_STATE has only ever been written like GIT_UPSERT_ALL."""
+    from app.utils.enums.sync_mode import SyncMode, parse_sync_mode
+
+    if "sync_mode" in options and parse_sync_mode(options["sync_mode"]) == SyncMode.LIVE_STATE:
+        result.warnings.append(f"{where}: sync_mode LIVE_STATE is written like GIT_UPSERT_ALL; "
+                               f"set GIT_UPSERT_ALL (or AUTO)")
 
 
 def _prune_last(options: dict, where: str, result: Result) -> None:

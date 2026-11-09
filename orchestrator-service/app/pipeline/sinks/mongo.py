@@ -250,7 +250,8 @@ class MongoSink(BaseSink):
                 self._strategy_name, result.replaced, "" if result.replaced == 1 else "s",
                 self._tenant_id, datasource, env, file_path,
             )
-        return {"written": result.written, "replaced": result.replaced, "strategy": self._strategy_name}
+        return {"written": result.written, "replaced": result.replaced, "unchanged": result.unchanged,
+                "strategy": self._strategy_name}
 
     def _transactions(self) -> bool:
         """Whether the server runs multi-document transactions: a replica set or a sharded cluster does,

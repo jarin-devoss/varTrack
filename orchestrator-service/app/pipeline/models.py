@@ -79,6 +79,10 @@ class SyncResult:
     status:    Literal["ok", "empty", "validation_failed", "error", "skipped", "aborted", "partial", "rolled_back"]
     sync_mode: str = ""
     written:   int = 0
+    # Keys a smart repair found already as Git has them and did not write.
+    unchanged: int = 0
+    # Said when the write ran as GIT_UPSERT_ALL because the store could not be read (sync_mode says so too).
+    sync_note: str = ""
     pruned:    int = 0
     error:     str = ""
     root_key:  str = ""

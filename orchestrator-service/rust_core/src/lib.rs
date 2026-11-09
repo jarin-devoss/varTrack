@@ -7,7 +7,6 @@
 
 pub mod flatten;
 pub mod merge;
-pub mod sync;
 pub mod cue;
 pub mod diff;
 
@@ -23,9 +22,6 @@ fn vartrack_core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     // ── Merge ────────────────────────────────────────────────────────────────
     m.add_function(wrap_pyfunction!(merge::py_merge_variables, m)?)?;
     m.add_function(wrap_pyfunction!(merge::py_resolve_env, m)?)?;
-
-    // ── Sync helpers ─────────────────────────────────────────────────────────
-    m.add_function(wrap_pyfunction!(sync::py_content_hash, m)?)?;
 
     // ── CUE validation ──────────────────────────────────────────────────────
     cue::register(m)?;

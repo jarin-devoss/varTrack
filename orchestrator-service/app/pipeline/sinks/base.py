@@ -11,11 +11,12 @@ from __future__ import annotations
 
 import logging
 from abc import ABC, abstractmethod
-from collections.abc import Collection
-from typing import Any
+from collections.abc import Callable, Collection, Mapping
+from typing import Any, NamedTuple
 
 from app.utils.factory import IFactory
 from app.pipeline.sinks.labels import VarTrackLabels
+from app.utils.enums.sync_mode import SyncMode
 
 logger = logging.getLogger(__name__)
 
@@ -43,6 +44,34 @@ class Unreadable(str):
 
 
 UNREADABLE = Unreadable("")
+
+
+class Plan(NamedTuple):
+    """What a write has to do once the sink has looked at what it holds.
+
+    write       the keys to write (all of them when nothing is known about the store)
+    unchanged   how many keys the store already holds as Git has them
+    note        said in the file's result when the plan fell back to writing everything
+    mode        the sync mode the write ran as, when it is not the one chosen ("" = as chosen)
+    """
+    write:     dict[str, str]
+    unchanged: int = 0
+    note:      str = ""
+    mode:      str = ""
+
+
+def differs(live: Mapping[str, str], desired: Mapping[str, str]) -> tuple[dict[str, str], int]:
+    """(the desired keys the store does not hold as Git has them, how many it does hold).
+
+    A key is the same when the store gives back the same text. A value the store never gives back (a write-only
+    sensitive variable, UNREADABLE) cannot be told apart, so it is written. Content is what is compared, never a
+    stamp of the commit that wrote it: a store can be edited outside varTrack, and the stamp would not change."""
+    write: dict[str, str] = {}
+    for key, value in desired.items():
+        held = live.get(key)
+        if held is None or isinstance(held, Unreadable) or str(held) != str(value):
+            write[key] = value
+    return write, len(desired) - len(write)
 
 
 class BaseSink(IFactory, ABC):
@@ -202,6 +231,56 @@ class BaseSink(IFactory, ABC):
         Only called with keys varTrack wrote before. Returns how many were
         deleted; a key already gone is not an error."""
         return 0
+
+    # ── Smart repair ──────────────────────────────────────────────────────────
+    # GIT_SMART_REPAIR reads what the store holds and writes only what differs; every other mode writes
+    # everything. A sink asks _plan (per-key stores) or _plan_object (a store that holds the file as one
+    # object) and writes what it is told. Content is compared, never a commit stamp. When the store cannot be
+    # read the plan writes everything and says so: a read that failed never makes a write smaller.
+
+    def _plan(self, flat_data: dict[str, str], sync_mode: Any, datasource: str, env: str, *,
+              always: bool = False) -> Plan:
+        """The keys to write to a store that keeps each key on its own. *always*: look even when the mode is not
+        a smart repair (a store that has never rewritten a key it already holds)."""
+        if not always and sync_mode != SyncMode.GIT_SMART_REPAIR:
+            return Plan(flat_data)
+        return self._look(flat_data, lambda: self._read_strict(list(flat_data), datasource, env),
+                          lambda live: differs(live, flat_data))
+
+    def _plan_object(self, flat_data: dict[str, str], sync_mode: Any,
+                     stored: "Callable[[], Mapping[str, str] | None]") -> Plan:
+        """Write the file, or nothing: for a store that holds it as one object (a document, a file, a ConfigMap,
+        an S3 object, a values file). *stored* gives everything the object holds now, flat, or None when there
+        is none; the object is left alone only when it holds exactly the file."""
+        if sync_mode != SyncMode.GIT_SMART_REPAIR:
+            return Plan(flat_data)
+
+        def compare(live: "Mapping[str, str] | None") -> tuple[dict[str, str], int]:
+            if live is not None and {k: str(v) for k, v in live.items()} == {k: str(v) for k, v in flat_data.items()}:
+                return {}, len(flat_data)
+            return flat_data, 0
+
+        return self._look(flat_data, stored, compare)
+
+    def _look(self, flat_data: dict[str, str], read: "Callable[[], Any]", compare: "Callable[[Any], tuple[dict, int]]") -> Plan:
+        try:
+            live = read()
+        except Exception as exc:
+            what = type(self).__name__
+            logger.warning("%s: could not read what the store holds (%s); writing every key", what, exc)
+            return Plan(flat_data, 0, f"could not read the store: {exc}; wrote every key", SyncMode.GIT_UPSERT_ALL.name)
+        write, unchanged = compare(live)
+        return Plan(write, unchanged)
+
+    def _read_strict(self, keys: "Collection[str]", datasource: str, env: str) -> "dict[str, str]":
+        """read_values that raises when the store cannot be read, instead of coming back empty (which would read
+        as every key being missing)."""
+        before = self.strict_reads
+        self.strict_reads = True
+        try:
+            return self.read_values(keys, datasource, env)
+        finally:
+            self.strict_reads = before
 
     def _read_failed(self, exc: Exception, what: str) -> "dict[str, str]":
         """What read_values returns when the sink cannot be read: {} — the

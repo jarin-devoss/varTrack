@@ -1,4 +1,8 @@
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { expect, test, as, unique } from '../fixtures';
+import { SCHEMA_REPO } from '../fixtures/gitea';
 import type { Stores } from '../fixtures/stores';
 import { RulePage } from '../pages/RulePage';
 
@@ -152,5 +156,41 @@ test.describe('a rule with self-heal whose heal the sink refuses (gitea/mongo)',
     await api.succeeded(await rule.syncEnv('staging', { dryRun: false }));
     expect(stored(stores, COLLECTION)).toBe(original);
     await expect.poll(async () => (await api.fresh(RULE)).targets.find(t => t.env === 'staging')?.drift, { timeout: 30_000 }).toBe('in_sync');
+  });
+});
+
+test.describe('a document rule set to GIT_SMART_REPAIR (gitea/mongo)', () => {
+  const RULE = 'gitea/mongo';
+  const COLLECTION = 'ui-mongo';
+  const world = fs.readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'world', 'bundle.json'), 'utf8');
+
+  // The rule compares what the document holds with Git, not the commit that stamped it: the heal runs at the commit
+  // that is already there, so a document someone edited was "unchanged" and was never put back.
+  test.beforeEach(async ({ gitea, stack, adminApi }) => {
+    const rules = JSON.parse(world) as Array<Record<string, unknown>>;
+    Object.assign(rules.find(r => r.datasource === 'mongo')!, { sync_mode: 'GIT_SMART_REPAIR' });
+    await gitea.put(SCHEMA_REPO, 'bundle.json', JSON.stringify(rules, null, 2), 'ui-e2e: gitea/mongo repairs smartly', 'main');
+    await stack.warm();
+    await adminApi.succeeded((await adminApi.sync(RULE, ['staging']))[0]);
+  });
+  test.afterEach(async ({ gitea, stack }) => {
+    await gitea.put(SCHEMA_REPO, 'bundle.json', world, 'ui-e2e: the rules, as they were', 'main');
+    await stack.warm();
+  });
+
+  test('a document edited in MongoDB is put back by the heal, at the commit it was written from', async ({ stack, stores }) => {
+    const original = stored(stores, COLLECTION);
+    tamper(stores, COLLECTION, unique('outside'));
+
+    const [found] = await stack.checkNow('gitea', 'mongo');
+    expect(found.state, found.detail).toBe('drifted');
+    expect(found.healed, 'the watcher asked for a heal').toBe(true);
+    await expect.poll(async () => stored(stores, COLLECTION), { timeout: 30_000, message: 'the heal writes the document back' }).toBe(original);
+  });
+
+  test('a sync of a document that already holds the file says there was nothing to change, and writes nothing', async ({ adminApi }) => {
+    const task = await adminApi.succeeded((await adminApi.sync(RULE, ['staging']))[0]);
+    expect(task.message).toMatch(/^nothing to change \(\d+ keys? already match(es)? Git\)/);
+    expect(task.files?.every(f => f.written === 0)).toBe(true);
   });
 });

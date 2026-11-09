@@ -158,38 +158,29 @@ class ZookeeperSink(BaseSink):
         meta_path = f"{root}/{_META_ZNODE}"
         self._zk.ensure_path(meta_path)
 
+        # A znode that already holds the value is not written again, in any sync mode: setting it would still
+        # bump its version and fire every watch on it. If the znodes cannot be read, every one is written.
+        plan = self._plan(flat_data, sync_mode, datasource, env, always=True)
+        outcome = {"unchanged": plan.unchanged, **({"note": plan.note, "sync_mode": plan.mode} if plan.note else {})}
+        if not plan.write:
+            return {"written": 0, **outcome}
+
         # Convert dot keys → znode paths
         # "db.host" → "/db/host"   (SLASH)
         # "db.host" → ".db.host"   (SLASH_DOT)
-        formatted = format_keys(flat_data, self._key_format)
+        formatted = format_keys(plan.write, self._key_format)
 
-        # Build a map of key → relative path for reuse below
-        rel_paths = {
-            key: key.lstrip("/").lstrip(".")
-            for key in formatted
+        znodes = {
+            f"{root}/{key.lstrip('/').lstrip('.')}": value.encode("utf-8")
+            for key, value in formatted.items()
         }
-
-        try:
-            from vartrack_core import py_diff  # type: ignore[import]
-            current: dict[str, str] = {}
-            for key, relative in rel_paths.items():
-                path = f"{root}/{relative}"
-                if self._zk.exists(path):
-                    data, _ = self._zk.get(path)
-                    current[key] = (data or b"").decode("utf-8")
-            diff = py_diff(current, formatted)
-            to_write = {**diff["added"], **{k: v["new"] for k, v in diff["changed"].items()}}
-        except ImportError:
-            to_write = formatted
-
-        znodes = {f"{root}/{rel_paths[key]}": value.encode("utf-8") for key, value in to_write.items()}
         for parent in sorted({path.rsplit("/", 1)[0] for path in znodes} - {root}):
             self._zk.ensure_path(parent)      # idempotent, and a transaction cannot make a path
 
         # The values and the stamp that says who wrote them are one transaction: ZooKeeper applies all of
         # its operations or none, so a failed write leaves the znodes as they were, stamp included.
         self._commit(znodes, meta_path, labels.as_zk_meta())
-        return {"written": len(znodes)}
+        return {"written": len(znodes), **outcome}
 
     def _commit(self, znodes: dict[str, bytes], meta_path: str, meta: bytes) -> None:
         batches = _batches(znodes, meta_path, meta)
@@ -285,7 +276,8 @@ class ZookeeperSink(BaseSink):
         result: dict[str, str] = {}
         formatted = format_keys(dict.fromkeys(keys, ""), self._key_format)
         for flat_key, zk_key in zip(keys, formatted.keys()):
-            path = f"{root}/{zk_key}"
+            # as the write builds it: the key's own leading "/" or "." is not another level of the path
+            path = f"{root}/{zk_key.lstrip('/').lstrip('.')}"
             try:
                 if self._zk.exists(path):
                     data, _ = self._zk.get(path)

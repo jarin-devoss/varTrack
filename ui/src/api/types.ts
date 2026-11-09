@@ -68,6 +68,8 @@ export interface SyncSummary {
   startedAt: string;
   finishedAt?: string;
   written: number;
+  /** Keys a smart repair found already as Git has them and did not write. */
+  unchanged?: number;
   pruned: number;
   message: string;
   /** First file error of a failed sync. */
@@ -131,6 +133,10 @@ export interface FileResult {
   status: FileStatus;
   syncMode: string;
   written: number;
+  /** Keys a smart repair found already as Git has them and did not write. */
+  unchanged?: number;
+  /** Said when a smart repair could not read the store and wrote every key (syncMode then reads GIT_UPSERT_ALL). */
+  syncNote?: string;
   pruned: number;
   rootKey?: string;
   error?: string;

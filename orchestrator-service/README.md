@@ -30,7 +30,7 @@ gateway-service (gRPC) ──► Celery task queue ──► ETL pipeline ──
    → validate against CUE schema (per-tenant, fetched from schema repo)
 
 3. Sync stage
-   → pick strategy: LIVE_STATE / GIT_UPSERT_ALL / GIT_SMART_REPAIR
+   → pick strategy: GIT_UPSERT_ALL / GIT_SMART_REPAIR (LIVE_STATE is written like GIT_UPSERT_ALL)
    → write to configured sinks in parallel
    → prune stale keys if configured
    → rollback on failure (delete written data)
@@ -62,7 +62,7 @@ Hot-path operations are implemented in Rust and exposed to Python via PyO3. Pure
 |---|---|
 | `flatten` | Non-recursive BFS / DFS dict flattening |
 | `merge` | Variable map overlay + environment resolution |
-| `sync` | BLAKE3 content hash for `GIT_SMART_REPAIR` |
+| `diff` | Added / removed / changed sets of two flat maps |
 | `cue` | CUE binary subprocess wrapper |
 
 Build the Rust extension:
@@ -79,10 +79,10 @@ maturin develop --release
 
 | Mode | When used | Description |
 |---|---|---|
-| `GIT_UPSERT_ALL` | ≤ 500 keys (default) | Bulk-upsert every key from the payload |
-| `GIT_SMART_REPAIR` | > 500 keys or explicit | Read live state, diff, write only changed keys |
-| `LIVE_STATE` | Low-latency sinks | Direct overwrite without a read |
-| `AUTO` | Default | Size-based heuristic selects mode at runtime |
+| `GIT_UPSERT_ALL` | ≤ 500 keys (default) | Write every key from the payload |
+| `GIT_SMART_REPAIR` | > 500 keys or explicit | Read what the sink holds, write only what differs (the changed keys, or the whole object when it differs); every key if the sink cannot be read |
+| `LIVE_STATE` | — | Written like `GIT_UPSERT_ALL`; kept so a config that sets it still loads |
+| `AUTO` | Default | `GIT_UPSERT_ALL` up to 500 keys in a file, `GIT_SMART_REPAIR` above |
 
 Override per rule in `config.cue`:
 ```cue
@@ -318,7 +318,6 @@ orchestrator-service/
 │       ├── flatten.rs          # BFS / DFS flattening
 │       ├── merge.rs            # Env resolution + overlay
 │       ├── diff.rs             # Added / removed / changed sets
-│       ├── sync.rs             # BLAKE3 content hash
 │       └── cue.rs              # CUE subprocess wrapper
 │
 └── tests/
