@@ -2055,12 +2055,13 @@
 </blockquote>
 </li>
 </ul>
-<p>This is the default and works well for most configurations. No tuning needed.</p>
+<p>The size is the number of keys in one file.
+This is the default and works well for most configurations. No tuning needed.</p>
 <div class="language-text highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>sync_mode: &quot;AUTO&quot;
 </span></code></pre></div>
 </div>
 <div class="tabbed-block">
-<p>Writes every key from the flattened Git payload to the datasource in one bulk operation. Does not read the current state first.</p>
+<p>Writes every key from the flattened Git payload to the datasource, without reading what it holds first. (ZooKeeper is the one exception: a znode that already holds the value is not set again, so its version and its watches are left alone.)</p>
 <p><strong>Best for:</strong> Small configs (&lt; 500 keys), initial bootstrapping, or when you always want a clean overwrite.</p>
 <div class="language-text highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>sync_mode: &quot;SYNC_MODE_GIT_UPSERT_ALL&quot;
 </span></code></pre></div>
@@ -2092,8 +2093,32 @@
 </table>
 </div>
 <div class="tabbed-block">
-<p>Reads what the datasource holds first and writes only what differs. Uses BLAKE3 content hashing to detect unchanged values.</p>
-<p>Only the MongoDB sink reads before writing: with <code>STRATEGY_KEY_VALUE</code> it writes the keys whose value changed, with a document strategy it rewrites the file's document when it was written from another commit. Every other sink writes every key, as with <code>GIT_UPSERT_ALL</code>.</p>
+<p>Reads what the datasource holds first and writes only what differs from Git. What is compared is the content the store holds now, not the commit that last wrote it, so a value someone changed directly in the store is written back.</p>
+<p>What "only what differs" means depends on how the sink stores the file:</p>
+<table>
+<thead>
+<tr>
+<th>Sink</th>
+<th>Writes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Redis (hash or strings), ZooKeeper, MongoDB <code>STRATEGY_KEY_VALUE</code>, S3 with one object per key</td>
+<td>only the keys whose value differs, and the sink's stamp; nothing at all when none does</td>
+</tr>
+<tr>
+<td>Redis <code>JSON</code>, MongoDB <code>STRATEGY_DOCUMENT</code> / <code>STRATEGY_FILE</code>, S3 <code>config.json</code>, a file on a Linux server, a ConfigMap, a Helm values file</td>
+<td>the whole object, or nothing when it already holds exactly the file</td>
+</tr>
+<tr>
+<td>Helm release</td>
+<td>one <code>helm upgrade</code>, or none (so no new release revision) when the release already holds the values</td>
+</tr>
+</tbody>
+</table>
+<p>The task says what it left alone: <em>3 keys written, 812 unchanged</em>, or <em>nothing to change (812 keys already match Git)</em>. A sink that already holds the file keeps the stamp (commit, time) of the sync that wrote it.</p>
+<p>If the datasource cannot be read, every key is written, as <code>GIT_UPSERT_ALL</code> would, and the file's result says so (<code>sync_mode: GIT_UPSERT_ALL</code>, with the reason): a failed read never makes a write smaller.</p>
 <p><strong>Best for:</strong> Large configs (&gt; 500 keys), or datasources where minimizing write operations matters.</p>
 <div class="language-text highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>sync_mode: &quot;SYNC_MODE_GIT_SMART_REPAIR&quot;
 </span></code></pre></div>
@@ -2111,7 +2136,7 @@
 </tr>
 <tr>
 <td>Keys written</td>
-<td>Changed only</td>
+<td>Changed only (a whole object is written whole, or not at all)</td>
 </tr>
 <tr>
 <td>Stale key cleanup</td>
@@ -2125,7 +2150,7 @@
 </table>
 </div>
 <div class="tabbed-block">
-<p>Written like <code>GIT_UPSERT_ALL</code>: every key, without reading the datasource first. Keys Git no longer holds are deleted only by <a href="#stale-key-pruning">prune</a>.</p>
+<p>Written exactly like <code>GIT_UPSERT_ALL</code>: every key, without reading the datasource first. It is kept so a configuration that sets it still loads; the log (and <code>vt validate-config</code>) says to set <code>GIT_UPSERT_ALL</code> or <code>AUTO</code> instead. Keys Git no longer holds are deleted only by <a href="#stale-key-pruning">prune</a>, in every mode.</p>
 <div class="language-text highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>sync_mode: &quot;SYNC_MODE_LIVE_STATE&quot;
 </span></code></pre></div>
 </div>

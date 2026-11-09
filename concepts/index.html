@@ -1942,7 +1942,7 @@
 <h3 id="stage-3-sync">Stage 3 — Sync<a class="headerlink" href="#stage-3-sync" title="Permanent link">&para;</a></h3>
 <p>Writes the validated flat map to every configured sink:</p>
 <ul>
-<li>Picks the sync strategy (<code>AUTO</code>, <code>GIT_UPSERT_ALL</code>, <code>GIT_SMART_REPAIR</code>, or <code>LIVE_STATE</code>)</li>
+<li>Picks the sync strategy (<code>AUTO</code>, <code>GIT_UPSERT_ALL</code> or <code>GIT_SMART_REPAIR</code>; <code>LIVE_STATE</code> is written like <code>GIT_UPSERT_ALL</code>)</li>
 <li>Runs writes to all matching sinks in parallel</li>
 <li>Prunes stale keys once per environment, after all its files are written, if <code>prune</code> is enabled on the rule</li>
 <li>Rolls back (deletes written data) if a write fails partway through</li>
@@ -2016,7 +2016,7 @@
 </span></code></pre></div>
 <hr />
 <h2 id="rust-core">Rust core<a class="headerlink" href="#rust-core" title="Permanent link">&para;</a></h2>
-<p>Hot-path operations (flattening, merging, diffing, hashing) are implemented in Rust and exposed to Python via PyO3. Pure-Python fallbacks activate automatically if the Rust extension is not compiled — so the service always works, just slightly slower without it.</p>
+<p>Hot-path operations (flattening and merging) are implemented in Rust and exposed to Python via PyO3. Pure-Python fallbacks activate automatically if the Rust extension is not compiled — so the service always works, just slightly slower without it.</p>
 <table>
 <thead>
 <tr>
@@ -2034,8 +2034,12 @@
 <td>Variable map overlay + environment resolution</td>
 </tr>
 <tr>
-<td><code>sync</code></td>
-<td>BLAKE3 content hash for <code>GIT_SMART_REPAIR</code></td>
+<td><code>cue</code></td>
+<td>CUE binary subprocess wrapper</td>
+</tr>
+<tr>
+<td><code>diff</code></td>
+<td>Added / removed / changed sets of two flat maps (the sinks compare in Python)</td>
 </tr>
 </tbody>
 </table>

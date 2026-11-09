@@ -2066,7 +2066,7 @@ The watcher keeps no state of its own, so a new leader starts where the last one
 </tr>
 <tr>
 <td><code>sync_mode</code></td>
-<td><code>GIT_SMART_REPAIR</code> reads MongoDB before writing and writes only what changed; <code>AUTO</code> uses it above 500 keys</td>
+<td><code>GIT_SMART_REPAIR</code> reads the sink before writing and writes only what differs (nothing, when the sink already holds the file); <code>AUTO</code> uses it above 500 keys</td>
 </tr>
 <tr>
 <td><code>GIT_CACHE_MAX_ENTRIES</code> (20)</td>
