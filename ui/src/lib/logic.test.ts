@@ -6,7 +6,7 @@ import { resolvedVia } from '../features/rule/resolution';
 import { taskStages } from '../features/tasks';
 import { makeRule, makeSync, makeTarget as target, makeTask } from '../test/builders';
 import { EMPTY_FACETS, facetCounts, facetsFromParams, filterRules, writeFacets } from './filters';
-import { needsAttention, ruleSync, ruleSyncState, targetNote, targetSync, worstDrift } from './status';
+import { diffable, needsAttention, ruleSync, ruleSyncState, targetNote, targetSync, worstDrift } from './status';
 import { formatDuration, relativeTime } from './time';
 
 const NOW = Date.parse('2026-10-11T12:00:00Z');
@@ -81,6 +81,26 @@ describe('current vs desired', () => {
     expect(targetNote(target({ drift: 'heal_failed' }))).toBe('self-heal gave up');
     expect(targetNote(target({ drift: 'in_sync' }))).toBe('matches Git');
     expect(targetNote(target({ drift: 'not_watched' }))).toBe('not watched');
+  });
+});
+
+describe('which environments can be diffed', () => {
+  it('every environment has a Diff: synced, out of sync, healing, and one whose store cannot be read', () => {
+    for (const drift of ['in_sync', 'drifted', 'healing', 'heal_failed', 'unknown'] as const) {
+      expect(diffable(target({ drift }))).toEqual({ can: true });
+    }
+  });
+
+  it('one never written has nothing to compare, and says so', () => {
+    const d = diffable(target({ drift: 'missing' }));
+    expect(d.can).toBe(false);
+    expect(d.reason).toMatch(/^Not synced yet: nothing has been written to compare with Git/);
+  });
+
+  it('one no branch feeds any more has nothing in Git to compare with, and says so', () => {
+    const d = diffable(target({ drift: 'not_watched', notFed: 'nothing feeds main in the redis rule' }));
+    expect(d.can).toBe(false);
+    expect(d.reason).toMatch(/^No longer synced by this rule: no branch feeds it, so there is nothing in Git to compare with/);
   });
 });
 

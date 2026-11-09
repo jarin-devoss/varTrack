@@ -81,6 +81,19 @@ export function targetSync(t: Target): SyncStatus {
   return 'Unknown';
 }
 
+/**
+ * Whether an environment has two sides to compare, and if not why. Every environment has its own Diff; one with nothing to
+ * compare keeps it, disabled, and says why: an environment the rule produces and has never written has nothing in the store, and
+ * one no branch feeds any more (a leftover) has nothing in Git to compare what varTrack once wrote with.
+ */
+export function diffable(t: Target): { can: boolean; reason?: string } {
+  if (t.notFed) return { can: false, reason: 'No longer synced by this rule: no branch feeds it, so there is nothing in Git to compare with.' };
+  if (t.drift === 'missing') {
+    return { can: false, reason: 'Not synced yet: nothing has been written to compare with Git. Sync (or Dry run) to see what would be written.' };
+  }
+  return { can: true };
+}
+
 /** OutOfSync if any environment is; Synced if every compared one is. */
 export function ruleSync(rule: RuleView): SyncStatus {
   const states = rule.targets.map(targetSync);

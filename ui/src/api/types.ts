@@ -103,6 +103,26 @@ export interface RuleView extends Rule {
   targets: Target[];
   /** False when the signed-in user can read the rule's repositories but not write to them: dry runs only. */
   canSync?: boolean;
+  /**
+   * Set when the rule was refused as it was loaded: it names no environments, so nothing runs it and it has none. Says why,
+   * and how to fix it. A refused rule has no environments and no actions.
+   */
+  refused?: string;
+}
+
+/** What a dry run found a sync would do to one environment's file, key by key (a secret is counted, never compared). */
+export interface WouldChange {
+  /** Keys the sink lacks (the first 200; `addedCount` is how many). */
+  added?: string[];
+  addedCount?: number;
+  changed?: Array<{ key: string; from: string; to: string }>;
+  changedCount?: number;
+  unchanged?: number;
+  secrets?: number;
+  /** Keys the sink cannot show (write-only). */
+  unreadable?: number;
+  /** Why the sink could not be compared; the dry run itself still ran. */
+  error?: string;
 }
 
 export interface FileResult {
@@ -122,7 +142,11 @@ export interface FileResult {
   schema?: string;
   schemaSource?: string;
   schemaNote?: string;
+  /** Why the schema's check failed, when it did and the file was still read. */
+  validationError?: string;
   sample?: Record<string, string>;
+  /** Dry-run only: what a sync would add or change. */
+  wouldChange?: WouldChange;
 }
 
 export interface Task {
@@ -165,7 +189,8 @@ export type EventReason =
   | 'DriftDetected'
   | 'HealSucceeded'
   | 'HealFailed'
-  | 'SchemaRefreshed';
+  | 'SchemaRefreshed'
+  | 'RuleRefused';
 
 export interface VtEvent {
   id: string;
