@@ -130,7 +130,16 @@ class RedisSink(BaseSink):
         data: Any = None,
     ) -> dict[str, Any]:
         prefix = self._key_prefix(datasource, env)
-        formatted = format_keys(flat_data, self._key_format)
+        # GIT_SMART_REPAIR writes the keys whose value differs, and nothing when none does; the JSON structure
+        # is one string, so it is written whole or not at all.
+        if self._structure == "JSON":
+            plan = self._plan_object(flat_data, sync_mode, lambda: self._stored_json(prefix))
+        else:
+            plan = self._plan(flat_data, sync_mode, datasource, env)
+        outcome = {"unchanged": plan.unchanged, **({"note": plan.note, "sync_mode": plan.mode} if plan.note else {})}
+        if not plan.write:
+            return {"written": 0, **outcome}
+        formatted = format_keys(plan.write, self._key_format)
 
         # The data, its expiry and the labels that stamp it go to Redis as one MULTI/EXEC: they all happen
         # or (when the connection dies before EXEC) none does, never the data without the stamp.
@@ -138,13 +147,18 @@ class RedisSink(BaseSink):
         if self._structure == "HASH":
             written = self._queue_hash(pipe, formatted, prefix)
         elif self._structure == "JSON":
-            written = self._queue_json(pipe, flat_data, prefix)
+            written = self._queue_json(pipe, plan.write, prefix)
         else:
             written = self._queue_strings(pipe, formatted, prefix)
         pipe.hset(f"{prefix}:{_META_KEY}", mapping=labels.as_redis_meta())
         self._execute(pipe)
 
-        return {"written": written}
+        return {"written": written, **outcome}
+
+    def _stored_json(self, prefix: str) -> "dict[str, str] | None":
+        """The flat keys the JSON string holds now, or None when there is none."""
+        raw = self._redis.get(f"{prefix}:json")
+        return None if raw is None else json.loads(raw)
 
     def _queue_hash(self, pipe: Any, data: dict[str, str], prefix: str) -> int:
         if data:

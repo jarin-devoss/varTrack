@@ -84,7 +84,7 @@ def test_redis_data_and_stamp_are_one_multi_exec():
     store = FakeRedis()
     out = redis_sink(store)._write(flat_data={"db.host": "x", "db.port": "5"}, labels=LABELS, **WRITE)
     [pipe] = store.pipelines
-    assert out == {"written": 2} and pipe.transaction and pipe.executed == 1
+    assert out == {"written": 2, "unchanged": 0} and pipe.transaction and pipe.executed == 1
     assert [c[1] for c in pipe.queued] == ["acme:ds:prod:vartrack", "acme:ds:prod:__vartrack__"]
     assert store.data["acme:ds:prod:__vartrack__"] == {"managed-by": "vartrack"}
 
@@ -197,7 +197,7 @@ def test_zookeeper_values_and_stamp_are_one_transaction(zk_sink):
     zk = FakeZk()
     out = zk_sink(zk)._write(flat_data={"db.host": "x", "db.port": "5"}, labels=LABELS, **WRITE)
     [ops] = zk.commits
-    assert out == {"written": 2}
+    assert out == {"written": 2, "unchanged": 0}
     assert [(op, path) for op, path, _ in ops] == [
         ("create", "/acme/prod/db/host"), ("create", "/acme/prod/db/port"), ("set", "/acme/prod/__vartrack__")]
     assert zk.nodes["/acme/prod/db/host"] == b"x" and zk.nodes["/acme/prod/__vartrack__"] == b"stamp"

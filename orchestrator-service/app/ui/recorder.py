@@ -126,6 +126,13 @@ def task_queued(
         logger.warning("ui recorder: task_queued failed", exc_info=True)
 
 
+def _written_sentence(written: int, unchanged: int) -> str:
+    """What a sync did to the keys: written, and (a smart repair) how many it found already as Git has them."""
+    if not written and unchanged:
+        return f"nothing to change ({unchanged} key{'s' if unchanged != 1 else ''} already match{'es' if unchanged == 1 else ''} Git)"
+    return f"{written} key{'s' if written != 1 else ''} written" + (f", {unchanged} unchanged" if unchanged else "")
+
+
 def _file_result(r: Any, dry_run_file: dict | None = None) -> dict[str, Any]:
     if dry_run_file is not None:
         return {
@@ -155,6 +162,9 @@ def _file_result(r: Any, dry_run_file: dict | None = None) -> dict[str, Any]:
         "syncMode": r.sync_mode or "",
         "written": r.written,
         "pruned": r.pruned,
+        # A smart repair that found keys already as Git has them says how many it left alone.
+        **({"unchanged": r.unchanged} if r.unchanged else {}),
+        **({"syncNote": r.sync_note} if r.sync_note else {}),
         **({"rootKey": r.root_key} if r.root_key else {}),
         **({"replaced": r.replaced, "replacedBy": r.replaced_by} if r.replaced else {}),
         "keySpace": r.key_space,
@@ -190,6 +200,7 @@ def task_finished(
         failed = [f for f in files if f["status"] not in _DONE]
         envs = sorted({f["env"] for f in files if f["env"] and f["env"] != "unknown"})
         written = sum(f["written"] for f in files)
+        unchanged = sum(f.get("unchanged", 0) for f in files)
         pruned = sum(f["pruned"] for f in files)
         checked = sum((f.get("keys") or 0) for f in files)
 
@@ -200,7 +211,7 @@ def task_finished(
             "message": message or (
                 f"{len(failed)} of {len(files)} file(s) failed" if failed
                 else f"{checked} key{'s' if checked != 1 else ''} checked, nothing written" if task.get("dryRun")
-                else f"{written} key{'s' if written != 1 else ''} written" + (f", {pruned} pruned" if pruned else "")
+                else _written_sentence(written, unchanged) + (f", {pruned} pruned" if pruned else "")
             ),
         })
         if len(envs) == 1:
@@ -273,6 +284,7 @@ def _record_envs(task: dict[str, Any], *, tenant: str, envs: list[str], files: l
             "startedAt": task["createdAt"],
             "finishedAt": task["finishedAt"],
             "written": sum(f["written"] for f in env_files),
+            "unchanged": sum(f.get("unchanged", 0) for f in env_files),
             "pruned": sum(f["pruned"] for f in env_files),
             "message": task["message"],
             **({"error": error} if failed else {}),
@@ -320,7 +332,8 @@ def _record_envs(task: dict[str, Any], *, tenant: str, envs: list[str], files: l
         ledger.record_event(
             tenant=tenant, reason="HealSucceeded" if trigger == "self_heal" else "SyncSucceeded",
             rule=rule, env=env, task_id=task["taskId"],
-            message=f"wrote {sync['written']} key{'s' if sync['written'] != 1 else ''} to {datasource}",
+            message=(f"{_written_sentence(sync['written'], sync['unchanged'])} in {datasource}" if sync["unchanged"]
+                     else f"wrote {sync['written']} key{'s' if sync['written'] != 1 else ''} to {datasource}"),
         )
         _shared_key_space(tenant, rule, env, task["taskId"], env_files, datasource)
         for f in env_files:

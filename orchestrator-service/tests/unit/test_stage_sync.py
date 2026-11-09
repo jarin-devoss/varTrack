@@ -241,6 +241,34 @@ class TestRunStageSync(unittest.TestCase):
         if results:
             self.assertIn(results[0].status, ("ok", "error", "skipped"))
 
+    def test_a_smart_repair_says_how_many_keys_it_left_alone(self):
+        sink = MagicMock()
+        sink.write.return_value = {"written": 1, "unchanged": 599}
+        results, _ = self._run(_etl(_file(n_keys=600)), sink)
+        self.assertEqual((results[0].written, results[0].unchanged, results[0].sync_mode), (1, 599, "GIT_SMART_REPAIR"))
+        from app.pipeline.stage_sync import sync_result_to_dict
+        out = sync_result_to_dict(results[0])
+        self.assertEqual((out["written"], out["unchanged"]), (1, 599))
+        self.assertNotIn("note", out)
+
+    def test_a_smart_repair_that_could_not_read_the_store_says_it_wrote_every_key(self):
+        sink = MagicMock()
+        sink.write.return_value = {"written": 600, "unchanged": 0, "sync_mode": "GIT_UPSERT_ALL",
+                                   "note": "could not read the store: refused; wrote every key"}
+        results, _ = self._run(_etl(_file(n_keys=600)), sink)
+        self.assertEqual(results[0].sync_mode, "GIT_UPSERT_ALL")
+        from app.pipeline.stage_sync import sync_result_to_dict
+        self.assertIn("wrote every key", sync_result_to_dict(results[0])["note"])
+
+    def test_the_unchanged_keys_are_counted(self):
+        sink = MagicMock()
+        sink.write.return_value = {"written": 0, "unchanged": 5}
+        metrics = MagicMock()
+        with patch("app.monitoring.get_metrics", return_value=metrics):
+            self._run(_etl(_file(n_keys=5)), sink)
+        metrics.inc_sink_unchanged.assert_called_once()
+        self.assertEqual(metrics.inc_sink_unchanged.call_args.args[2], 5)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -8,7 +8,7 @@ the short member names the code uses:
   SYNC_MODE_UNSPECIFIED      → SyncMode.UNSPECIFIED
   SYNC_MODE_GIT_UPSERT_ALL   → SyncMode.GIT_UPSERT_ALL
   SYNC_MODE_GIT_SMART_REPAIR → SyncMode.GIT_SMART_REPAIR
-  SYNC_MODE_LIVE_STATE       → SyncMode.LIVE_STATE
+  SYNC_MODE_LIVE_STATE       → SyncMode.LIVE_STATE   (written like GIT_UPSERT_ALL)
   SYNC_MODE_AUTO             → SyncMode.AUTO
 """
 from __future__ import annotations

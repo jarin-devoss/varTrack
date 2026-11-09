@@ -157,6 +157,12 @@ class OrchestratorMetrics:
             ["sink", "datasource"],
             registry=self._registry,
         )
+        self._sink_keys_unchanged_total = Counter(
+            "orch_sink_keys_unchanged_total",
+            "Total keys a smart repair found already as Git has them and did not write, by sink and datasource.",
+            ["sink", "datasource"],
+            registry=self._registry,
+        )
         self._sink_keys_pruned_total = Counter(
             "orch_sink_keys_pruned_total",
             "Total keys pruned (stale keys removed), by sink and datasource.",
@@ -321,6 +327,10 @@ class OrchestratorMetrics:
             self._sink_keys_written_total.labels(sink, datasource).inc(count)
             if sink == "mongo":
                 self.inc_mongo_written(datasource, sync_mode, count)
+
+    def inc_sink_unchanged(self, sink: str, datasource: str, count: int) -> None:
+        if count > 0:
+            self._sink_keys_unchanged_total.labels(sink, datasource).inc(count)
 
     def inc_sink_pruned(self, sink: str, datasource: str, count: int) -> None:
         if count > 0:

@@ -354,15 +354,25 @@ def prune_candidates(
     return out
 
 
+_live_state_said = False
+
+
 def _decide_sync_mode(key_count: int, forced_mode: SyncMode) -> SyncMode:
     """
-    Select the MongoDB write strategy.
+    Select how a file is written.
 
-    Explicit forced_mode (anything except UNSPECIFIED / AUTO) is always
-    honoured.  Otherwise a key-count heuristic is applied:
-      > 500 keys  →  GIT_SMART_REPAIR  (read + diff, skips unchanged keys)
-      ≤ 500 keys  →  GIT_UPSERT_ALL   (simple bulk upsert)
+    Explicit forced_mode (anything except UNSPECIFIED / AUTO) is honoured, except LIVE_STATE, which has
+    always been written like GIT_UPSERT_ALL and is run as that (said once, in the log).  Otherwise a
+    key-count heuristic is applied:
+      > 500 keys  →  GIT_SMART_REPAIR  (read the store, write only what differs)
+      ≤ 500 keys  →  GIT_UPSERT_ALL   (write every key)
     """
+    global _live_state_said
+    if forced_mode == SyncMode.LIVE_STATE:
+        if not _live_state_said:
+            _live_state_said = True
+            logger.warning("sync_mode LIVE_STATE is written like GIT_UPSERT_ALL; set GIT_UPSERT_ALL (or AUTO)")
+        return SyncMode.GIT_UPSERT_ALL
     if forced_mode not in (SyncMode.UNSPECIFIED, SyncMode.AUTO):
         return forced_mode
     return SyncMode.GIT_SMART_REPAIR if key_count > 500 else SyncMode.GIT_UPSERT_ALL
@@ -538,8 +548,11 @@ def run_stage_sync(
                             file_path=etl_file.file_path,
                         )
 
-                    sync_result.sync_mode = sync_mode.name
+                    # A smart repair that could not read the store wrote every key: the file says it ran as an upsert.
+                    sync_result.sync_mode = write_result.get("sync_mode") or sync_mode.name
                     sync_result.written   = write_result.get("written", 0)
+                    sync_result.unchanged = write_result.get("unchanged", 0) or 0
+                    sync_result.sync_note = write_result.get("note", "") or ""
                     sync_result.key_space = _recorded_key_space(sink, rule_config, tenant_id, etl_file.env)
                     sync_result.replaced  = write_result.get("replaced", 0) or 0
                     sync_result.replaced_by = write_result.get("strategy", "") if sync_result.replaced else ""
@@ -553,6 +566,7 @@ def run_stage_sync(
                     kind = _sink_kind(sink)
                     _count(lambda m: (m.observe_sink_write(kind, sync_mode.name, _write_elapsed),
                                       m.inc_sink_written(kind, datasource, sync_mode.name, sync_result.written),
+                                      m.inc_sink_unchanged(kind, datasource, sync_result.unchanged),
                                       m.inc_etl_file("ok")))
 
                 except Exception as exc:
@@ -631,6 +645,8 @@ def sync_result_to_dict(r: SyncResult) -> dict:
         "written":   r.written,
         "pruned":    r.pruned,
         "root_key":  r.root_key,
+        **({"unchanged": r.unchanged} if r.unchanged else {}),
+        **({"note": r.sync_note} if r.sync_note else {}),
         **({"replaced": r.replaced, "replaced_by": r.replaced_by} if r.replaced else {}),
         **({"error": r.error} if r.error else {}),
         **({"prune_pending": r.prune_pending} if r.prune_pending is not None else {}),

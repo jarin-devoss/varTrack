@@ -173,6 +173,12 @@ class ConfigmapSink(BaseSink):
         # Convert dot keys → configured format before building the CM.
         cm_data = format_keys(flat_data, self._key_format)
 
+        # GIT_SMART_REPAIR: a ConfigMap that already holds exactly these keys is not replaced.
+        plan = self._plan_object(cm_data, sync_mode, lambda: self._stored_data(namespace, cm_name))
+        outcome = {"unchanged": plan.unchanged, **({"note": plan.note, "sync_mode": plan.mode} if plan.note else {})}
+        if not plan.write:
+            return {"written": 0, **outcome}
+
         body = self._k8s_client.V1ConfigMap(
             metadata=self._k8s_client.V1ObjectMeta(
                 name=cm_name,
@@ -210,7 +216,18 @@ class ConfigmapSink(BaseSink):
             else:
                 raise
 
-        return {"written": len(flat_data)}
+        return {"written": len(flat_data), **outcome}
+
+    def _stored_data(self, namespace: str, cm_name: str) -> "dict[str, str] | None":
+        """What the ConfigMap holds now, in the sink's key format; None when there is none."""
+        from kubernetes.client.exceptions import ApiException
+
+        try:
+            return dict(self._api.read_namespaced_config_map(cm_name, namespace).data or {})
+        except ApiException as exc:
+            if exc.status == 404:
+                return None
+            raise
 
     def _ensure_namespace(self, namespace: str) -> None:
         """Create the namespace if env_as_namespace is on and it doesn't exist."""
