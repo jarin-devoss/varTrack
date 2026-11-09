@@ -166,7 +166,11 @@ def validate_content(
         except AmbiguousRule as exc:
             return "failed", [str(exc)], 0
         if not rule:
-            messages.append(f"no rule for datasource {datasource!r} in tenant {tenant_id!r}; checked the whole file")
+            from app.pipeline import rule_layers
+            why = next((reason for r, reason in rule_layers.refused_rules(tenant_id)
+                        if r.get("datasource") == datasource and (not platform or r.get("platform") == platform)), "")
+            messages.append(f"{why}; checked the whole file" if why
+                            else f"no rule for datasource {datasource!r} in tenant {tenant_id!r}; checked the whole file")
 
     root_key = rule.get("root_key", _DEFAULT_ROOT_KEY)
     if root_key and isinstance(parsed, dict):

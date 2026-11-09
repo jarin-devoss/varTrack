@@ -100,7 +100,7 @@ def rule_facts(rule: dict, envs: Iterable[str] = ()) -> Any:
         exclude_repositories=exclude,
         branch_map={str(k): str(v) for k, v in (rule.get("branch_map") or {}).items()},
         branch_as_env=bool(rule.get("branch_as_env")),
-        # What feeds "default" and the file_path_map environments, and what self-heal reads: the rule's
+        # What feeds the file_path_map environments, and what self-heal reads: the rule's
         # own branch ("main" when it names none, as the heal does).
         branch=str(rule.get("branch") or "main"),
         file_path_envs=sorted(str(env) for env in (rule.get("file_path_map") or {})),

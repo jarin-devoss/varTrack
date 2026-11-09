@@ -7,7 +7,7 @@ Why this exists
 ───────────────
 When someone pushes a commit to a branch that already has an open PR, the
 webhook arrives as a plain push event — not a PR event.  The payload has no
-pr_number field, so env_resolver.resolve() falls through to "default" instead
+pr_number field, so env_resolver.resolve() falls through to the next step instead
 of producing "pr-42".
 
 This cache bridges that gap:
@@ -23,7 +23,7 @@ Design
     recently active PRs hot and automatically drops stale ones.
   - Thread-safe: a single lock guards all mutations.
   - Process-local: lives in the Celery worker process.  Each worker maintains
-    its own cache.  This is fine — a miss just falls back to "default" for
+    its own cache.  This is fine — a miss just falls through to the next step for
     that one task, which is the same behaviour as before this cache existed.
     No distributed coordination needed.
   - No persistence: cache is rebuilt from incoming webhook events.  On worker
@@ -44,7 +44,7 @@ Typical entry lifetime
     → evict("feature/login")
 
   Push to feature/login after merge
-    → lookup("feature/login") = None  → falls back to branch_as_env or "default"
+    → lookup("feature/login") = None  → falls through to branch_as_env
 """
 from __future__ import annotations
 

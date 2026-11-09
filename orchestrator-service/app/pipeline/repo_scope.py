@@ -45,12 +45,10 @@ def patterns(rule: dict) -> tuple[list[str], list[str]]:
     return include, exclude
 
 
-DEFAULT_ENV = "default"
-
-
 def own_branch(rule: dict) -> str:
-    """The rule's own branch ("main" when it names none): what feeds "default" and the file_path_map
-    environments. "" when branch_map sends that branch to an environment: its files land there."""
+    """The rule's own branch ("main" when it names none): what feeds the file_path_map environments (and what
+    self-heal reads when the rule has no branch_map). "" when branch_map sends that branch to an environment:
+    its files land there."""
     branch = str(rule.get("branch") or "main")
     return "" if branch in (rule.get("branch_map") or {}) else branch
 
@@ -61,8 +59,9 @@ def branch_for(rule: dict, env: str) -> str:
 
       1. a branch_map entry maps a branch to *env*: that branch;
       2. *env* is one the file_path_map names: the rule's own branch;
-      3. branch_as_env: *env* itself;
-      4. *env* is "default", what a push resolves to when nothing else applies: the rule's own branch.
+      3. branch_as_env: *env* itself.
+
+    There is no environment called "default": a push nothing names feeds no environment (the ETL skips it).
 
     The gateway's permission engine answers the same question (authz.branchFor); both are held to
     gateway-service/internal/authz/testdata/branch_for.json (tests/unit/test_branch_for_contract.py).
@@ -75,15 +74,13 @@ def branch_for(rule: dict, env: str) -> str:
         return own_branch(rule)
     if rule.get("branch_as_env"):
         return env
-    if env == DEFAULT_ENV:
-        return own_branch(rule)
     return ""
 
 
 def nothing_feeds(rule: dict, env: str) -> str:
     """Why *env* cannot be synced or dry-run when no branch feeds it (the engine's words, too)."""
     return (f"nothing feeds {env} in the {rule.get('datasource', '')} rule: no branch_map entry maps a branch to it, "
-            f"branch_as_env is off, and it is not default or a file_path_map environment "
+            f"branch_as_env is off, and it is not a file_path_map environment "
             f"(an earlier version of the rule wrote it; it is not synced any more)")
 
 
