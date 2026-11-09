@@ -52,6 +52,68 @@ export function syncOutcome(tasks: Task[], envs: string[], dryRun: boolean): Syn
       };
 }
 
+/**
+ * Whether a failed run failed because the schema rejected a file: a file the pipeline marked so, or (when a rule with
+ * strict_validation stops at the file, which leaves no file result) the task's own message saying so.
+ */
+export function isValidationFailure(task: Task): boolean {
+  return (
+    task.state === 'FAILED' &&
+    (task.files.some(f => f.status === 'validation_failed') || /strict_validation|validation failed/i.test([task.message, ...task.files.map(f => f.error ?? '')].join('\n')))
+  );
+}
+
+/** What the schema objected to: the part after "strict_validation:" when the message has one, else its first line. */
+function validationReason(text: string): string {
+  const after = /strict_validation:\s*([\s\S]*)/.exec(text);
+  return firstLine(after ? after[1] : text) || 'the file does not match its schema';
+}
+
+/** A finished dry run in one line: what a sync of the same files would do. */
+export interface DryRunVerdict {
+  tone: 'good' | 'warning' | 'critical';
+  text: string;
+  /** Totals over the files the sink could be compared for; absent when none could. */
+  totals?: { added: number; changed: number; deleted: number };
+}
+
+/**
+ * "A sync of default would add 2 keys, change 1 and delete none." · "default already matches Git — a sync would change
+ * nothing." · "Validation failed: … — a sync would be refused." · or why what a sync would change is not known.
+ */
+export function dryRunVerdict(task: Task): DryRunVerdict {
+  const files = task.files.filter(f => f.env);
+  const what = environmentsLabel([...new Set(files.map(f => f.env))].length ? [...new Set(files.map(f => f.env))] : [task.env ?? 'the rule']);
+  if (task.state === 'FAILED') {
+    const bad = task.files.find(f => f.status === 'validation_failed' || f.error);
+    const text = bad?.error ?? bad?.validationError ?? task.message;
+    if (isValidationFailure(task)) {
+      return { tone: 'critical', text: `Validation failed: ${validationReason(text)} — a sync would be refused.` };
+    }
+    return { tone: 'critical', text: `The dry run failed: ${firstLine(text) || 'The task failed.'}` };
+  }
+  const compared = files.filter(f => f.wouldChange && !f.wouldChange.error);
+  if (files.length === 0 || compared.length < files.length) {
+    const why = files.length === 0 ? 'No file was read.' : files.find(f => f.wouldChange?.error)?.wouldChange?.error;
+    return {
+      tone: 'warning',
+      text: files.length === 0
+        ? 'No file was read, so there is nothing a sync would change.'
+        : `Git was read and checked against its schema, but ${why ? `the sink could not be compared (${firstLine(why)})` : 'the sink was not compared'}, so what a sync would change is not known.`,
+    };
+  }
+  const added = compared.reduce((n, f) => n + (f.wouldChange?.addedCount ?? f.wouldChange?.added?.length ?? 0), 0);
+  const changed = compared.reduce((n, f) => n + (f.wouldChange?.changedCount ?? f.wouldChange?.changed?.length ?? 0), 0);
+  const deleted = Object.values(task.wouldPrune ?? {}).reduce((n, ks) => n + ks.length, 0);
+  const totals = { added, changed, deleted };
+  if (added + changed + deleted === 0) {
+    const several = new Set(files.map(f => f.env)).size > 1;
+    return { tone: 'good', text: `${what} ${several ? 'already match' : 'already matches'} Git — a sync would change nothing.`, totals };
+  }
+  const parts = [added ? `add ${keys(added)}` : 'add none', changed ? `change ${changed}` : 'change none', deleted ? `delete ${keys(deleted)}` : 'delete none'];
+  return { tone: 'warning', text: `A sync of ${what} would ${parts[0]}, ${parts[1]} and ${parts[2]}.`, totals };
+}
+
 /** What a sync of some environments would delete, from a dry run's report. */
 export interface PruneImpact {
   total: number;

@@ -9,7 +9,8 @@ export function resolvedVia(rule: RuleView, t: Target): string {
   if (rule.prAsEnv && /^pr-\d+$/.test(t.env)) return 'pull request number';
   if (rule.branchAsEnv && t.env === t.ref) return 'branch name';
   if (rule.tagAsEnv) return 'tag name';
-  return 'default';
+  // Nothing names it: no branch feeds it (a leftover, written by an earlier version of the rule).
+  return 'nothing: no step names it any more';
 }
 
 function steps(rule: RuleView) {
@@ -29,7 +30,6 @@ function steps(rule: RuleView) {
     { name: 'pr_as_env', description: 'pull request #N becomes pr-N', active: rule.prAsEnv, entries: [] },
     { name: 'branch_as_env', description: 'the branch name is the environment', active: rule.branchAsEnv, entries: [] },
     { name: 'tag_as_env', description: 'the tag name is the environment', active: rule.tagAsEnv, entries: [] },
-    { name: 'default', description: 'fallback when nothing else matches', active: true, entries: [] },
   ];
 }
 
@@ -59,5 +59,15 @@ export function ResolutionSteps({ rule }: { rule: RuleView }) {
         </li>
       ))}
     </ol>
+  );
+}
+
+/** What happens when no step names an environment: there is no fallback environment. */
+export function NoFallback() {
+  return (
+    <p className="muted" style={{ fontSize: 13, margin: 0 }}>
+      If no step names an environment, the push feeds none of this rule's environments: it is skipped and the task says so. There is no{' '}
+      <code>default</code> environment to fall back to.
+    </p>
   );
 }

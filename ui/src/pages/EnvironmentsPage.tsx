@@ -23,7 +23,7 @@ export function EnvironmentsPage() {
   usePageTitle('Environments');
   const rules = useRules();
   const [params, setParams] = useSearchParams();
-  const [syncing, setSyncing] = useState<{ rule: RuleView; env: string } | null>(null);
+  const [syncing, setSyncing] = useState<{ rule: RuleView; env: string; dryRun?: boolean } | null>(null);
 
   const q = params.get('q') ?? '';
   const status = params.get('status') ?? '';
@@ -112,13 +112,13 @@ export function EnvironmentsPage() {
       ) : (
         <div className="card card--flush rows">
           {visible.map(({ rule, target }) => (
-            <EnvRow key={`${rule.tenant}|${rule.name}|${target.env}`} rule={rule} target={target} showTenant={tenants.length > 1} onSync={() => setSyncing({ rule, env: target.env })} />
+            <EnvRow key={`${rule.tenant}|${rule.name}|${target.env}`} rule={rule} target={target} showTenant={tenants.length > 1} onSync={dryRun => setSyncing({ rule, env: target.env, dryRun })} />
           ))}
           {more}
         </div>
       )}
 
-      <SyncPanel open={!!syncing} rule={syncing?.rule ?? null} initialEnvs={syncing ? [syncing.env] : undefined} onClose={() => setSyncing(null)} onChanged={rules.reload} />
+      <SyncPanel open={!!syncing} rule={syncing?.rule ?? null} initialEnvs={syncing ? [syncing.env] : undefined} initialDryRun={syncing?.dryRun} onClose={() => setSyncing(null)} onChanged={rules.reload} />
     </div>
   );
 }

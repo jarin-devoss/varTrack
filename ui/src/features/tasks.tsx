@@ -24,7 +24,7 @@ export function taskSummary(t: Task): string {
   return `${t.files.length} file${t.files.length === 1 ? '' : 's'} · wrote ${written} key${written === 1 ? '' : 's'}${pruned ? `, pruned ${pruned}` : ''}`;
 }
 
-type StageState = 'done' | 'active' | 'failed' | 'pending' | 'skipped';
+export type StageState = 'done' | 'active' | 'failed' | 'pending' | 'skipped';
 
 const STAGE_LOOK: Record<StageState, { icon: IconName; tone: Tone; label: string }> = {
   done: { icon: 'checkCircle', tone: 'good', label: 'done' },
@@ -60,9 +60,14 @@ export function taskStages(task: Task): { label: string; state: StageState }[] {
 }
 
 export function Stages({ task }: { task: Task }) {
+  return <StageStrip stages={taskStages(task)} />;
+}
+
+/** A row of stages, each with its state (also said to a screen reader). */
+export function StageStrip({ stages }: { stages: { label: string; state: StageState }[] }) {
   return (
     <div className="steps" aria-label="Pipeline stages">
-      {taskStages(task).map(stage => {
+      {stages.map(stage => {
         const look = STAGE_LOOK[stage.state];
         return (
           <span key={stage.label} className={`step step--${stage.state}`}>

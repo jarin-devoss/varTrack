@@ -41,7 +41,7 @@ export function activeSpans(tasks: Task[]): Map<string, { until?: string; curren
 }
 
 /** Vertical timeline of syncs, newest first. */
-export function HistoryTimeline({ tasks, showEnv = true }: { tasks: Task[]; showEnv?: boolean }) {
+export function HistoryTimeline({ tasks, showEnv = true, onShowLog }: { tasks: Task[]; showEnv?: boolean; onShowLog?: (taskId: string) => void }) {
   const now = useNow(30000);
   const spans = activeSpans(tasks);
 
@@ -63,6 +63,11 @@ export function HistoryTimeline({ tasks, showEnv = true }: { tasks: Task[]; show
                 <TaskPill state={t.state} />
                 {showEnv && t.env && <span className="chip">{t.env}</span>}
                 {t.dryRun && <span className="pill pill--purple">dry run</span>}
+                {t.dryRun && onShowLog && (
+                  <button type="button" className="btn btn--ghost btn--sm" onClick={() => onShowLog(t.taskId)} aria-label={`Show log of dry run ${shortId(t.taskId)}`}>
+                    Show log
+                  </button>
+                )}
                 {span?.current && <span className="pill pill--green">live now</span>}
               </div>
               <div className="tl__time">{formatDateTime(t.finishedAt ?? t.createdAt)}</div>

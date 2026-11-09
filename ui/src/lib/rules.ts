@@ -9,6 +9,25 @@ export function syncableEnvs(targets: Target[]): string[] {
 }
 
 /**
+ * What the person may start on this rule. The permission engine says whether any environment of it may be synced by them
+ * (`canSync` is absent when sign-in is off: everyone may). Someone who may only dry-run is not shown a Sync that is really
+ * a dry run: Sync stays, disabled, with `reason`, and Dry run is its own control.
+ */
+export function runRights(rule: Pick<RuleView, 'canSync'>): { sync: boolean; reason?: string } {
+  return rule.canSync === false
+    ? { sync: false, reason: "You can read this rule's repository but not write to it, so you can dry-run it but not sync it." }
+    : { sync: true };
+}
+
+/** The file a sync of the rule reads, in words: its name, its one path, "3 path patterns", or that it names none. */
+export function filesRead(rule: Pick<RuleView, 'fileName' | 'filePathMap'>): string {
+  if (rule.fileName) return rule.fileName;
+  const patterns = Object.keys(rule.filePathMap);
+  if (patterns.length === 0) return 'no file named';
+  return patterns.length === 1 ? patterns[0] : `${patterns.length} path patterns`;
+}
+
+/**
  * Whether a sync of this rule deletes the keys Git no longer has. Pruning is the rule's setting, not a choice made per
  * sync: a rule that prunes does so on every sync that writes, and a dry run only reports what it would delete.
  */

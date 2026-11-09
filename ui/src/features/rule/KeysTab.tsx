@@ -4,6 +4,8 @@ import { EmptyState, ErrorState, LoadingRows, Notice, Segmented } from '../../co
 import { Icon } from '../../components/Icon';
 import { SearchBox } from '../../components/SearchBox';
 import { StatusIcon } from '../../components/Status';
+import { runRights } from '../../lib/rules';
+import { diffable } from '../../lib/status';
 import type { Tone } from '../../lib/status';
 import { useQuery } from '../../lib/useQuery';
 
@@ -22,16 +24,20 @@ const CHANGED: KeyState[] = ['drifted', 'missing', 'unmanaged'];
 
 interface Props {
   rule: RuleView;
-  env: string;
+  /** The environment shown: one that can be compared (never a leftover, or one nothing has written). Absent when there is none. */
+  env?: string;
   onEnvChange: (env: string) => void;
   filter: KeyFilter;
   onFilterChange: (f: KeyFilter) => void;
-  onSync: (env: string) => void;
+  onSync: (env: string, dryRun?: boolean) => void;
 }
 
 export function KeysTab({ rule, env, onEnvChange, filter, onFilterChange, onSync }: Props) {
-  const keys = useQuery(`keys:${rule.tenant}:${rule.name}:${env}`, api => api.listKeys(rule.name, env, rule.tenant));
+  const keys = useQuery(env ? `keys:${rule.tenant}:${rule.name}:${env}` : null, api => api.listKeys(rule.name, env!, rule.tenant));
   const [search, setSearch] = useState('');
+  const rights = runRights(rule);
+  // Keys are read from the store and compared with Git: an environment nothing has written, or no branch feeds, has none to show.
+  const comparable = rule.targets.filter(t => diffable(t).can);
   const target = rule.targets.find(t => t.env === env);
 
   const all = keys.data ?? [];
@@ -56,8 +62,8 @@ export function KeysTab({ rule, env, onEnvChange, filter, onFilterChange, onSync
   return (
     <div className="stack">
       <div className="filter-form">
-        {rule.targets.length > 1 && (
-          <Segmented label="Environment" value={env} onChange={onEnvChange} options={rule.targets.map(t => ({ value: t.env, label: t.env }))} />
+        {comparable.length > 1 && (
+          <Segmented label="Environment" value={env ?? ''} onChange={onEnvChange} options={comparable.map(t => ({ value: t.env, label: t.env }))} />
         )}
         <Segmented
           label="Show"
@@ -96,15 +102,24 @@ export function KeysTab({ rule, env, onEnvChange, filter, onFilterChange, onSync
                   ? 'Keys not in Git are deleted when you sync with prune.'
                   : 'Keys not in Git are kept because pruning is off.')}
             </span>
-            <button className="btn btn--sm" onClick={() => onSync(env)}>
+            <button className="btn btn--sm" onClick={() => onSync(env!)} disabled={!rights.sync} title={rights.reason}>
               <Icon name="refresh" size={14} /> Sync {env}
             </button>
+            {!rights.sync && (
+              <button className="btn btn--sm" onClick={() => onSync(env!, true)}>
+                <Icon name="play" size={14} /> Dry run {env}
+              </button>
+            )}
           </div>
         </Notice>
       )}
 
       <div className="diff">
-        {keys.error && !keys.data ? (
+        {!env ? (
+          <EmptyState compact icon="key" title="No keys to show yet">
+            No environment of this rule has been written, so there are no keys in the store to compare with Git. Sync one first.
+          </EmptyState>
+        ) : keys.error && !keys.data ? (
           <ErrorState error={keys.error} what="key values" onRetry={keys.reload} />
         ) : !keys.data ? (
           <div className="card__body">

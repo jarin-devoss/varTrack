@@ -78,8 +78,9 @@ export function ruleProblems(r: Rule): string[] {
   if (r.repositories.length === 0) problems.push('repositories needs at least one entry');
   if (!r.fileName && Object.keys(r.filePathMap).length === 0) problems.push("provide either 'file_name' or 'file_path_map'");
   const hasEnvStrategy = r.branchAsEnv || r.prAsEnv || r.tagAsEnv || Object.keys(r.branchMap).length > 0 || Object.keys(r.filePathMap).length > 0;
-  if (r.destinationTemplate.includes('{env}') && !hasEnvStrategy) {
-    problems.push('destination_template uses {env} but no environment strategy is enabled');
+  // There is no "default" environment: a rule that names none is refused when it is loaded.
+  if (!hasEnvStrategy) {
+    problems.push('name where the environments come from (branch_map, file_path_map, branch_as_env, pr_as_env or tag_as_env): a rule that names none is refused');
   }
   return problems;
 }

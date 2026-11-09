@@ -23,6 +23,7 @@ export const REASON: Record<EventReason, { label: string; icon: IconName; tone: 
   HealSucceeded: { label: 'Healed', icon: 'refresh', tone: 'good' },
   HealFailed: { label: 'Heal failed', icon: 'xCircle', tone: 'critical' },
   SchemaRefreshed: { label: 'Schema refreshed', icon: 'file', tone: 'neutral' },
+  RuleRefused: { label: 'Rule refused', icon: 'xCircle', tone: 'critical' },
 };
 
 export interface EventGroup {

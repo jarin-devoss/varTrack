@@ -1,15 +1,18 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { useApi, type VarTrackApi } from '../api';
-import type { RuleView, Task } from '../api/types';
-import { Notice, Timestamp } from '../components/common';
+import { useApi } from '../api';
+import type { RuleView } from '../api/types';
+import { LoadingRows, Notice, Timestamp } from '../components/common';
 import { SINK_LABEL } from '../components/Icon';
 import { Dialog, SlideOver } from '../components/Overlay';
 import { DriftPill, TaskPill } from '../components/Status';
 import { useToast } from '../components/Toasts';
-import { prunes, syncableEnvs } from '../lib/rules';
-import { environmentsLabel, keyCount, pruneImpact, someKeys, syncOutcome } from '../lib/outcome';
-import { isActive } from '../lib/status';
+import { filesRead, prunes, runRights, syncableEnvs } from '../lib/rules';
+import { dryRunVerdict, environmentsLabel, keyCount, pruneImpact, someKeys, syncOutcome } from '../lib/outcome';
+import { DryRunReport } from './DryRunReport';
+import { runLogHref } from './links';
+import { untilFinished } from './untilFinished';
+import { useRunTasks } from './useRunTasks';
 
 const PRODUCTION_LIKE = /^(prod|production|main|master|live)$/i;
 
@@ -27,27 +30,6 @@ interface Props {
   onChanged?: () => void;
 }
 
-/**
- * Ask about the tasks a sync started until they have all finished (a sync takes well under a second; a minute at most is
- * waited). Returns the tasks as they last were, and whether they all ended. Without this the page would show the sync
- * running until its next poll, seconds later, and nothing would say how it went.
- */
-async function untilFinished(api: VarTrackApi, taskIds: string[], limitMs = 60_000): Promise<{ tasks: Task[]; ended: boolean }> {
-  const deadline = Date.now() + limitMs;
-  const last = new Map<string, Task>();
-  let pending = [...taskIds];
-  for (let wait = 150; pending.length > 0 && Date.now() < deadline; wait = Math.min(wait * 2, 2000)) {
-    await new Promise(resolve => setTimeout(resolve, wait));
-    const found = await Promise.all(pending.map(id => api.getTask(id).catch(() => undefined)));
-    found.forEach((task, i) => task && last.set(pending[i], task));
-    pending = pending.filter(id => {
-      const task = last.get(id);
-      return !task || isActive(task.state);
-    });
-  }
-  return { tasks: taskIds.flatMap(id => last.get(id) ?? []), ended: pending.length === 0 };
-}
-
 /** What the panel knows of what this sync would delete: asked of a dry run, which never blocks the sync. */
 type Preview = { state: 'off' } | { state: 'loading' } | { state: 'failed' } | { state: 'ready'; wouldPrune: Record<string, string[]> };
 
@@ -61,9 +43,13 @@ export function SyncPanel({ rule, open, onClose, initialEnvs, initialDryRun = fa
   const [confirming, setConfirming] = useState(false);
   const [confirmText, setConfirmText] = useState('');
   const [preview, setPreview] = useState<Preview>({ state: 'off' });
-  // Signed in, and the permission engine says no environment of the rule may be synced by this
-  // user (no push access to the branches that feed them): dry runs only.
-  const readOnly = rule?.canSync === false;
+  // The dry run this panel started, while its log is shown in place of the form.
+  const [run, setRun] = useState<{ taskIds: string[]; envs: string[] } | null>(null);
+  // What the dry run said a sync would delete, while the person is asked to confirm the sync it led on to.
+  const [fromRun, setFromRun] = useState<Record<string, string[]> | null>(null);
+  const { tasks: runTasks, ended: runEnded } = useRunTasks(open ? (run?.taskIds ?? null) : null);
+  // Someone who may only dry-run is given this panel as a dry run: titled so, with nothing to tick.
+  const readOnly = !!rule && !runRights(rule).sync;
   // An environment no branch feeds any more (an earlier version of the rule wrote it) cannot be synced.
   const fedEnvs = syncableEnvs(rule?.targets ?? []);
 
@@ -72,6 +58,8 @@ export function SyncPanel({ rule, open, onClose, initialEnvs, initialDryRun = fa
     const fedNow = syncableEnvs(rule.targets);
     setEnvs(initialEnvs?.length ? initialEnvs.filter(e => fedNow.includes(e)) : fedNow);
     setDryRun(initialDryRun || readOnly);
+    setRun(null);
+    setFromRun(null);
     setError(null);
     setConfirming(false);
     setConfirmText('');
@@ -108,6 +96,11 @@ export function SyncPanel({ rule, open, onClose, initialEnvs, initialDryRun = fa
     };
   }, [asksWhatItDeletes, rule?.name, rule?.tenant, chosen]);
 
+  // The log is where the dry run is read: the list behind the panel is reloaded as soon as the run has ended.
+  useEffect(() => {
+    if (run && runEnded) onChanged?.();
+  }, [runEnded]);
+
   if (!rule) return null;
 
   const selected = rule.targets.filter(t => envs.includes(t.env));
@@ -115,57 +108,100 @@ export function SyncPanel({ rule, open, onClose, initialEnvs, initialDryRun = fa
   // production-like environment applies whenever this sync will delete keys, not only when a box is ticked.
   // When the dry run has said which keys go, only an environment that loses keys counts; when it could not say, any
   // production-like environment does (today's rule). A sync that deletes nothing asks nothing.
-  const impact = preview.state === 'ready' ? pruneImpact(preview.wouldPrune, envs) : null;
+  const impact = fromRun ? pruneImpact(fromRun, envs) : preview.state === 'ready' ? pruneImpact(preview.wouldPrune, envs) : null;
   const productionLike = (envs: string[]) => envs.some(isProductionLike);
   const riskyPrune =
     prunes(rule.prune, dryRun) && (impact ? productionLike(impact.byEnv.map(([env]) => env)) : productionLike(selected.map(t => t.env)));
-  const file = rule.fileName ?? `${Object.keys(rule.filePathMap).length} path pattern(s)`;
-  const toggle = (env: string) => setEnvs(e => (e.includes(env) ? e.filter(x => x !== env) : [...e, env]));
+  const file = filesRead(rule);
+  const toggle = (env: string) => {
+    setFromRun(null);
+    setEnvs(e => (e.includes(env) ? e.filter(x => x !== env) : [...e, env]));
+  };
 
-  const submit = async () => {
+  // The toast says the run is going, then how it ended: it is the same toast, updated. A dry run read in the panel has no
+  // toast; one the person closed the panel on does, and its Details link opens the log over the rule.
+  const followWithToast = (taskIds: string[], runEnvs: string[], asDryRun: boolean) => {
+    const what = environmentsLabel(runEnvs);
+    const to = (id: string) => (asDryRun ? runLogHref(rule, id) : `/tasks/${id}`);
+    const follow = taskIds.length === 1 ? <Link to={to(taskIds[0])}>Follow the task</Link> : <Link to="/tasks">Follow {taskIds.length} tasks</Link>;
+    const toast = notify({ tone: 'progress', title: asDryRun ? `Dry run of ${what}…` : `Syncing ${what}…`, body: follow });
+    void untilFinished(api, taskIds).then(({ tasks, ended }) => {
+      onChanged?.();
+      if (!ended) {
+        notify.update(toast, { tone: 'progress', title: `Still running: ${what}`, body: follow });
+        return;
+      }
+      const outcome = syncOutcome(tasks, runEnvs, asDryRun);
+      notify.update(toast, {
+        tone: outcome.tone,
+        title: outcome.title,
+        sticky: outcome.tone === 'critical',
+        body: (
+          <>
+            {outcome.detail}
+            {outcome.taskId && (
+              <>
+                {' · '}
+                <Link to={to(outcome.taskId)}>{outcome.tone === 'critical' ? (asDryRun ? 'Open the log' : 'Open the task') : 'Details'}</Link>
+              </>
+            )}
+          </>
+        ),
+      });
+    });
+  };
+
+  const submit = async (asDryRun = dryRun, runEnvs = envs) => {
     setBusy(true);
     setError(null);
     try {
-      const { taskIds } = await api.sync({ rule: rule.name, tenant: rule.tenant, envs, dryRun, prune: false });
-      const what = environmentsLabel(envs);
-      const follow =
-        taskIds.length === 1 ? <Link to={`/tasks/${taskIds[0]}`}>Follow the task</Link> : <Link to="/tasks">Follow {taskIds.length} tasks</Link>;
-      // The toast says the sync is running, then how it ended: it is the same toast, updated.
-      const toast = notify({ tone: 'progress', title: dryRun ? `Dry run of ${what}…` : `Syncing ${what}…`, body: follow });
-      const syncedEnvs = [...envs];
-      const asDryRun = dryRun;
+      const { taskIds } = await api.sync({ rule: rule.name, tenant: rule.tenant, envs: runEnvs, dryRun: asDryRun, prune: false });
       onChanged?.();
-      void untilFinished(api, taskIds).then(({ tasks, ended }) => {
-        onChanged?.();
-        if (!ended) {
-          notify.update(toast, { tone: 'progress', title: `Still running: ${what}`, body: follow });
-          return;
-        }
-        const outcome = syncOutcome(tasks, syncedEnvs, asDryRun);
-        notify.update(toast, {
-          tone: outcome.tone,
-          title: outcome.title,
-          sticky: outcome.tone === 'critical',
-          body: (
-            <>
-              {outcome.detail}
-              {outcome.taskId && (
-                <>
-                  {' · '}
-                  <Link to={`/tasks/${outcome.taskId}`}>{outcome.tone === 'critical' ? 'Open the task' : 'Details'}</Link>
-                </>
-              )}
-            </>
-          ),
-        });
-      });
       setConfirming(false);
+      if (asDryRun) {
+        // The panel stays: its log is where the dry run is read.
+        setEnvs(runEnvs);
+        setRun({ taskIds, envs: [...runEnvs] });
+        return;
+      }
+      followWithToast(taskIds, [...runEnvs], false);
       onClose();
     } catch (err) {
       setError((err as Error).message);
       setConfirming(false);
     } finally {
       setBusy(false);
+    }
+  };
+
+  const close = () => {
+    // Closed before the dry run ended: the toast follows it from here.
+    if (run && !runEnded) followWithToast(run.taskIds, run.envs, true);
+    onClose();
+  };
+
+  // What the log can lead on to: the real sync of the same environments, once the dry run has passed and a sync would
+  // change something. The dry run has already said which keys a sync deletes, so the typed confirmation for a
+  // production-like environment is asked here exactly as it is for any sync, and nothing else stands between the two.
+  const passed = runEnded && runTasks.length > 0 && runTasks.every(t => t.state === 'SUCCEEDED');
+  const wouldChangeSomething = runTasks.some(t => {
+    const totals = dryRunVerdict(t).totals;
+    return !totals || totals.added + totals.changed + totals.deleted > 0;
+  });
+  const syncTheseWhy = !runEnded ? 'The dry run is still running.' : !passed ? 'The dry run failed.' : !wouldChangeSomething ? 'A sync would change nothing.' : undefined;
+  const syncThese = () => {
+    if (!run) return;
+    const wouldPrune: Record<string, string[]> = {};
+    for (const t of runTasks) for (const [env, ks] of Object.entries(t.wouldPrune ?? {})) wouldPrune[env] = [...(wouldPrune[env] ?? []), ...ks];
+    setEnvs(run.envs);
+    setDryRun(false);
+    setRun(null);
+    const losing = pruneImpact(wouldPrune, run.envs).byEnv.map(([env]) => env);
+    if (rule.prune.enabled && losing.some(isProductionLike)) {
+      setFromRun(wouldPrune);
+      setConfirming(true);
+    } else {
+      void submit(false, run.envs);
     }
   };
 
@@ -181,25 +217,56 @@ export function SyncPanel({ rule, open, onClose, initialEnvs, initialDryRun = fa
     <>
       <SlideOver
         open={open}
-        onClose={onClose}
-        title={dryRun ? 'Dry run' : 'Sync from Git'}
+        onClose={close}
+        title={dryRun || run ? 'Dry run' : 'Sync from Git'}
         subtitle={<span className="mono">{rule.name}</span>}
         actions={
-          <>
-            <button
-              className="btn btn--primary"
-              onClick={onPrimary}
-              disabled={busy || envs.length === 0}
-              title={envs.length === 0 ? (fedEnvs.length === 0 ? 'No branch feeds any environment of this rule' : 'Choose an environment first') : undefined}
-            >
-              {busy ? 'Starting…' : primaryLabel}
-            </button>
-            <button className="btn" onClick={onClose}>
-              Cancel
-            </button>
-          </>
+          run ? (
+            <>
+              {!readOnly && (
+                <button className="btn btn--primary" onClick={syncThese} disabled={!!syncTheseWhy} title={syncTheseWhy}>
+                  Sync these environments
+                </button>
+              )}
+              <button className={readOnly ? 'btn btn--primary' : 'btn'} onClick={() => void submit(true, run.envs)} disabled={busy || !runEnded}>
+                {busy ? 'Starting…' : 'Run again'}
+              </button>
+              <button className="btn" onClick={() => setRun(null)}>
+                Back
+              </button>
+              <button className="btn" onClick={close}>
+                Close
+              </button>
+            </>
+          ) : (
+            <>
+              <button
+                className="btn btn--primary"
+                onClick={onPrimary}
+                disabled={busy || envs.length === 0}
+                title={envs.length === 0 ? (fedEnvs.length === 0 ? 'No branch feeds any environment of this rule' : 'Choose an environment first') : undefined}
+              >
+                {busy ? 'Starting…' : primaryLabel}
+              </button>
+              <button className="btn" onClick={close}>
+                Cancel
+              </button>
+            </>
+          )
         }
       >
+        {run ? (
+          <div className="stack" data-testid="dryrun-log">
+            <p className="secondary">
+              Dry run of {environmentsLabel(run.envs)}: reads Git, checks the file against its schema and compares it with the sink. Nothing is written.
+            </p>
+            {runTasks.length < run.taskIds.length && !runEnded && <LoadingRows rows={2} height={60} />}
+            {runTasks.map(t => (
+              <DryRunReport key={t.taskId} task={t} />
+            ))}
+            {error && <Notice tone="critical">{error}</Notice>}
+          </div>
+        ) : (
         <div className="stack">
           <p className="secondary">
             Reads <code>{file}</code> at the head of each environment's Git ref, validates it against the CUE schema and{' '}
@@ -252,17 +319,20 @@ export function SyncPanel({ rule, open, onClose, initialEnvs, initialDryRun = fa
 
           <div>
             <div className="field__label" style={{ marginBottom: 2 }}>Options</div>
-            <label className="check">
-              <input type="checkbox" checked={dryRun} disabled={readOnly} onChange={e => setDryRun(e.target.checked)} />
-              <span className="check__text">
-                <span>Dry run</span>
-                <span className="check__hint">
-                  {readOnly
-                    ? "You can read this rule's repository but not write to it, so only dry runs are allowed."
-                    : 'Run parse, validation and diff without writing. Secret values are masked.'}
+            {readOnly ? (
+              // Nothing to choose: they may dry-run this rule and not sync it.
+              <p className="check__hint" style={{ margin: '4px 0 8px' }}>
+                {runRights(rule).reason}
+              </p>
+            ) : (
+              <label className="check">
+                <input type="checkbox" checked={dryRun} onChange={e => setDryRun(e.target.checked)} />
+                <span className="check__text">
+                  <span>Dry run</span>
+                  <span className="check__hint">Run parse, validation and diff without writing. Secret values are masked.</span>
                 </span>
-              </span>
-            </label>
+              </label>
+            )}
             <label className="check" style={{ opacity: rule.prune.enabled ? 1 : 0.6 }}>
               {/* Shown, not chosen: whether a sync prunes is the rule's setting. */}
               <input type="checkbox" checked={prunes(rule.prune, dryRun)} disabled readOnly aria-label="Prune keys that are no longer in Git" />
@@ -323,6 +393,7 @@ export function SyncPanel({ rule, open, onClose, initialEnvs, initialDryRun = fa
           )}
           {error && <Notice tone="critical">{error}</Notice>}
         </div>
+        )}
       </SlideOver>
 
       <Dialog
