@@ -2159,11 +2159,12 @@ example which branch rule chose a sync's environment (<code>env_resolve via=bran
   <code>vartrack</code> key syncs only that section; <code>root_key=… not found in …, skipping</code> means the
   <code>root_key</code> set is not in the file.</li>
 </ul>
-<div class="admonition warning">
-<p class="admonition-title">A branch that is not mapped still syncs</p>
+<div class="admonition note">
+<p class="admonition-title">A branch that is not mapped is skipped</p>
 <p>A push to a branch that is not in <code>branch_map</code>, and that no <code>file_path_map</code>,
-<code>branch_as_env</code>, <code>pr_as_env</code> or <code>tag_as_env</code> places, is synced to the environment
-<strong><code>default</code></strong>. See <a href="../../concepts/environment-resolution/">Environment resolution</a>.</p>
+<code>branch_as_env</code>, <code>pr_as_env</code> or <code>tag_as_env</code> places, feeds no environment of the rule:
+the task ends <em>nothing to do: branch … feeds no environment of …</em> and nothing is written.
+There is no <code>default</code> environment. See <a href="../../concepts/environment-resolution/">Environment resolution</a>.</p>
 </div>
 <hr />
 <h2 id="a-sync-failed">A sync failed<a class="headerlink" href="#a-sync-failed" title="Permanent link">&para;</a></h2>
@@ -2300,7 +2301,7 @@ TTL</code>, and clones are refetched only after <code>SCHEMA_TTL_SECONDS</code>.
 </thead>
 <tbody>
 <tr>
-<td><code>nothing feeds &lt;env&gt; in the &lt;datasource&gt; rule: no branch_map entry maps a branch to it, branch_as_env is off, and it is not default or a file_path_map environment</code></td>
+<td><code>nothing feeds &lt;env&gt; in the &lt;datasource&gt; rule: no branch_map entry maps a branch to it, branch_as_env is off, and it is not a file_path_map environment (an earlier version of the rule wrote it; it is not synced any more)</code></td>
 <td>The environment is in the store (an earlier version of the rule wrote it, for example before <code>branch_as_env</code> was turned off) but the rule as it is now produces nothing that lands in it. This is the answer for admins too: there is no branch to read, so nothing could be synced. Sync and Dry run are disabled on it, and its keys and history stay visible</td>
 <td>Map a branch to it (<code>branch_map</code>), turn <code>branch_as_env</code> back on, or leave it: nothing writes it any more</td>
 </tr>
@@ -2328,7 +2329,7 @@ TTL</code>, and clones are refetched only after <code>SCHEMA_TTL_SECONDS</code>.
 </table>
 <p>A page shows such an environment as <em>No longer synced by this rule</em>. Every environment has its own <strong>Diff</strong>, but this one's is disabled ("no branch feeds it, so there is nothing in Git to compare with"), its keys are not compared with Git (<code>GET …/targets/{env}/keys</code> answers <code>409</code>), and its panel shows only <em>Summary</em> and <em>History</em>; what varTrack last wrote there is labelled <strong>Last written by varTrack</strong>, not <em>Desired</em>. An environment the rule produces and has never written has a disabled Diff too ("Not synced yet"). It is not compared with the rule (its keys sit under a destination the rule no longer writes, so it would read drifted for ever), it does not count in the rule's status, and the watcher does not heal it. An administrator can drop it from varTrack's record with <strong>Forget</strong> on its box (or <code>DELETE /v1/ui/rules/{platform}/{datasource}/targets/{env}</code>); its events and tasks stay, and the keys in the store are left alone.</p>
 <p>An environment the rule produces and has never written (a new rule, or a <code>branch_map</code> entry just added) is listed on the rule's page as <em>Not synced yet</em>, with the branch that feeds it; <strong>Sync</strong> (or <strong>Dry run</strong>) writes it the first time. If Sync and Dry run have nothing to start, the panel says why: no branch feeds any environment of the rule, and a dry run, which writes nothing, still reads the branch that feeds the environment.</p>
-<p>Which branch feeds an environment is the same answer everywhere: a <code>branch_map</code> entry, else (for a <code>file_path_map</code> environment) the rule's own <code>branch</code>, else (with <code>branch_as_env</code>) the environment's own name, else (for <code>default</code>) the rule's own <code>branch</code>. Self-heal reads the same branches.</p>
+<p>Which branch feeds an environment is the same answer everywhere: a <code>branch_map</code> entry, else (for a <code>file_path_map</code> environment) the rule's own <code>branch</code>, else (with <code>branch_as_env</code>) the environment's own name; otherwise nothing feeds it. Self-heal reads the same branches.</p>
 <hr />
 <h2 id="a-setting-had-no-effect">A setting had no effect<a class="headerlink" href="#a-setting-had-no-effect" title="Permanent link">&para;</a></h2>
 <table>

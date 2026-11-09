@@ -2009,15 +2009,16 @@ without it.</p>
       the secret that signed a delivery; when they share one, their webhooks are refused as
       ambiguous.</li>
 <li>[ ] <strong>Tokens with the least access.</strong> A platform's <code>token</code> needs read access to the config
-      repositories (and the presets); a tenant's <code>SCHEMA_TENANT_&lt;ID&gt;_TOKEN</code> read access to its
+      repositories (and the presets); a declared tenant's <code>schema_repo.token</code> read access to its
       schema repository.</li>
 </ul>
 <h2 id="writing-safely">Writing safely<a class="headerlink" href="#writing-safely" title="Permanent link">&para;</a></h2>
 <ul>
 <li>[ ] <strong><code>force</code> on production rules</strong> for what no tenant or repository may change, e.g.
       <code>force: {prune: {enabled: false}}</code> or <code>{strict_validation: true}</code>.</li>
-<li>[ ] <strong>Map every branch you push to.</strong> An unmapped branch is synced to the environment
-      <code>default</code> (<a href="../../concepts/environment-resolution/">Environment resolution</a>).</li>
+<li>[ ] <strong>Map every branch you push to.</strong> A push to a branch no strategy places is skipped
+      (<em>nothing to do</em>): there is no <code>default</code> environment
+      (<a href="../../concepts/environment-resolution/">Environment resolution</a>).</li>
 <li>[ ] <strong>Prune with a dry run first.</strong> A dry run (the UI's <em>Dry run</em>, <code>vt sync --dry-run</code>) reports what
       would be deleted; add <code>protection</code> patterns for keys other tools own.</li>
 <li>[ ] <strong>MongoDB shape decided.</strong> Set <code>update_strategy</code> explicitly on each Mongo datasource;

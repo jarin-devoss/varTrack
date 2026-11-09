@@ -2521,7 +2521,7 @@ sync is started by hand (<code>vt sync --revision</code>, the web UI's <em>Sync<
 <p><code>unknown</code> env → <code>name=bob</code>, <code>age=33</code>.</p>
 <hr />
 <h3 id="default-fallback"><code>default</code> fallback<a class="headerlink" href="#default-fallback" title="Permanent link">&para;</a></h3>
-<p>In all three patterns, if the resolved env has no matching key, varTrack silently falls back to <code>default</code>. If there is no <code>default</code> either, the data is returned unchanged.</p>
+<p>In all three patterns, if the resolved env has no matching key, varTrack silently falls back to the <code>default</code> key. If there is no <code>default</code> either, the data is returned unchanged. This <code>default</code> is a key inside the file, not an environment: which environment a push feeds is decided above, and there is no <code>default</code> environment.</p>
 <hr />
 <h2 id="root_key-extracting-a-subtree-before-slicing_1"><code>root_key</code> — extracting a subtree before slicing<a class="headerlink" href="#root_key-extracting-a-subtree-before-slicing_1" title="Permanent link">&para;</a></h2>
 <p>Real config files often live alongside other tooling config (Spring, Maven, npm, etc.). Use <code>root_key</code> to extract only the varTrack-relevant subtree before env-detection runs.</p>

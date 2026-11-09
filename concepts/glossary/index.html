@@ -1903,7 +1903,15 @@ See <a href="../drift-detection/">Drift detection</a>.</dd>
 <dd>The watcher asking the orchestrator, on every poll, whether each <code>self_heal</code> rule's
 datasource still matches Git, and having it write Git's values back when it does not.</dd>
 <dt><strong>Dry run</strong></dt>
-<dd>A sync that reads, validates and reports everything but writes nothing.</dd>
+<dd>Not a sync: it reads, validates and reports what a sync would change, and writes nothing.
+In the web UI its log shows in the Sync panel.</dd>
+<dt><strong>Leftover environment</strong></dt>
+<dd>An environment in the store that the rule as it is now no longer produces (<em>No longer synced
+by this rule</em>). It is not compared with Git, its Sync, Dry run and Diff are disabled, and an
+administrator can <strong>Forget</strong> it.</dd>
+<dt><strong>Refused rule</strong></dt>
+<dd>A rule that names no environments or no file to read, in <code>config.cue</code> or the tenant's
+<code>bundle.json</code>. It is not loaded: nothing runs it, and the Rules page lists it with why.</dd>
 <dt><strong>Shape</strong></dt>
 <dd>How a MongoDB datasource stores a file: one document per key (<code>STRATEGY_KEY_VALUE</code>) or one
 document per file (<code>STRATEGY_DOCUMENT</code>, <code>STRATEGY_FILE</code>). Changing it replaces the other

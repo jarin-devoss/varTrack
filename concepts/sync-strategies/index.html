@@ -2195,7 +2195,7 @@
 </span><span id="__span-7-5"><a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a>POST<span class="w"> </span>/v1/webhooks/mongo/dry-run
 </span></code></pre></div>
 <p><code>@secret</code>-annotated fields are fetched from Vault but masked as <code>***</code> in the report.</p>
-<p>In the web UI, <strong>Dry run</strong> on a rule runs the same simulation for the environments you pick:</p>
+<p>In the web UI, <strong>Dry run</strong> on a rule (or on one environment) runs the same simulation for the environments you pick. It is not a sync: the Sync panel stays open and shows its log — each task's stages, the files it read, what a sync would change and why a file was refused — and ends with a verdict:</p>
 <p><img alt="Dry run panel for an S3 rule: production and staging selected, Dry run checked" src="../../assets/screenshots/dry-run.png" /></p>
 <h3 id="prune-dry-run-simulate-deletes-only">Prune dry-run — simulate deletes only<a class="headerlink" href="#prune-dry-run-simulate-deletes-only" title="Permanent link">&para;</a></h3>
 <p>See what a prune would delete without deleting it by starting a dry run: the UI's <em>Dry run</em>, <code>vt sync --dry-run</code>, or the dry-run webhook. It runs the whole pipeline, writes nothing, and its report lists the stale keys per environment (<code>prune.would_delete</code>). The web UI's <em>Sync</em> panel shows the same list before a sync that prunes, and asks you to type <code>prune</code> only when a production-like environment would lose keys.</p>
