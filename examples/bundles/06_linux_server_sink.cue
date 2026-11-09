@@ -18,7 +18,7 @@ bundle: {
 		{
 			linux_server: {
 				// No tag → datasource name is "linux_server".
-				tag:  ""
+				tag:      ""
 				host:     "app-server-01.internal"
 				port:     22
 				username: "deploy"
@@ -32,21 +32,21 @@ bundle: {
 				// The file written, relative to base_directory; with env_as_path
 				// each environment gets its own directory: /etc/vartrack/{env}/app.env.
 				base_directory: "/etc/vartrack"
-				file_paths:     ["app.env"]
-				env_as_path:    true
+				file_paths: ["app.env"]
+				env_as_path: true
 			}
 		},
 		{
 			redis: {
-				tag:      "redis"
-				hosts:    ["redis-host:6379"]
+				tag: "redis"
+				hosts: ["redis-host:6379"]
 				database: 0
 			}
 		},
 		{
 			redis: {
-				tag:      "redis-results"
-				hosts:    ["redis-host:6379"]
+				tag: "redis-results"
+				hosts: ["redis-host:6379"]
 				database: 1
 			}
 		},
@@ -57,8 +57,11 @@ bundle: {
 		{
 			platform:   "github"
 			datasource: "linux_server"
+			file_name:  "app.yaml"
 			repositories: ["acme-corp/configs"]
-			self_heal:  true
+			// Where the environments come from: a rule that names none is refused.
+			branch_map: {main: "production"}
+			self_heal: true
 		},
 	]
 
