@@ -41,7 +41,7 @@ The orchestrator-service:
 
 Writes the validated flat map to every configured sink:
 
-- Picks the sync strategy (`AUTO`, `GIT_UPSERT_ALL`, `GIT_SMART_REPAIR`, or `LIVE_STATE`)
+- Picks the sync strategy (`AUTO`, `GIT_UPSERT_ALL` or `GIT_SMART_REPAIR`; `LIVE_STATE` is written like `GIT_UPSERT_ALL`)
 - Runs writes to all matching sinks in parallel
 - Prunes stale keys once per environment, after all its files are written, if `prune` is enabled on the rule
 - Rolls back (deletes written data) if a write fails partway through
@@ -94,13 +94,14 @@ Writes the validated flat map to every configured sink:
 
 ## Rust core
 
-Hot-path operations (flattening, merging, diffing, hashing) are implemented in Rust and exposed to Python via PyO3. Pure-Python fallbacks activate automatically if the Rust extension is not compiled — so the service always works, just slightly slower without it.
+Hot-path operations (flattening and merging) are implemented in Rust and exposed to Python via PyO3. Pure-Python fallbacks activate automatically if the Rust extension is not compiled — so the service always works, just slightly slower without it.
 
 | Module | Purpose |
 |---|---|
 | `flatten` | BFS / DFS nested dict → flat `key.subkey` map |
 | `merge` | Variable map overlay + environment resolution |
-| `sync` | BLAKE3 content hash for `GIT_SMART_REPAIR` |
+| `cue` | CUE binary subprocess wrapper |
+| `diff` | Added / removed / changed sets of two flat maps (the sinks compare in Python) |
 
 ---
 

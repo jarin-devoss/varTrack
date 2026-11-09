@@ -73,6 +73,7 @@ them different ports — the e2e stack uses `ADMIN_PORT=9093` and `PROM_PORT=909
 | `orch_etl_keys_total` | counter | — | Flat keys read |
 | `orch_sink_write_duration_seconds` | histogram | `sink`, `sync_mode` | Write time per file |
 | `orch_sink_keys_written_total` | counter | `sink`, `datasource` | Keys written |
+| `orch_sink_keys_unchanged_total` | counter | `sink`, `datasource` | Keys a smart repair found already as Git has them and did not write |
 | `orch_sink_keys_pruned_total` | counter | `sink`, `datasource` | Keys pruned |
 | `orch_sink_errors_total` | counter | `sink`, `operation` | Write, prune and rollback errors (`operation`: `write`, `prune`, `rollback`) |
 | `orch_sink_not_rolled_back_total` | counter | `sink` | Files a failed sync left written: the sink cannot take a write back (every sink but MongoDB), or tried to and could not |

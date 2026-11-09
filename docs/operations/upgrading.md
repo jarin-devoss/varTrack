@@ -49,6 +49,7 @@ removal):
   `GIT_CACHE_DIR`; a push that lands while a sync runs no longer changes what that sync
   reads. Give the API and the workers the same `GIT_CACHE_DIR` volume. The temporary
   `vt_gitcache_*` directories older versions left are removed at startup.
+- **`GIT_SMART_REPAIR` compares content on every sink.** On MongoDB with a document strategy it used to compare only the commit a document was stamped with, so a document edited in MongoDB was not written back by a heal; it now is. Redis, ZooKeeper, S3, a Linux file, a ConfigMap and Helm used to write everything in this mode and now write only what differs. `LIVE_STATE` is, and always was, written like `GIT_UPSERT_ALL`: it is reported as that and warned about.
 - **Prune is an inventory diff**, once per environment: it deletes the keys varTrack wrote
   before that no file of the environment holds any more, keeps a key something else changed
   (`PruneSkipped`), and never deletes a key another target holds in the same key space
