@@ -27,9 +27,10 @@ CUE = {
          "file_name": "app.yaml", "branch_map": {"main": "production"}, "sync_mode": "SYNC_MODE_AUTO",
          "prune": {"enabled": True}, "self_heal": True, "secret_manager": "vault-prod"},
         {"platform": "gitea", "datasource": "redis", "repositories": ["acme/*"], "file_name": "app.yaml",
+         "branch_as_env": True,
          "force": {"prune": {"enabled": False}, "strict_validation": True, "self_heal": False}},
         {"platform": "github-cloud", "datasource": "zookeeper", "repositories": ["acme/zk"],
-         "file_name": "zk.yaml"},
+         "file_name": "zk.yaml", "branch_map": {"main": "production"}},
     ],
 }
 
@@ -123,7 +124,7 @@ def test_rule_for():
 
 def test_without_rules_in_config_cue_bundle_json_is_used_as_is(monkeypatch):
     monkeypatch.setattr(ds, "_bundle", lambda: {"datasources": CUE["datasources"]})
-    rule = {"platform": "gitea", "datasource": "mongo-primary", "mongo_uri": "mongodb://x"}
+    rule = {"platform": "gitea", "datasource": "mongo-primary", "mongo_uri": "mongodb://x", "branch_map": {"main": "production"}, "file_name": "app.yaml"}
     # Used as it is, except for the tenant: that is the one whose schema repository it was loaded
     # from, whatever the file says.
     assert rule_for("gitea", "mongo-primary", rule, "acme", set()) == {**rule, "tenant_id": "acme"}
@@ -343,7 +344,7 @@ def test_a_schema_map_target_missing_from_the_schema_repository_is_logged_once(t
 # ── the tenant is never something a file says ─────────────────────────────────
 
 def _claiming(tenant):
-    return {"platform": "gitea", "datasource": "mongo-primary", "tenant_id": tenant, "branch_map": {"develop": "staging"}}
+    return {"platform": "gitea", "datasource": "mongo-primary", "tenant_id": tenant, "branch_map": {"develop": "staging"}, "file_name": "app.yaml"}
 
 
 def test_a_bundle_json_that_writes_a_tenant_id_is_told_where_the_tenant_comes_from(caplog):
@@ -408,3 +409,122 @@ def test_a_vartrack_json_that_writes_a_tenant_id_is_dropped_with_a_warning(caplo
     assert out["tenant_id"] == "acme" and out["branch_map"] == {"main": "production"}
     assert any("the tenant is the one that owns the pushed repository; ignored" in r.getMessage()
                for r in caplog.records)
+
+
+# ── a rule that names no environments is refused ─────────────────────────────
+
+@pytest.fixture
+def no_refusals():
+    rule_layers._refused.clear()
+    rule_layers._said.clear()
+    yield
+    rule_layers._refused.clear()
+    rule_layers._said.clear()
+
+
+@pytest.mark.parametrize("key", rule_layers.ENV_STRATEGIES)
+def test_a_rule_that_names_where_its_environments_come_from_is_not_refused(key):
+    value = {"branch_map": {"main": "production"}, "file_path_map": {"a": "a.yaml"}}.get(key, True)
+    assert rule_layers.refusal({"platform": "gitea", "datasource": "redis", "file_name": "app.yaml", key: value}) == ""
+
+
+def test_a_rule_that_names_none_is_refused_with_how_to_fix_it():
+    why = rule_layers.refusal({"platform": "gitea", "datasource": "zookeeper", "file_name": "app.yaml"})
+    assert why.startswith("gitea/zookeeper names no environments")
+    for word in ("branch_map", "file_path_map", "branch_as_env", "pr_as_env", "tag_as_env", "config.cue", "bundle.json"):
+        assert word in why
+    assert 'branch_map: {"main": "default"}' in why      # the one-line way to keep writing to an environment called default
+
+
+def test_a_refused_rule_is_not_loaded_and_the_rest_are(monkeypatch, no_refusals):
+    cue = {**CUE, "rules": [CUE["rules"][0], {**CUE["rules"][1], "branch_as_env": False}, CUE["rules"][2]]}
+    monkeypatch.setattr(ds, "_bundle", lambda: cue)
+    loaded = tenant_rules([], "default", set())
+    assert [r["datasource"] for r in loaded] == ["mongo-primary", "zookeeper"] or "redis" not in [r["datasource"] for r in loaded]
+    assert "redis" not in [r["datasource"] for r in loaded] and "zookeeper" in [r["datasource"] for r in loaded]
+    assert rule_for("gitea", "redis", None, "default", set()) is None
+    assert [(r["datasource"], why[:30]) for r, why in rule_layers.refused_rules("default")] == [("redis", "gitea/redis names no environme")]
+    assert rule_layers.refusal_of("default", "gitea", "redis").startswith("gitea/redis names no environments")
+
+
+def test_a_rule_the_tenants_bundle_names_is_not_refused_for_what_config_cue_left_out(monkeypatch, no_refusals):
+    # config.cue's rule names no environments; the tenant's bundle.json does: the layered rule is fine
+    cue = {**CUE, "rules": [{k: v for k, v in CUE["rules"][0].items() if k != "branch_map"}]}
+    monkeypatch.setattr(ds, "_bundle", lambda: cue)
+    bundle_rule = {"platform": "gitea", "datasource": "mongo-primary", "branch_map": {"develop": "staging"}}
+    assert [r["datasource"] for r in tenant_rules([bundle_rule], "acme", set())] == ["mongo-primary"]
+    assert rule_layers.refused_rules("acme") == []
+    # without it the same rule is refused
+    assert tenant_rules([{"platform": "gitea", "datasource": "mongo-primary"}], "acme", set()) == []
+    assert [r["datasource"] for r, _ in rule_layers.refused_rules("acme")] == ["mongo-primary"]
+
+
+def test_a_refused_rule_that_is_fixed_is_loaded_again(monkeypatch, no_refusals):
+    cue = {**CUE, "rules": [{k: v for k, v in CUE["rules"][0].items() if k != "branch_map"}]}
+    monkeypatch.setattr(ds, "_bundle", lambda: cue)
+    assert tenant_rules([{"platform": "gitea", "datasource": "mongo-primary"}], "acme", set()) == []
+    assert rule_layers.refused_rules("acme")
+    fixed = {"platform": "gitea", "datasource": "mongo-primary", "branch_map": {"main": "production"}}
+    assert len(tenant_rules([fixed], "acme", set())) == 1
+    assert rule_layers.refused_rules("acme") == []
+    assert rule_layers.refusal_of("acme", "gitea", "mongo-primary") == ""
+
+
+def test_a_refused_rule_is_said_once_in_the_log_and_the_events(monkeypatch, no_refusals, caplog):
+    events = []
+    from app.ui import ledger
+    monkeypatch.setattr(ledger, "record_event", lambda **kw: events.append(kw))
+    cue = {**CUE, "rules": [{k: v for k, v in CUE["rules"][0].items() if k != "branch_map"}]}
+    monkeypatch.setattr(ds, "_bundle", lambda: cue)
+    with caplog.at_level("ERROR"):
+        for _ in range(3):
+            tenant_rules([{"platform": "gitea", "datasource": "mongo-primary"}], "acme", set())
+    assert len(events) == 1
+    assert events[0]["reason"] == "RuleRefused" and events[0]["warning"] is True
+    assert events[0]["rule"] == "gitea/mongo-primary" and events[0]["tenant"] == "acme"
+    assert len([r for r in caplog.records if "refused" in r.message]) == 1
+
+
+# ── a rule that names no file is refused too ─────────────────────────────────
+
+NAMED = {"platform": "gitea", "datasource": "s3", "branch_map": {"main": "production"}}
+
+
+@pytest.mark.parametrize("key,value", [("file_name", "app-settings.yaml"), ("file_path_map", {"production": "prod.yaml"})])
+def test_a_rule_that_names_its_file_is_not_refused(key, value):
+    assert rule_layers.refusal({**NAMED, key: value}) == ""
+
+
+def test_a_rule_that_names_no_file_is_refused_with_how_to_fix_it():
+    why = rule_layers.refusal(NAMED)
+    assert why.startswith("gitea/s3 names no file to read: set file_name")
+    assert 'for example "app-settings.yaml"' in why and "file_path_map" in why and "config.cue or the tenant's bundle.json" in why
+    assert why.endswith("A repository's vartrack.json can still change it")
+    assert "environments" not in why           # it names them: only the file is missing
+
+
+def test_a_rule_that_names_neither_gets_one_message_naming_both():
+    why = rule_layers.refusal({"platform": "gitea", "datasource": "s3"})
+    assert why.startswith("gitea/s3 names no environments and no file to read")
+    assert "branch_map" in why and "file_name" in why and why.count("gitea/s3") == 1
+
+
+def test_a_file_in_the_tenants_bundle_json_is_enough_when_config_cue_names_none(monkeypatch, no_refusals):
+    cue = {**CUE, "rules": [{"platform": "gitea", "datasource": "mongo-primary", "repositories": ["acme/configs"],
+                             "branch_map": {"main": "production"}}]}
+    monkeypatch.setattr(ds, "_bundle", lambda: cue)
+    assert tenant_rules([{"platform": "gitea", "datasource": "mongo-primary"}], "acme", set()) == []
+    [why] = [why for _, why in rule_layers.refused_rules("acme")]
+    assert "names no file to read" in why
+    named = tenant_rules([{"platform": "gitea", "datasource": "mongo-primary", "file_name": "app.yaml"}], "acme", set())
+    assert [r["file_name"] for r in named] == ["app.yaml"]
+    assert rule_layers.refused_rules("acme") == []
+
+
+def test_a_repositorys_vartrack_json_cannot_be_the_only_place_the_file_is_named(monkeypatch, no_refusals):
+    """vartrack.json is read when a push arrives, after the rule is loaded: it may change the file, not stand in for it."""
+    cue = {**CUE, "rules": [{"platform": "gitea", "datasource": "mongo-primary", "repositories": ["acme/configs"],
+                             "branch_map": {"main": "production"}}]}
+    monkeypatch.setattr(ds, "_bundle", lambda: cue)
+    assert rule_for("gitea", "mongo-primary", None, "default", set()) is None
+    assert "names no file to read" in rule_layers.refusal_of("default", "gitea", "mongo-primary")

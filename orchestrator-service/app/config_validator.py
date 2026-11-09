@@ -128,7 +128,10 @@ def _bundle(data: Any, name: str, tenant_id: str, result: Result) -> None:
         _tenant_claim(rule, where, f"the one whose schema repository holds this {name} ({tenant_id})", result,
                       tenant=tenant_id)
         if not cues:
-            continue  # without rules in config.cue, bundle.json's are used as they are
+            # without rules in config.cue, bundle.json's are used as they are: the rule is this one
+            if (why := rule_layers.refusal(rule)):
+                result.errors.append(f"{where} would be refused and not loaded: {why}")
+            continue
         cue = next((c for c in cues if c.get("platform") == platform and c.get("datasource") == datasource), None)
         if cue is None:
             result.errors.append(f"{where}: config.cue has no rule for {platform}/{datasource}")
@@ -148,7 +151,11 @@ def _bundle(data: Any, name: str, tenant_id: str, result: Result) -> None:
             result.warnings.append(f"{where} sets {', '.join(unknown)}, which "
                                    f"{'is not an option' if len(unknown) == 1 else 'are not options'} a tenant may set — "
                                    f"a sync ignores {'it' if len(unknown) == 1 else 'them'}")
-        _prune_without_effect(rule_layers.layered_rule(cue, rule, tenant_id, bundle), datasource, where, result)
+        layered = rule_layers.layered_rule(cue, rule, tenant_id, bundle)
+        if (why := rule_layers.refusal(layered)):
+            # What config.cue and this bundle.json make of the rule names no environments: it is refused when loaded.
+            result.errors.append(f"{where} would be refused and not loaded: {why}")
+        _prune_without_effect(layered, datasource, where, result)
 
 
 def _repeated_rules(rules: list[dict], name: str, result: Result) -> None:
