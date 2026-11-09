@@ -1901,6 +1901,14 @@ a.chip:hover {
   color: var(--green-text);
 }
 
+/* ── A dry run's report: the keys a sync would add or delete ─────────────── */
+.dryrun__keys {
+  max-height: 200px;
+  overflow-y: auto;
+  margin: 6px 0 0;
+  padding-left: 20px;
+}
+
 /* ── Task stages ──────────────────────────────────────────────────────── */
 .steps {
   display: flex;

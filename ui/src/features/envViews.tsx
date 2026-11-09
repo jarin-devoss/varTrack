@@ -4,12 +4,13 @@ import { Timestamp } from '../components/common';
 import { Icon, SINK_LABEL } from '../components/Icon';
 import { ExpandRow, NameLabel } from '../components/Row';
 import { SyncIcon } from '../components/Status';
-import { targetNote, targetSync } from '../lib/status';
+import { diffable, targetNote, targetSync } from '../lib/status';
 import { envHref } from './links';
-import { EnvCompare, TargetPills } from './state';
+import { EnvCompare, EnvRun, TargetPills } from './state';
 
-export function EnvRow({ rule, target: t, onSync, defaultOpen, showTenant }: { rule: RuleView; target: Target; onSync: () => void; defaultOpen?: boolean; showTenant?: boolean }) {
+export function EnvRow({ rule, target: t, onSync, defaultOpen, showTenant }: { rule: RuleView; target: Target; onSync: (dryRun?: boolean) => void; defaultOpen?: boolean; showTenant?: boolean }) {
   const at = t.lastSync?.finishedAt ?? t.lastSync?.startedAt;
+  const diff = diffable(t);
   return (
     <ExpandRow
       label={`${rule.name} ${t.env}`}
@@ -32,15 +33,22 @@ export function EnvRow({ rule, target: t, onSync, defaultOpen, showTenant }: { r
         <div className="stack" style={{ gap: 12 }}>
           <EnvCompare rule={rule} target={t} />
           <div className="action-bar">
-            <button className="abtn abtn--blue" onClick={onSync}>
-              <Icon name="refresh" size={13} /> Sync {t.env}
-            </button>
-            <Link className="abtn" to={envHref(rule, t.env, 'diff')}>
-              <Icon name="diff" size={13} /> Diff
-            </Link>
-            <Link className="abtn" to={envHref(rule, t.env, 'current')}>
-              <Icon name="key" size={13} /> Current values
-            </Link>
+            <EnvRun rule={rule} target={t} onSync={onSync} />
+            {diff.can ? (
+              <Link className="abtn" to={envHref(rule, t.env, 'diff')}>
+                <Icon name="diff" size={13} /> Diff
+              </Link>
+            ) : (
+              // Nothing to compare (never written, or no branch feeds it any more): Diff stays, disabled, and says why.
+              <button type="button" className="abtn" disabled title={diff.reason}>
+                <Icon name="diff" size={13} /> Diff
+              </button>
+            )}
+            {diff.can && (
+              <Link className="abtn" to={envHref(rule, t.env, 'current')}>
+                <Icon name="key" size={13} /> Current values
+              </Link>
+            )}
           </div>
         </div>
       )}
