@@ -45,9 +45,15 @@ def rule_name(rule: dict) -> str:
 
 
 def _sync_mode(raw: Any) -> str:
-    s = str(raw or "AUTO").upper()
-    s = s[len("SYNC_MODE_"):] if s.startswith("SYNC_MODE_") else s
-    return "GIT_UPSERT_ALL" if s == "FULL" else s
+    """The rule's mode by its short name; unset is AUTO. A refused rule is listed too, and its mode may be the reason:
+    that one is shown as written."""
+    from app.utils.enums.sync_mode import SyncMode, parse_sync_mode
+
+    try:
+        mode = parse_sync_mode(raw)
+    except ValueError:
+        return str(raw)
+    return SyncMode.AUTO.name if mode == SyncMode.UNSPECIFIED else mode.name
 
 
 def _prune(rule: dict) -> dict:

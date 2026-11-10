@@ -415,25 +415,44 @@ def test_the_task_says_what_was_left_alone():
     assert _written_sentence(0, 0) == "0 keys written"
 
 
-# ── LIVE_STATE is what it always was ──────────────────────────────────────────
+# ── the modes there are ───────────────────────────────────────────────────────
 
-def test_live_state_runs_as_upsert_all_and_says_so_once(caplog):
+def test_an_explicit_mode_is_honoured_at_any_size_and_auto_chooses_by_key_count():
     import app.pipeline.stage_sync as stage_sync
 
-    stage_sync._live_state_said = False
-    with caplog.at_level("WARNING"):
-        assert stage_sync._decide_sync_mode(10, SyncMode.LIVE_STATE) == UPSERT
-        assert stage_sync._decide_sync_mode(900, SyncMode.LIVE_STATE) == UPSERT      # whatever the size
-    assert caplog.text.count("LIVE_STATE is written like GIT_UPSERT_ALL") == 1
+    for size in (10, 900):
+        assert stage_sync._decide_sync_mode(size, UPSERT) == UPSERT
+        assert stage_sync._decide_sync_mode(size, SMART) == SMART
+    assert stage_sync._decide_sync_mode(500, SyncMode.AUTO) == UPSERT
+    assert stage_sync._decide_sync_mode(501, SyncMode.UNSPECIFIED) == SMART
 
 
-def test_the_validator_warns_about_live_state_and_still_loads_it():
-    from app.config_validator import Result, _live_state
+def test_the_validator_fails_a_vartrack_json_with_a_sync_mode_that_is_not_a_mode():
+    from app.config_validator import validate
 
-    result = Result()
-    _live_state({"sync_mode": "LIVE_STATE"}, "bundle.json: the gitea/redis rule", result)
-    _live_state({"sync_mode": "SYNC_MODE_LIVE_STATE"}, "x", result)
-    _live_state({"sync_mode": "GIT_SMART_REPAIR"}, "y", result)
-    _live_state({}, "z", result)
-    assert result.errors == [] and len(result.warnings) == 2
-    assert "written like GIT_UPSERT_ALL" in result.warnings[0] and "bundle.json" in result.warnings[0]
+    for value in ("LIVE_STATE", "SYNC_MODE_FULL", 3):
+        result = validate("vartrack.json", json.dumps({"sync_mode": value}))
+        assert result.warnings == [] and len(result.errors) == 1, value
+        assert result.errors[0].startswith("vartrack.json: sync_mode ")
+        assert result.errors[0].endswith("is not a mode: use AUTO, GIT_UPSERT_ALL or GIT_SMART_REPAIR")
+    for value in ("AUTO", "git_upsert_all", "SYNC_MODE_GIT_SMART_REPAIR", 2):
+        assert validate("vartrack.json", json.dumps({"sync_mode": value})).errors == []
+
+
+def test_a_rule_whose_sync_mode_is_not_a_mode_is_refused_and_not_loaded():
+    from app.pipeline.rule_layers import refusal
+
+    rule = {"platform": "gitea", "datasource": "redis", "file_name": "a.yaml", "branch_map": {"main": "prod"}}
+    assert refusal(rule) == "" and refusal({**rule, "sync_mode": "SYNC_MODE_AUTO"}) == ""
+    assert refusal({**rule, "sync_mode": "LIVE_STATE"}) == (
+        'gitea/redis: sync_mode "LIVE_STATE" is not a mode: use AUTO, GIT_UPSERT_ALL or GIT_SMART_REPAIR')
+    # both reasons are said together when both apply
+    why = refusal({"platform": "gitea", "datasource": "redis", "file_name": "a.yaml", "sync_mode": "FULL"})
+    assert "names no environments" in why and 'gitea/redis: sync_mode "FULL" is not a mode' in why
+
+
+def test_the_read_model_shows_a_refused_rules_mode_as_written():
+    from app.ui.views import _sync_mode
+
+    assert _sync_mode(None) == "AUTO" and _sync_mode("SYNC_MODE_GIT_SMART_REPAIR") == "GIT_SMART_REPAIR"
+    assert _sync_mode("LIVE_STATE") == "LIVE_STATE"

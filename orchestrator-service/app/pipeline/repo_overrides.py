@@ -61,8 +61,9 @@ _OVERRIDABLE_KEYS: frozenset[str] = REPO_OVERRIDABLE
 
 class RepoConfigError(ValueError):
     """A vartrack.json that is there but cannot be used: not JSON, not an
-    object, or naming a preset that cannot be read. The sync stops — it does
-    not go ahead without settings the repository asked for (a branch_map, say)."""
+    object, naming a preset that cannot be read, or setting a sync_mode that is not a
+    mode. The sync stops — it does not go ahead without settings the repository asked
+    for (a branch_map, say)."""
 
 
 def apply_repo_overrides(ctx: "PayloadContext", tenant_id: str | None = None) -> "PayloadContext":
@@ -128,6 +129,10 @@ def apply_repo_overrides(ctx: "PayloadContext", tenant_id: str | None = None) ->
             raise RepoConfigError(f"{name} in {ctx.repo_url}: {exc}") from exc
 
     overrides = with_current_names(overrides, f"{name} in {ctx.repo_url}")
+    from app.utils.enums.sync_mode import sync_mode_problem
+    if "sync_mode" in overrides and (problem := sync_mode_problem(overrides["sync_mode"])):
+        # Not read as AUTO: the repository asked for a way of writing that does not exist.
+        raise RepoConfigError(f"{name} in {ctx.repo_url}: {problem}")
     from app.pipeline.rule_layers import warn_tenant_claim
     warn_tenant_claim(overrides, f"{name} in {ctx.repo_url}", "the one that owns the pushed repository")
     applicable = {k: v for k, v in overrides.items() if k in _OVERRIDABLE_KEYS}

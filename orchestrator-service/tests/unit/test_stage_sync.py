@@ -275,15 +275,42 @@ if __name__ == "__main__":
 
 
 @pytest.mark.parametrize("value,want", [
-    (2, "GIT_SMART_REPAIR"), ("3", "LIVE_STATE"),
-    ("AUTO", "AUTO"), ("SYNC_MODE_AUTO", "AUTO"),
+    (2, "GIT_SMART_REPAIR"), ("4", "AUTO"), (1, "GIT_UPSERT_ALL"),
+    ("AUTO", "AUTO"), ("SYNC_MODE_AUTO", "AUTO"), ("auto", "AUTO"),
     ("GIT_SMART_REPAIR", "GIT_SMART_REPAIR"), ("sync_mode_git_upsert_all", "GIT_UPSERT_ALL"),
-    ("FULL", "GIT_UPSERT_ALL"), ("SYNC_MODE_FULL", "GIT_UPSERT_ALL"),
-    ("nonsense", "UNSPECIFIED"), (None, "UNSPECIFIED"), (99, "UNSPECIFIED"), (True, "UNSPECIFIED"),
+    (None, "UNSPECIFIED"), ("", "UNSPECIFIED"), (0, "UNSPECIFIED"),
 ])
 def test_sync_mode_reads_every_documented_spelling(value, want):
-    from app.utils.enums.sync_mode import parse_sync_mode
+    from app.utils.enums.sync_mode import parse_sync_mode, sync_mode_problem
     assert parse_sync_mode(value).name == want
+    assert sync_mode_problem(value) == ""
+
+
+# What was LIVE_STATE and FULL, a typo, a number nobody defined and a non-string are not modes: they are refused,
+# never read as AUTO.
+@pytest.mark.parametrize("value", [
+    "LIVE_STATE", "SYNC_MODE_LIVE_STATE", 3, "3", "FULL", "SYNC_MODE_FULL", "GIT_SMART_REPAR", "nonsense", 99, True, [], {},
+])
+def test_a_sync_mode_that_is_not_a_mode_is_refused(value):
+    from app.utils.enums.sync_mode import parse_sync_mode, sync_mode_problem
+    problem = sync_mode_problem(value)
+    assert problem.startswith("sync_mode ") and problem.endswith(
+        "is not a mode: use AUTO, GIT_UPSERT_ALL or GIT_SMART_REPAIR")
+    with pytest.raises(ValueError, match="is not a mode"):
+        parse_sync_mode(value)
+
+
+def test_the_refusal_names_the_value_as_written():
+    from app.utils.enums.sync_mode import sync_mode_problem
+    assert sync_mode_problem("LIVE_STATE") == (
+        'sync_mode "LIVE_STATE" is not a mode: use AUTO, GIT_UPSERT_ALL or GIT_SMART_REPAIR')
+    assert sync_mode_problem(3).startswith("sync_mode 3 is not a mode")
+
+
+def test_the_modes_a_refusal_lists_are_the_protos_modes():
+    from app.utils.enums.sync_mode import MODES, SyncMode
+    assert set(MODES) == {m.name for m in SyncMode} - {"UNSPECIFIED"}
+    assert not hasattr(SyncMode, "LIVE_STATE")
 
 
 @pytest.mark.parametrize("module,cls,proto_module,prefix", [
