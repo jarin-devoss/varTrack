@@ -214,7 +214,7 @@ class TestTargetView:
 
 class TestRuleBase:
     def test_maps_bundle_fields(self):
-        rule = _rule(repo_url="http://gitea:3000/acme/configs.git", sync_mode="SYNC_MODE_FULL", prune=True,
+        rule = _rule(repo_url="http://gitea:3000/acme/configs.git", sync_mode="SYNC_MODE_GIT_UPSERT_ALL", prune=True,
                      file_path_map={"production": "configs/prod.yaml"}, self_heal=True)
         base = views.rule_base(rule, "acme")
         assert base["name"] == "github/redis"

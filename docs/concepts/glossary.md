@@ -96,8 +96,9 @@ The words varTrack's docs, logs and web UI use, and what each one means here.
     administrator can **Forget** it.
 
 **Refused rule**
-:   A rule that names no environments or no file to read, in `config.cue` or the tenant's
-    `bundle.json`. It is not loaded: nothing runs it, and the Rules page lists it with why.
+:   A rule that names no environments or no file to read, or sets a `sync_mode` that is not a
+    mode, in `config.cue` or the tenant's `bundle.json`. It is not loaded: nothing runs it, and
+    the Rules page lists it with why.
 
 **Shape**
 :   How a MongoDB datasource stores a file: one document per key (`STRATEGY_KEY_VALUE`) or one

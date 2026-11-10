@@ -103,11 +103,12 @@ def test_each_option_takes_the_json_type_its_proto_field_has(name, good, bad):
 def test_the_validator_checks_every_option_not_only_the_ones_it_once_listed():
     # overrides, platform, datasource and secret_manager were not in its list.
     result = config_validator.Result()
-    config_validator._types({"overrides": "x", "secret_manager": 3, "sync_mode": 2.5}, "bundle.json", result)
+    config_validator._types({"overrides": "x", "secret_manager": 3, "root_key": 2.5, "sync_mode": 2.5}, "bundle.json", result)
+    # sync_mode is checked by what it is, not by its type (sync_mode_problem), so it is not among these
     assert sorted(result.errors) == [
         "bundle.json: overrides must be a list",
+        "bundle.json: root_key must be a string",
         "bundle.json: secret_manager must be a string",
-        "bundle.json: sync_mode must be a string or a number",
     ]
 
 

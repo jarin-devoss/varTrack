@@ -7,7 +7,7 @@
     "repositories": ["vartrack-demo/demo-configs"],
     "branch_as_env": true,
     "branch": "main",
-    "sync_mode": "SYNC_MODE_FULL",
+    "sync_mode": "SYNC_MODE_GIT_UPSERT_ALL",
     "prune": true,
     "self_heal": false,
     "redis_hosts": ["redis:6379"],

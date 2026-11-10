@@ -94,7 +94,7 @@ def _repo_config(data: Any, result: Result, tenant_id: str = "default") -> None:
                                f"{'it' if len(ignored) == 1 else 'them'}")
     _types({k: v for k, v in data.items() if k in _OVERRIDABLE_KEYS}, "vartrack.json", result)
     _prune_last(data, "vartrack.json", result)
-    _live_state(data, "vartrack.json", result)
+    _sync_mode(data, "vartrack.json", result)
 
 
 def _bundle(data: Any, name: str, tenant_id: str, result: Result) -> None:
@@ -126,7 +126,6 @@ def _bundle(data: Any, name: str, tenant_id: str, result: Result) -> None:
         rule = _current(rule, where, result)
         _types(rule, where, result)
         _prune_last(rule, where, result)
-        _live_state(rule, where, result)
         _tenant_claim(rule, where, f"the one whose schema repository holds this {name} ({tenant_id})", result,
                       tenant=tenant_id)
         if not cues:
@@ -178,13 +177,13 @@ def _repeated_rules(rules: list[dict], name: str, result: Result) -> None:
             first[key] = i
 
 
-def _live_state(options: dict, where: str, result: Result) -> None:
-    """LIVE_STATE has only ever been written like GIT_UPSERT_ALL."""
-    from app.utils.enums.sync_mode import SyncMode, parse_sync_mode
+def _sync_mode(options: dict, where: str, result: Result) -> None:
+    """A sync_mode that is not a mode fails the sync; it is never read as AUTO. (A bundle.json rule's is reported
+    with the rest of why the rule would be refused.)"""
+    from app.utils.enums.sync_mode import sync_mode_problem
 
-    if "sync_mode" in options and parse_sync_mode(options["sync_mode"]) == SyncMode.LIVE_STATE:
-        result.warnings.append(f"{where}: sync_mode LIVE_STATE is written like GIT_UPSERT_ALL; "
-                               f"set GIT_UPSERT_ALL (or AUTO)")
+    if "sync_mode" in options and (problem := sync_mode_problem(options["sync_mode"])):
+        result.errors.append(f"{where}: {problem}")
 
 
 def _prune_last(options: dict, where: str, result: Result) -> None:
@@ -223,6 +222,8 @@ def _current(options: dict, where: str, result: Result) -> dict:
 
 def _types(options: dict, where: str, result: Result) -> None:
     for key, types in _TYPES.items():
+        if key == "sync_mode":
+            continue  # checked by what it is, not by its type: sync_mode_problem
         # True is an int in Python, not a number in JSON.
         if key in options and (not isinstance(options[key], types)
                                or (isinstance(options[key], bool) and bool not in types)):

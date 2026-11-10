@@ -165,10 +165,20 @@ def test_branch_is_an_option_of_a_bundle_rule():
     assert bad.errors == ["bundle.json: the github/mongo rule: branch must be a string"]
 
 
-def test_true_is_not_a_number():
+def test_true_is_not_a_mode():
     rule = {"platform": "github", "datasource": "mongo", "sync_mode": True, "branch_map": {"main": "production"}, "file_name": "app.yaml"}
     assert _result("bundle.json", [rule]).errors == [
-        "bundle.json: the github/mongo rule: sync_mode must be a string or a number"]
+        "bundle.json: the github/mongo rule would be refused and not loaded: github/mongo: sync_mode true is not a mode: "
+        "use AUTO, GIT_UPSERT_ALL or GIT_SMART_REPAIR"]
+
+
+def test_a_bundle_rule_whose_sync_mode_was_removed_is_refused():
+    rule = {"platform": "github", "datasource": "mongo", "sync_mode": "LIVE_STATE", "branch_map": {"main": "production"},
+            "file_name": "app.yaml"}
+    assert _result("bundle.json", [rule]).errors == [
+        'bundle.json: the github/mongo rule would be refused and not loaded: github/mongo: sync_mode "LIVE_STATE" is '
+        "not a mode: use AUTO, GIT_UPSERT_ALL or GIT_SMART_REPAIR"]
+    assert _result("bundle.json", [{**rule, "sync_mode": "GIT_SMART_REPAIR"}]).errors == []
 
 
 def test_max_changed_files_is_a_removed_option_a_warning_not_an_error():

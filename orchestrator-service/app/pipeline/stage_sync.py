@@ -354,25 +354,15 @@ def prune_candidates(
     return out
 
 
-_live_state_said = False
-
-
 def _decide_sync_mode(key_count: int, forced_mode: SyncMode) -> SyncMode:
     """
     Select how a file is written.
 
-    Explicit forced_mode (anything except UNSPECIFIED / AUTO) is honoured, except LIVE_STATE, which has
-    always been written like GIT_UPSERT_ALL and is run as that (said once, in the log).  Otherwise a
+    Explicit forced_mode (anything except UNSPECIFIED / AUTO) is honoured.  Otherwise a
     key-count heuristic is applied:
       > 500 keys  →  GIT_SMART_REPAIR  (read the store, write only what differs)
       ≤ 500 keys  →  GIT_UPSERT_ALL   (write every key)
     """
-    global _live_state_said
-    if forced_mode == SyncMode.LIVE_STATE:
-        if not _live_state_said:
-            _live_state_said = True
-            logger.warning("sync_mode LIVE_STATE is written like GIT_UPSERT_ALL; set GIT_UPSERT_ALL (or AUTO)")
-        return SyncMode.GIT_UPSERT_ALL
     if forced_mode not in (SyncMode.UNSPECIFIED, SyncMode.AUTO):
         return forced_mode
     return SyncMode.GIT_SMART_REPAIR if key_count > 500 else SyncMode.GIT_UPSERT_ALL

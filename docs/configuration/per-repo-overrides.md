@@ -32,7 +32,7 @@ When a push webhook arrives, the ETL pipeline:
 
 A `vartrack.json` can change which file a rule reads or where its environments come from, but cannot be the only place that names them: a rule whose `config.cue` and tenant `bundle.json` give no `file_name` or `file_path_map` (or no environment strategy) is refused when it is loaded, before any repository's file is read.
 
-If `vartrack.json` is absent or empty, the central rule is used unchanged. If it is there but cannot be used — not valid JSON, not a JSON object, or extending a preset that cannot be read — the sync fails with that error: it does not go ahead without settings the repository asked for, such as a `branch_map`. The schema registry is never affected by per-repo overrides.
+If `vartrack.json` is absent or empty, the central rule is used unchanged. If it is there but cannot be used — not valid JSON, not a JSON object, extending a preset that cannot be read, or setting a `sync_mode` that is not a mode — the sync fails with that error: it does not go ahead without settings the repository asked for, such as a `branch_map`. The schema registry is never affected by per-repo overrides.
 
 ---
 
@@ -140,3 +140,9 @@ vartrack.json in https://...: preset local>my-org/presets:nope: no nope.json at 
 vartrack.json in https://... is not valid JSON: Expecting ',' delimiter: line 3 column 5 (char 41)
 ```
 Fix the file and push again; the sync runs with it.
+
+**Unknown sync mode** — A `sync_mode` that is not `AUTO`, `GIT_UPSERT_ALL` or `GIT_SMART_REPAIR` (by short name or `SYNC_MODE_` name) fails the sync with:
+```
+vartrack.json in https://...: sync_mode "FAST" is not a mode: use AUTO, GIT_UPSERT_ALL or GIT_SMART_REPAIR
+```
+It is never read as `AUTO`. `vt validate-config` reports the same sentence.

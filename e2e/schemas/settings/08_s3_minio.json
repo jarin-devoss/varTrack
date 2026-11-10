@@ -7,7 +7,7 @@
     "repositories": ["vartrack-demo/demo-configs"],
     "branch_as_env": true,
     "branch": "main",
-    "sync_mode": "SYNC_MODE_FULL",
+    "sync_mode": "SYNC_MODE_GIT_UPSERT_ALL",
     "self_heal": false,
     "s3_bucket": "vartrack",
     "s3_region": "us-east-1",

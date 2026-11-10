@@ -359,7 +359,7 @@ Every option, with the files that may set it, is in [Rule options](rule-options.
 | `branch` | No | The rule's own branch: it feeds the `file_path_map` environments, and self-heal compares it when there is no `branch_map` (default: `main`) |
 | `branch_map` | No | `{ branch → env }` label mapping — merged |
 | `variables_map` | No | Key renames, `{NEW_NAME: flat.key}` — merged |
-| `sync_mode` | No | `AUTO`, `GIT_UPSERT_ALL`, `GIT_SMART_REPAIR`, `LIVE_STATE` (`FULL` reads as `GIT_UPSERT_ALL`) |
+| `sync_mode` | No | `AUTO`, `GIT_UPSERT_ALL`, `GIT_SMART_REPAIR`; any other value is refused |
 | `prune` | No | `true`, or `{enabled, protection}` — merged with the other layers; `protection` patterns add up, and an object with only `protection` does not enable pruning |
 | `prune_protection` | No | Former flat name of `prune.protection`, still read. `prune_last` and `prune.last` were removed and are ignored |
 | `root_key` | No | Subtree key to extract before flattening (default: `"vartrack"`) |

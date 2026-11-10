@@ -99,13 +99,13 @@ def test_bundle_json_extends_for_every_rule_and_per_rule():
         "extends": ["local>acme/presets"],
         "rules": [
             {"platform": "gitea", "datasource": "mongo"},
-            {"platform": "gitea", "datasource": "redis", "extends": ["acme/presets:production"], "sync_mode": "LIVE_STATE"},
+            {"platform": "gitea", "datasource": "redis", "extends": ["acme/presets:production"], "sync_mode": "GIT_SMART_REPAIR"},
         ],
     }, ORIGIN, "bundle.json", fetch)
     assert rules == [
         {"platform": "gitea", "datasource": "mongo", "prune": {"protection": ["_vt_*"]}},
         {"platform": "gitea", "datasource": "redis", "prune": {"protection": ["_vt_*", "SYSTEM_*"]},
-         "sync_mode": "LIVE_STATE"},
+         "sync_mode": "GIT_SMART_REPAIR"},
     ]
 
 
@@ -167,6 +167,9 @@ def test_vartrack_json_under_another_name():
     ('{"dry_run": true,', "not valid JSON"),
     ('["dry_run"]', "must be a JSON object"),
     ('{"extends": ["local>acme/presets:nope"]}', "no nope.json"),
+    ('{"sync_mode": "FULL"}', 'vartrack.json in http://gitea:3000/acme/app.git: sync_mode "FULL" is not a mode: '
+                              'use AUTO, GIT_UPSERT_ALL or GIT_SMART_REPAIR'),
+    ('{"sync_mode": "LIVE_STATE"}', 'sync_mode "LIVE_STATE" is not a mode'),
 ])
 def test_an_unusable_vartrack_json_stops_the_sync(monkeypatch, content, match):
     # An invalid vartrack.json: no sync without the settings asked for.

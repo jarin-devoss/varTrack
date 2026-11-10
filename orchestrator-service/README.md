@@ -30,7 +30,7 @@ gateway-service (gRPC) ──► Celery task queue ──► ETL pipeline ──
    → validate against CUE schema (per-tenant, fetched from schema repo)
 
 3. Sync stage
-   → pick strategy: GIT_UPSERT_ALL / GIT_SMART_REPAIR (LIVE_STATE is written like GIT_UPSERT_ALL)
+   → pick strategy: GIT_UPSERT_ALL / GIT_SMART_REPAIR
    → write to configured sinks in parallel
    → prune stale keys if configured
    → rollback on failure (delete written data)
@@ -81,7 +81,6 @@ maturin develop --release
 |---|---|---|
 | `GIT_UPSERT_ALL` | ≤ 500 keys (default) | Write every key from the payload |
 | `GIT_SMART_REPAIR` | > 500 keys or explicit | Read what the sink holds, write only what differs (the changed keys, or the whole object when it differs); every key if the sink cannot be read |
-| `LIVE_STATE` | — | Written like `GIT_UPSERT_ALL`; kept so a config that sets it still loads |
 | `AUTO` | Default | `GIT_UPSERT_ALL` up to 500 keys in a file, `GIT_SMART_REPAIR` above |
 
 Override per rule in `config.cue`:

@@ -82,7 +82,7 @@ It works alongside whatever deploys your services: VarTrack only keeps their run
 - **8 sink types** — MongoDB, Redis, ZooKeeper, S3, Kubernetes ConfigMap, Helm, Linux server (SSH)
 - **7 config formats** — YAML, JSON, TOML, .env, INI, HCL, XML — format auto-detected from file extension
 - **Multi-sink fan-out** — one push writes to multiple sinks in parallel from one rule set
-- **Sync strategies** — `AUTO` (by file size), `GIT_UPSERT_ALL` (write every key) and `GIT_SMART_REPAIR` (write only what differs from what the sink holds); `LIVE_STATE` is written like `GIT_UPSERT_ALL`
+- **Sync strategies** — `AUTO` (by file size), `GIT_UPSERT_ALL` (write every key) and `GIT_SMART_REPAIR` (write only what differs from what the sink holds)
 - **Stale key pruning** — once per environment, after all its files are written, delete the keys varTrack wrote before that Git no longer holds; `prune.protection` globs keep keys that must never go, and a key changed outside varTrack is kept and reported
 
 ### Routing & environments
@@ -296,7 +296,7 @@ When a webhook fires, VarTrack resolves the target environment in this order:
 4. `branch_as_env: true` → environment = branch name
 5. `tag_as_env: true` → environment = tag name
 
-There is no `default` fallback: a push none of these places is skipped. A rule that names no environments, or no file to read (`file_name` or `file_path_map`), is refused when it is loaded.
+There is no `default` fallback: a push none of these places is skipped. A rule that names no environments, or no file to read (`file_name` or `file_path_map`), or sets a `sync_mode` that is not one of the three, is refused when it is loaded.
 
 ---
 
@@ -307,7 +307,6 @@ There is no `default` fallback: a push none of these places is skipped. A rule t
 | `AUTO` | Recommended — VarTrack picks the strategy based on payload size |
 | `GIT_UPSERT_ALL` | Write all keys from Git; best for small configs |
 | `GIT_SMART_REPAIR` | Read what the sink holds and write only what differs, by content: the changed keys (Redis, ZooKeeper, MongoDB key-value), or the whole object only when it differs (a document, a file, a ConfigMap, an S3 object, Helm); best for large configs |
-| `LIVE_STATE` | Written like `GIT_UPSERT_ALL` |
 
 ---
 

@@ -186,7 +186,7 @@ export function NewRulePanel({ open, onClose, bundle, existing }: { open: boolea
           <label className="field">
             <span className="field__label">Sync mode</span>
             <select className="select" {...text('syncMode')}>
-              {['AUTO', 'GIT_UPSERT_ALL', 'GIT_SMART_REPAIR', 'LIVE_STATE'].map(m => <option key={m}>{m}</option>)}
+              {['AUTO', 'GIT_UPSERT_ALL', 'GIT_SMART_REPAIR'].map(m => <option key={m}>{m}</option>)}
             </select>
           </label>
           <div>

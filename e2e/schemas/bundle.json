@@ -6,7 +6,7 @@
     "file_name": "app-settings.yaml",
     "branch_as_env": false,
     "branch": "main",
-    "sync_mode": "SYNC_MODE_FULL",
+    "sync_mode": "SYNC_MODE_GIT_UPSERT_ALL",
     "prune": true,
     "branch_map": {
       "main": "default"
@@ -19,7 +19,7 @@
     "file_name": "app-settings.yaml",
     "branch_as_env": false,
     "branch": "main",
-    "sync_mode": "SYNC_MODE_FULL",
+    "sync_mode": "SYNC_MODE_GIT_UPSERT_ALL",
     "prune": true,
     "key_format": "slash",
     "branch_map": {

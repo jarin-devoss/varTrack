@@ -45,6 +45,7 @@ from typing import Any, Iterable, Optional
 
 from app.pipeline.renamed_options import with_current_names
 from app.pipeline.rule_options import ADMIN_ONLY, MERGEABLE, TENANT_SETTABLE  # noqa: F401 — read from rule.proto's annotations
+from app.utils.enums.sync_mode import sync_mode_problem
 
 logger = logging.getLogger(__name__)
 
@@ -225,12 +226,22 @@ FILE_KEYS = ("file_name", "file_path_map")
 def refusal(rule: dict) -> str:
     """Why *rule* (as config.cue and the tenant's bundle.json build it) is refused, or "". A rule must name where its
     environments come from, and the file it reads, in those layers: a repository's vartrack.json may change them but is
-    not read here, and a rule that waited on it would be loaded by nobody who could say what it reads or writes."""
+    not read here, and a rule that waited on it would be loaded by nobody who could say what it reads or writes. Its
+    sync_mode, when it sets one, must be a mode. When several reasons apply they are said together."""
+    name = f"{rule.get('platform')}/{rule.get('datasource')}"
+    placement = _placement_refusal(rule, name)
+    mode = sync_mode_problem(rule["sync_mode"]) if "sync_mode" in rule else ""
+    if placement and mode:
+        return f"{placement}; {name}: {mode}"
+    return placement or (f"{name}: {mode}" if mode else "")
+
+
+def _placement_refusal(rule: dict, name: str) -> str:
+    """The part of refusal() about the rule's environments and file."""
     no_env = not any(rule.get(key) for key in ENV_STRATEGIES)
     no_file = not any(rule.get(key) for key in FILE_KEYS)
     if not no_env and not no_file:
         return ""
-    name = f"{rule.get('platform')}/{rule.get('datasource')}"
     env_fix = ("set branch_map (for example {\"main\": \"production\"}), file_path_map, branch_as_env, pr_as_env or "
                "tag_as_env in config.cue or the tenant's bundle.json. To keep writing to an environment called default, "
                "set branch_map: {\"main\": \"default\"}")

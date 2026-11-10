@@ -41,7 +41,7 @@ The orchestrator-service:
 
 Writes the validated flat map to every configured sink:
 
-- Picks the sync strategy (`AUTO`, `GIT_UPSERT_ALL` or `GIT_SMART_REPAIR`; `LIVE_STATE` is written like `GIT_UPSERT_ALL`)
+- Picks the sync strategy (`AUTO`, `GIT_UPSERT_ALL` or `GIT_SMART_REPAIR`)
 - Runs writes to all matching sinks in parallel
 - Prunes stale keys once per environment, after all its files are written, if `prune` is enabled on the rule
 - Rolls back (deletes written data) if a write fails partway through
