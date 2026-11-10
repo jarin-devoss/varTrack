@@ -52,7 +52,7 @@ test.describe('as the reader', () => {
       await expect(rule.envDryRun(ENV)).toBeEnabled();
 
       // the Keys tab offers a Sync of the changed keys: off, with a Dry run beside it
-      await page.getByRole('tab', { name: 'Keys' }).click();
+      await rule.showKeys();
       await expect(page.getByRole('button', { name: `Sync ${ENV}` })).toBeDisabled();
       await expect(page.getByRole('button', { name: `Dry run ${ENV}` })).toBeEnabled();
 
@@ -156,7 +156,7 @@ test.describe('as the reader', () => {
       await expect(rule.sync.verdicts).toBeVisible();
       await rule.sync.close.click();
 
-      await page.getByRole('tab', { name: 'History' }).click();
+      await rule.showRuleTab('History');
       await page.getByRole('button', { name: `Show log of dry run ${taskId.slice(0, 8)}` }).click();
       const log = page.getByRole('dialog', { name: 'Dry run log' });
       await expect(log).toBeVisible();

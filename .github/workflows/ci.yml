@@ -346,7 +346,10 @@ jobs:
     needs: [docker-build]
     timeout-minutes: 45
     steps:
+      # Two commits: on a pull request the checkout is the merge commit, and its first parent is the base the burn-in compares with.
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 2
 
       - uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5 # v4.1.0
 
@@ -375,12 +378,38 @@ jobs:
           VT_UI_URL: http://localhost:8080
         run: npx playwright test
 
+      # One retry is what lets a flaky test pass, so a spec this pull request adds or changes must pass without it: it is run
+      # again, BURN_IN_REPEAT times each, with no retry. It reports to the log only (--reporter), and writes under
+      # test-results/burn-in, so the main run's results.json, report and failed-attempt traces are left as they were.
+      - name: Burn in the specs this pull request changes
+        if: success() && github.event_name == 'pull_request'
+        working-directory: ui
+        env:
+          VT_UI_URL: http://localhost:8080
+          BURN_IN_REPEAT: '5'
+        run: |
+          specs=$(git diff --relative --name-only --diff-filter=ACMR HEAD^1 HEAD -- e2e/specs)
+          if [ -z "$specs" ]; then
+            echo "No spec changed."
+            exit 0
+          fi
+          echo "Burning in, ${BURN_IN_REPEAT} times each, without a retry:"
+          echo "$specs"
+          # shellcheck disable=SC2086 # one argument per spec file; their names have no spaces
+          npx playwright test $specs --repeat-each="$BURN_IN_REPEAT" --retries=0 --reporter=github,list --output=test-results/burn-in
+
       - name: Every spec the coverage manifest relies on ran and passed
         if: always()
         working-directory: ui
         env:
           COVERAGE_RESULTS: test-results/results.json
         run: npx vitest run src/lib/coverage.test.ts
+
+      # A retry keeps the job green, so a flaky test would otherwise be a notice nobody opens.
+      - name: List the flaky tests
+        if: always()
+        working-directory: ui
+        run: node e2e/flaky-summary.mjs test-results/results.json >> "$GITHUB_STEP_SUMMARY"
 
       - name: Dump every service's logs
         if: failure()
@@ -389,8 +418,9 @@ jobs:
           docker compose ps -a
           docker compose logs --no-color --timestamps
 
+      # On every run: a test that failed an attempt and passed its retry leaves its screenshot, video and trace here.
       - name: Upload the report
-        if: failure()
+        if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: ui-e2e-report
