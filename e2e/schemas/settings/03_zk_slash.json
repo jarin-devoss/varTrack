@@ -9,7 +9,7 @@
     ],
     "branch_as_env": false,
     "branch": "main",
-    "sync_mode": "SYNC_MODE_FULL",
+    "sync_mode": "SYNC_MODE_GIT_UPSERT_ALL",
     "prune": true,
     "self_heal": true,
     "zk_hosts": [

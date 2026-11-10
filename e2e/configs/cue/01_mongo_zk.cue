@@ -63,7 +63,7 @@ bundle: {
 			file_name:            "app-settings.yaml"
 			repositories:         ["vartrack-demo/demo-configs"]
 			branch_as_env:        true
-			sync_mode:            "SYNC_MODE_FULL"
+			sync_mode:            "SYNC_MODE_GIT_UPSERT_ALL"
 			prune:                {enabled: true}
 			self_heal:            true
 			destination_template: "{env}-vars"
@@ -74,7 +74,7 @@ bundle: {
 			file_name:            "app-settings.yaml"
 			repositories:         ["vartrack-demo/demo-configs"]
 			branch_as_env:        false
-			sync_mode:            "SYNC_MODE_FULL"
+			sync_mode:            "SYNC_MODE_GIT_UPSERT_ALL"
 			prune:                {enabled: true}
 			self_heal:            true
 			destination_template: "/vartrack/demo/default"
