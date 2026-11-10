@@ -112,7 +112,7 @@ func evaluate(path string) ([]byte, error) {
 	// Converts: "token": {"path":"x","key":"y"} → "token": {"ref":{"path":"x","key":"y"}}
 	jsonBytes, err = normalizeSecretRefs(jsonBytes)
 	if err != nil {
-		return nil, fmt.Errorf("failed to normalize secret refs: %w", err)
+		return nil, fmt.Errorf("the bundle cannot be read: %w", err)
 	}
 	return jsonBytes, nil
 }
@@ -164,7 +164,9 @@ func normalizeSecretRefs(data []byte) ([]byte, error) {
 	upgradeRenamedOptions(bundle)
 	migrateTLSOptions(bundle)
 	dropRemovedOptions(bundle)
-	expandSyncModes(bundle)
+	if err := expandSyncModes(bundle); err != nil {
+		return nil, err
+	}
 	expandPruneShorthand(bundle)
 	wrapSecretRefs(bundle, (&pb.Bundle{}).ProtoReflect().Descriptor())
 	normalizeDurations(bundle, (&pb.Bundle{}).ProtoReflect().Descriptor())

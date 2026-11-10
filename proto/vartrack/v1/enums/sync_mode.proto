@@ -13,8 +13,9 @@ enum SyncMode {
   // it already holds exactly the file, for one that holds it as an object (a MongoDB document, an S3 object, a
   // file, a ConfigMap, a Helm values file or release). If the sink cannot be read, every key is written.
   SYNC_MODE_GIT_SMART_REPAIR = 2;
-  // Written exactly like GIT_UPSERT_ALL; kept so a config that sets it still loads.
-  SYNC_MODE_LIVE_STATE      = 3;
+  // 3 was LIVE_STATE, which wrote exactly like GIT_UPSERT_ALL.
+  reserved 3;
+  reserved "SYNC_MODE_LIVE_STATE";
   // GIT_UPSERT_ALL for a file of up to 500 keys, GIT_SMART_REPAIR above.
   SYNC_MODE_AUTO            = 4;
 }
