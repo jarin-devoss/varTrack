@@ -2376,7 +2376,7 @@
 <h2 id="what-the-loader-checks">What the loader checks<a class="headerlink" href="#what-the-loader-checks" title="Permanent link">&para;</a></h2>
 <p>Every service reads <code>config.cue</code> through one loader and refuses a config it cannot accept; <code>vartrack-bundle check config.cue</code> says why, and CI runs it. In order:</p>
 <ol>
-<li><strong>Names.</strong> A field the protos do not have, a typo, is refused.</li>
+<li><strong>Names.</strong> A field the protos do not have, a typo, is refused, and so is a value an enum does not have (<code>sync_mode: "FAST"</code>), with the values it does.</li>
 <li><strong>Shorthands.</strong> <code>"30s"</code>, <code>prune: true</code> and a secret written as a plain string are read as what they stand for.</li>
 <li><strong>The rules the protos declare.</strong> Ranges (<code>redis.database</code> is 0 to 15), lengths, allowed values, and the rules that tie fields together: a Mongo <code>username</code> needs its <code>password</code>; a Mongo needs a <code>collection</code> unless <code>env_as_collection</code> is on; <code>host_key_verification: "accept-new"</code> needs <code>known_hosts_file</code>; a ZooKeeper datasource is <code>STRATEGY_KEY_VALUE</code> or unset.</li>
 </ol>
@@ -2491,7 +2491,7 @@
 </span><span id="__span-8-33"><a id="__codelineno-8-33" name="__codelineno-8-33" href="#__codelineno-8-33"></a>  tag_as_env:    false
 </span><span id="__span-8-34"><a id="__codelineno-8-34" name="__codelineno-8-34" href="#__codelineno-8-34"></a>
 </span><span id="__span-8-35"><a id="__codelineno-8-35" name="__codelineno-8-35" href="#__codelineno-8-35"></a>  // Sync behavior
-</span><span id="__span-8-36"><a id="__codelineno-8-36" name="__codelineno-8-36" href="#__codelineno-8-36"></a>  sync_mode:     &quot;AUTO&quot;                       // AUTO, GIT_UPSERT_ALL, GIT_SMART_REPAIR, LIVE_STATE
+</span><span id="__span-8-36"><a id="__codelineno-8-36" name="__codelineno-8-36" href="#__codelineno-8-36"></a>  sync_mode:     &quot;AUTO&quot;                       // AUTO, GIT_UPSERT_ALL, GIT_SMART_REPAIR
 </span><span id="__span-8-37"><a id="__codelineno-8-37" name="__codelineno-8-37" href="#__codelineno-8-37"></a>                                              // (SYNC_MODE_AUTO etc. work too)
 </span><span id="__span-8-38"><a id="__codelineno-8-38" name="__codelineno-8-38" href="#__codelineno-8-38"></a>  prune: {
 </span><span id="__span-8-39"><a id="__codelineno-8-39" name="__codelineno-8-39" href="#__codelineno-8-39"></a>    enabled:    false                         // delete keys no longer in Git

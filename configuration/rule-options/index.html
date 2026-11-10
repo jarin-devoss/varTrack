@@ -2624,7 +2624,7 @@
 </tr>
 <tr>
 <td><a href="#sync_mode"><code>sync_mode</code></a></td>
-<td>string: <code>AUTO</code>, <code>GIT_UPSERT_ALL</code>, <code>GIT_SMART_REPAIR</code>, <code>LIVE_STATE</code></td>
+<td>string: <code>AUTO</code>, <code>GIT_UPSERT_ALL</code>, <code>GIT_SMART_REPAIR</code></td>
 <td>yes</td>
 <td>yes</td>
 <td>yes</td>
@@ -3161,7 +3161,7 @@
 </tbody>
 </table>
 <h2 id="sync_mode"><code>sync_mode</code><a class="headerlink" href="#sync_mode" title="Permanent link">&para;</a></h2>
-<p>How a sync writes. AUTO (the default) uses GIT_UPSERT_ALL for a file of up to 500 keys and GIT_SMART_REPAIR above. GIT_UPSERT_ALL writes every key. GIT_SMART_REPAIR reads what the sink holds and writes only what differs, by content: the changed keys in Redis, ZooKeeper and MongoDB key-value, and in a sink that holds the file as one object (a MongoDB document, an S3 object, a file, a ConfigMap, a Helm values file or release) the whole file, or nothing when it already holds the file. If the sink cannot be read, every key is written. LIVE_STATE is written like GIT_UPSERT_ALL. The proto names (SYNC_MODE_AUTO, ...) are read too, and FULL as GIT_UPSERT_ALL.</p>
+<p>How a sync writes. AUTO (the default) uses GIT_UPSERT_ALL for a file of up to 500 keys and GIT_SMART_REPAIR above. GIT_UPSERT_ALL writes every key. GIT_SMART_REPAIR reads what the sink holds and writes only what differs, by content: the changed keys in Redis, ZooKeeper and MongoDB key-value, and in a sink that holds the file as one object (a MongoDB document, an S3 object, a file, a ConfigMap, a Helm values file or release) the whole file, or nothing when it already holds the file. If the sink cannot be read, every key is written. The proto names (SYNC_MODE_AUTO, ...) are read too. Any other value is refused.</p>
 <table>
 <thead>
 <tr>
@@ -3172,7 +3172,7 @@
 <tbody>
 <tr>
 <td>Type</td>
-<td>string: <code>AUTO</code>, <code>GIT_UPSERT_ALL</code>, <code>GIT_SMART_REPAIR</code>, <code>LIVE_STATE</code></td>
+<td>string: <code>AUTO</code>, <code>GIT_UPSERT_ALL</code>, <code>GIT_SMART_REPAIR</code></td>
 </tr>
 <tr>
 <td>Set in</td>

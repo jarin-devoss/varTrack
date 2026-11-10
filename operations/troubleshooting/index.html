@@ -2179,7 +2179,7 @@ There is no <code>default</code> environment. See <a href="../../concepts/enviro
 </thead>
 <tbody>
 <tr>
-<td><code>vartrack.json in … is not valid JSON</code> / <code>… must be a JSON object</code></td>
+<td><code>vartrack.json in … is not valid JSON</code> / <code>… must be a JSON object</code> / <code>vartrack.json in …: sync_mode "…" is not a mode: use AUTO, GIT_UPSERT_ALL or GIT_SMART_REPAIR</code></td>
 <td>The repository's <code>vartrack.json</code> cannot be used; the sync does not go ahead without the settings it asked for</td>
 <td>Fix the file; <code>vt validate-config</code> finds it</td>
 </tr>
@@ -2314,6 +2314,11 @@ TTL</code>, and clones are refetched only after <code>SCHEMA_TTL_SECONDS</code>.
 <td><code>&lt;platform&gt;/&lt;datasource&gt; names no environments: set branch_map (for example {"main": "production"}), file_path_map, branch_as_env, pr_as_env or tag_as_env in config.cue or the tenant's bundle.json</code></td>
 <td>The rule says nothing about where its environments come from, so it is <strong>refused</strong> when loaded: nothing runs it, the Rules page lists it as <em>Refused</em>, and a push, sync or dry run of it answers with this</td>
 <td>Name them in <code>config.cue</code> or the tenant's <code>bundle.json</code>. To keep writing to an environment called <code>default</code>, set <code>branch_map: {"main": "default"}</code></td>
+</tr>
+<tr>
+<td><code>&lt;platform&gt;/&lt;datasource&gt;: sync_mode "&lt;value&gt;" is not a mode: use AUTO, GIT_UPSERT_ALL or GIT_SMART_REPAIR</code></td>
+<td>The tenant's <code>bundle.json</code> gives the rule a mode varTrack does not have (a typo is not read as <code>AUTO</code>), so it is <strong>refused</strong> when loaded: nothing runs it, the Rules page lists it as <em>Refused</em>, and a push, sync or dry run of it answers with this</td>
+<td>Set one of the three, or delete the line (<code>AUTO</code>)</td>
 </tr>
 <tr>
 <td><code>nothing to do: branch &lt;branch&gt; feeds no environment of &lt;rule&gt;</code></td>

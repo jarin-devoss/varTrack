@@ -1910,8 +1910,9 @@ In the web UI its log shows in the Sync panel.</dd>
 by this rule</em>). It is not compared with Git, its Sync, Dry run and Diff are disabled, and an
 administrator can <strong>Forget</strong> it.</dd>
 <dt><strong>Refused rule</strong></dt>
-<dd>A rule that names no environments or no file to read, in <code>config.cue</code> or the tenant's
-<code>bundle.json</code>. It is not loaded: nothing runs it, and the Rules page lists it with why.</dd>
+<dd>A rule that names no environments or no file to read, or sets a <code>sync_mode</code> that is not a
+mode, in <code>config.cue</code> or the tenant's <code>bundle.json</code>. It is not loaded: nothing runs it, and
+the Rules page lists it with why.</dd>
 <dt><strong>Shape</strong></dt>
 <dd>How a MongoDB datasource stores a file: one document per key (<code>STRATEGY_KEY_VALUE</code>) or one
 document per file (<code>STRATEGY_DOCUMENT</code>, <code>STRATEGY_FILE</code>). Changing it replaces the other

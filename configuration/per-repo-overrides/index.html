@@ -2027,7 +2027,7 @@
 <li>Runs ETL and Sync with the merged settings (Stages 2 and 3)</li>
 </ol>
 <p>A <code>vartrack.json</code> can change which file a rule reads or where its environments come from, but cannot be the only place that names them: a rule whose <code>config.cue</code> and tenant <code>bundle.json</code> give no <code>file_name</code> or <code>file_path_map</code> (or no environment strategy) is refused when it is loaded, before any repository's file is read.</p>
-<p>If <code>vartrack.json</code> is absent or empty, the central rule is used unchanged. If it is there but cannot be used — not valid JSON, not a JSON object, or extending a preset that cannot be read — the sync fails with that error: it does not go ahead without settings the repository asked for, such as a <code>branch_map</code>. The schema registry is never affected by per-repo overrides.</p>
+<p>If <code>vartrack.json</code> is absent or empty, the central rule is used unchanged. If it is there but cannot be used — not valid JSON, not a JSON object, extending a preset that cannot be read, or setting a <code>sync_mode</code> that is not a mode — the sync fails with that error: it does not go ahead without settings the repository asked for, such as a <code>branch_map</code>. The schema registry is never affected by per-repo overrides.</p>
 <hr />
 <h2 id="example">Example<a class="headerlink" href="#example" title="Permanent link">&para;</a></h2>
 <div class="language-json highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="p">{</span>
@@ -2105,6 +2105,10 @@ Those keys are infrastructure-level and cannot be overridden from the repo.</p>
 <div class="language-text highlight"><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>vartrack.json in https://... is not valid JSON: Expecting &#39;,&#39; delimiter: line 3 column 5 (char 41)
 </span></code></pre></div>
 Fix the file and push again; the sync runs with it.</p>
+<p><strong>Unknown sync mode</strong> — A <code>sync_mode</code> that is not <code>AUTO</code>, <code>GIT_UPSERT_ALL</code> or <code>GIT_SMART_REPAIR</code> (by short name or <code>SYNC_MODE_</code> name) fails the sync with:
+<div class="language-text highlight"><pre><span></span><code><span id="__span-7-1"><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>vartrack.json in https://...: sync_mode &quot;FAST&quot; is not a mode: use AUTO, GIT_UPSERT_ALL or GIT_SMART_REPAIR
+</span></code></pre></div>
+It is never read as <code>AUTO</code>. <code>vt validate-config</code> reports the same sentence.</p>
 
 
 

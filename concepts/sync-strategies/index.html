@@ -2043,7 +2043,7 @@
 <p>A sync strategy controls how varTrack applies the flattened config values to a datasource. The right strategy depends on the size of your config and how often you need reads vs. writes.</p>
 <hr />
 <h2 id="strategies">Strategies<a class="headerlink" href="#strategies" title="Permanent link">&para;</a></h2>
-<div class="tabbed-set tabbed-alternate" data-tabs="1:4"><input checked="checked" id="__tabbed_1_1" name="__tabbed_1" type="radio" /><input id="__tabbed_1_2" name="__tabbed_1" type="radio" /><input id="__tabbed_1_3" name="__tabbed_1" type="radio" /><input id="__tabbed_1_4" name="__tabbed_1" type="radio" /><div class="tabbed-labels"><label for="__tabbed_1_1">AUTO (recommended)</label><label for="__tabbed_1_2">GIT_UPSERT_ALL</label><label for="__tabbed_1_3">GIT_SMART_REPAIR</label><label for="__tabbed_1_4">LIVE_STATE</label></div>
+<div class="tabbed-set tabbed-alternate" data-tabs="1:3"><input checked="checked" id="__tabbed_1_1" name="__tabbed_1" type="radio" /><input id="__tabbed_1_2" name="__tabbed_1" type="radio" /><input id="__tabbed_1_3" name="__tabbed_1" type="radio" /><div class="tabbed-labels"><label for="__tabbed_1_1">AUTO (recommended)</label><label for="__tabbed_1_2">GIT_UPSERT_ALL</label><label for="__tabbed_1_3">GIT_SMART_REPAIR</label></div>
 <div class="tabbed-content">
 <div class="tabbed-block">
 <p>varTrack picks the strategy automatically based on payload size:</p>
@@ -2091,6 +2091,7 @@ This is the default and works well for most configurations. No tuning needed.</p
 </tr>
 </tbody>
 </table>
+<p>Keys Git no longer holds are deleted only by <a href="#stale-key-pruning">prune</a>, in every mode.</p>
 </div>
 <div class="tabbed-block">
 <p>Reads what the datasource holds first and writes only what differs from Git. What is compared is the content the store holds now, not the commit that last wrote it, so a value someone changed directly in the store is written back.</p>
@@ -2149,37 +2150,33 @@ This is the default and works well for most configurations. No tuning needed.</p
 </tbody>
 </table>
 </div>
-<div class="tabbed-block">
-<p>Written exactly like <code>GIT_UPSERT_ALL</code>: every key, without reading the datasource first. It is kept so a configuration that sets it still loads; the log (and <code>vt validate-config</code>) says to set <code>GIT_UPSERT_ALL</code> or <code>AUTO</code> instead. Keys Git no longer holds are deleted only by <a href="#stale-key-pruning">prune</a>, in every mode.</p>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>sync_mode: &quot;SYNC_MODE_LIVE_STATE&quot;
-</span></code></pre></div>
-</div>
 </div>
 </div>
 <hr />
 <h2 id="setting-the-strategy">Setting the strategy<a class="headerlink" href="#setting-the-strategy" title="Permanent link">&para;</a></h2>
 <p>Override per rule in <code>config.cue</code>:</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>rules: [{
+</span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>  platform:   &quot;github&quot;
+</span><span id="__span-3-3"><a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>  datasource: &quot;mongo&quot;
+</span><span id="__span-3-4"><a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a>  file_name: &quot;app-settings.yaml&quot;
+</span><span id="__span-3-5"><a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a>  branch_map: {main: &quot;production&quot;}
+</span><span id="__span-3-6"><a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a>  sync_mode:  &quot;SYNC_MODE_GIT_SMART_REPAIR&quot;
+</span><span id="__span-3-7"><a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a>}]
+</span></code></pre></div>
+<p>Or let <code>AUTO</code> decide — just omit <code>sync_mode</code> or set it to <code>"AUTO"</code>.</p>
+<p>Each mode can be written short (<code>"AUTO"</code>, <code>"GIT_SMART_REPAIR"</code>) or as its full proto name (<code>"SYNC_MODE_AUTO"</code>, <code>"SYNC_MODE_GIT_SMART_REPAIR"</code>); both load.</p>
+<p>Any other value is refused, never read as <code>AUTO</code>: in <code>config.cue</code> the services do not start, in a tenant's <code>bundle.json</code> the rule is listed as <em>Refused</em>, and in a repository's <code>vartrack.json</code> the sync fails. <code>vt validate-config</code> reports it before a push.</p>
+<hr />
+<h2 id="stale-key-pruning">Stale key pruning<a class="headerlink" href="#stale-key-pruning" title="Permanent link">&para;</a></h2>
+<p>When keys are removed from your Git config file, varTrack can delete them from the datasource:</p>
 <div class="language-text highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>rules: [{
 </span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>  platform:   &quot;github&quot;
 </span><span id="__span-4-3"><a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>  datasource: &quot;mongo&quot;
 </span><span id="__span-4-4"><a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a>  file_name: &quot;app-settings.yaml&quot;
 </span><span id="__span-4-5"><a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a>  branch_map: {main: &quot;production&quot;}
-</span><span id="__span-4-6"><a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a>  sync_mode:  &quot;SYNC_MODE_GIT_SMART_REPAIR&quot;
-</span><span id="__span-4-7"><a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a>}]
-</span></code></pre></div>
-<p>Or let <code>AUTO</code> decide — just omit <code>sync_mode</code> or set it to <code>"AUTO"</code>.</p>
-<p>Each mode can be written short (<code>"AUTO"</code>, <code>"GIT_SMART_REPAIR"</code>) or as its full proto name (<code>"SYNC_MODE_AUTO"</code>, <code>"SYNC_MODE_GIT_SMART_REPAIR"</code>); both load.</p>
-<hr />
-<h2 id="stale-key-pruning">Stale key pruning<a class="headerlink" href="#stale-key-pruning" title="Permanent link">&para;</a></h2>
-<p>When keys are removed from your Git config file, varTrack can delete them from the datasource:</p>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>rules: [{
-</span><span id="__span-5-2"><a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>  platform:   &quot;github&quot;
-</span><span id="__span-5-3"><a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>  datasource: &quot;mongo&quot;
-</span><span id="__span-5-4"><a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a>  file_name: &quot;app-settings.yaml&quot;
-</span><span id="__span-5-5"><a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a>  branch_map: {main: &quot;production&quot;}
-</span><span id="__span-5-6"><a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a>  sync_mode:  &quot;AUTO&quot;
-</span><span id="__span-5-7"><a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a>  prune:      true     // delete keys present in datasource but missing from Git
-</span><span id="__span-5-8"><a id="__codelineno-5-8" name="__codelineno-5-8" href="#__codelineno-5-8"></a>}]
+</span><span id="__span-4-6"><a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a>  sync_mode:  &quot;AUTO&quot;
+</span><span id="__span-4-7"><a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a>  prune:      true     // delete keys present in datasource but missing from Git
+</span><span id="__span-4-8"><a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a>}]
 </span></code></pre></div>
 <div class="admonition warning">
 <p class="admonition-title">Warning</p>
@@ -2201,23 +2198,23 @@ This is the default and works well for most configurations. No tuning needed.</p
 <p><code>prune.last</code> was removed: the delete is always last now. A <code>prune</code> block that only had <code>last</code> is a disabled block; write <code>prune: true</code> or <code>prune: {enabled: true}</code>.</p>
 <h3 id="pruneprotection"><code>prune.protection</code><a class="headerlink" href="#pruneprotection" title="Permanent link">&para;</a></h3>
 <p>Glob patterns for keys that must <strong>never</strong> be deleted, even if they're absent from Git. A pattern is matched against the flat key, like <code>db.host</code>, before the sink formats it for its own layout:</p>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>rules: [{
-</span><span id="__span-6-2"><a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>  prune: {
-</span><span id="__span-6-3"><a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a>    enabled:    true
-</span><span id="__span-6-4"><a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a>    protection: [&quot;SYSTEM_*&quot;, &quot;_vt_*&quot;, &quot;readonly.*&quot;]
-</span><span id="__span-6-5"><a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a>  }
-</span><span id="__span-6-6"><a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a>}]
+<div class="language-text highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>rules: [{
+</span><span id="__span-5-2"><a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>  prune: {
+</span><span id="__span-5-3"><a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>    enabled:    true
+</span><span id="__span-5-4"><a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a>    protection: [&quot;SYSTEM_*&quot;, &quot;_vt_*&quot;, &quot;readonly.*&quot;]
+</span><span id="__span-5-5"><a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a>  }
+</span><span id="__span-5-6"><a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a>}]
 </span></code></pre></div>
 <p><code>prune_protection</code>, the former flat name, is still read from <code>bundle.json</code> and <code>vartrack.json</code>; <code>config.cue</code> only takes the <code>prune</code> block.</p>
 <hr />
 <h2 id="dry-run">Dry-run<a class="headerlink" href="#dry-run" title="Permanent link">&para;</a></h2>
 <h3 id="full-dry-run-simulate-the-entire-sync">Full dry-run — simulate the entire sync<a class="headerlink" href="#full-dry-run-simulate-the-entire-sync" title="Permanent link">&para;</a></h3>
 <p>No writes, no deletes. Returns a full report of what would be written, changed, and deleted. The keys prune would see as stale are listed per environment under <code>prune.would_delete</code>; whether something changed one outside varTrack is only known when a real sync reads it.</p>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-7-1"><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="c1"># Via CLI</span>
-</span><span id="__span-7-2"><a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>vt<span class="w"> </span>sync<span class="w"> </span>--file<span class="w"> </span>configs/app.yaml<span class="w"> </span>--datasource<span class="w"> </span>mongo<span class="w"> </span>--env<span class="w"> </span>staging<span class="w"> </span>--dry-run
-</span><span id="__span-7-3"><a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a>
-</span><span id="__span-7-4"><a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a><span class="c1"># Via HTTP</span>
-</span><span id="__span-7-5"><a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a>POST<span class="w"> </span>/v1/webhooks/mongo/dry-run
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="c1"># Via CLI</span>
+</span><span id="__span-6-2"><a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>vt<span class="w"> </span>sync<span class="w"> </span>--file<span class="w"> </span>configs/app.yaml<span class="w"> </span>--datasource<span class="w"> </span>mongo<span class="w"> </span>--env<span class="w"> </span>staging<span class="w"> </span>--dry-run
+</span><span id="__span-6-3"><a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a>
+</span><span id="__span-6-4"><a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a><span class="c1"># Via HTTP</span>
+</span><span id="__span-6-5"><a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a>POST<span class="w"> </span>/v1/webhooks/mongo/dry-run
 </span></code></pre></div>
 <p><code>@secret</code>-annotated fields are fetched from Vault but masked as <code>***</code> in the report.</p>
 <p>In the web UI, <strong>Dry run</strong> on a rule (or on one environment) runs the same simulation for the environments you pick. It is not a sync: the Sync panel stays open and shows its log — each task's stages, the files it read, what a sync would change and why a file was refused — and ends with a verdict:</p>
