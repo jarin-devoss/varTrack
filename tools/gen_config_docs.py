@@ -100,7 +100,7 @@ def _type(name: str) -> str:
     if name == "prune":
         return "boolean, or object (`enabled`, `protection`)"
     if name == "sync_mode":
-        return "string: `AUTO`, `GIT_UPSERT_ALL`, `GIT_SMART_REPAIR`, `LIVE_STATE`"
+        return "string: `AUTO`, `GIT_UPSERT_ALL`, `GIT_SMART_REPAIR`"
     return " or ".join(shown) or "—"
 
 

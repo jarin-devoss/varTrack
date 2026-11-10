@@ -27,7 +27,7 @@ Every option a rule can have, and where it may be set. A rule is built from up t
 | [`secret_manager`](#secret_manager) | string | yes | — | — | only `config.cue` sets it |
 | [`destination_template`](#destination_template) | string | yes | yes | — | the upper layer replaces it |
 | [`variables_map`](#variables_map) | object (string → string) | yes | yes | yes | merged key by key |
-| [`sync_mode`](#sync_mode) | string: `AUTO`, `GIT_UPSERT_ALL`, `GIT_SMART_REPAIR`, `LIVE_STATE` | yes | yes | yes | the upper layer replaces it |
+| [`sync_mode`](#sync_mode) | string: `AUTO`, `GIT_UPSERT_ALL`, `GIT_SMART_REPAIR` | yes | yes | yes | the upper layer replaces it |
 | [`exclude_repositories`](#exclude_repositories) | list | yes | — | — | only `config.cue` sets it |
 | [`overrides`](#overrides) | list | yes | — | — | only `config.cue` sets it |
 | [`prune`](#prune) | boolean, or object (`enabled`, `protection`) | yes | yes | yes | merged key by key; `protection` patterns add up |
@@ -236,11 +236,11 @@ Renames of flat keys before they are written: {"NEW_NAME": "path.in.file"} write
 
 ## `sync_mode`
 
-How a sync writes. AUTO (the default) uses GIT_UPSERT_ALL for a file of up to 500 keys and GIT_SMART_REPAIR above. GIT_UPSERT_ALL writes every key. GIT_SMART_REPAIR reads what the sink holds and writes only what differs, by content: the changed keys in Redis, ZooKeeper and MongoDB key-value, and in a sink that holds the file as one object (a MongoDB document, an S3 object, a file, a ConfigMap, a Helm values file or release) the whole file, or nothing when it already holds the file. If the sink cannot be read, every key is written. LIVE_STATE is written like GIT_UPSERT_ALL. The proto names (SYNC_MODE_AUTO, ...) are read too, and FULL as GIT_UPSERT_ALL.
+How a sync writes. AUTO (the default) uses GIT_UPSERT_ALL for a file of up to 500 keys and GIT_SMART_REPAIR above. GIT_UPSERT_ALL writes every key. GIT_SMART_REPAIR reads what the sink holds and writes only what differs, by content: the changed keys in Redis, ZooKeeper and MongoDB key-value, and in a sink that holds the file as one object (a MongoDB document, an S3 object, a file, a ConfigMap, a Helm values file or release) the whole file, or nothing when it already holds the file. If the sink cannot be read, every key is written. The proto names (SYNC_MODE_AUTO, ...) are read too. Any other value is refused.
 
 | | |
 |---|---|
-| Type | string: `AUTO`, `GIT_UPSERT_ALL`, `GIT_SMART_REPAIR`, `LIVE_STATE` |
+| Type | string: `AUTO`, `GIT_UPSERT_ALL`, `GIT_SMART_REPAIR` |
 | Set in | `config.cue`, `bundle.json`, `vartrack.json` |
 | Across layers | the upper layer replaces it |
 

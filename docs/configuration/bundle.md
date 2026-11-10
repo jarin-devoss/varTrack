@@ -46,7 +46,7 @@ bundle: {
 
 Every service reads `config.cue` through one loader and refuses a config it cannot accept; `vartrack-bundle check config.cue` says why, and CI runs it. In order:
 
-1. **Names.** A field the protos do not have, a typo, is refused.
+1. **Names.** A field the protos do not have, a typo, is refused, and so is a value an enum does not have (`sync_mode: "FAST"`), with the values it does.
 2. **Shorthands.** `"30s"`, `prune: true` and a secret written as a plain string are read as what they stand for.
 3. **The rules the protos declare.** Ranges (`redis.database` is 0 to 15), lengths, allowed values, and the rules that tie fields together: a Mongo `username` needs its `password`; a Mongo needs a `collection` unless `env_as_collection` is on; `host_key_verification: "accept-new"` needs `known_hosts_file`; a ZooKeeper datasource is `STRATEGY_KEY_VALUE` or unset.
 
@@ -196,7 +196,7 @@ rules: [{
   tag_as_env:    false
 
   // Sync behavior
-  sync_mode:     "AUTO"                       // AUTO, GIT_UPSERT_ALL, GIT_SMART_REPAIR, LIVE_STATE
+  sync_mode:     "AUTO"                       // AUTO, GIT_UPSERT_ALL, GIT_SMART_REPAIR
                                               // (SYNC_MODE_AUTO etc. work too)
   prune: {
     enabled:    false                         // delete keys no longer in Git

@@ -37,6 +37,8 @@ A sync strategy controls how varTrack applies the flattened config values to a d
     | Stale key cleanup | Only if `prune: true` set |
     | Best for | Small configs |
 
+    Keys Git no longer holds are deleted only by [prune](#stale-key-pruning), in every mode.
+
 === "GIT_SMART_REPAIR"
 
     Reads what the datasource holds first and writes only what differs from Git. What is compared is the content the store holds now, not the commit that last wrote it, so a value someone changed directly in the store is written back.
@@ -66,14 +68,6 @@ A sync strategy controls how varTrack applies the flattened config values to a d
     | Stale key cleanup | Only if `prune: true` set |
     | Best for | Large configs |
 
-=== "LIVE_STATE"
-
-    Written exactly like `GIT_UPSERT_ALL`: every key, without reading the datasource first. It is kept so a configuration that sets it still loads; the log (and `vt validate-config`) says to set `GIT_UPSERT_ALL` or `AUTO` instead. Keys Git no longer holds are deleted only by [prune](#stale-key-pruning), in every mode.
-
-    ```cue
-    sync_mode: "SYNC_MODE_LIVE_STATE"
-    ```
-
 ---
 
 ## Setting the strategy
@@ -93,6 +87,8 @@ rules: [{
 Or let `AUTO` decide — just omit `sync_mode` or set it to `"AUTO"`.
 
 Each mode can be written short (`"AUTO"`, `"GIT_SMART_REPAIR"`) or as its full proto name (`"SYNC_MODE_AUTO"`, `"SYNC_MODE_GIT_SMART_REPAIR"`); both load.
+
+Any other value is refused, never read as `AUTO`: in `config.cue` the services do not start, in a tenant's `bundle.json` the rule is listed as *Refused*, and in a repository's `vartrack.json` the sync fails. `vt validate-config` reports it before a push.
 
 ---
 

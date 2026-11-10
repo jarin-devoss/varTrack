@@ -132,7 +132,7 @@ The file's name says what it is: `vartrack.json` (also under `.github/`, `.gitea
 
 | It reports | What it means |
 |---|---|
-| **errors** | what a sync rejects: invalid JSON, a value of the wrong type, a second rule for one platform and datasource, a rule `config.cue` does not have or a tenant may not layer |
+| **errors** | what a sync rejects: invalid JSON, a value of the wrong type, a `sync_mode` that is not a mode, a second rule for one platform and datasource, a rule `config.cue` does not have or a tenant may not layer |
 | **warnings** | what a sync ignores: keys only `config.cue` sets, [removed options](../configuration/schema-registry.md#how-a-rule-is-built), `prune` that has no effect on a whole-object sink |
 | **migrations** | options under a name that changed (`env_as_branch` → `branch_as_env`); a sync still reads them |
 
