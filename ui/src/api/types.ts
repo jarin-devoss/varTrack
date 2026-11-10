@@ -10,7 +10,7 @@ export type SinkType =
   | 'helm'
   | 'linux_server';
 
-export type SyncMode = 'AUTO' | 'GIT_UPSERT_ALL' | 'GIT_SMART_REPAIR' | 'LIVE_STATE';
+export type SyncMode = 'AUTO' | 'GIT_UPSERT_ALL' | 'GIT_SMART_REPAIR';
 
 export type TaskState = 'PENDING' | 'RUNNING' | 'SUCCEEDED' | 'FAILED' | 'RETRYING';
 
