@@ -53,7 +53,7 @@ test.describe('the Rule panel', () => {
   test('Overview says how an environment is resolved: the branch_map of this rule', async ({ page }) => {
     const rule = new RulePage(page);
     await rule.open(RULE);
-    await page.getByRole('tab', { name: 'Overview' }).click();
+    await rule.showRuleTab('Overview');
     const panel = page.locator('#rule-panel');
     await expect(panel).toContainText('develop');
     await expect(panel).toContainText('staging');
@@ -63,7 +63,7 @@ test.describe('the Rule panel', () => {
   test('History lists the syncs of this rule, newest first, each linking to its task', async ({ page, api }) => {
     const rule = new RulePage(page);
     await rule.open(RULE);
-    await page.getByRole('tab', { name: 'History' }).click();
+    await rule.showRuleTab('History');
     const timeline = page.getByRole('list', { name: 'Sync history, newest first' });
     await expect(timeline).toBeVisible();
     const [newest] = (await api.tasks()).filter(t => (t as unknown as { rule: string }).rule === RULE);
@@ -74,7 +74,7 @@ test.describe('the Rule panel', () => {
   test('Events lists what happened to this rule, or says there were none', async ({ page }) => {
     const rule = new RulePage(page);
     await rule.open(RULE);
-    await page.getByRole('tab', { name: 'Events' }).click();
+    await rule.showRuleTab('Events');
     await expect(page.locator('#rule-panel').getByText(/No events for this rule|synced|Sync|drift/i).first()).toBeVisible();
   });
 
@@ -82,7 +82,7 @@ test.describe('the Rule panel', () => {
     await context.grantPermissions(['clipboard-read', 'clipboard-write']);
     const rule = new RulePage(page);
     await rule.open(RULE);
-    await page.getByRole('tab', { name: 'Definition' }).click();
+    await rule.showRuleTab('Definition');
     const panel = page.locator('#rule-panel');
     await expect(panel).toContainText('redis-hash');
     await expect(panel).toContainText('branch_map');
@@ -96,11 +96,11 @@ test.describe('the Environments panel', () => {
   test('Keys lists the keys of an environment next to Git and the sink, and filters them', async ({ page, api }) => {
     const rule = new RulePage(page);
     await rule.open(RULE);
-    await page.getByRole('tab', { name: 'Keys' }).click();
+    await rule.showKeys();
     const keys = (await api.keys(RULE, 'staging')).keys;
     expect(keys.length).toBeGreaterThan(5);
     const panel = page.locator('#environments-panel');
-    await panel.getByRole('button', { name: 'staging' }).click();
+    await rule.keysEnvironment('staging').click();
     await expect(panel.getByText(keys[0].key, { exact: true })).toBeVisible();
 
     await panel.getByPlaceholder('Search keys and values…').fill('rate_limit');
@@ -110,13 +110,12 @@ test.describe('the Environments panel', () => {
 
   test('Keys marks a secret and masks its value', async ({ page, api }) => {
     const rule = new RulePage(page);
-    await rule.open(RULE);
-    await page.getByRole('tab', { name: 'Keys' }).click();
+    await rule.openKeys(RULE);
     const secret = (await api.keys(RULE, 'staging')).keys.find(k => k.secret);
     expect(secret, 'the settings file has a secret key').toBeDefined();
     expect(secret?.gitValue).toBe('***');
     const panel = page.locator('#environments-panel');
-    await panel.getByRole('button', { name: 'staging' }).click();
+    await rule.keysEnvironment('staging').click();
     await panel.getByPlaceholder('Search keys and values…').fill(secret!.key);
     const row = panel.getByRole('row').filter({ hasText: secret!.key });
     await expect(row).toContainText('***');
@@ -125,8 +124,7 @@ test.describe('the Environments panel', () => {
 
   test('Keys can show only the changed, the secret or the protected ones', async ({ page }) => {
     const rule = new RulePage(page);
-    await rule.open(RULE);
-    await page.getByRole('tab', { name: 'Keys' }).click();
+    await rule.openKeys(RULE);
     const panel = page.locator('#environments-panel');
     await panel.getByRole('button', { name: 'Secrets' }).click();
     await expect(panel.getByText('api.secret_key', { exact: true })).toBeVisible();

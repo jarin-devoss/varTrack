@@ -55,7 +55,7 @@ test.describe('a rule with self-heal (gitea/mongo)', () => {
     await expect.poll(healed, { timeout: 30_000 }).toBeGreaterThan(before);
     await page.getByRole('button', { name: 'Refresh' }).click();
     await expect(rule.env('staging')).toHaveAccessibleName(/staging: Synced/);
-    await page.getByRole('tab', { name: 'Events' }).click();
+    await rule.showRuleTab('Events');
     await expect(page.locator('#rule-panel')).toContainText(/heal/i);
   });
 
