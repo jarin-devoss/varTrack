@@ -37,7 +37,8 @@ export default defineConfig({
   use: {
     baseURL,
     actionTimeout: 10_000,
-    trace: 'on-first-retry',
+    // The first attempt is the one that fails in a flake; the retry that passes has nothing to show.
+    trace: 'retain-on-first-failure',
     screenshot: 'only-on-failure',
     video: 'retain-on-failure',
   },

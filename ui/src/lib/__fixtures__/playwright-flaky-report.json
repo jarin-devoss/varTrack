@@ -1,0 +1,84 @@
+{
+  "suites": [
+    {
+      "title": "example.spec.ts",
+      "file": "example.spec.ts",
+      "specs": [
+        {
+          "title": "passes",
+          "file": "example.spec.ts",
+          "line": 3,
+          "tests": [
+            {
+              "status": "expected",
+              "results": [
+                {
+                  "status": "passed"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "title": "flaky on its first attempt",
+          "file": "example.spec.ts",
+          "line": 8,
+          "tests": [
+            {
+              "status": "flaky",
+              "results": [
+                {
+                  "status": "failed"
+                },
+                {
+                  "status": "passed"
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "suites": [
+        {
+          "title": "a group",
+          "file": "example.spec.ts",
+          "specs": [
+            {
+              "title": "flaky inside a describe",
+              "file": "example.spec.ts",
+              "line": 14,
+              "tests": [
+                {
+                  "status": "flaky",
+                  "results": [
+                    {
+                      "status": "failed"
+                    },
+                    {
+                      "status": "passed"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "title": "passes inside a describe",
+              "file": "example.spec.ts",
+              "line": 19,
+              "tests": [
+                {
+                  "status": "expected",
+                  "results": [
+                    {
+                      "status": "passed"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
