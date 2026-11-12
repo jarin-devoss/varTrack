@@ -35,7 +35,7 @@ RUN CGO_ENABLED=0 go build -trimpath -o /out/vartrack-bundle ./cmd/vartrack-bund
 # ─── Stage 1: Python dependency builder ──────────────────────────────────────
 # Install Python deps into a separate layer so the runtime image only copies
 # the site-packages directory (not pip / build toolchain).
-FROM python:3.14-slim@sha256:a2b82f3c48559aa0a8446d9af49826b6e2b2016f4cd2afabfe6013ec53729170 AS builder
+FROM python:3.15-slim@sha256:65a65fc7b30b06cb6df4930fd4650697cb23f4c2698ab81fc87e4b031bc36928 AS builder
 
 ARG VERSION=dev
 ARG COMMIT=unknown
@@ -79,7 +79,7 @@ COPY orchestrator-service/ .
 COPY --from=proto /src/orchestrator-service/app/generated app/generated
 
 # ─── Stage 2: Runtime ────────────────────────────────────────────────────────
-FROM python:3.14-slim@sha256:a2b82f3c48559aa0a8446d9af49826b6e2b2016f4cd2afabfe6013ec53729170 AS runtime
+FROM python:3.15-slim@sha256:65a65fc7b30b06cb6df4930fd4650697cb23f4c2698ab81fc87e4b031bc36928 AS runtime
 
 ARG VERSION=dev
 ARG COMMIT=unknown
