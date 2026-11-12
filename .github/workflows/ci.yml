@@ -243,7 +243,7 @@ jobs:
           build-mode: ${{ matrix.build-mode }}
           config-file: .github/codeql-config.yml
 
-      - uses: github/codeql-action/autobuild@8aad20d150bbac5944a9f9d289da16a4b0d87c1e # v3
+      - uses: github/codeql-action/autobuild@33d7b85da1a04171e211befe2c739303b9a4c066 # v3
         if: matrix.build-mode == 'autobuild'
 
       - uses: github/codeql-action/analyze@8aad20d150bbac5944a9f9d289da16a4b0d87c1e # v3
