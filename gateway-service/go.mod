@@ -3,7 +3,7 @@ module gateway-service
 go 1.26.0
 
 require (
-	buf.build/gen/go/bufbuild/protovalidate/protocolbuffers/go v1.36.11-20260209202127-80ab13bee0bf.1
+	buf.build/gen/go/bufbuild/protovalidate/protocolbuffers/go v1.36.12-20260825204119-511051f7f437.2
 	github.com/go-playground/webhooks/v6 v6.4.0
 	github.com/google/uuid v1.6.0
 	github.com/hashicorp/vault/api v1.23.0
