@@ -42,8 +42,10 @@ restart `orchestrator-api` and `orchestrator-worker` after changing Python.
    next to `main`, team folders, the schema repository with the CUE schemas and `world/bundle.json` (a rule for each kind of
    environment: `branch_map`, `branch_as_env`, `file_path_map`, with and without self-heal and
    strict validation), and the first syncs, pushed as signed webhooks. Every rule names its file and its environments (one that does not is refused).
-   Last, it forgets every environment no rule produces any more (an earlier run's leftovers) and logs which; a spec about
-   leftovers makes its own (`leaveBehind`) and forgets it after.
+   Last, it forgets every environment of those rules that `WORLD.environments` does not name (an earlier run's leftovers, and what
+   the regression suites wrote, such as `default` in `redis-string`, which a `branch_as_env` rule counts as fed) and logs which, then
+   checks that each rule has exactly the environments the world names: a world that is not what it says fails setup with one line
+   naming the rule, not a spec somewhere downstream. A spec about leftovers makes its own (`leaveBehind`) and forgets it after.
 3. Specs run **one after the other** (`workers: 1`): they share the stack. **No spec relies on another**: each makes what it reads
    (`made`, `tasks`, `stack`), puts back what it changes, and passes alone and in any order.
 
@@ -73,6 +75,9 @@ A long wait means the product is missing a way to say "now". Do not raise a time
   fails naming the tab if it is not: a click that has not landed is not a state to go on from. A spec about what a tab shows
   opens it by address (`RulePage.openKeys()`, `?tab=keys`) and leaves the click to one spec about the tab. Name a tab or an
   option `exact`, or `staging` also matches `Diff staging`, `Sync staging`, …
+- **Name the environment, rule and tab a spec acts on.** Do not rely on what a page shows first (the Keys tab opens on the
+  first environment that differs, which is not always the one you mean) or on what an earlier spec or the regression left. A spec
+  needs only the world (`fixtures/world.ts`): pick the environment (`RulePage.keysEnvironment(env)`) and wait for it.
 - **A spec you add or change is run again, with no retry, before it is trusted.** On a pull request CI runs the spec files the
   change touches `BURN_IN_REPEAT` (5) times each with `--retries=0`: the one retry on CI is what lets a flaky test pass. It sees
   spec files only, not the page objects they import (that would be most of the suite), so a change to a page object names the

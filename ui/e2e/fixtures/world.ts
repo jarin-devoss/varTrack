@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { request } from '@playwright/test';
-import { Stack, UiApi } from './api';
+import { Stack, UiApi, type ApiRule } from './api';
 import { PEOPLE } from './roles';
 import { CONFIG_REPO, Gitea, SCHEMA_REPO } from './gitea';
 
@@ -26,6 +26,9 @@ const read = (...parts: string[]) => fs.readFileSync(path.join(repoRoot, ...part
  *   mongo-document  file_path_map, branch develop                      team-a, team-b
  *   mongo           branch_map {develop: staging}, self-heal           staging (develop)
  *   mongo-primary   branch_map {develop: staging}, no self-heal        staging (develop)
+ *
+ * Five more rules (mongo-file, linux_server, s3, mongo-dr, mongo-kv) feed `production` from main and are never synced here.
+ * `WORLD.environments` holds all of it as data: setup forgets any other environment of these rules and then checks the list.
  */
 export const WORLD = {
   tenant: 'demo',
@@ -37,6 +40,20 @@ export const WORLD = {
     selfHeal: 'gitea/mongo',
     noSelfHeal: 'gitea/mongo-primary',
   },
+  /** Each rule's environments, and only these: what a spec may rely on finding. */
+  environments: {
+    'gitea/redis-hash': ['production', 'staging'],
+    'gitea/redis-string': ['develop', 'main'],
+    'gitea/zookeeper': ['production'],
+    'gitea/mongo-document': ['team-a', 'team-b'],
+    'gitea/mongo': ['staging'],
+    'gitea/mongo-primary': ['staging'],
+    'gitea/mongo-file': ['production'],
+    'gitea/linux_server': ['production'],
+    'gitea/s3': ['production'],
+    'gitea/mongo-dr': ['production'],
+    'gitea/mongo-kv': ['production'],
+  } as Record<string, readonly string[]>,
   protectedBranch: 'main',
   openBranch: 'develop',
 } as const;
@@ -77,7 +94,13 @@ export async function buildWorld(baseURL: string): Promise<void> {
       if (done !== FIRST_PUSHES.length) throw new Error(`${done} of ${FIRST_PUSHES.length} first syncs succeeded`);
       // An environment an earlier run left behind (one no rule produces now) would be in every spec's way: forget it, and say which.
       const forgotten = await forgetLeftovers(api);
+      // An environment a branch_as_env rule still counts as fed (any name is a branch there), such as the `default` the regression
+      // suites write, needs the rule to stop saying so for a moment: see forgetStrays.
+      forgotten.push(...(await forgetStrays(gitea, stack, api)));
       if (forgotten.length) console.log(`world: forgot ${forgotten.length} leftover environment(s): ${forgotten.join(', ')}`);
+      // The world is what it says, or no spec starts.
+      const problems = worldProblems(await api.rules());
+      if (problems.length) throw new Error(`world: ${problems.join('; ')}`);
     } finally {
       await admin.dispose();
     }
@@ -95,6 +118,65 @@ export async function forgetLeftovers(api: UiApi): Promise<string[]> {
       await api.forget(rule.name, target.env);
       forgotten.push(`${rule.name} ${target.env}`);
     }
+  }
+  return forgotten;
+}
+
+/**
+ * Where the rules' environments are not the ones `WORLD.environments` names: one line per rule, `<rule> has <what it has>; the
+ * world has <what it names>`. Empty when the world is what it says. A rule of the world that is missing is reported too.
+ */
+export function worldProblems(rules: Array<Pick<ApiRule, 'name' | 'targets'>>): string[] {
+  const problems: string[] = [];
+  for (const [name, wanted] of Object.entries(WORLD.environments)) {
+    const rule = rules.find(r => r.name === name);
+    if (!rule) {
+      problems.push(`${name} is not there; the world has it with ${wanted.join(', ')}`);
+      continue;
+    }
+    const have = rule.targets.map(t => t.env).sort();
+    const want = [...wanted].sort();
+    if (have.join('\n') !== want.join('\n')) problems.push(`${name} has ${have.join(', ') || 'no environment'}; the world has ${want.join(', ')}`);
+  }
+  return problems;
+}
+
+/**
+ * Forget the environments of the world's rules that the world does not name and that a branch still feeds. Under `branch_as_env`
+ * any name is its own branch, so such an environment (the regression suites write `default` into redis-string) reads as fed and
+ * the engine will not forget it. As an administrator would: the rule is changed to name only its own branches, the stray is no longer
+ * fed and is forgotten, and the rule is put back as the world has it. Does nothing, and writes nothing, when there is none.
+ * Returns `rule env` for each.
+ */
+export async function forgetStrays(gitea: Gitea, stack: Stack, api: UiApi): Promise<string[]> {
+  const strays: Array<{ rule: string; env: string }> = [];
+  for (const rule of await api.rules()) {
+    const named = WORLD.environments[rule.name];
+    if (!named) continue;
+    for (const target of rule.targets.filter(t => !named.includes(t.env))) strays.push({ rule: rule.name, env: target.env });
+  }
+  const names = [...new Set(strays.map(s => s.rule))];
+  const bundle = JSON.parse(read('ui', 'e2e', 'world', 'bundle.json')) as Array<Record<string, unknown>>;
+  const changed = names.filter(name => {
+    const entry = bundle.find(r => `${r.platform}/${r.datasource}` === name);
+    // only a branch_as_env rule can be fed a stray name; for any other the check at the end of setup says what is wrong
+    if (!entry?.branch_as_env) return false;
+    Object.assign(entry, { branch_as_env: false, branch_map: Object.fromEntries(WORLD.environments[name].map(env => [env, env])) });
+    return true;
+  });
+  if (!changed.length) return [];
+
+  const forgotten: string[] = [];
+  try {
+    await gitea.put(SCHEMA_REPO, 'bundle.json', JSON.stringify(bundle, null, 2), 'ui-e2e: the rules, naming only their own branches');
+    await stack.warm(WORLD.tenant);
+    for (const { rule, env } of strays.filter(s => changed.includes(s.rule))) {
+      await api.forget(rule, env);
+      forgotten.push(`${rule} ${env}`);
+    }
+  } finally {
+    await gitea.put(SCHEMA_REPO, 'bundle.json', read('ui', 'e2e', 'world', 'bundle.json'), 'ui-e2e: the rules, as they were');
+    await stack.warm(WORLD.tenant);
   }
   return forgotten;
 }

@@ -3,6 +3,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { expect, test, as, unique } from '../fixtures';
 import { CONFIG_REPO, Gitea, SCHEMA_REPO } from '../fixtures/gitea';
+import { worldProblems } from '../fixtures/world';
 import { RulePage } from '../pages/RulePage';
 
 /**
@@ -166,9 +167,8 @@ test('a rule that names its file is ordinary: no "names no file to read" anywher
   await rule.sync.cancel.click();
 });
 
-test('the suite starts with no leftover environment: setup forgot the ones an earlier run left', async ({ adminApi }) => {
-  const leftovers = (await adminApi.rules()).flatMap(r => r.targets.filter(t => t.notFed).map(t => `${r.name} ${t.env}`));
-  expect(leftovers).toEqual([]);
+test('the suite starts with exactly the environments the world names: setup forgot every other, fed or not', async ({ adminApi }) => {
+  expect(worldProblems(await adminApi.rules())).toEqual([]);
 });
 
 test('a push to a branch the rule does not map feeds no environment: the task says so, and nothing is written to a made-up one', async ({ adminApi, gitea, stack, stores }) => {

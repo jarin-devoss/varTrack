@@ -52,9 +52,13 @@ test.describe('as the reader', () => {
       await expect(rule.envDryRun(ENV)).toBeEnabled();
 
       // the Keys tab offers a Sync of the changed keys: off, with a Dry run beside it
+      // (the tab opens on the first environment that differs, which is not always ENV, so pick ENV and wait for it)
       await rule.showKeys();
-      await expect(page.getByRole('button', { name: `Sync ${ENV}` })).toBeDisabled();
-      await expect(page.getByRole('button', { name: `Dry run ${ENV}` })).toBeEnabled();
+      await rule.keysEnvironment(ENV).click();
+      await expect(rule.keysEnvironment(ENV)).toHaveAttribute('aria-pressed', 'true');
+      const keysPanel = page.locator('#environments-panel');
+      await expect(keysPanel.getByRole('button', { name: `Sync ${ENV}` })).toBeDisabled();
+      await expect(keysPanel.getByRole('button', { name: `Dry run ${ENV}` })).toBeEnabled();
 
       // an environment's row
       const envs = new EnvironmentsPage(page);
