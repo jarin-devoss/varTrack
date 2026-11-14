@@ -3,6 +3,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { expect, test, as, unique } from '../fixtures';
 import { SCHEMA_REPO } from '../fixtures/gitea';
+import type { UiApi } from '../fixtures/api';
 import type { Stores } from '../fixtures/stores';
 import { RulePage } from '../pages/RulePage';
 
@@ -21,6 +22,17 @@ const FIELD = 'api.rate_limit';
 const tamper = (stores: Stores, collection: string, value: string) => stores.mongoSet(collection, 'staging', FIELD, value);
 const stored = (stores: Stores, collection: string) => stores.mongoValue(collection, 'staging', FIELD);
 
+/** The ids of a rule's HealSucceeded events, among the newest the API lists. */
+const healEvents = async (api: UiApi, rule: string): Promise<Set<string>> =>
+  new Set((await api.events(`&rule=${encodeURIComponent(rule)}`)).filter(e => e.reason === 'HealSucceeded').map(e => e.id));
+
+/**
+ * True once a heal is on record that was not in `seen`. A count would stall: the list holds only the newest events, so when it
+ * is full of heals each new one pushes an old one out, and the count stays where it was.
+ */
+const healedSince = (api: UiApi, rule: string, seen: Set<string>) => async (): Promise<boolean> =>
+  [...(await healEvents(api, rule))].some(id => !seen.has(id));
+
 const setValidator = (stores: Stores, collection: string, validator: string) =>
   stores.mongo(`db.runCommand({ collMod: ${JSON.stringify(collection)}, validator: ${validator}, validationLevel: ${validator === '{}' ? "'off'" : "'strict'"}, validationAction: 'error' })`);
 
@@ -34,28 +46,26 @@ test.describe('a rule with self-heal (gitea/mongo)', () => {
     await adminApi.succeeded(id);
   });
 
-  test('the watcher is asked to look, finds the change, and puts the value back from Git', async ({ page, api, stack, stores }) => {
+  test('a value changed in the sink is put back from Git by self-heal, and the rule page says it healed', async ({ page, api, stack, stores }) => {
     const original = stored(stores, COLLECTION);
     const changed = unique('outside');
-    const healed = async () => (await api.events()).filter(e => e.rule === RULE && e.reason === 'HealSucceeded').length;
-    const before = await healed();
+    const seen = await healEvents(api, RULE);
 
     const rule = new RulePage(page);
     await rule.open(RULE);
     await expect(rule.env('staging')).toHaveAccessibleName(/staging: Synced/);
 
     tamper(stores, COLLECTION, changed);
-    expect(stored(stores, COLLECTION)).toBe(changed);
 
-    const [found] = await stack.checkNow('gitea', 'mongo');
-    expect(found.state, found.detail).toBe('drifted');
-    expect(found.healed, 'the watcher asked for a heal').toBe(true);
+    // Ask the watcher to look now. Its answer is not what is checked: it heals on its own every few seconds too, and may have been
+    // first. What a person sees is where it ends: the value back, a heal on record, the page in sync.
+    await stack.checkNow('gitea', 'mongo');
 
     await expect.poll(async () => stored(stores, COLLECTION), { timeout: 30_000, message: 'the heal writes the value back' }).toBe(original);
-    await expect.poll(healed, { timeout: 30_000 }).toBeGreaterThan(before);
+    await expect.poll(healedSince(api, RULE, seen), { timeout: 30_000, message: 'the heal is on record' }).toBe(true);
     await page.getByRole('button', { name: 'Refresh' }).click();
     await expect(rule.env('staging')).toHaveAccessibleName(/staging: Synced/);
-    await page.getByRole('tab', { name: 'Events' }).click();
+    await rule.showRuleTab('Events');
     await expect(page.locator('#rule-panel')).toContainText(/heal/i);
   });
 
@@ -66,18 +76,23 @@ test.describe('a rule with self-heal (gitea/mongo)', () => {
     await expect(page.getByText("The watcher doesn't compare this rule with Git")).toHaveCount(0);
   });
 
-  test('the watcher is not told twice: a change made after its heal is a new one and is healed at once', async ({ api, stack, stores }) => {
+  test('a change made after a heal is a new one and is healed too', async ({ api, stack, stores }) => {
     const original = stored(stores, COLLECTION);
+    const beforeFirst = await healEvents(api, RULE);
+
+    // (that the watcher does not ask twice for one drift, and does for a new one, is the watcher's own tests'; here a person's
+    // two changes in a row are both put back)
     tamper(stores, COLLECTION, unique('first'));
-    expect((await stack.checkNow('gitea', 'mongo'))[0].healed).toBe(true);
-    await expect.poll(async () => stored(stores, COLLECTION), { timeout: 30_000 }).toBe(original);
+    await stack.checkNow('gitea', 'mongo');
+    await expect.poll(async () => stored(stores, COLLECTION), { timeout: 30_000, message: 'the first change is put back' }).toBe(original);
+    await expect.poll(healedSince(api, RULE, beforeFirst), { timeout: 30_000, message: 'the first heal is on record' }).toBe(true);
+    const afterFirst = await healEvents(api, RULE);
 
     tamper(stores, COLLECTION, unique('second'));
-    const [again] = await stack.checkNow('gitea', 'mongo');
-    expect(again.state).toBe('drifted');
-    expect(again.healed).toBe(true);
-    await expect.poll(async () => stored(stores, COLLECTION), { timeout: 30_000 }).toBe(original);
-    expect((await api.fresh(RULE)).targets.find(t => t.env === 'staging')?.drift).toBe('in_sync');
+    await stack.checkNow('gitea', 'mongo');
+    await expect.poll(async () => stored(stores, COLLECTION), { timeout: 30_000, message: 'the second change is put back' }).toBe(original);
+    await expect.poll(healedSince(api, RULE, afterFirst), { timeout: 30_000, message: 'the second heal is on record' }).toBe(true);
+    await expect.poll(async () => (await api.fresh(RULE)).targets.find(t => t.env === 'staging')?.drift, { timeout: 30_000 }).toBe('in_sync');
   });
 });
 
@@ -182,9 +197,8 @@ test.describe('a document rule set to GIT_SMART_REPAIR (gitea/mongo)', () => {
     const original = stored(stores, COLLECTION);
     tamper(stores, COLLECTION, unique('outside'));
 
-    const [found] = await stack.checkNow('gitea', 'mongo');
-    expect(found.state, found.detail).toBe('drifted');
-    expect(found.healed, 'the watcher asked for a heal').toBe(true);
+    // asked to look now; the watcher may have healed on its own poll first, and either way the document has to come back
+    await stack.checkNow('gitea', 'mongo');
     await expect.poll(async () => stored(stores, COLLECTION), { timeout: 30_000, message: 'the heal writes the document back' }).toBe(original);
   });
 

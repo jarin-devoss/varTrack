@@ -42,8 +42,10 @@ restart `orchestrator-api` and `orchestrator-worker` after changing Python.
    next to `main`, team folders, the schema repository with the CUE schemas and `world/bundle.json` (a rule for each kind of
    environment: `branch_map`, `branch_as_env`, `file_path_map`, with and without self-heal and
    strict validation), and the first syncs, pushed as signed webhooks. Every rule names its file and its environments (one that does not is refused).
-   Last, it forgets every environment no rule produces any more (an earlier run's leftovers) and logs which; a spec about
-   leftovers makes its own (`leaveBehind`) and forgets it after.
+   Last, it forgets every environment of those rules that `WORLD.environments` does not name (an earlier run's leftovers, and what
+   the regression suites wrote, such as `default` in `redis-string`, which a `branch_as_env` rule counts as fed) and logs which, then
+   checks that each rule has exactly the environments the world names: a world that is not what it says fails setup with one line
+   naming the rule, not a spec somewhere downstream. A spec about leftovers makes its own (`leaveBehind`) and forgets it after.
 3. Specs run **one after the other** (`workers: 1`): they share the stack. **No spec relies on another**: each makes what it reads
    (`made`, `tasks`, `stack`), puts back what it changes, and passes alone and in any order.
 
@@ -68,6 +70,22 @@ A long wait means the product is missing a way to say "now". Do not raise a time
   `.hero` are used only to scope a search inside a row or card.)
 - **One page object per screen** in `pages/`, with getters (not field initialisers), actions, and a `ready()` that waits for the
   page to have loaded. A spec reads like the steps; selectors live in the page object.
+- **Switch a tab with `showTab`, never with a bare click.** `showTab(tabs, name, ready?)` (`pages/tabs.ts`, wrapped by
+  `RulePage.showKeys()`, `showRuleTab()`) clicks once and waits for the tab to be the selected one, then for its content, and
+  fails naming the tab if it is not: a click that has not landed is not a state to go on from. A spec about what a tab shows
+  opens it by address (`RulePage.openKeys()`, `?tab=keys`) and leaves the click to one spec about the tab. Name a tab or an
+  option `exact`, or `staging` also matches `Diff staging`, `Sync staging`, …
+- **Name the environment, rule and tab a spec acts on.** Do not rely on what a page shows first (the Keys tab opens on the
+  first environment that differs, which is not always the one you mean) or on what an earlier spec or the regression left. A spec
+  needs only the world (`fixtures/world.ts`): pick the environment (`RulePage.keysEnvironment(env)`) and wait for it.
+- **No `test.skip`, and no branch on what the stack holds.** Make the state the test is about (a drift, a failed sync) and put it
+  back after (`withDrift` in `04-home.spec.ts`). A skipped test covers nothing, so the coverage check fails the run on one, and
+  the job summary lists it next to the flaky tests.
+- **A spec you add or change is run again, with no retry, before it is trusted.** On a pull request CI runs the spec files the
+  change touches `BURN_IN_REPEAT` (5) times each with `--retries=0`: the one retry on CI is what lets a flaky test pass. It sees
+  spec files only, not the page objects they import (that would be most of the suite), so a change to a page object names the
+  specs it is for and runs them yourself first:
+  `npx playwright test e2e/specs/07-rule-detail.spec.ts --repeat-each=20 --retries=0` against a stack.
 - **Never sleep.** Assertions retry (`expect(locator).toBeVisible()`), and `expect.poll` waits on the API or a sink. A
   `waitForTimeout` is allowed only to show that something did *not* happen, and says how long and why.
 - **Make your own data and clean up after it**: `unique('name')` for every value you push; restore a file, a key, a service in
@@ -115,6 +133,10 @@ fails the suite; removing a test removes coverage, and that fails it too.
 ## Things the stack does that a spec has to allow for
 
 - The demo's watcher polls every 10 s and holds back a second heal for the same drift for two polls; ask it with `stack.checkNow`.
+  It also heals by itself on that poll, so after changing a self-heal rule's sink, ask and then wait for **where it ends**: the
+  value back, a new `HealSucceeded` (or a new self-heal task), the page Synced. Do not assert the sink just after the change, or
+  what `checkNow` answered: the poll may have been first. That the watcher heals once per drift, and again for a new one, is
+  tested in the watcher's own Go tests.
 - The Tasks and Events pages list the newest 300 and 500: a spec finds its own rows by id or with the page's filters.
 - The Playground goes through the gateway's CLI API with a Git personal access token (`Gitea.tokenFor`), and judges an
   environment by the rule in the gateway's own configuration.

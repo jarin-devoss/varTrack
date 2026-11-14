@@ -1,4 +1,5 @@
 import { expect, type Locator, type Page } from '@playwright/test';
+import { showTab } from './tabs';
 
 const escape = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
@@ -106,6 +107,38 @@ export class RulePage {
   async open(rule: string): Promise<void> {
     await this.page.goto(`/rules/${rule}`);
     await this.ready();
+  }
+
+  /** The Rule panel's tabs (Overview, History, Events, Definition), and the Environments panel's (Environments, Keys). */
+  get ruleTabs() {
+    return this.page.getByRole('tablist', { name: 'Rule', exact: true });
+  }
+  get environmentsTabs() {
+    return this.page.getByRole('tablist', { name: 'Environments', exact: true });
+  }
+  async showRuleTab(name: 'Overview' | 'History' | 'Events' | 'Definition'): Promise<void> {
+    await showTab(this.ruleTabs, name);
+  }
+
+  /** The Keys tab's search box: it is on the tab and on no other. */
+  get keysSearch() {
+    return this.page.locator('#environments-panel').getByPlaceholder('Search keys and values…');
+  }
+  /** The environment the Keys tab shows, as one option of its Environment switch. */
+  keysEnvironment = (env: string): Locator =>
+    this.page.locator('#environments-panel').getByRole('group', { name: 'Environment', exact: true }).getByRole('button', { name: env, exact: true });
+
+  /** Click the Keys tab, and wait for it. A spec about the tab's content opens it with openKeys instead. */
+  async showKeys(): Promise<void> {
+    await showTab(this.environmentsTabs, 'Keys', this.keysSearch);
+  }
+
+  /** Open the rule on its Keys tab: the tab is in the address (`?tab=keys`), so there is no click to wait for. */
+  async openKeys(rule: string): Promise<void> {
+    await this.page.goto(`/rules/${rule}?tab=keys`);
+    await expect(this.syncAll).toBeVisible();
+    await expect(this.environmentsTabs.getByRole('tab', { name: 'Keys', exact: true })).toHaveAttribute('aria-selected', 'true');
+    await expect(this.keysSearch).toBeVisible();
   }
 
   async ready(): Promise<void> {

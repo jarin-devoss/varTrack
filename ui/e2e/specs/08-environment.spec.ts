@@ -1,5 +1,6 @@
 import { expect, test, as, unique } from '../fixtures';
 import { RulePage } from '../pages/RulePage';
+import { showTab } from '../pages/tabs';
 
 /**
  * One environment, opened from its rule: Summary, Diff, Current, Desired, History. The sink is changed directly where
@@ -23,6 +24,10 @@ async function openEnv(page: import('@playwright/test').Page, view = 'summary') 
   await expect(panel).toBeVisible();
   return panel;
 }
+
+/** Show one of the panel's views (Summary, Diff, Current, Desired, History), and wait for it. */
+const showView = (panel: import('@playwright/test').Locator, view: string) =>
+  showTab(panel.getByRole('tablist', { name: 'Environment', exact: true }), view);
 
 /** The row of one key in the Current or Desired table. */
 const row = (panel: import('@playwright/test').Locator, key: string) => panel.getByRole('row').filter({ has: panel.page().getByText(key, { exact: true }) });
@@ -53,11 +58,10 @@ test('Escape closes the panel and the URL forgets the environment', async ({ pag
 test('the five views are tabs, and each is a link', async ({ page }) => {
   const panel = await openEnv(page);
   for (const [tab, param] of [['Diff', 'diff'], ['Current', 'current'], ['Desired', 'desired'], ['History', 'history']] as const) {
-    await panel.getByRole('tab', { name: tab }).click();
+    await showView(panel, tab);
     await expect(page).toHaveURL(new RegExp(`view=${param}`));
-    await expect(panel.getByRole('tab', { name: tab })).toHaveAttribute('aria-selected', 'true');
   }
-  await panel.getByRole('tab', { name: 'Summary' }).click();
+  await showView(panel, 'Summary');
   await expect(page).not.toHaveURL(/view=/);
 });
 
@@ -69,7 +73,7 @@ test('Current and Desired list every key, and a secret is masked in both', async
   const secret = keys.find(k => k.secret)!;
   await expect(row(panel, secret.key)).toContainText('***');
 
-  await panel.getByRole('tab', { name: 'Desired' }).click();
+  await showView(panel, 'Desired');
   await expect(panel).toContainText('What Git says should be there');
   await expect(row(panel, secret.key)).toContainText('***');
   for (const key of keys.slice(0, 5)) await expect(row(panel, key.key)).toContainText(String(key.gitValue));
@@ -126,7 +130,7 @@ test.describe('with a value changed directly in the sink', () => {
 
     const panel = await openEnv(page, 'current');
     await expect(row(panel, FIELD)).toContainText(tampered);
-    await panel.getByRole('tab', { name: 'Desired' }).click();
+    await showView(panel, 'Desired');
     await expect(row(panel, FIELD)).toContainText(original);
   });
 
@@ -138,10 +142,10 @@ test.describe('with a value changed directly in the sink', () => {
       await expect.poll(async () => (await api.keys(RULE, ENV)).keys.find(k => k.key === IGNORED)?.state, { timeout: 20_000 }).toBe('ignored');
       const rule = new RulePage(page);
       await rule.open(RULE);
-      await page.getByRole('tab', { name: 'Keys' }).click();
+      await rule.showKeys();
       const panel = page.locator('#environments-panel');
-      await panel.getByRole('group', { name: 'Environment' }).getByRole('button', { name: ENV }).click();
-      await panel.getByPlaceholder('Search keys and values…').fill(IGNORED);
+      await rule.keysEnvironment(ENV).click();
+      await rule.keysSearch.fill(IGNORED);
       await expect(panel.getByRole('row').filter({ hasText: IGNORED })).toContainText('Not compared');
     } finally {
       stores.redisSet(DB, HASH, before, IGNORED);
