@@ -133,6 +133,10 @@ fails the suite; removing a test removes coverage, and that fails it too.
 ## Things the stack does that a spec has to allow for
 
 - The demo's watcher polls every 10 s and holds back a second heal for the same drift for two polls; ask it with `stack.checkNow`.
+  It also heals by itself on that poll, so after changing a self-heal rule's sink, ask and then wait for **where it ends**: the
+  value back, a new `HealSucceeded` (or a new self-heal task), the page Synced. Do not assert the sink just after the change, or
+  what `checkNow` answered: the poll may have been first. That the watcher heals once per drift, and again for a new one, is
+  tested in the watcher's own Go tests.
 - The Tasks and Events pages list the newest 300 and 500: a spec finds its own rows by id or with the page's filters.
 - The Playground goes through the gateway's CLI API with a Git personal access token (`Gitea.tokenFor`), and judges an
   environment by the rule in the gateway's own configuration.

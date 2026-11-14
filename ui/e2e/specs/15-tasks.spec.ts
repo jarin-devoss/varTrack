@@ -77,10 +77,13 @@ test.describe('reading the tasks', () => {
     };
     const [seed] = await adminApi.sync('gitea/mongo', ['staging']);
     await adminApi.succeeded(seed);
+    // an earlier spec's heals are not this one's: only a self-heal task that was not there before the change is
+    const earlier = new Set((await adminApi.tasks(300)).filter(t => t.trigger === 'self_heal').map(t => t.taskId));
     stores.mongoSet('ui-mongo', 'staging', 'api.rate_limit', unique('outside'));
-    expect((await stack.checkNow('gitea', 'mongo'))[0].healed).toBe(true);
+    // asked to look now; the watcher heals on its own poll too, and either way the heal is a task
+    await stack.checkNow('gitea', 'mongo');
     await expect.poll(async () => {
-      started.self_heal = (await adminApi.tasks(40)).find(t => t.trigger === 'self_heal')?.taskId ?? '';
+      started.self_heal = (await adminApi.tasks(300)).find(t => t.trigger === 'self_heal' && !earlier.has(t.taskId))?.taskId ?? '';
       return started.self_heal;
     }, { timeout: 30_000, message: 'the heal is a task' }).not.toBe('');
     for (const id of [started.webhook, started.cli, started.self_heal]) await adminApi.finished(id);
