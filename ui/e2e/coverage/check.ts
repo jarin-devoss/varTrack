@@ -143,6 +143,7 @@ export function resultProblems(resultsPath: string): string[] {
   const problems: string[] = [];
   const report = JSON.parse(fs.readFileSync(resultsPath, 'utf8')) as { suites: JsonSuite[] };
   const byFile = new Map<string, { passed: number; bad: string[] }>();
+  const skipped: string[] = [];
   let total = 0;
 
   const visit = (suite: JsonSuite) => {
@@ -153,8 +154,11 @@ export function resultProblems(resultsPath: string): string[] {
         total++;
         const last = test.results[test.results.length - 1]?.status ?? test.status;
         if (test.status === 'skipped') {
+          // A skipped test covers nothing, whatever its reason: the suite makes the state a test is about instead of skipping on
+          // what the stack happens to hold, and the regression refuses a skipped suite the same way.
+          // In any spec file, not only the ones the manifest relies on.
           const why = test.annotations?.find(a => a.type === 'skip' || a.type === 'fixme')?.description;
-          if (!why) entry.bad.push(`${spec.title}: skipped without a reason`);
+          skipped.push(`${spec.file}: ${spec.title}: skipped${why ? ` (${why})` : ' without a reason'}`);
         } else if (last === 'passed' || test.status === 'expected' || test.status === 'flaky') {
           entry.passed++;
         } else {
@@ -167,6 +171,7 @@ export function resultProblems(resultsPath: string): string[] {
   report.suites.forEach(visit);
 
   if (total === 0) problems.push('the run executed no tests');
+  problems.push(...skipped);
   const m = manifest();
   const needed = new Set(
     [...Object.values(m.routes), ...Object.values(m.labels), ...Object.values(m.states)].flatMap(e => (e.spec ? [`${e.spec}.spec.ts`] : [])),

@@ -1,3 +1,6 @@
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { resultProblems, staticProblems } from '../../e2e/coverage/check';
 
@@ -10,6 +13,19 @@ import { resultProblems, staticProblems } from '../../e2e/coverage/check';
 describe('the end-to-end coverage manifest', () => {
   it('lists every route, named control and status of the UI, each with a spec that mentions it', () => {
     expect(staticProblems()).toEqual([]);
+  });
+
+  it('fails a skipped test, with or without a reason, in any spec file', () => {
+    const skipped = (title: string, annotations: object[] = []) => ({ title, file: 'zz-not-in-the-manifest.spec.ts', line: 1, tests: [{ status: 'skipped', annotations, results: [{ status: 'skipped' }] }] });
+    const file = path.join(os.tmpdir(), `vt-results-${process.pid}.json`);
+    fs.writeFileSync(file, JSON.stringify({ suites: [{ file: 'zz-not-in-the-manifest.spec.ts', specs: [skipped('says why', [{ type: 'skip', description: 'nothing needs attention' }]), skipped('says nothing')] }] }));
+    try {
+      const problems = resultProblems(file);
+      expect(problems).toContain('zz-not-in-the-manifest.spec.ts: says why: skipped (nothing needs attention)');
+      expect(problems).toContain('zz-not-in-the-manifest.spec.ts: says nothing: skipped without a reason');
+    } finally {
+      fs.rmSync(file, { force: true });
+    }
   });
 
   const results = process.env.COVERAGE_RESULTS;

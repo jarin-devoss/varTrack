@@ -78,6 +78,9 @@ A long wait means the product is missing a way to say "now". Do not raise a time
 - **Name the environment, rule and tab a spec acts on.** Do not rely on what a page shows first (the Keys tab opens on the
   first environment that differs, which is not always the one you mean) or on what an earlier spec or the regression left. A spec
   needs only the world (`fixtures/world.ts`): pick the environment (`RulePage.keysEnvironment(env)`) and wait for it.
+- **No `test.skip`, and no branch on what the stack holds.** Make the state the test is about (a drift, a failed sync) and put it
+  back after (`withDrift` in `04-home.spec.ts`). A skipped test covers nothing, so the coverage check fails the run on one, and
+  the job summary lists it next to the flaky tests.
 - **A spec you add or change is run again, with no retry, before it is trusted.** On a pull request CI runs the spec files the
   change touches `BURN_IN_REPEAT` (5) times each with `--retries=0`: the one retry on CI is what lets a flaky test pass. It sees
   spec files only, not the page objects they import (that would be most of the suite), so a change to a page object names the
