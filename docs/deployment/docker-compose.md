@@ -190,13 +190,13 @@ curl http://localhost:8000/metrics
 ## The end-to-end regression
 
 `e2e/docker-compose.yml` runs the whole product (Gitea, Vault, MongoDB, Redis, ZooKeeper, MinIO, an SSH target,
-the gateway, the orchestrator and the watcher) and then the 23 suites of `e2e/init/test_runner.py`:
+the gateway, the orchestrator and the watcher) and then the 25 suites of `e2e/init/test_runner.py`:
 
 ```bash
 cd e2e
 docker compose up --build --detach
 docker compose wait e2e-demo       # the exit code is the regression's: 0 only when every suite passed
-python3 check_results.py           # 23 suites, none failed, none skipped; prints the table
+python3 check_results.py           # 25 suites, none failed, none skipped; prints the table
 ```
 
 - **A suite that fails fails the run.** `e2e-demo` exits with the runner's status (`demo.sh` no longer turns a failure

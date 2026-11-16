@@ -254,6 +254,9 @@
     "event.PruneSkipped": {
       "spec": "14-events"
     },
+    "event.FileLetGo": {
+      "spec": "14-events"
+    },
     "event.ShapeChanged": {
       "spec": "14-events"
     },

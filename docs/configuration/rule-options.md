@@ -121,6 +121,8 @@ Default behaviour (field absent or unset):
   → If "vartrack" is absent, the WHOLE FILE is used (soft fallback).
 ```
 
+A root_key set to anything else that the file lacks SKIPS the file: nothing is synced from it ("root_key=… not found in …, skipping").
+
 Set to "" to always process the entire file regardless of its contents.
 
 ```text
@@ -266,7 +268,7 @@ Turns the rule on or off for some repositories: [{match_repositories: ["other-or
 
 ## `prune`
 
-Delete keys varTrack wrote before that Git no longer holds: true, or {enabled, protection}. Prune runs once per environment after all its files are written, only on sinks that keep each key separately (Redis, ZooKeeper, MongoDB with STRATEGY_KEY_VALUE). A key changed outside varTrack is kept and reported. protection lists glob patterns of keys that are never deleted; every layer's patterns add up. An object with only protection does not turn pruning on.
+Delete keys varTrack wrote before that Git no longer holds: true, or {enabled, protection}. Prune runs once per environment after all its files are written, only on sinks that keep each key separately (Redis, ZooKeeper, MongoDB with STRATEGY_KEY_VALUE). A key changed outside varTrack is kept and reported. protection lists glob patterns of keys that are never deleted; every layer's patterns add up. An object with only protection does not turn pruning on. When a rule stops reading a file (its file_name changed), that file's keys are pruned like any other, and on MongoDB with STRATEGY_DOCUMENT or STRATEGY_FILE its document is deleted; with prune off they stay in the sink and are shown as not in Git.
 
 | | |
 |---|---|

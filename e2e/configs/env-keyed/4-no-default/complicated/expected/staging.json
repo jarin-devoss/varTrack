@@ -1,0 +1,7 @@
+{
+  "database.host": "db.staging.internal",
+  "database.password": "@secret(secret/e2e-env-keyed/staging#db_password)",
+  "database.port": "5432",
+  "replicas": "2",
+  "service": "checkout-api"
+}

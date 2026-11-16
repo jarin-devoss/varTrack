@@ -14,17 +14,20 @@ Order of operations per file
 
 Step 4 detail
 ─────────────
-After root_key extraction the data may be env-keyed in one of two patterns:
+After root_key extraction the data may hold the settings of every environment (env_slice.py):
 
-  Pattern 1 — top-level keys are env names:
-    { "predev": { "color": "red" }, "default": { "color": "blue" } }
-
-  Pattern 2 — per-key env sub-keys mixed with scalars:
+  At the root — keys that are environments are environment objects, the rest is the base shared by all:
+    { "timeout": 30, "default": { "color": "blue" }, "predev": { "color": "red" } }
+  Under the root — an object whose keys are all `default` or environments is one value per environment:
     { "color": { "predev": "green", "default": "blue" }, "age": 43 }
 
-Both patterns are auto-detected.  No rule config flag needed.
-If the resolved env is a PR / branch / tag that doesn't exist as a key,
-the slice falls back to "default" silently.
+Which keys are environments is what the rule declares (env_slice.rule_environments): branch_map's values,
+file_path_map's keys, the repository's branches with branch_as_env, its tags with tag_as_env, pr-<number>
+with pr_as_env, and always the environment being synced and `default`.
+
+If the file names neither the environment nor "default", it has nothing for this environment: it is skipped
+("nothing to do", saying why), or with strict_validation it fails. Another environment's settings are never
+written under it.
 
 Auto-provision
 ──────────────
@@ -47,6 +50,33 @@ from app.tasks.file_collector import collect as collect_files
 logger = logging.getLogger(__name__)
 
 _DEFAULT_ROOT_KEY = "vartrack"
+
+
+def _environments(rule_config: dict, env: str, repo_url: str):
+    """The environments the rule declares (env_slice.rule_environments). With branch_as_env or tag_as_env they are the
+    repository's branches or tags, read from the mirror the files were just read through: no call to the remote."""
+    from app.pipeline.env_slice import rule_environments
+
+    branches: list[str] = []
+    tags: list[str] = []
+    if rule_config.get("branch_as_env") or rule_config.get("tag_as_env"):
+        try:
+            from app.utils.git.mirror import get_default_mirrors
+
+            mirrors = get_default_mirrors()
+            if rule_config.get("branch_as_env"):
+                branches = mirrors.refs(repo_url, "heads")
+            if rule_config.get("tag_as_env"):
+                tags = mirrors.refs(repo_url, "tags")
+        except Exception:
+            logger.debug("env_slice: could not list the refs of %s", repo_url, exc_info=True)
+    return rule_environments(rule_config, env, branches, tags)
+
+
+def _no_environment(exc, file_path: str, env: str) -> str:
+    """Why a file keyed by environments has nothing for *env*."""
+    where = f" (under {exc.path})" if getattr(exc, "path", "") else ""
+    return f"{file_path} names no environment {env!r} and no 'default'{where}: nothing to write for {env}"
 
 # A file in one of these formats may carry a top-level "$schema": an editor's hint, or (with the rule's
 # schema_from_file) the file's own choice of schema. It is never config: it is taken out before the file is flattened.
@@ -83,7 +113,7 @@ def _record_metric(outcome: str, key_count: int = 0) -> None:
 
 def run_stage_etl(ctx: PayloadContext, datasource: str, tenant_id: str) -> ETLResult:
     from app.pipeline import env_resolver, transformer
-    from app.pipeline.env_slice import resolve_env_slice, detect_pattern
+    from app.pipeline.env_slice import NoEnvironment, resolve_env_slice, detect_pattern
     from app.pipeline.validator import Validator, CUEValidationError, CUEUnavailable
     from app.pipeline.secret_resolver import effective_secrets, parse_secret_fields, resolve_secrets, mask_secrets
     from app.pipeline.change_logger import parse_logger_fields
@@ -111,6 +141,9 @@ def run_stage_etl(ctx: PayloadContext, datasource: str, tenant_id: str) -> ETLRe
     result = ETLResult()
     commit = schemas.schema_commit(tenant_id)
     result.schema_commit = commit if isinstance(commit, str) else ""
+
+    # The names the rule declares as environments, read once (the environment of each file is added as it is resolved).
+    environments = _environments(rule_config, "", ctx.repo_url)
 
     for file_path, content in raw_files:
         try:
@@ -160,11 +193,23 @@ def run_stage_etl(ctx: PayloadContext, datasource: str, tenant_id: str) -> ETLRe
 
             # ── 4. Env-aware slice ────────────────────────────────────────────
             # Works for any resolved env: "pr-42", "feature/login", "v1.2.3" …
-            # Falls back to "default" key if env not found in data.
-            # Returns data unchanged if neither pattern is detected.
+            # Falls back to "default" when the file has no key for the env. A file keyed by environments that names
+            # neither is skipped, or fails under strict_validation: never another environment's settings.
             if isinstance(parsed, dict):
-                pattern = detect_pattern(parsed, env)
-                parsed  = resolve_env_slice(parsed, env)
+                try:
+                    pattern = detect_pattern(parsed, env, environments)
+                    parsed  = resolve_env_slice(parsed, env, environments)
+                except NoEnvironment as exc:
+                    reason = _no_environment(exc, file_path, env)
+                    logger.warning("env_slice: %s", reason)
+                    if strict_validate:
+                        result.errors.append(file_path)
+                        result.error_reasons[file_path] = f"strict_validation: {reason}"
+                        _record_metric("error")
+                    else:
+                        result.unfed[file_path] = reason
+                        _record_metric("skipped")
+                    continue
                 if pattern != "none":
                     logger.info("env_slice file=%s env=%s pattern=%s", file_path, env, pattern)
 
@@ -313,7 +358,7 @@ def run_stage_etl_content(
     validate pipeline as run_stage_etl, but for a single file.
     """
     from app.pipeline import transformer
-    from app.pipeline.env_slice import resolve_env_slice, detect_pattern
+    from app.pipeline.env_slice import NoEnvironment, resolve_env_slice, detect_pattern
     from app.pipeline.validator import Validator, CUEValidationError, CUEUnavailable
     from app.pipeline.secret_resolver import effective_secrets, parse_secret_fields, resolve_secrets, mask_secrets
     from app.pipeline.change_logger import parse_logger_fields
@@ -344,8 +389,20 @@ def run_stage_etl_content(
                 return result
 
         if isinstance(parsed, dict):
-            pattern = detect_pattern(parsed, env)
-            parsed  = resolve_env_slice(parsed, env)
+            environments = _environments(rule_config, env, ctx.repo_url)
+            try:
+                pattern = detect_pattern(parsed, env, environments)
+                parsed  = resolve_env_slice(parsed, env, environments)
+            except NoEnvironment as exc:
+                # As for a sync: skipped and said, or failed under strict_validation. Never another environment's keys.
+                reason = _no_environment(exc, file_path, env)
+                logger.warning("env_slice: %s", reason)
+                if strict_validate:
+                    result.errors.append(file_path)
+                    result.error_reasons[file_path] = f"strict_validation: {reason}"
+                else:
+                    result.unfed[file_path] = reason
+                return result
             if pattern != "none":
                 logger.info("env_slice file=%s env=%s pattern=%s", file_path, env, pattern)
 

@@ -22,7 +22,7 @@ import sys
 from unittest.mock import MagicMock, patch
 
 # ── Stub heavy deps so the test module loads without infrastructure ────────────
-for _mod in ("vartrack_core", "pymongo", "gitpython", "git"):
+for _mod in ("pymongo", "gitpython", "git"):
     if _mod not in sys.modules:
         sys.modules[_mod] = MagicMock()
 

@@ -1,0 +1,7 @@
+{
+  "db.host": "db.login-test.internal",
+  "db.port": "5432",
+  "features.beta": "true",
+  "log_level": "debug",
+  "replicas": "1"
+}

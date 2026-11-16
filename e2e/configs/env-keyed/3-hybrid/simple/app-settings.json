@@ -1,0 +1,10 @@
+{
+  "timeout_ms": 3000,
+  "default": {
+    "db": "db.internal"
+  },
+  "production": {
+    "db": "db.prod.internal",
+    "timeout_ms": 1500
+  }
+}

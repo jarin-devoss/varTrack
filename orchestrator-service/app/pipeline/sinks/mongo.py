@@ -297,6 +297,19 @@ class MongoSink(BaseSink):
             return False
 
     @classmethod
+    def prunes_files(cls, settings: Any, rule_config: dict) -> bool:
+        # The strategies that keep a file as its own document (tagged _vt_file): the document is what a file the rule
+        # stops reading leaves behind, and delete_file_data removes it.
+        try:
+            # update_strategy is a field of the datasource block (mongo.proto). A datasource that does not set it
+            # reads as STRATEGY_UNSPECIFIED, the enum's zero value: "it did not say". The sink then writes DOCUMENT, one
+            # document per file (see __init__, docs/sinks/mongodb.md), so it keeps a document per file too.
+            return update_strategy(settings.get("update_strategy")) in (
+                "STRATEGY_UNSPECIFIED", "STRATEGY_DOCUMENT", "STRATEGY_FILE")
+        except ValueError:
+            return False
+
+    @classmethod
     def key_space(cls, settings: Any, rule_config: dict, tenant_id: str, env: str) -> str:
         # Documents are filtered by tenant, datasource and env: environments
         # never share keys, even in one collection.

@@ -236,6 +236,23 @@ def _usable(hit: tuple | None, record: dict) -> bool:
     return hit is not None and hit[1] == record.get("lastSync", {}).get("taskId")
 
 
+def current_record(rule: dict, record: dict) -> dict:
+    """The target as the rule reads it now: its desired state is the files the rule names for the environment
+    (repo_scope.files_of), not every file it was ever synced from. A rule whose file_name changed, or that sends the
+    environment to another file, reads right at once, with no sync and no Forget, as a comparison with the rule as it
+    is now (not as it was when the file was written). *record* itself when the rule's files are not known or all
+    of them are in it."""
+    files = repo_scope.files_of(rule, record.get("env", ""))
+    if files is None:
+        return record
+    entries = ledger.entries_of(record)
+    kept = {name: entry for name, entry in entries.items() if files.intersection(ledger.entry_paths(name, entry))}
+    if len(kept) == len(entries):
+        return record
+    desired, digests, names = ledger.merge_entries(kept)
+    return {**record, "desiredByFile": kept, "desired": desired, "secretDigests": digests, "files": names}
+
+
 def compare(rule: dict, tenant: str, record: dict, *, fresh: bool = False) -> dict[str, Any]:
     """
     Compare a target's desired state with the sink.
@@ -244,6 +261,7 @@ def compare(rule: dict, tenant: str, record: dict, *, fresh: bool = False) -> di
     still at once while a background read refreshes it. Only a target not read
     since its last sync waits for the sink. *fresh* always reads now.
     """
+    record = current_record(rule, record)
     key = _cache_key(rule, tenant, record)
     if fresh:
         # The watcher's drift check: a read that began earlier may predate the write it asks about.
@@ -291,7 +309,11 @@ def _compare_now(rule: dict, tenant: str, record: dict, cache_key: tuple) -> dic
     desired: dict[str, str] = record.get("desired", {})
     digests: dict[str, str] = record.get("secretDigests", {})
 
-    current, error = _read_current(rule, tenant, env, list(desired))
+    # Keys a file the rule no longer reads left in the sink (ledger.let_go): read too, and shown as "not in Git".
+    left_behind: dict[str, tuple[dict, str]] = {
+        k: (v, held.get("file", "")) for held in (record.get("letGo") or {}).values()
+        for k, v in (held.get("keys") or {}).items() if k not in desired}
+    current, error = _read_current(rule, tenant, env, [*desired, *left_behind])
     keys: list[dict[str, Any]] = []
     changed = missing = 0
     if current is not None:
@@ -320,6 +342,29 @@ def _compare_now(rule: dict, tenant: str, record: dict, cache_key: tuple) -> dic
                 "state": state,
                 "sourceFile": (record.get("files") or [""])[0],
             })
+        # What a file the rule stopped reading left behind: in the sink, not in Git, and not drift (the environment
+        # reads Synced against the files the rule names now). One no longer in the sink is noted no more.
+        from app.pipeline.sinks.base import Unreadable
+
+        gone: list[str] = []
+        for key in sorted(left_behind):
+            held, file = left_behind[key]
+            live = current.get(key)
+            if live is None:
+                gone.append(key)
+            elif not isinstance(live, Unreadable):
+                secret = held.get("digest") is not None
+                keys.append({
+                    "key": key,
+                    **({"liveValue": ledger.SECRET_MASK if secret else live}),
+                    "secret": secret,
+                    "protected": any(fnmatch.fnmatch(key, p) for p in protection),
+                    "state": "unmanaged",
+                    "sourceFile": file,
+                    "reason": "no longer read by the rule",
+                })
+        if gone:
+            ledger.settle_let_go(tenant=tenant, datasource=str(rule.get("datasource", "")), env=env, gone=gone)
     result = {"error": error, "keys": keys, "differs": changed + missing, "checkedAt": ledger.now_iso(now)}
     task_id = record.get("lastSync", {}).get("taskId")
     with _compare_lock:
@@ -373,6 +418,7 @@ def _drift_marker(tenant: str, rule: dict, env: str, differs: bool) -> str | Non
 
 
 def target_view(rule: dict, tenant: str, record: dict, *, recent_tasks: list[dict]) -> dict[str, Any]:
+    record = current_record(rule, record)
     env = record["env"]
     # An environment no branch feeds any more (the rule changed after it wrote it) is not compared with the rule's
     # destination: that would call it drifted for ever. It is shown, with its history and keys, as no longer synced.
@@ -459,7 +505,15 @@ def rule_view(rule: dict, tenant: str, records: list[dict], tasks: list[dict]) -
     name = rule_name(rule)
     rule_tasks = [t for t in tasks if t.get("rule") == name]
     mine = [rec for rec in sorted(records, key=lambda r: r.get("env", "")) if rec.get("datasource") == rule.get("datasource")]
-    targets = [target_view(rule, tenant, rec, recent_tasks=rule_tasks) for rec in mine]
+    targets = []
+    for rec in mine:
+        # Every file it was synced from is one the rule no longer reads (its file_name changed since, with no push):
+        # it reads as an environment the rule produces and has not written yet.
+        branch = repo_scope.branch_for(rule, rec.get("env", ""))
+        if branch and ledger.entries_of(rec) and not ledger.entries_of(current_record(rule, rec)):
+            targets.append(unsynced_target(rule, tenant, rec["env"], branch))
+        else:
+            targets.append(target_view(rule, tenant, rec, recent_tasks=rule_tasks))
     written = {rec.get("env") for rec in mine}
     targets += [unsynced_target(rule, tenant, env, branch) for env, branch in produced_envs(rule).items() if env not in written]
     return {**rule_base(rule, tenant), "targets": targets}

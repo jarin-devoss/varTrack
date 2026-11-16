@@ -190,6 +190,7 @@ export type EventReason =
   | 'KeysPruned'
   | 'PruneFailed'
   | 'PruneSkipped'
+  | 'FileLetGo'
   | 'ShapeChanged'
   | 'SharedKeySpace'
   | 'DriftDetected'
@@ -223,6 +224,8 @@ export interface KeyEntry {
   protected: boolean;
   state: KeyState;
   sourceFile: string;
+  /** Why it is shown when Git does not hold it: a file the rule no longer reads left it in the sink. */
+  reason?: string;
 }
 
 export type ServiceName = 'gateway' | 'orchestrator' | 'watcher';

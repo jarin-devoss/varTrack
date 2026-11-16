@@ -77,6 +77,25 @@ def branch_for(rule: dict, env: str) -> str:
     return ""
 
 
+def files_of(rule: dict, env: str) -> set[str] | None:
+    """The files the rule reads for *env*: the paths a complete sync of it writes. The answer
+    app/tasks/file_collector.collect acts on, in one place.
+
+      file_name        that file, for every environment;
+      file_path_map    the environment's own entry.
+
+    None when it cannot be told from the rule alone: a file_path_map rule, and an environment that is not one of
+    its entries or that a branch_map entry also feeds (every file it reads then lands in that environment, whatever
+    the push). Nothing is dropped from, or hidden in, an environment whose files are not known."""
+    name = rule.get("file_name")
+    if name:
+        return {str(name)}
+    by_env = rule.get("file_path_map") or {}
+    if env in by_env and env not in (rule.get("branch_map") or {}).values():
+        return {str(by_env[env])}
+    return None
+
+
 def nothing_feeds(rule: dict, env: str) -> str:
     """Why *env* cannot be synced or dry-run when no branch feeds it (the engine's words, too)."""
     return (f"nothing feeds {env} in the {rule.get('datasource', '')} rule: no branch_map entry maps a branch to it, "

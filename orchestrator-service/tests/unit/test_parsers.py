@@ -12,7 +12,7 @@ import sys
 import unittest
 from unittest.mock import MagicMock
 
-for _m in ("vartrack_core", "pymongo", "git", "gitpython"):
+for _m in ("pymongo", "git", "gitpython"):
     sys.modules.setdefault(_m, MagicMock())
 
 import pytest

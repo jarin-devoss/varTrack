@@ -1,0 +1,4 @@
+{
+  "db.host": "db.prod.internal",
+  "db.port": "5432"
+}

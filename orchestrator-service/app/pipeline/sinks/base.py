@@ -201,6 +201,13 @@ class BaseSink(IFactory, ABC):
         return False
 
     @classmethod
+    def prunes_files(cls, settings: Any, rule_config: dict) -> bool:
+        """True when this rule's sink keeps each file as its own object that can be deleted by the file's path
+        (delete_file_data): the document strategies of MongoDB. A file the rule stops reading is then pruned as the
+        unit the sink stores, not key by key. Reads the datasource's settings and the rule only — no connection."""
+        return False
+
+    @classmethod
     def key_space(cls, settings: Any, rule_config: dict, tenant_id: str, env: str) -> str:
         """Which key space env's keys land in, within the sink's store. Two
         environments with the same key space in the same store share their

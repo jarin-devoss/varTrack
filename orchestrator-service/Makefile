@@ -3,7 +3,6 @@
 # Usage:
 #   make help           Show this help
 #   make install        Install Python deps (editable + dev extras)
-#   make rust           Build the Rust extension (vartrack_core)
 #   make test           Run all tests (unit + integration)
 #   make test-unit      Run unit tests only
 #   make test-int       Run integration tests only
@@ -51,14 +50,6 @@ help:
 install: ## Install Python dependencies (editable + dev extras)
 	$(PIP) install --upgrade pip
 	$(PIP) install -e ".[dev]"
-
-.PHONY: rust
-rust: ## Build the Rust extension (vartrack_core) via maturin
-	cd rust_core && maturin develop --release
-
-.PHONY: rust-debug
-rust-debug: ## Build the Rust extension in debug mode (faster compile)
-	cd rust_core && maturin develop
 
 # ── Testing ───────────────────────────────────────────────────────────────────
 
@@ -176,4 +167,3 @@ clean: ## Remove build artefacts, caches, and generated files
 	find . -type d -name "htmlcov" -exec rm -rf {} + 2>/dev/null || true
 	find . -name "*.pyc" -delete 2>/dev/null || true
 	find . -name ".coverage" -delete 2>/dev/null || true
-	cd rust_core && cargo clean 2>/dev/null || true

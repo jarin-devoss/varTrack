@@ -1,0 +1,10 @@
+{
+  "database.host": "db.staging.internal",
+  "database.pool.max": "10",
+  "database.port": "5432",
+  "log_level": "info",
+  "regions.0": "us-east-1",
+  "regions.1": "eu-west-1",
+  "replicas": "2",
+  "service": "checkout-api"
+}

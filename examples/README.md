@@ -48,6 +48,9 @@ Sample configuration files your Git repo can contain. VarTrack parses these form
 | `vars.env` | dotenv | `.env` |
 | `config.hcl` | HCL / Terraform | `.hcl`, `.tfvars` |
 | `params.ini` | INI | `.ini`, `.cfg` |
+| `settings.multi-env.json` | JSON | one file for every environment: `default`, `staging` and `production` under a `vartrack` root, merged key by key |
+| `settings.multi-env.yaml` | YAML | the same, with `root_key: config`, a value per environment inside a list item, and a block that is never synced |
+| `annotated.yaml` | YAML | a file that passes `schemas/annotated_schema.cue` |
 
 `@secret(path#field)` annotations in any format are resolved by Vault before writing to the sink.
 

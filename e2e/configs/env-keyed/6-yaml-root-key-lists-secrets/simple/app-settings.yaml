@@ -1,0 +1,9 @@
+config:
+  default:
+    db:
+      host: db.internal
+      password: "@secret(secret/e2e-env-keyed/default#db_password)"
+  production:
+    db:
+      host: db.prod.internal
+      password: "@secret(secret/e2e-env-keyed/production#db_password)"

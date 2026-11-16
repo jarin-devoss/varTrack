@@ -1,0 +1,7 @@
+{
+  "db.host": "db.dev.internal",
+  "db.port": "5432",
+  "features.beta": "false",
+  "log_level": "debug",
+  "replicas": "1"
+}

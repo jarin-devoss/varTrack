@@ -18,6 +18,7 @@ const REASONS: [id: string, label: string][] = [
   ['KeysPruned', 'Keys pruned'],
   ['PruneFailed', 'Prune failed'],
   ['PruneSkipped', 'Prune skipped'],
+  ['FileLetGo', 'File let go'],
   ['ShapeChanged', 'Shape changed'],
   ['SharedKeySpace', 'Shared key space'],
   ['DriftDetected', 'Drift detected'],

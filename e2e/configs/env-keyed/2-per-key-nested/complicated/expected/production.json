@@ -1,0 +1,10 @@
+{
+  "database.host": "db.prod.internal",
+  "database.pool.max": "100",
+  "database.port": "5432",
+  "log_level": "warn",
+  "regions.0": "us-east-1",
+  "regions.1": "eu-west-1",
+  "replicas": "6",
+  "service": "checkout-api"
+}

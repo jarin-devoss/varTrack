@@ -156,6 +156,20 @@ class RepoMirrors:
             self._evict(keep=key)
         return path
 
+    def refs(self, url: str, kind: str) -> list[str]:
+        """The names of the branches (*kind* "heads") or tags ("tags") the mirror of *url* holds: what its last fetch
+        brought, read from the mirror itself with no call to the remote. Empty when there is no mirror yet."""
+        if kind not in ("heads", "tags"):
+            raise ValueError(f"refs: kind is 'heads' or 'tags', not {kind!r}")
+        path = self.path(url)
+        if not self._whole(path):
+            return []
+        proc = self._run(["--git-dir", str(path), "for-each-ref", "--format=%(refname)", f"refs/{kind}"], check=False)
+        if proc.returncode != 0:
+            return []
+        prefix = f"refs/{kind}/"
+        return [line.removeprefix(prefix) for line in proc.stdout.decode(errors="replace").splitlines() if line.startswith(prefix)]
+
     def has_commit(self, url: str, sha: str) -> bool:
         path = self.path(url)
         if not self._whole(path):

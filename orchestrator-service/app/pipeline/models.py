@@ -114,3 +114,7 @@ class SyncResult:
     prune_pending:      list[str] | None = None
     prune_skipped:      list[str] = field(default_factory=list)
     prune_error:        str = ""
+    # Files the rule no longer reads for this environment, let go by this (complete) sync, on its last file.
+    # Each: {"entry": the ledger's key, "file", "keys": every key it wrote, "left": those still in the sink,
+    # "pruned": those deleted, "document": its document was deleted}. None when none was let go.
+    let_go:             list[dict] | None = None

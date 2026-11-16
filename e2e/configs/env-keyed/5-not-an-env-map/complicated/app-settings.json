@@ -1,0 +1,37 @@
+{
+  "service": "checkout-api",
+  "timeouts": {
+    "default": 30,
+    "upload": 300
+  },
+  "http": {
+    "retry": {
+      "default": {
+        "max": 3
+      },
+      "payments": {
+        "max": 5
+      }
+    },
+    "log_level": {
+      "default": "info",
+      "production": "warn"
+    }
+  },
+  "queues": [
+    {
+      "name": "orders",
+      "limits": {
+        "default": 10,
+        "burst": 50
+      }
+    },
+    {
+      "name": "emails",
+      "limits": {
+        "default": 5,
+        "production": 20
+      }
+    }
+  ]
+}

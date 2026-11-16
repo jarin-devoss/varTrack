@@ -11,7 +11,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-for _m in ("vartrack_core", "pymongo", "git", "gitpython"):
+for _m in ("pymongo", "git", "gitpython"):
     sys.modules.setdefault(_m, MagicMock())
 
 from app.dependencies import SecretUnavailable

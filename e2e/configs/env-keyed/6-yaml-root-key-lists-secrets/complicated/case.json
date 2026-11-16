@@ -1,0 +1,13 @@
+{
+  "file": "app-settings.yaml",
+  "branches": {
+    "main": "production",
+    "develop": "staging",
+    "e2e-qa": "qa"
+  },
+  "rule": {
+    "root_key": "config"
+  },
+  "secrets": true,
+  "schema": "schema.cue"
+}

@@ -10,7 +10,7 @@ and the gateway's permission engine, and no test of any one of them could fail.
 
 ## Run them
 
-The way CI runs them, in one command from `ui/` (clean volumes, the 23-suite regression, the browser tests, the coverage check):
+The way CI runs them, in one command from `ui/` (clean volumes, the 25-suite regression, the browser tests, the coverage check):
 
 ```sh
 npm ci

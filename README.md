@@ -116,7 +116,7 @@ It works alongside whatever deploys your services: VarTrack only keeps their run
 flowchart LR
     GIT["📁 Git repo\nGitHub / Gitea / GitLab"]
     GW["gateway-service\nGo · :5657"]
-    ORCH["orchestrator-service\nPython · :50051\n───────────\nRust ETL core"]
+    ORCH["orchestrator-service\nPython · :50051\n───────────\nETL pipeline"]
     WATCH["watcher-service\nGo · :9091"]
 
     GIT -->|"webhook\npush / PR"| GW
@@ -129,16 +129,13 @@ flowchart LR
 
 1. You push a config file to Git.
 2. The **gateway-service** (Go) receives the webhook, verifies the HMAC signature, and forwards it via gRPC.
-3. The **orchestrator-service** (Python) fetches the file from Git, validates it against a CUE schema, runs the **Rust ETL core** (diff, flatten, merge, prune) for performance-critical operations, and writes to all configured sinks.
+3. The **orchestrator-service** (Python) fetches the file from Git, validates it against a CUE schema, reads out the environment being synced, flattens it, compares it with each sink, and writes to all configured sinks.
 4. The **watcher-service** (Go) asks the orchestrator, on a configurable interval, whether each datasource still matches Git; the orchestrator reads the sinks back and compares. When a value diverges, the watcher logs the delta and — if `self_heal: true` — has the orchestrator restore correct state.
-
-> **Why Rust inside the orchestrator?** The ETL core (diff, flatten, merge, prune) is implemented in Rust and called from Python via FFI. This keeps the hot path allocation-free and handles multi-megabyte config payloads without GC pressure, while the Python layer handles I/O, Vault, and sink drivers.
 
 | Service | Language | Role |
 |---|---|---|
 | **gateway-service** | Go | Webhook receiver, platform routing, gRPC forwarder |
 | **orchestrator-service** | Python | ETL pipeline, CUE validation, multi-sink writer |
-| **rust_core** | Rust (FFI) | Diff, flatten, merge, prune — hot path |
 | **watcher-service** | Go | Drift detection, self-heal trigger |
 | **vt** | Go | CLI for manual sync and CI/CD integration |
 
@@ -610,7 +607,7 @@ varTrack/
 ├── libs/go/                      # Go — generated code, bundle loader, secret files (shared)
 │
 ├── gateway-service/              # Go — HTTP ingress, webhook receiver, CLI API
-├── orchestrator-service/         # Python + Rust — ETL pipeline, sink writer
+├── orchestrator-service/         # Python — ETL pipeline, sink writer
 ├── watcher-service/              # Go — drift detection, self-heal
 ├── cli/                          # Go — vt command-line tool
 ├── ui/                           # React — web UI

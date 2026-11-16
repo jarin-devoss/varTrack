@@ -1,0 +1,13 @@
+{
+  "default": {
+    "db": {
+      "host": "db.internal",
+      "port": 5432
+    }
+  },
+  "production": {
+    "db": {
+      "host": "db.prod.internal"
+    }
+  }
+}

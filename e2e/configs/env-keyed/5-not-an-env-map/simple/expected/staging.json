@@ -1,0 +1,4 @@
+{
+  "timeouts.default": "30",
+  "timeouts.upload": "300"
+}

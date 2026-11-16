@@ -1,0 +1,6 @@
+{
+  "timeouts": {
+    "default": 30,
+    "upload": 300
+  }
+}
