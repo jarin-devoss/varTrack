@@ -3,26 +3,28 @@
 	"app.region": string
 	"app.env":    string
 
-	"database.pool_size":          string
-	"database.max_connections":    string
-	"database.connect_timeout_ms": string
+	// The demo's file quotes its numbers and booleans ("10", "true"): the schema checks them as numbers
+	// and booleans all the same, and the file decides how each sink stores them.
+	"database.pool_size":          int & >=1
+	"database.max_connections":    int & >=1 & <=1000
+	"database.connect_timeout_ms": int & >=0
 	"database.password":           string @secret()
 
-	"cache.ttl_seconds": string
+	"cache.ttl_seconds": int & >=0
 	"cache.backend":     string
 
-	"api.rate_limit":  string
-	"api.timeout_ms":  string
+	"api.rate_limit":  int & >=0
+	"api.timeout_ms":  int & >=0
 	"api.version":     string
 	"api.secret_key":  string @secret()
 
-	"features.dark_mode":   string
-	"features.analytics":   string
-	"features.debug_mode":  string
+	"features.dark_mode":   bool
+	"features.analytics":   bool
+	"features.debug_mode":  bool
 
 	"observability.log_level":       string & =~"^(DEBUG|INFO|WARN|ERROR)$"
 	"observability.service_mesh":    string
-	"observability.tracing_enabled": string
+	"observability.tracing_enabled": bool
 
 	...
 }

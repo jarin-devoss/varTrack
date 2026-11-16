@@ -1324,7 +1324,14 @@ def suite_15_cue_strict_reject(orchestrator, gitea, gitea_url, rules,
         if task_id:
             result.task_id = task_id
             # The task is finished when it says so: only then is "nothing written" a fact.
-            check_rejected(result, wait_for_task(orchestrator, task_id), "strict_validation")
+            outcome = wait_for_task(orchestrator, task_id)
+            check_rejected(result, outcome, "strict_validation")
+            if outcome.finished:
+                # The bad file also has a number out of the schema's range (database.max_connections: int & <=1000),
+                # which the quoted "5000" in the file is checked as: the failure names it with its value.
+                said = outcome.message + " ".join(str(f.get("error", "")) for f in outcome.files)
+                result.add_check("The failure names the number out of range (database.max_connections = \"5000\")",
+                                 'database.max_connections = "5000"' in said, said[:300])
         verify_mongo_untouched(rule, result, "CUE strict reject (write blocked)")
 
     try:
@@ -1900,6 +1907,8 @@ def main() -> None:
     orig_config = Path(CONFIG_LOCAL).read_bytes()
     bad_config = orig_config.replace(
         b"log_level: INFO", b"log_level: VERBOSE"
+    ).replace(
+        b'max_connections: "100"', b'max_connections: "5000"'      # out of the schema's int & <=1000
     )
 
     results: list[SuiteResult] = []
