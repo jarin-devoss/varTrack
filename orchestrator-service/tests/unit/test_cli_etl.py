@@ -99,7 +99,7 @@ def test_validate_content_uses_the_schema(monkeypatch, tmp_path):
     monkeypatch.setattr(schema_utils, "rule_config_for_datasource", lambda t, d, p="": None)
     monkeypatch.setattr(validator_mod.Validator, "_is_cue_available", lambda self: True)
 
-    def fake_vet(self, flat, schema_path, file_name):
+    def fake_vet(self, flat, schema_path, file_name, own=None):
         return "" if flat.get("max_connections", "").isdigit() else "max_connections: conflicting values"
 
     monkeypatch.setattr(validator_mod.Validator, "_run_cue_vet", fake_vet)

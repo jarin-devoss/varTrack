@@ -43,7 +43,7 @@ def vet(monkeypatch):
     used: list[str] = []
     monkeypatch.setattr(validator_mod.Validator, "_is_cue_available", lambda self: True)
     monkeypatch.setattr(validator_mod.Validator, "_run_cue_vet",
-                        lambda self, flat, schema_path, file_name: used.append(schema_path.name) or None)
+                        lambda self, flat, schema_path, file_name, own=None: used.append(schema_path.name) or None)
     return used
 
 
@@ -136,14 +136,14 @@ def test_strict_validation_lets_an_explicit_none_through(tmp_path, vet):
 
 def test_strict_validation_still_fails_a_file_the_schema_rejects(repo, monkeypatch):
     monkeypatch.setattr(validator_mod.Validator, "_is_cue_available", lambda self: True)
-    monkeypatch.setattr(validator_mod.Validator, "_run_cue_vet", lambda self, flat, path, name: "bad value")
+    monkeypatch.setattr(validator_mod.Validator, "_run_cue_vet", lambda self, flat, path, name, own=None: "bad value")
     etl = sync_files(repo, [("a/app.yaml", "a: 1\n")], {"strict_validation": True})
     assert etl.errors == ["a/app.yaml"] and "strict_validation: CUE validation failed" in etl.failure("a/app.yaml")
 
 
 def test_without_strict_a_rejected_file_is_warn_and_still_synced(repo, monkeypatch):
     monkeypatch.setattr(validator_mod.Validator, "_is_cue_available", lambda self: True)
-    monkeypatch.setattr(validator_mod.Validator, "_run_cue_vet", lambda self, flat, path, name: "bad value")
+    monkeypatch.setattr(validator_mod.Validator, "_run_cue_vet", lambda self, flat, path, name, own=None: "bad value")
     etl = sync_files(repo, [("a/app.yaml", "a: 1\n")], {})
     [f] = etl.files
     assert f.validation == "warn" and "bad value" in f.error
