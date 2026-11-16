@@ -23,15 +23,18 @@ CUE validation process
      <schema_dir>/default.cue       fallback
    A schema the map or the file names that is not in schema_dir is an error, never a fall-back to the next.
 
-2. Convert flat_data dict to a CUE value literal:
-     { "database.host": "localhost", "database.port": "5432" }
-     becomes:
-     { "database.host": "localhost", "database.port": "5432" }
+2. Write the data as CUE, each key with the readings of its value (readings.py): the form the file gave it, as
+   the default, next to the other form it can be read as:
+     port: 8080  (YAML)   →  "database.port": *8080 | "8080"
+     PORT=8080   (.env)   →  "PORT": *"8080" | 8080
+   so a schema's `int`, `bool` and ranges check either, and `string & =~"^[0-9]+$"` still does. flat_data (the
+   text every sink that stores text writes) is not changed.
 
 3. Run:
-     cue vet <schema_file> <data_file>
+     cue vet -c <schema_file> <data_file>
 
-4. If cue vet exits non-zero → CUEValidationError
+4. If cue vet exits non-zero → CUEValidationError. Its message starts with each failing key and the value as the
+   file wrote it (`DATABASE_PORT = "5432" in app.env`), then CUE's own text.
 
 If no schema file is found, nothing checks the file: the caller reports validation "none", and fails it under
 strict_validation.
@@ -51,12 +54,38 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Optional
 
-from app.pipeline import schema_paths
+from app.pipeline import readings, schema_paths
 
 logger = logging.getLogger(__name__)
 
 _CUE_BIN = os.getenv("CUE_BINARY", "cue")
 _CUE_TIMEOUT = int(os.getenv("CUE_TIMEOUT_SECONDS", "15"))
+
+
+def _with_values(error: str, flat_data: dict[str, str], file_name: str, data_file: str) -> str:
+    """CUE's error with, in front of it, each failing key and the value the file had: `DATABASE_PORT = "5432" in app.env`.
+    CUE reports a disjunction by its readings (`conflicting values int and "5432"`), which is not what anyone wrote.
+
+    The failing keys come from CUE's file positions, not its wording: every error line cites the data file as
+    `<data_file>:LINE:COL`, and readings.data_for_cue wrote one key per line, so line N is the N-th key."""
+    keys = list(flat_data)
+    seen: list[str] = []
+    for line in error.splitlines():
+        _, found, rest = line.partition(data_file + ":")
+        number = rest.split(":", 1)[0]
+        if not found or not number.isascii() or not number.isdigit():
+            continue
+        index = int(number) - 1
+        if 0 <= index < len(keys) and keys[index] not in seen:
+            seen.append(keys[index])
+    if not seen:
+        return error
+    lines = [f"{key} = {json.dumps(flat_data[key], ensure_ascii=False)} in {file_name}" for key in seen[:5]]
+    if len(seen) > 5:
+        lines.append(f"… and {len(seen) - 5} more")
+    return "\n".join(lines) + "\n" + error
+
+
 def _parse_cue_version(version_line: str) -> tuple[int, ...]:
     """Extract (major, minor, patch) from 'cue version v0.6.0 linux/amd64'."""
     import re
@@ -169,6 +198,7 @@ class Validator:
         file_name: str,
         strict: bool = False,
         schema_path: Optional[Path] = None,
+        own: Optional[dict[str, Any]] = None,
     ) -> bool:
         """
         Validate *flat_data* against the CUE schema for *file_name*.
@@ -178,6 +208,9 @@ class Validator:
         flat_data  : { "database.host": "localhost", ... }
         file_name  : basename of the source file, e.g. "package.json"
         schema_path: the schema choose() picked; left out, the file name's schema is looked up
+        own        : each key's value as the file had it (transformer.own_forms): an int, float, bool or None where
+                     the parser produced one. The schema is shown that form next to the other it can be read as
+                     (readings.py), so `int` and `bool` work. Left out, every value is the text in *flat_data*.
         strict     : if True, raises CUEValidationError on failure;
                      if False, logs a warning and returns
 
@@ -204,7 +237,8 @@ class Validator:
                 return False
             raise CUEUnavailable(reason)
 
-        error = self._run_cue_vet(flat_data, schema_path, file_name)
+        error = (self._run_cue_vet(flat_data, schema_path, file_name) if own is None
+                 else self._run_cue_vet(flat_data, schema_path, file_name, own))
         if error:
             msg = f"CUE validation failed for {file_name}: {error}"
             if strict:
@@ -272,32 +306,40 @@ class Validator:
         flat_data: dict[str, str],
         schema_path: Path,
         file_name: str,
+        own: Optional[dict[str, Any]] = None,
     ) -> Optional[str]:
         """
-        Write flat_data to a temp JSON file and run `cue vet`.
+        Write the data to a temp CUE file and run `cue vet` on it with the schema.
+
+        Each value is written with its readings (readings.py): the form the file gave it, *own*, as the default,
+        and the other form it can be read as. The file declares no package: it unifies with a schema that has one.
 
         Returns the error message from CUE on failure, or None on success.
         """
-        # CUE vet expects the data as a JSON/CUE value.
-        # We pass it as a JSON file alongside the schema.
-        data_json = json.dumps(flat_data, indent=2)
+        data_cue = readings.data_for_cue(flat_data, own)
 
         tmp_path: Optional[str] = None
         try:
             with tempfile.NamedTemporaryFile(
                 mode="w",
-                suffix=".json",
+                suffix=".cue",
                 prefix="vt_cue_",
                 delete=False,
                 encoding="utf-8",
             ) as tmp:
-                tmp.write(data_json)
+                tmp.write(data_cue)
                 tmp_path = tmp.name
 
             result = subprocess.run(
-                [_CUE_BIN, "vet", str(schema_path), tmp_path],
+                [_CUE_BIN, "vet", "-c", str(schema_path), tmp_path],
                 capture_output=True,
+                # -c: a required key the file lacks is reported by name ("app.name": incomplete value !=""), not as
+                # "some instances are incomplete". It does not change what passes: the same files pass without it.
+                # cue writes UTF-8 (its messages quote the file's own values): the locale's code page would
+                # fail to decode it on a host whose default is not UTF-8.
                 text=True,
+                encoding="utf-8",
+                errors="replace",
                 timeout=_CUE_TIMEOUT,
             )
 
@@ -307,7 +349,7 @@ class Validator:
                     "validator: cue vet failed file=%s schema=%s: %s",
                     file_name, schema_path.name, error,
                 )
-                return error
+                return _with_values(error, flat_data, file_name, Path(tmp_path).name)
 
             logger.debug(
                 "validator: cue vet passed file=%s schema=%s",

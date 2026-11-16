@@ -208,7 +208,8 @@ def validate_content(
     if not validator._is_cue_available():
         return "none", messages + ["the cue binary is not installed on the orchestrator; nothing was checked"], len(flat)
     try:
-        validator.validate(flat_data=flat, file_name=name, strict=True, schema_path=choice.path)
+        validator.validate(flat_data=flat, file_name=name, strict=True, schema_path=choice.path,
+                           own=transformer.own_forms(parsed if structured else None, flat, rule.get("variables_map", {})))
     except CUEValidationError as exc:
         return "failed", messages + [f"schema {choice.name} ({choice.source}): {exc}"], len(flat)
     return "ok", messages + [f"checked against schema {choice.name} ({choice.source})"], len(flat)
