@@ -2251,10 +2251,10 @@ characters, and a <code>*_FILE</code> that cannot be read, rather than running u
 <h3 id="the-development-switch">The development switch<a class="headerlink" href="#the-development-switch" title="Permanent link">&para;</a></h3>
 <p>Without a secret the orchestrator runs <strong>open</strong>: every call is accepted, as before, and it
 logs <code>internal authentication is OFF</code> at startup. This is for a laptop. The repository's
-end-to-end demo (<code>e2e/docker-compose.yml</code>) runs with it <strong>on</strong>: one demo <code>INTERNAL_AUTH_SECRET</code>
+demo (<code>demo/docker-compose.yml</code>, and the regression's <code>e2e/docker-compose.yml</code> on top of it) runs with it <strong>on</strong>: one demo <code>INTERNAL_AUTH_SECRET</code>
 (overridable with <code>VARTRACK_DEMO_INTERNAL_AUTH_SECRET</code>) on the gateway, the orchestrator, the
-watcher and the test runner, which signs its own calls to the orchestrator; its Suite 18 sends the
-calls that must be refused and checks each refusal. (The live UI stack, <code>e2e/docker-compose.live.yml</code>,
+watcher, the seed and the test runner, which sign their own calls to the orchestrator; its Suite 18 sends the
+calls that must be refused and checks each refusal. (The live UI stack, <code>demo/docker-compose.live.yml</code>,
 still runs open.) To run a production-mode service open on purpose, set <code>INTERNAL_AUTH_INSECURE=true</code>;
 there is no other way to get a production orchestrator without authentication.</p>
 <h2 id="scraping-the-admin-port">Scraping the admin port<a class="headerlink" href="#scraping-the-admin-port" title="Permanent link">&para;</a></h2>

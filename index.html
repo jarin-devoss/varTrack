@@ -1997,11 +1997,11 @@
 </div>
 <hr />
 <h2 id="try-it-in-one-command">Try it in one command<a class="headerlink" href="#try-it-in-one-command" title="Permanent link">&para;</a></h2>
-<p>The fastest way to see varTrack in action is the end-to-end demo. It starts a local Git server, MongoDB, ZooKeeper, Redis, and all three varTrack services:</p>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="nb">cd</span><span class="w"> </span>e2e
+<p>The fastest way to see varTrack in action is the demo. It starts a local Git server, MongoDB, ZooKeeper, Redis, and all three varTrack services pre-configured, seeds a config repository and syncs it:</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="nb">cd</span><span class="w"> </span>demo
 </span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>docker<span class="w"> </span>compose<span class="w"> </span>up
 </span></code></pre></div>
-<p>Push a config change to the local repo and watch it sync automatically.</p>
+<p>Open http://localhost:8080 and sign in with Gitea as <code>demo-admin</code> / <code>VarTrack123</code>. Push a config change to the local repo and watch it sync automatically; <a href="https://github.com/jarin-devoss/varTrack/blob/main/demo/README.md">demo/README.md</a> has a short tour (a change in Git, a value changed behind varTrack's back and healed, a dry run, a prune).</p>
 <hr />
 <h2 id="how-it-works">How it works<a class="headerlink" href="#how-it-works" title="Permanent link">&para;</a></h2>
 <pre class="mermaid"><code>flowchart LR

@@ -1521,13 +1521,13 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#the-end-to-end-regression" class="md-nav__link">
+  <a href="#the-demo-and-the-end-to-end-regression-on-it" class="md-nav__link">
     <span class="md-ellipsis">
-      The end-to-end regression
+      The demo, and the end-to-end regression on it
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="The end-to-end regression">
+    <nav class="md-nav" aria-label="The demo, and the end-to-end regression on it">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
@@ -2034,13 +2034,13 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#the-end-to-end-regression" class="md-nav__link">
+  <a href="#the-demo-and-the-end-to-end-regression-on-it" class="md-nav__link">
     <span class="md-ellipsis">
-      The end-to-end regression
+      The demo, and the end-to-end regression on it
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="The end-to-end regression">
+    <nav class="md-nav" aria-label="The demo, and the end-to-end regression on it">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
@@ -2304,27 +2304,29 @@
 </span><span id="__span-7-8"><a id="__codelineno-7-8" name="__codelineno-7-8" href="#__codelineno-7-8"></a>curl<span class="w"> </span>http://localhost:8000/metrics
 </span></code></pre></div>
 <div class="admonition note">
-<p class="admonition-title">The end-to-end demo stack runs with internal authentication on</p>
-<p><code>e2e/docker-compose.yml</code> sets <code>INTERNAL_AUTH_SECRET</code> on every service, so the orchestrator answers
+<p class="admonition-title">The demo stack runs with internal authentication on</p>
+<p><code>demo/docker-compose.yml</code> sets <code>INTERNAL_AUTH_SECRET</code> on every service, so the orchestrator answers
 <code>401</code> to a call without a signed grant, <code>/docs</code> and <code>/metrics</code> on port 8000 included (only the
 health probes are open). Mint a grant from inside the stack and pass it:</p>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-8-1"><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="nv">GRANT</span><span class="o">=</span><span class="k">$(</span>docker<span class="w"> </span>compose<span class="w"> </span>-f<span class="w"> </span>e2e/docker-compose.yml<span class="w"> </span><span class="nb">exec</span><span class="w"> </span>-T<span class="w"> </span>orchestrator-api<span class="w"> </span><span class="se">\</span>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-8-1"><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="nv">GRANT</span><span class="o">=</span><span class="k">$(</span>docker<span class="w"> </span>compose<span class="w"> </span>-f<span class="w"> </span>demo/docker-compose.yml<span class="w"> </span><span class="nb">exec</span><span class="w"> </span>-T<span class="w"> </span>orchestrator-api<span class="w"> </span><span class="se">\</span>
 </span><span id="__span-8-2"><a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a><span class="w">          </span>python<span class="w"> </span>-m<span class="w"> </span>app.api.tokens<span class="w"> </span>mint<span class="w"> </span>--audience<span class="w"> </span>sync<span class="w"> </span>--ttl<span class="w"> </span><span class="m">600</span><span class="k">)</span>
 </span><span id="__span-8-3"><a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a>curl<span class="w"> </span>-H<span class="w"> </span><span class="s2">&quot;Authorization: Bearer </span><span class="nv">$GRANT</span><span class="s2">&quot;</span><span class="w"> </span>http://localhost:8000/metrics
 </span></code></pre></div>
 </div>
 <hr />
-<h2 id="the-end-to-end-regression">The end-to-end regression<a class="headerlink" href="#the-end-to-end-regression" title="Permanent link">&para;</a></h2>
-<p><code>e2e/docker-compose.yml</code> runs the whole product (Gitea, Vault, MongoDB, Redis, ZooKeeper, MinIO, an SSH target,
-the gateway, the orchestrator and the watcher) and then the 25 suites of <code>e2e/init/test_runner.py</code>:</p>
+<h2 id="the-demo-and-the-end-to-end-regression-on-it">The demo, and the end-to-end regression on it<a class="headerlink" href="#the-demo-and-the-end-to-end-regression-on-it" title="Permanent link">&para;</a></h2>
+<p><code>demo/</code> is the stack a person runs to try varTrack: the whole product (Gitea, Vault, MongoDB, Redis, ZooKeeper, MinIO, an
+SSH target, the gateway, the orchestrator, the watcher and the web UI) and a <code>demo-seed</code> container that seeds it once and
+syncs each rule. It runs no test. See <a href="https://github.com/jarin-devoss/varTrack/blob/main/demo/README.md"><code>demo/README.md</code></a>.</p>
+<p><code>e2e/docker-compose.yml</code> includes <code>demo/docker-compose.yml</code> (the same services, as the Compose project <code>e2e</code>) and adds one
+container, <code>e2e-regression</code>, which waits for the seed and runs the 25 suites of <code>e2e/init/test_runner.py</code>:</p>
 <div class="language-bash highlight"><pre><span></span><code><span id="__span-9-1"><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="nb">cd</span><span class="w"> </span>e2e
 </span><span id="__span-9-2"><a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>docker<span class="w"> </span>compose<span class="w"> </span>up<span class="w"> </span>--build<span class="w"> </span>--detach
-</span><span id="__span-9-3"><a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a>docker<span class="w"> </span>compose<span class="w"> </span><span class="nb">wait</span><span class="w"> </span>e2e-demo<span class="w">       </span><span class="c1"># the exit code is the regression&#39;s: 0 only when every suite passed</span>
+</span><span id="__span-9-3"><a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a>docker<span class="w"> </span>compose<span class="w"> </span><span class="nb">wait</span><span class="w"> </span>e2e-regression<span class="w"> </span><span class="c1"># the exit code is the regression&#39;s: 0 only when every suite passed</span>
 </span><span id="__span-9-4"><a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a>python3<span class="w"> </span>check_results.py<span class="w">           </span><span class="c1"># 25 suites, none failed, none skipped; prints the table</span>
 </span></code></pre></div>
 <ul>
-<li><strong>A suite that fails fails the run.</strong> <code>e2e-demo</code> exits with the runner's status (<code>demo.sh</code> no longer turns a failure
-  into a warning), CI checks the report as well (<code>e2e/check_results.py</code>), and the report (<code>e2e/results/benchmark.json</code>)
+<li><strong>A suite that fails fails the run.</strong> <code>e2e-regression</code> exits with the runner's status, CI checks the report as well (<code>e2e/check_results.py</code>), and the report (<code>e2e/results/benchmark.json</code>)
   is not kept in git, so a run that wrote nothing cannot pass on an old one.</li>
 <li><strong>Suites wait for the task they started, never for the clock.</strong> Each polls <code>GET /v1/tasks/{id}</code> until the task
   reports it has finished (<code>E2E_TIMEOUT</code>, default 60 s, is only the ceiling for a hung one), then asserts what the
@@ -2337,7 +2339,7 @@ the gateway, the orchestrator and the watcher) and then the 25 suites of <code>e
   regression several times in a row on fresh volumes to find it.</li>
 </ul>
 <h3 id="the-web-ui-in-the-demo">The web UI in the demo<a class="headerlink" href="#the-web-ui-in-the-demo" title="Permanent link">&para;</a></h3>
-<p>The same stack serves the web UI on <a href="http://localhost:8080">http://localhost:8080</a> with sign-in through the demo's Gitea (<a href="http://localhost:3000">http://localhost:3000</a>).
+<p>The demo serves the web UI on <a href="http://localhost:8080">http://localhost:8080</a> with sign-in through the demo's Gitea (<a href="http://localhost:3000">http://localhost:3000</a>).
 The demo creates four Gitea accounts, all with the password <code>VarTrack123</code>, to see the UI as each kind of person:</p>
 <table>
 <thead>
@@ -2349,7 +2351,7 @@ The demo creates four Gitea accounts, all with the password <code>VarTrack123</c
 <tbody>
 <tr>
 <td><code>demo-admin</code></td>
-<td>a varTrack administrator (<code>ui.auth.admins</code> in <code>config.cue</code>): sees and syncs every rule</td>
+<td>a varTrack administrator (<code>ui.auth.admins</code> in <code>demo/config.cue</code>): sees and syncs every rule</td>
 </tr>
 <tr>
 <td><code>demo-writer</code></td>
@@ -2366,7 +2368,7 @@ The demo creates four Gitea accounts, all with the password <code>VarTrack123</c
 </tbody>
 </table>
 <p>Open the UI, choose <em>Sign in with Gitea</em>, and sign in as one of them; Gitea asks for consent the first time.</p>
-<p>The demo is a test stack, so it lowers two timers: the watcher looks every <code>10s</code> (<code>POLL_INTERVAL</code>; the product default is <code>60s</code>) and the web UI re-reads a sink after <code>2</code> seconds (<code>UI_COMPARE_TTL_SECONDS</code>; the default is <code>10</code>), so that a test waits seconds, not minutes. Set <code>WATCHER_POLL_INTERVAL</code> to change the first.</p>
+<p>The demo lowers two timers, so that a change shows in seconds: the watcher looks every <code>10s</code> (<code>POLL_INTERVAL</code>; the product default is <code>60s</code>) and the web UI re-reads a sink after <code>2</code> seconds (<code>UI_COMPARE_TTL_SECONDS</code>; the default is <code>10</code>), and a test waits seconds, not minutes. Set <code>WATCHER_POLL_INTERVAL</code> to change the first.</p>
 <p>The UI has its own end-to-end suite, run against this stack by the <code>ui-e2e</code> job in CI. See
 <a href="https://github.com/jarin-devoss/varTrack/blob/main/ui/e2e/README.md"><code>ui/e2e/README.md</code></a> to run it.</p>
 <hr />
