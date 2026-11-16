@@ -14,6 +14,19 @@
   },
   {
     "platform": "gitea",
+    "datasource": "mongo-file",
+    "repo_url": "http://gitea:3000/vartrack-demo/demo-configs.git",
+    "file_name": "app-settings.yaml",
+    "branch_as_env": false,
+    "branch": "main",
+    "sync_mode": "SYNC_MODE_GIT_UPSERT_ALL",
+    "prune": true,
+    "branch_map": {
+      "main": "default"
+    }
+  },
+  {
+    "platform": "gitea",
     "datasource": "zookeeper",
     "repo_url": "http://gitea:3000/vartrack-demo/demo-configs.git",
     "file_name": "app-settings.yaml",
@@ -35,6 +48,32 @@
     "branch": "main",
     "sync_mode": "SYNC_MODE_GIT_UPSERT_ALL",
     "prune": true,
+    "branch_map": {
+      "main": "default"
+    }
+  },
+  {
+    "platform": "gitea",
+    "datasource": "linux_server",
+    "repo_url": "http://gitea:3000/vartrack-demo/demo-configs.git",
+    "file_name": "app-settings.yaml",
+    "branch_as_env": false,
+    "branch": "main",
+    "sync_mode": "SYNC_MODE_GIT_UPSERT_ALL",
+    "destination_template": "/tmp/vartrack/{env}.env",
+    "branch_map": {
+      "main": "default"
+    }
+  },
+  {
+    "platform": "gitea",
+    "datasource": "s3",
+    "repo_url": "http://gitea:3000/vartrack-demo/demo-configs.git",
+    "file_name": "app-settings.yaml",
+    "branch_as_env": false,
+    "branch": "main",
+    "sync_mode": "SYNC_MODE_GIT_UPSERT_ALL",
+    "destination_template": "configs/{env}",
     "branch_map": {
       "main": "default"
     }

@@ -32,12 +32,12 @@ SCHEMA_REPO="schemas"
 TENANT_ID="demo"
 SEEDED="${DEMO_STATE:-/demo-state}/seeded"
 
-# The rules that get a first sync: one per kind of store the tour touches. mongo and zookeeper heal themselves
-# (self_heal in config.cue); redis-hash does not.
-DATASOURCES="mongo zookeeper redis-hash"
+# The rules that get a first sync: every rule of config.cue but redis-string, which is left out of the tenant's bundle.json
+# on purpose: it is the refused rule that step 7 of the tour fixes. mongo and zookeeper heal themselves (self_heal in
+# config.cue); the others do not.
+DATASOURCES="mongo mongo-file zookeeper redis-hash linux_server s3"
 
-# on (the demo's default): a push to the config repository syncs it, through a Gitea webhook per rule. off: the regression's.
-DEMO_WEBHOOKS=${DEMO_WEBHOOKS:-on}
+# A push to the config repository syncs it, through a Gitea webhook per rule (created in the last phase), to the gateway.
 GATEWAY=${GATEWAY_URL:-http://gateway:5657}
 
 # The orchestrator accepts a call only with a signed grant (INTERNAL_AUTH_SECRET): this script plays the
@@ -120,6 +120,7 @@ ready() {
     echo -e "  Gitea    → http://localhost:3000   ${GITEA_USER} / ${GITEA_PASS}  (the config repository is ${GITEA_ORG}/${CONFIG_REPO})"
     echo -e "  Accounts → demo-admin (everything), demo-writer (pushes, not to main), demo-viewer (reads, dry runs),"
     echo -e "             demo-outsider (sees nothing). Every password is VarTrack123."
+    echo -e "  Rules    → six sync; gitea/redis-string is refused on purpose (step 7 of the tour)."
     echo -e "  Next     → demo/README.md: the tour, and how to stop and reset it."
 }
 
@@ -259,19 +260,25 @@ for entry in "${TASKS[@]}"; do
 done
 
 # ── PHASE 4: Webhooks, so a push to the config repository syncs it ───────────
-if [ "$DEMO_WEBHOOKS" = "off" ]; then
-    warn "DEMO_WEBHOOKS=off: no webhook is created, so a push to ${CONFIG_REPO} does not sync by itself"
+banner "PHASE 4: Webhooks"
+for datasource in $DATASOURCES; do
+    url="${GATEWAY}/webhooks/${datasource}"
+    hook="{\"type\":\"gitea\",\"active\":true,\"events\":[\"push\"],\"config\":{\"url\":\"${url}\",\"content_type\":\"json\"}}"
+    if gitea_api POST "/repos/${GITEA_ORG}/${CONFIG_REPO}/hooks" -d "$hook" >/dev/null; then
+        ok "webhook → ${url}"
+    else
+        err "the webhook for ${datasource} was not created"; exit 1
+    fi
+done
+
+# A push to the schema repository refreshes the tenant's rules at once (otherwise after SCHEMA_TTL_SECONDS, five minutes):
+# step 7 of the tour pushes an entry to bundle.json there.
+url="${GATEWAY}/webhooks/schema-registry"
+hook="{\"type\":\"gitea\",\"active\":true,\"events\":[\"push\"],\"config\":{\"url\":\"${url}\",\"content_type\":\"json\"}}"
+if gitea_api POST "/repos/${GITEA_ORG}/${SCHEMA_REPO}/hooks" -d "$hook" >/dev/null; then
+    ok "webhook → ${url}"
 else
-    banner "PHASE 4: Webhooks"
-    for datasource in $DATASOURCES; do
-        url="${GATEWAY}/webhooks/${datasource}"
-        hook="{\"type\":\"gitea\",\"active\":true,\"events\":[\"push\"],\"config\":{\"url\":\"${url}\",\"content_type\":\"json\"}}"
-        if gitea_api POST "/repos/${GITEA_ORG}/${CONFIG_REPO}/hooks" -d "$hook" >/dev/null; then
-            ok "webhook → ${url}"
-        else
-            err "the webhook for ${datasource} was not created"; exit 1
-        fi
-    done
+    err "the webhook for the schema repository was not created"; exit 1
 fi
 
 mkdir -p "$(dirname "$SEEDED")"
