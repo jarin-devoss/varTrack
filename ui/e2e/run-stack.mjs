@@ -55,6 +55,12 @@ if (!flags.has('--no-up')) {
     console.error('The regression failed: the browser suite is not run on a stack that is not sound.');
     process.exit(1);
   }
+} else if (!process.env.VT_ALLOW_STALE_IMAGES) {
+  // A stack brought up without --build reuses images of any age, and a UI newer than its orchestrator shows a blank page.
+  if (run('Are the stack\'s images as new as the code', 'node', ['e2e/stale-images.mjs'], { cwd: path.resolve(ui, '..') }) === 1) {
+    console.error('The stack is older than this checkout: the browser suite is not run on it (VT_ALLOW_STALE_IMAGES=1 to run anyway).');
+    process.exit(1);
+  }
 }
 
 const env = { ...process.env, VT_UI_URL: process.env.VT_UI_URL ?? 'http://localhost:8080' };

@@ -30,9 +30,66 @@ VT_UI_URL=http://localhost:8080 npm run test:e2e:ui                             
 Without `VT_UI_URL` the Vite dev server is started on `:8080` (the address the demo registers for sign-in), and the config says so.
 `npm run typecheck:e2e` checks the specs' types; `npm test` runs the unit tests **and the coverage manifest** (below), with no stack.
 
-Locally, where the orchestrator image cannot always be rebuilt, bring the stack up with the host's `orchestrator-service/app` (and
-host-built Go binaries) bind-mounted over the images, serve `ui/dist` through the nginx image with `ui/nginx.conf.template`, and
-restart `orchestrator-api` and `orchestrator-worker` after changing Python.
+`--no-up` first runs `node e2e/stale-images.mjs` (from the repository root), which compares each running image's build time with the
+last change to its sources and stops the run, naming the image, when one is behind: an old orchestrator under a new UI shows a
+blank page, not an error. `VT_ALLOW_STALE_IMAGES=1` runs anyway (for the mounted stack below).
+
+### The demo tour
+
+`demo/README.md` has a tour of the demo (change Git, drift healed and not healed, a dry run, a prune, the viewer and the outsider).
+`e2e/tour/demo-tour.spec.ts` does it: it reads that README, finds each step by its heading, runs the commands in the step's
+`sh tour` blocks from `demo/`, and checks in the UI what the step says to look for. A README step with no check here, or a check
+with no step, fails, so the tour cannot go out of date without CI failing. It has its own config, `playwright.tour.config.ts`, with
+no world and no retries: the tour is about the demo as it is seeded, so it needs a **freshly seeded demo with its webhooks on**
+(`cd demo && docker compose up -d && docker compose wait demo-seed`), not the regression's stack.
+
+```sh
+VT_UI_URL=http://localhost:8080 npm run test:e2e:tour      # VT_TOUR_PROJECT names the Compose project (default vartrack-demo)
+```
+
+## Run the stack on a machine that cannot build the images
+
+CI builds every image from the commit it tests. An image build downloads over TLS (`buf` plugins, Go modules, pip, npm), so on a
+machine where an antivirus or proxy re-signs HTTPS it stops with `x509: certificate signed by unknown authority`. Check with
+`openssl s_client -connect buf.build:443 </dev/null | grep "i:"`: an issuer that is not a public CA is the cause. The fix is to
+exclude the build hosts from the scan (`buf.build`, `proxy.golang.org`, `sum.golang.org`, `pypi.org`, `files.pythonhosted.org`,
+`registry.npmjs.org`, `deb.debian.org`, `dl-cdn.alpinelinux.org`, `get.helm.sh`, `ghcr.io`), after which `docker compose up --build`
+works as in CI. Where that is not possible, run today's code inside the images that already exist. The host trusts the scanner, so
+its tools work:
+
+```sh
+buf generate                                                    # repository root: the orchestrator's Python stubs
+(cd libs/go && GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -o /tmp/vt-stack/vartrack-bundle ./cmd/vartrack-bundle)
+(cd ui && npm ci && npm run build)                              # ui/dist
+```
+
+Then a compose override kept outside the repository (say `/tmp/vt-stack/override.yml`), which mounts those over the images:
+
+```yaml
+services:
+  orchestrator-api: &orchestrator
+    volumes:
+      - /path/to/varTrack/orchestrator-service/app:/app/app:ro
+      - /tmp/vt-stack/vartrack-bundle:/usr/local/bin/vartrack-bundle:ro
+  orchestrator-worker: *orchestrator
+  ui:
+    volumes:
+      - /path/to/varTrack/ui/dist:/usr/share/nginx/html:ro
+```
+
+```sh
+cd e2e
+F="-f docker-compose.yml -f /tmp/vt-stack/override.yml"
+docker compose $F up -d --no-build
+docker compose $F wait e2e-regression                           # the 25-suite regression
+cd ../ui && VT_ALLOW_STALE_IMAGES=1 VT_UI_URL=http://localhost:8080 npm run test:e2e:stack -- --no-up
+```
+
+The UI is then at http://localhost:8080 (sign in with Gitea as `demo-admin`, password `VarTrack123`). Use this stack, not the live
+overlay: the overlay's ConfigMap and Helm sinks need the Kubernetes client and Helm built into the orchestrator image, which a
+mount cannot add. After changing Python or the UI, rebuild `ui/dist` as above and restart `orchestrator-api` and
+`orchestrator-worker`; after rebuilding a mounted Go binary, recreate the service (`up -d --no-deps --force-recreate`), because a
+restart keeps the old file's pages and the process crashes.
 
 ## How a run goes
 
