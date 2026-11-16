@@ -58,8 +58,8 @@ x-orchestrator-live: &orchestrator-live
     HELM_CONFIG_HOME: /tmp/helm/config
     HELM_DATA_HOME: /tmp/helm/data
   volumes:
-    - ./live/config.cue:/app/config.cue:ro
-    - ./live/k8s/checkout-api:/charts/checkout-api:ro
+    - ./live/config.cue:/app/config.cue:ro,z
+    - ./live/k8s/checkout-api:/charts/checkout-api:ro,z
     - live-state:/live-state:ro
   depends_on:
     k3s-kubeconfig: {condition: service_completed_successfully}
@@ -134,7 +134,7 @@ services:
   # ── varTrack services on the live bundle ───────────────────────────────────
   gateway:
     volumes:
-      - ./live/config.cue:/app/config.cue:ro
+      - ./live/config.cue:/app/config.cue:ro,z
     depends_on:
       gitea-team: {condition: service_healthy}
 
@@ -150,7 +150,7 @@ services:
     environment:
       POLL_INTERVAL: ${WATCHER_POLL_INTERVAL:-20s}
     volumes:
-      - ./live/config.cue:/app/config.cue:ro
+      - ./live/config.cue:/app/config.cue:ro,z
 
   live-seed:
     build:
@@ -169,7 +169,7 @@ services:
       ORCHESTRATOR_URL: http://orchestrator-api:8000
       TENANT_ID: default
     volumes:
-      - ./live:/live:ro
+      - ./live:/live:ro,z
       - live-state:/live-state
     depends_on:
       gitea:               {condition: service_healthy}

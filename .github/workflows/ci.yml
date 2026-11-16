@@ -312,6 +312,14 @@ jobs:
           docker compose up --build --detach
           docker compose wait e2e-regression
 
+      # The runner is root in its container, and e2e/results is a bind mount of this checkout: on Linux, what it wrote would be root's
+      # and could not be removed without sudo. It hands the folder's contents back to the folder's owner (the user who ran the stack).
+      - name: The report belongs to the user who ran the stack
+        run: |
+          owner=$(stat -c %U e2e/results/benchmark.json)
+          echo "benchmark.json is owned by ${owner}; this job runs as $(id -un)"
+          test "${owner}" = "$(id -un)"
+
       - name: Dump e2e-regression logs
         if: always()
         working-directory: e2e
@@ -342,6 +350,28 @@ jobs:
         if: always()
         working-directory: e2e
         run: docker compose down -v --remove-orphans
+
+  # ── The oldest Docker Compose the demo supports ──────────────────────────────
+  # demo/run.sh and demo/README.md say Compose 2.20.0 is the minimum: `include` (which e2e/ uses) and `docker compose wait` arrived
+  # there, and 2.19 reads neither file. This runs the release itself (no daemon is needed to read a file) on both folders, so that
+  # number cannot drift from what Compose does: if the files start to need something newer, this fails and the number moves.
+  compose-minimum:
+    name: compose ${{ matrix.compose }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        compose: [v2.20.0, v2.23.0]
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: demo/ and e2e/ read, and `wait` exists
+        run: |
+          compose() { docker run --rm -v "$PWD:/repo:ro" -w "/repo/$1" --entrypoint /docker-compose "docker/compose-bin:${{ matrix.compose }}" "${@:2}"; }
+          compose demo config --quiet
+          compose e2e config --quiet
+          compose demo wait --help > /dev/null
 
   # ── UI end-to-end (every PR, and every push to main) ─────────────────────────
   # The web UI in a browser against the same stack as `e2e`: it signs in through Gitea as an admin, a writer, a reader and an

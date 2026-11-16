@@ -118,6 +118,19 @@ def _redact(text: object) -> str:
     text = _REDACT_KV.sub(r'\1***', text)
     return grant.redact(text)
 
+def hand_back(folder: Path) -> None:
+    """Give everything the runner wrote under *folder* to the folder's own owner. The runner is root in its container, and a folder
+    bind-mounted from a Linux host would otherwise be left holding files only root can remove (Docker Desktop hides this). Whoever owns
+    the mounted folder, the person who started the stack, owns what is in it; nothing to set up, and nothing to do when it is already so."""
+    try:
+        owner = folder.stat()
+        for path in [folder, *folder.rglob("*")]:
+            if path.lstat().st_uid != owner.st_uid or path.lstat().st_gid != owner.st_gid:
+                os.chown(path, owner.st_uid, owner.st_gid, follow_symlinks=False)
+    except (OSError, AttributeError) as exc:      # AttributeError: os.chown does not exist where this is not a container on Linux
+        warn(f"could not hand {folder} back to its owner: {_exc_type(exc)}")
+
+
 def warn(msg: str) -> None:
     print(f"{colour.YELLOW}  ⚠{colour.NC} {_redact(msg)}")
 
@@ -2526,6 +2539,7 @@ def main() -> None:
     with open(out_path, "w") as fh:
         json.dump(benchmark, fh, indent=2)
     ok(f"Benchmark written → {out_path}")
+    hand_back(Path(args.results_dir))
 
     sys.exit(0 if failed == 0 else 1)
 

@@ -37,11 +37,11 @@ services:
       LINUX_TARGET_USER: vartrack
       LINUX_TARGET_PASS: VarTrack123
     volumes:
-      - ../demo/configs:/demo/configs:ro             # app-settings.yaml, the file the demo seeds
-      - ../demo/schemas:/demo/schemas:ro             # bundle.json and the CUE schemas the suites push
-      - ./configs/env-keyed:/e2e/configs/env-keyed:ro # the cases of suite 24
-      - ./schemas/settings:/e2e/schemas/settings:ro  # the rules each suite starts from
-      - ./results:/results
+      - ../demo/configs:/demo/configs:ro,z             # app-settings.yaml, the file the demo seeds
+      - ../demo/schemas:/demo/schemas:ro,z             # bundle.json and the CUE schemas the suites push
+      - ./configs/env-keyed:/e2e/configs/env-keyed:ro,z # the cases of suite 24
+      - ./schemas/settings:/e2e/schemas/settings:ro,z  # the rules each suite starts from
+      - ./results:/results:z
       - demo-state:/demo-state
     depends_on:
       demo-seed:        {condition: service_completed_successfully}

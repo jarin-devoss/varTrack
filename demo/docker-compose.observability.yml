@@ -35,7 +35,7 @@ services:
     networks: [vartrack]
     command: ["--config=/etc/otel-collector-config.yaml"]
     volumes:
-      - ./otel-collector-config.yaml:/etc/otel-collector-config.yaml:ro
+      - ./otel-collector-config.yaml:/etc/otel-collector-config.yaml:ro,z
     depends_on:
       jaeger: {condition: service_healthy}
     ports:
@@ -73,7 +73,7 @@ services:
     image: prom/prometheus:latest
     networks: [vartrack]
     volumes:
-      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro,z
     ports:
       - "9095:9090"
     command:

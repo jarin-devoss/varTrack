@@ -120,10 +120,10 @@ services:
       JAEGER_ENABLED: "false"
       ELK_ENABLED: "false"
     volumes:
-      - ./config.cue:/app/config.cue:ro
+      - ./config.cue:/app/config.cue:ro,z
       - demo-state:/demo-state:ro
       # The CLI API's OPA policy (auth.opa.policy_file in the bundle).
-      - ../examples/policies:/app/policies:ro
+      - ../examples/policies:/app/policies:ro,z
     ports:
       - "5657:5657"
       - "9092:9092"
@@ -177,7 +177,7 @@ services:
       JAEGER_ENABLED: "false"
       ELK_ENABLED: "false"
     volumes:
-      - ./config.cue:/app/config.cue:ro
+      - ./config.cue:/app/config.cue:ro,z
       - demo-state:/demo-state:ro
       - schema-cache:/app/schema_registry
       - git-cache:/app/git_cache
@@ -227,7 +227,7 @@ services:
       JAEGER_ENABLED: "false"
       ELK_ENABLED: "false"
     volumes:
-      - ./config.cue:/app/config.cue:ro
+      - ./config.cue:/app/config.cue:ro,z
       - demo-state:/demo-state:ro
       - schema-cache:/app/schema_registry
       - git-cache:/app/git_cache
@@ -262,7 +262,7 @@ services:
       JAEGER_ENABLED: "false"
       ELK_ENABLED: "false"
     volumes:
-      - ./config.cue:/app/config.cue:ro
+      - ./config.cue:/app/config.cue:ro,z
       - demo-state:/demo-state:ro
     ports:
       - "9091:9091"
@@ -400,7 +400,7 @@ services:
   # what a person has pushed since; `docker compose down -v` starts again from nothing.
   demo-seed:
     build:
-      context: ../e2e/init
+      context: ./seed
       dockerfile: Dockerfile
     networks: [vartrack]
     environment:
@@ -409,27 +409,18 @@ services:
       GITEA_URL: http://gitea:3000
       GITEA_ADMIN_USER: demo-admin
       GITEA_ADMIN_PASSWORD: VarTrack123
-      WATCHER_POLL_INTERVAL: "10"
       DEMO_STATE: /demo-state
-      MINIO_ENDPOINT: http://minio:9002
-      MINIO_ACCESS_KEY: minioadmin
-      MINIO_SECRET_KEY: minioadmin
-      LINUX_TARGET_HOST: linux-target
-      LINUX_TARGET_PORT: "22"
-      LINUX_TARGET_USER: vartrack
-      LINUX_TARGET_PASS: VarTrack123
+      GATEWAY_URL: http://gateway:5657
+      # on: a push to the config repository syncs it, as in real use. The regression (../e2e) sets off: its suites push to
+      # that repository all the time and start every sync they check themselves.
+      DEMO_WEBHOOKS: "${DEMO_WEBHOOKS:-on}"
     volumes:
-      - ../e2e/configs:/demo/configs:ro
-      - ../e2e/schemas:/demo/schemas:ro
-      - ../e2e/results:/results
+      - ./configs:/demo/configs:ro,z
+      - ./schemas:/demo/schemas:ro,z
       - demo-state:/demo-state
     depends_on:
       gitea:            {condition: service_healthy}
       orchestrator-api: {condition: service_healthy}
-      minio:            {condition: service_healthy}
-      minio-init:       {condition: service_completed_successfully}
-      vault-init:       {condition: service_completed_successfully}
-      linux-target:     {condition: service_healthy}
       orchestrator-worker:
         condition: service_started
       watcher:

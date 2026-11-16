@@ -10,6 +10,21 @@ cd "$(dirname "$0")"
 COMPOSE="docker compose -f docker-compose.yml"
 CMD=${1:-up}
 
+# The oldest Compose that reads these files: 2.20.0 added `include` (which ../e2e uses) and `docker compose wait`; 2.19 and older
+# reject them. (A CI job checks this number against the real releases: .github/workflows/ci.yml, compose-minimum.)
+MIN_COMPOSE=2.20.0
+found=$(docker compose version --short 2>/dev/null | sed 's/^v//') || found=""
+if [ -z "$found" ]; then
+    echo "Docker Compose ${MIN_COMPOSE} or newer is needed, and 'docker compose' (with a space) was not found." >&2
+    echo "The old 'docker-compose' (Compose V1, often a distribution's package) does not run this demo: install Docker's own" >&2
+    echo "packages (https://docs.docker.com/compose/install/) or Docker Desktop." >&2
+    exit 1
+fi
+if [ "$(printf '%s\n%s\n' "$MIN_COMPOSE" "$found" | sort -V | head -n 1)" != "$MIN_COMPOSE" ]; then
+    echo "Docker Compose ${MIN_COMPOSE} or newer is needed (found ${found}). Update it: https://docs.docker.com/compose/install/" >&2
+    exit 1
+fi
+
 case "$CMD" in
   up)
     echo "▶  Building and starting the varTrack demo…"
