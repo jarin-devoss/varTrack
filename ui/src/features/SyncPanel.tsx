@@ -206,10 +206,16 @@ export function SyncPanel({ rule, open, onClose, initialEnvs, initialDryRun = fa
   };
 
   const onPrimary = () => (riskyPrune ? setConfirming(true) : void submit());
-  // The button says what it does: with keys to delete (and no typed word to ask for) it says so.
-  const primaryLabel = dryRun
+  // The panel is named for what it was opened as. A person who opened it to sync keeps a Sync button and the title "Sync from Git"
+  // when they tick Dry run: the box says what kind of sync this is, and the control they reached for does not change its name under
+  // their hand. A panel opened as a dry run (a "Dry run <env>" button, or a person who may only dry-run) is a dry run from the start,
+  // and says so until they untick the box and turn it into a sync.
+  const namedDryRun = dryRun && (initialDryRun || readOnly);
+  // The button says what it does: with keys to delete (and no typed word to ask for) it says so, and never during a dry run, which
+  // deletes nothing.
+  const primaryLabel = namedDryRun
     ? `Start dry run${envs.length > 1 ? ` (${envs.length})` : ''}`
-    : impact && impact.total > 0 && !riskyPrune
+    : !dryRun && impact && impact.total > 0 && !riskyPrune
       ? `Sync and delete ${keyCount(impact.total)}`
       : `Sync ${envs.length} environment${envs.length === 1 ? '' : 's'}`;
 
@@ -218,7 +224,7 @@ export function SyncPanel({ rule, open, onClose, initialEnvs, initialDryRun = fa
       <SlideOver
         open={open}
         onClose={close}
-        title={dryRun || run ? 'Dry run' : 'Sync from Git'}
+        title={namedDryRun || run ? 'Dry run' : 'Sync from Git'}
         subtitle={<span className="mono">{rule.name}</span>}
         actions={
           run ? (
@@ -270,7 +276,7 @@ export function SyncPanel({ rule, open, onClose, initialEnvs, initialDryRun = fa
         <div className="stack">
           <p className="secondary">
             Reads <code>{file}</code> at the head of each environment's Git ref, validates it against the CUE schema and{' '}
-            {dryRun ? 'reports what would change, without writing anything.' : `writes it to ${SINK_LABEL[rule.sinkType]}.`}
+            {dryRun ? 'reports what would change. Dry run: nothing is written.' : `writes it to ${SINK_LABEL[rule.sinkType]}.`}
           </p>
 
           <fieldset style={{ border: 0, margin: 0, padding: 0 }}>
