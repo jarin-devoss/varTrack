@@ -76,7 +76,7 @@ DEMO_TENANT = "demo"          # the tenant config.cue declares: the demo's repos
 CONFIG_REPO = "demo-configs"
 SCHEMA_REPO = "schemas"
 CONFIG_FILE = "app-settings.yaml"
-CONFIG_LOCAL = "/demo/configs/app-settings.yaml"
+CONFIG_LOCAL = "/e2e/configs/app-settings.yaml"
 # The ceiling on how long a suite waits for a task it started. A task finishes in well under a second;
 # this only turns a hung one into a failed run. E2E_TIMEOUT (seconds) overrides it.
 E2E_TIMEOUT = max(1, min(int(os.environ.get("E2E_TIMEOUT", "60")), 300))
@@ -1838,7 +1838,7 @@ def _schema_map_documents(rule: dict) -> dict[str, dict]:
 
 
 def suite_23_schema_map(orchestrator, gitea, gitea_url, rules,
-                        schemas_dir: str = "/demo/schemas/cue/teams"):
+                        schemas_dir: str = "/e2e/schemas/cue/teams"):
     """schema_map: one file name in two folders, each checked by its own schema; a mapping to a schema the
     schema repository does not have fails the file naming it, strict_validation or not, and writes nothing."""
     folders = {"team-a": "team-a/app-settings.yaml", "team-b": "team-b/app-settings.yaml"}
@@ -2428,7 +2428,7 @@ def main() -> None:
     dual_mongo  = s.get("11_dual_mongo_secret.json", [{}, {}])
 
     # Push CUE validation schema to Gitea schemas repo (used by suites 13-15).
-    cue_schema_path = Path("/demo/schemas/cue/app-settings.yaml.cue")
+    cue_schema_path = Path("/e2e/schemas/cue/app-settings.yaml.cue")
     if cue_schema_path.exists():
         gitea.push_schema_file(
             "app-settings.yaml.cue",

@@ -1,4 +1,4 @@
-// Is a service of the running demo stack an older build than the code in this checkout?
+// Is a service of a running stack (the demo's, or the e2e's) an older build than the code in this checkout?
 //
 //   node e2e/stale-images.mjs          from the repository root; exits 1 and names each image that is behind its sources
 //
@@ -14,8 +14,8 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-// The two places a stack is started from, each a Compose project of its own (the demo's, and the regression's on top of it).
-const STACKS = [path.join(root, 'demo'), path.join(root, 'e2e')];
+// The two places a stack is started from, each a Compose project of its own that shares no file with the other.
+const STACKS = ['demo', 'e2e'].map(name => ({ name, dir: path.join(root, name) }));
 
 // What each service's image is built from (the Dockerfile's own COPY lines, as paths from the repository root).
 const GO = ['libs/go', 'proto', 'buf.yaml', 'buf.lock', 'buf.gen.yaml'];
@@ -26,9 +26,11 @@ export const SOURCES = {
   gateway: ['gateway-service', ...GO],
   watcher: ['watcher-service', ...GO],
   ui: ['ui/src', 'ui/index.html', 'ui/package.json', 'ui/package-lock.json', 'ui/vite.config.ts', 'ui/tsconfig.json', 'ui/nginx.conf.template', 'ui/Dockerfile'],
-  'demo-seed': ['demo/seed'],
-  'e2e-regression': ['e2e/init', 'demo/seed/requirements.txt', 'demo/seed/grant.py'],
-  gitea: ['demo/gitea'],
+};
+// What differs between the stacks: each builds its own Gitea image and its own seed (and the e2e its runner, in the same image).
+const OWN = {
+  demo: { gitea: ['demo/gitea'], 'demo-seed': ['demo/seed'] },
+  e2e: { gitea: ['e2e/gitea'], 'e2e-seed': ['e2e/init'], 'e2e-regression': ['e2e/init'] },
 };
 
 function run(command, args, cwd = root) {
@@ -57,11 +59,11 @@ export function newestChange(paths) {
 
 function stackServices() {
   const found = new Map();
-  for (const dir of STACKS) {
+  for (const { name, dir } of STACKS) {
     const out = run('docker', ['compose', 'ps', '--format', 'json'], dir);
     for (const line of out.split('\n').filter(Boolean)) {
       const c = JSON.parse(line);
-      found.set(`${c.Project ?? dir}/${c.Service}`, { service: c.Service, image: c.Image });
+      found.set(`${c.Project ?? dir}/${c.Service}`, { stack: name, service: c.Service, image: c.Image });
     }
   }
   return [...found.values()];
@@ -80,8 +82,8 @@ if (services.length === 0) {
   process.exit(0);
 }
 
-for (const { service, image } of services) {
-  const sources = SOURCES[service];
+for (const { stack, service, image } of services) {
+  const sources = OWN[stack][service] ?? SOURCES[service];
   if (!sources) continue; // an image pulled from a registry (redis, mongo, ...) has no sources here
   const built = Math.floor(Date.parse(run('docker', ['image', 'inspect', '-f', '{{.Created}}', image])) / 1000);
   const changed = newestChange(sources);
