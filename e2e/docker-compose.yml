@@ -1,0 +1,58 @@
+# The e2e stack: the demo's services (../demo), and the regression that runs on them.
+#
+#   cd e2e && docker compose up --build --detach && docker compose wait e2e-regression
+#
+# The demo (../demo/docker-compose.yml) seeds itself and runs no test. This file includes it, so the stack is the same
+# one a person runs to try varTrack, and adds one container: the regression's runner, which waits for the seed to finish and
+# exits with the suites' status (0 only when every suite passed). The browser suite (../ui/e2e) runs on this stack too.
+# Under the name "e2e" the containers are e2e-<service>-1, which ui/e2e/fixtures/stores.ts relies on.
+
+name: e2e
+
+include:
+  - path: ../demo/docker-compose.yml
+    env_file: ./e2e.env
+
+services:
+  e2e-regression:
+    build:
+      # The repository root: the image takes the demo's pinned requirements and grant minting rather than keeping copies
+      # (e2e/init/Dockerfile.dockerignore lets in only the three files it copies).
+      context: ..
+      dockerfile: e2e/init/Dockerfile
+    networks: [vartrack]
+    environment:
+      ORCHESTRATOR_URL: http://orchestrator-api:8000
+      INTERNAL_AUTH_SECRET: "${VARTRACK_DEMO_INTERNAL_AUTH_SECRET:-demo-internal-auth-secret-0123456789abcdef}"
+      GITEA_URL: http://gitea:3000
+      GITEA_ADMIN_USER: demo-admin
+      GITEA_ADMIN_PASSWORD: VarTrack123
+      WATCHER_POLL_INTERVAL: "10"
+      DEMO_STATE: /demo-state
+      MINIO_ENDPOINT: http://minio:9002
+      MINIO_ACCESS_KEY: minioadmin
+      MINIO_SECRET_KEY: minioadmin
+      LINUX_TARGET_HOST: linux-target
+      LINUX_TARGET_PORT: "22"
+      LINUX_TARGET_USER: vartrack
+      LINUX_TARGET_PASS: VarTrack123
+    volumes:
+      - ../demo/configs:/demo/configs:ro             # app-settings.yaml, the file the demo seeds
+      - ../demo/schemas:/demo/schemas:ro             # bundle.json and the CUE schemas the suites push
+      - ./configs/env-keyed:/e2e/configs/env-keyed:ro # the cases of suite 24
+      - ./schemas/settings:/e2e/schemas/settings:ro  # the rules each suite starts from
+      - ./results:/results
+      - demo-state:/demo-state
+    depends_on:
+      demo-seed:        {condition: service_completed_successfully}
+      gitea:            {condition: service_healthy}
+      orchestrator-api: {condition: service_healthy}
+      minio:            {condition: service_healthy}
+      minio-init:       {condition: service_completed_successfully}
+      vault-init:       {condition: service_completed_successfully}
+      linux-target:     {condition: service_healthy}
+      orchestrator-worker:
+        condition: service_started
+      watcher:
+        condition: service_healthy
+    restart: "no"

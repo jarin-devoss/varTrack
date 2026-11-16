@@ -17,7 +17,7 @@ fails, and CI reads benchmark.json (25 suites, 0 failed, 0 skipped).
 Outputs a benchmark JSON report to /results/benchmark.json.
 
 Usage:
-    python3 test_runner.py [--settings-dir /demo/schemas/settings]
+    python3 test_runner.py [--settings-dir /e2e/schemas/settings]
                            [--results-dir /results]
                            [--orchestrator http://orchestrator-api:8000]
                            [--gitea http://gitea:3000]
@@ -1913,7 +1913,7 @@ def suite_23_schema_map(orchestrator, gitea, gitea_url, rules,
 # environment's document must hold, written by hand. A value written @secret(secret/e2e-env-keyed/<env>#db_password)
 # stands for the secret this suite put in Vault for that environment.
 
-ENV_KEYED_DIR = Path("/demo/configs/env-keyed")
+ENV_KEYED_DIR = Path("/e2e/configs/env-keyed")
 VAULT_URL = os.environ.get("VAULT_ADDR", "http://vault:8200")
 ENV_KEYED_SECRETS = {"default": "e2e-secret-default-7f3a", "staging": "e2e-secret-staging-2c91",
                      "production": "e2e-secret-production-b405"}
@@ -2375,7 +2375,7 @@ def load_settings(settings_dir: str) -> dict[str, list[dict]]:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="VarTrack E2E test runner")
-    parser.add_argument("--settings-dir", default="/demo/schemas/settings")
+    parser.add_argument("--settings-dir", default="/e2e/schemas/settings")
     parser.add_argument("--results-dir",  default="/results")
     parser.add_argument("--orchestrator", default=os.environ.get("ORCHESTRATOR_URL",
                                                                   "http://orchestrator-api:8000"))
