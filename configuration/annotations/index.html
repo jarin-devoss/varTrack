@@ -2132,28 +2132,56 @@ field changed  datasource=mongo  env=production  field=database.host
 </span></code></pre></div>
 <hr />
 <h2 id="full-schema-example">Full schema example<a class="headerlink" href="#full-schema-example" title="Permanent link">&para;</a></h2>
-<p>```cue notest
+<p>```cue schema
 // app.yaml.cue at the root of the schema repo — checks every file named app.yaml
-"app.port":          string &amp; =~"^[0-9]+$"   @logger()
+"app.port":          int &amp; &gt;=1024 &amp; &lt;=65535   @logger()
 "log.level":         "debug" | "info" | "warn" | "error"
 "database.host":     string &amp; !=""            @logger()
-"database.port":     string &amp; =~"^[0-9]+$"   @logger()
+"database.port":     int &amp; &gt;0                 @logger()
 "database.password": string &amp; !=""            @secret() @logger()
 "api.secret_key":    string &amp; !=""            @secret()
-"max_connections"?:  string &amp; =~"^[0-9]+$"
-<div class="language-text highlight"><pre><span></span><code><span id="__span-7-1"><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>The fields are at the top level, not inside a `#Definition` — `cue vet` checks the data only against top-level fields. Values are strings, as the file is flattened first, so a number is a string matching a pattern; see [CUE schemas](schema-registry.md#cue-schemas).
+"max_connections"?:  int &amp; &gt;=1
+<div class="language-text highlight"><pre><span></span><code><span id="__span-7-1"><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>A file it passes:
 </span><span id="__span-7-2"><a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>
-</span><span id="__span-7-3"><a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a>Register the schema in your bundle:
-</span><span id="__span-7-4"><a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a>
-</span><span id="__span-7-5"><a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a>```cue
-</span><span id="__span-7-6"><a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a>bundle: {
-</span><span id="__span-7-7"><a id="__codelineno-7-7" name="__codelineno-7-7" href="#__codelineno-7-7"></a>  schema_registry: {
-</span><span id="__span-7-8"><a id="__codelineno-7-8" name="__codelineno-7-8" href="#__codelineno-7-8"></a>    platform: &quot;github&quot;
-</span><span id="__span-7-9"><a id="__codelineno-7-9" name="__codelineno-7-9" href="#__codelineno-7-9"></a>    repo:     &quot;my-org/schemas&quot;
-</span><span id="__span-7-10"><a id="__codelineno-7-10" name="__codelineno-7-10" href="#__codelineno-7-10"></a>    branch:   &quot;main&quot;
-</span><span id="__span-7-11"><a id="__codelineno-7-11" name="__codelineno-7-11" href="#__codelineno-7-11"></a>  }
-</span><span id="__span-7-12"><a id="__codelineno-7-12" name="__codelineno-7-12" href="#__codelineno-7-12"></a>  // ...
-</span><span id="__span-7-13"><a id="__codelineno-7-13" name="__codelineno-7-13" href="#__codelineno-7-13"></a>}
+</span><span id="__span-7-3"><a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a>```yaml data
+</span><span id="__span-7-4"><a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a>app:
+</span><span id="__span-7-5"><a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a>  port: 8080
+</span><span id="__span-7-6"><a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a>log:
+</span><span id="__span-7-7"><a id="__codelineno-7-7" name="__codelineno-7-7" href="#__codelineno-7-7"></a>  level: info
+</span><span id="__span-7-8"><a id="__codelineno-7-8" name="__codelineno-7-8" href="#__codelineno-7-8"></a>database:
+</span><span id="__span-7-9"><a id="__codelineno-7-9" name="__codelineno-7-9" href="#__codelineno-7-9"></a>  host: db.internal
+</span><span id="__span-7-10"><a id="__codelineno-7-10" name="__codelineno-7-10" href="#__codelineno-7-10"></a>  port: 5432
+</span><span id="__span-7-11"><a id="__codelineno-7-11" name="__codelineno-7-11" href="#__codelineno-7-11"></a>  password: &quot;@secret(secret/myapp/db#password)&quot;
+</span><span id="__span-7-12"><a id="__codelineno-7-12" name="__codelineno-7-12" href="#__codelineno-7-12"></a>api:
+</span><span id="__span-7-13"><a id="__codelineno-7-13" name="__codelineno-7-13" href="#__codelineno-7-13"></a>  secret_key: &quot;@secret(secret/myapp/api#secret_key)&quot;
+</span><span id="__span-7-14"><a id="__codelineno-7-14" name="__codelineno-7-14" href="#__codelineno-7-14"></a>max_connections: 50
+</span></code></pre></div></p>
+<p>and one it refuses, with the key and the value as written:</p>
+<p>```yaml data fails</p>
+<h1 id="expect-appport-80-in-appyaml">expect: app.port = "80" in app.yaml<a class="headerlink" href="#expect-appport-80-in-appyaml" title="Permanent link">&para;</a></h1>
+<p>app:
+  port: 80
+log:
+  level: info
+database:
+  host: db.internal
+  port: 5432
+  password: "@secret(secret/myapp/db#password)"
+api:
+  secret_key: "@secret(secret/myapp/api#secret_key)"
+<div class="language-text highlight"><pre><span></span><code><span id="__span-8-1"><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>The fields are at the top level, not inside a `#Definition` — `cue vet` checks the data only against top-level fields, so a schema written inside `#Config: { … }` checks nothing. A value is checked as the file wrote it, so `int`, `bool` and ranges work, and `&quot;8080&quot;` in quotes passes `int` too; see [Numbers and booleans](schema-registry.md#numbers-and-booleans).
+</span><span id="__span-8-2"><a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>
+</span><span id="__span-8-3"><a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a>Register the schema in your bundle:
+</span><span id="__span-8-4"><a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a>
+</span><span id="__span-8-5"><a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a>```cue
+</span><span id="__span-8-6"><a id="__codelineno-8-6" name="__codelineno-8-6" href="#__codelineno-8-6"></a>bundle: {
+</span><span id="__span-8-7"><a id="__codelineno-8-7" name="__codelineno-8-7" href="#__codelineno-8-7"></a>  schema_registry: {
+</span><span id="__span-8-8"><a id="__codelineno-8-8" name="__codelineno-8-8" href="#__codelineno-8-8"></a>    platform: &quot;github&quot;
+</span><span id="__span-8-9"><a id="__codelineno-8-9" name="__codelineno-8-9" href="#__codelineno-8-9"></a>    repo:     &quot;my-org/schemas&quot;
+</span><span id="__span-8-10"><a id="__codelineno-8-10" name="__codelineno-8-10" href="#__codelineno-8-10"></a>    branch:   &quot;main&quot;
+</span><span id="__span-8-11"><a id="__codelineno-8-11" name="__codelineno-8-11" href="#__codelineno-8-11"></a>  }
+</span><span id="__span-8-12"><a id="__codelineno-8-12" name="__codelineno-8-12" href="#__codelineno-8-12"></a>  // ...
+</span><span id="__span-8-13"><a id="__codelineno-8-13" name="__codelineno-8-13" href="#__codelineno-8-13"></a>}
 </span></code></pre></div></p>
 <p>varTrack fetches the schema from Git, runs <code>cue vet</code> to validate the payload, then processes <code>@secret</code> and <code>@logger</code> annotations before writing to any sink.</p>
 

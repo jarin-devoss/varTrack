@@ -2064,41 +2064,45 @@
 <tr>
 <td><code>.yaml</code>, <code>.yml</code></td>
 <td>YAML</td>
-<td>Nested keys flattened with dot notation</td>
+<td>Nested keys flattened with dot notation. Numbers and booleans keep their types.</td>
 </tr>
 <tr>
 <td><code>.json</code></td>
 <td>JSON</td>
-<td>Nested keys flattened with dot notation</td>
+<td>Nested keys flattened with dot notation. Numbers and booleans keep their types.</td>
 </tr>
 <tr>
 <td><code>.toml</code></td>
 <td>TOML</td>
-<td>Sections become key prefixes</td>
+<td>Sections become key prefixes. Numbers and booleans keep their types.</td>
 </tr>
 <tr>
 <td><code>.env</code></td>
 <td>dotenv / KEY=VALUE</td>
-<td>One <code>KEY=value</code> per line</td>
+<td>One <code>KEY=value</code> per line. Every value is text.</td>
 </tr>
 <tr>
 <td><code>.ini</code></td>
 <td>INI</td>
-<td>Section + key become <code>section.key</code></td>
+<td>Section + key become <code>section.key</code>. Every value is text.</td>
 </tr>
 <tr>
 <td><code>.hcl</code></td>
 <td>HCL</td>
-<td>Terraform-style config files</td>
+<td>Terraform-style config files. Numbers and booleans keep their types.</td>
 </tr>
 <tr>
 <td><code>.xml</code></td>
 <td>XML</td>
-<td>Elements become dot-separated keys</td>
+<td>Elements become dot-separated keys. Every value is text.</td>
 </tr>
 </tbody>
 </table>
 <p>Use <code>--format</code> on the <code>vt sync</code> command to override auto-detection.</p>
+<div class="admonition note">
+<p class="admonition-title">What a schema sees</p>
+<p>The <em>Flattened result</em> below is what a sink that stores text gets (every value a string). A <a href="../schema-registry/#cue-schemas">CUE schema</a> is shown each value <strong>as the file wrote it</strong>, next to the other form it can be read as: <code>database.port</code> is the int <code>27017</code> in a YAML, JSON, TOML or HCL file, and the text <code>"27017"</code> in a <code>.env</code>, INI or XML file or when quoted. <code>int</code>, <code>bool</code> and ranges work for both; see <a href="../schema-registry/#numbers-and-booleans">Numbers and booleans</a>.</p>
+</div>
 <hr />
 <h2 id="examples">Examples<a class="headerlink" href="#examples" title="Permanent link">&para;</a></h2>
 <div class="tabbed-set tabbed-alternate" data-tabs="1:6"><input checked="checked" id="__tabbed_1_1" name="__tabbed_1" type="radio" /><input id="__tabbed_1_2" name="__tabbed_1" type="radio" /><input id="__tabbed_1_3" name="__tabbed_1" type="radio" /><input id="__tabbed_1_4" name="__tabbed_1" type="radio" /><input id="__tabbed_1_5" name="__tabbed_1" type="radio" /><input id="__tabbed_1_6" name="__tabbed_1" type="radio" /><div class="tabbed-labels"><label for="__tabbed_1_1">YAML</label><label for="__tabbed_1_2">JSON</label><label for="__tabbed_1_3">.env</label><label for="__tabbed_1_4">TOML</label><label for="__tabbed_1_5">INI</label><label for="__tabbed_1_6">HCL</label></div>
