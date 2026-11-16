@@ -553,6 +553,21 @@ bundle: {
 
 ## Testing
 
+Before a push, run what CI checks first, in a scratch copy of your last commit (it changes nothing in your checkout):
+
+```bash
+sh scripts/check-before-push.sh           # every check, about 150 s here
+sh scripts/check-before-push.sh --quick   # the three consistency checks without the tests, about 25 s
+```
+
+It regenerates the protobuf stubs and fails when `libs/go/gen` differs (the stubs are checked in), installs the UI from
+`package-lock.json` with `npm ci` into a clean folder (a `package.json` that names a package the lock lacks fails here, not
+in CI), runs `go mod tidy` in each Go module, and then the orchestrator, Go and UI tests. It needs `buf`, Go, Node and
+Python with the orchestrator's test dependencies, and says which one is missing. A file you forgot to commit is not in the
+scratch copy, so commit first. `--help` lists the options.
+
+The same tests, one package at a time:
+
 ```bash
 # shared Go module (generated code, bundle loader)
 cd libs/go && go test ./...
