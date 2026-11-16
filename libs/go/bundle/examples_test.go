@@ -25,10 +25,10 @@ func TestEveryExampleBundleLoads(t *testing.T) {
 	}
 }
 
-// TestTheDemoStacksConfigsLoad: the demo and live demo stacks run the gateway on
+// TestTheDemoStacksConfigsLoad: the demo, the live demo and the e2e stacks run the gateway on
 // these, so a setting the proto does not declare stops the stack at startup.
 func TestTheDemoStacksConfigsLoad(t *testing.T) {
-	for _, f := range []string{"../../../demo/config.cue", "../../../demo/live/config.cue"} {
+	for _, f := range []string{"../../../demo/config.cue", "../../../demo/live/config.cue", "../../../e2e/config.cue"} {
 		t.Run(filepath.ToSlash(f), func(t *testing.T) {
 			b, err := Load(f, Options{Strict: true})
 			if err != nil {
