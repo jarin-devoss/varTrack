@@ -75,6 +75,8 @@ them different ports — the e2e stack uses `ADMIN_PORT=9093` and `PROM_PORT=909
 | `orch_sink_keys_written_total` | counter | `sink`, `datasource` | Keys written |
 | `orch_sink_keys_unchanged_total` | counter | `sink`, `datasource` | Keys a smart repair found already as Git has them and did not write |
 | `orch_sink_keys_pruned_total` | counter | `sink`, `datasource` | Keys pruned |
+| `orch_ledger_files_let_go_total` | counter | `datasource` | Files a rule stopped reading that a complete sync let go of an environment's desired state |
+| `orch_sink_keys_left_total` | counter | `datasource` | Keys a let-go file wrote that stay in the sink (prune is off, or held them back) |
 | `orch_sink_errors_total` | counter | `sink`, `operation` | Write, prune and rollback errors (`operation`: `write`, `prune`, `rollback`) |
 | `orch_sink_not_rolled_back_total` | counter | `sink` | Files a failed sync left written: the sink cannot take a write back (every sink but MongoDB), or tried to and could not |
 | `orch_mongo_write_duration_seconds`, `orch_mongo_documents_written_total`, `orch_mongo_documents_pruned_total`, `orch_mongo_errors_total` | | as above for the MongoDB sink | Deprecated: the former names of the `orch_sink_*` series, which they counted for **every** sink. They are now fed by the MongoDB sink only, and go in the next release |

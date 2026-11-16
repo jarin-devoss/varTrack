@@ -1,0 +1,24 @@
+# One file for every environment, read by a rule with root_key: config and a branch_map.
+# default is the base; staging and production change only what differs.
+# The weight of the first upstream is one value per environment. other_tool is never synced.
+config:
+  default:
+    service: checkout-api
+    database:
+      host: db.internal
+      port: 5432
+    upstreams:
+      - name: payments
+        url: http://payments.internal
+        weight: { default: 1, production: 5 }
+      - name: fraud
+        url: http://fraud.internal
+        weight: 1
+  staging:
+    database:
+      host: db.staging.internal
+  production:
+    database:
+      host: db.prod.internal
+other_tool:
+  not_for_vartrack: true

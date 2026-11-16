@@ -132,6 +132,9 @@ message Rule {
   //   → If the file contains a "vartrack" key, only that section is synced.
   //   → If "vartrack" is absent, the WHOLE FILE is used (soft fallback).
   //
+  // A root_key set to anything else that the file lacks SKIPS the file: nothing
+  // is synced from it ("root_key=… not found in …, skipping").
+  //
   // Set to "" to always process the entire file regardless of its contents.
   //
   // Examples:
@@ -257,7 +260,10 @@ message Rule {
   // ZooKeeper, MongoDB with STRATEGY_KEY_VALUE). A key changed outside
   // varTrack is kept and reported. protection lists glob patterns of keys that
   // are never deleted; every layer's patterns add up. An object with only
-  // protection does not turn pruning on.
+  // protection does not turn pruning on. When a rule stops reading a file
+  // (its file_name changed), that file's keys are pruned like any other, and
+  // on MongoDB with STRATEGY_DOCUMENT or STRATEGY_FILE its document is
+  // deleted; with prune off they stay in the sink and are shown as not in Git.
   PruneConfig prune = 16 [
     (google.api.field_behavior) = OPTIONAL,
     (vartrack.v1.config) = {mergeable: true, settable_in: VARTRACK_JSON}
