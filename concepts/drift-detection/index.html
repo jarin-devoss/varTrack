@@ -2046,6 +2046,7 @@
 <li><strong>One heal at a time.</strong> After it asks for a heal, the watcher waits two poll intervals (at least 30 s) before asking again for the same drift, so the queued sync has time to start; a check that answers <em>in sync</em> ends the wait.</li>
 <li><strong>A failed heal</strong> is tried again on the next poll; while heal requests keep failing, a circuit breaker stops sending them for a while.</li>
 <li><strong>A sync that died</strong> — a worker killed mid-sync leaves no result. A sync still marked running after 15 minutes (Celery stops any task after 10) no longer counts, so the watcher heals instead of waiting on it.</li>
+<li><strong>Only the files the rule names count.</strong> An environment is compared with the files its rule reads now (<code>file_name</code>, or the environment's <code>file_path_map</code> entry), not with every file it was ever synced from. When a rule stops reading a file, the keys that file wrote are no longer desired: they are not drift and are not healed toward. If prune is off they stay in the sink, and the Keys tab and the Diff list them as <strong>Not in Git</strong> with the file that left them. See <a href="../sync-strategies/#a-file-the-rule-stops-reading">a file the rule stops reading</a>.</li>
 </ul>
 <hr />
 <h2 id="enabling-self-heal">Enabling self-heal<a class="headerlink" href="#enabling-self-heal" title="Permanent link">&para;</a></h2>

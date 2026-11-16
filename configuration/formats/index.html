@@ -1151,36 +1151,9 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#pattern-1-all-top-level-keys-are-env-names" class="md-nav__link">
+  <a href="#combining-with-root_key" class="md-nav__link">
     <span class="md-ellipsis">
-      Pattern 1 — all top-level keys are env names
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#pattern-2-per-field-env-sub-keys-mixed-with-scalars" class="md-nav__link">
-    <span class="md-ellipsis">
-      Pattern 2 — per-field env sub-keys mixed with scalars
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#pattern-3-env-dicts-and-scalar-defaults-at-the-same-level" class="md-nav__link">
-    <span class="md-ellipsis">
-      Pattern 3 — env dicts and scalar defaults at the same level
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#combining-patterns-with-root_key" class="md-nav__link">
-    <span class="md-ellipsis">
-      Combining patterns with root_key
+      Combining with root_key
     </span>
   </a>
   
@@ -1990,36 +1963,9 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#pattern-1-all-top-level-keys-are-env-names" class="md-nav__link">
+  <a href="#combining-with-root_key" class="md-nav__link">
     <span class="md-ellipsis">
-      Pattern 1 — all top-level keys are env names
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#pattern-2-per-field-env-sub-keys-mixed-with-scalars" class="md-nav__link">
-    <span class="md-ellipsis">
-      Pattern 2 — per-field env sub-keys mixed with scalars
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#pattern-3-env-dicts-and-scalar-defaults-at-the-same-level" class="md-nav__link">
-    <span class="md-ellipsis">
-      Pattern 3 — env dicts and scalar defaults at the same level
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#combining-patterns-with-root_key" class="md-nav__link">
-    <span class="md-ellipsis">
-      Combining patterns with root_key
+      Combining with root_key
     </span>
   </a>
   
@@ -2227,112 +2173,56 @@
 <p>This is especially useful when introducing a new file format or env pattern: run dry-run first to confirm varTrack is parsing and slicing the file exactly as expected before merging to <code>main</code>.</p>
 <hr />
 <h2 id="environment-key-patterns">Environment key patterns<a class="headerlink" href="#environment-key-patterns" title="Permanent link">&para;</a></h2>
-<p>varTrack auto-detects three patterns for environment-keyed config files. No rule config is needed — the structure is inferred automatically.</p>
-<hr />
-<h3 id="pattern-1-all-top-level-keys-are-env-names">Pattern 1 — all top-level keys are env names<a class="headerlink" href="#pattern-1-all-top-level-keys-are-env-names" title="Permanent link">&para;</a></h3>
-<p>Every top-level value is a dict. varTrack merges <code>default</code> first, then applies the matching env as an override.</p>
-<div class="language-yaml highlight"><pre><span></span><code><span id="__span-14-1"><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a><span class="c1"># configs/app.yaml</span>
-</span><span id="__span-14-2"><a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a><span class="nt">production</span><span class="p">:</span>
-</span><span id="__span-14-3"><a id="__codelineno-14-3" name="__codelineno-14-3" href="#__codelineno-14-3"></a><span class="w">  </span><span class="nt">database_host</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">mongo.prod.internal</span>
-</span><span id="__span-14-4"><a id="__codelineno-14-4" name="__codelineno-14-4" href="#__codelineno-14-4"></a><span class="w">  </span><span class="nt">max_connections</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">100</span>
-</span><span id="__span-14-5"><a id="__codelineno-14-5" name="__codelineno-14-5" href="#__codelineno-14-5"></a><span class="w">  </span><span class="nt">log_level</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">warn</span>
-</span><span id="__span-14-6"><a id="__codelineno-14-6" name="__codelineno-14-6" href="#__codelineno-14-6"></a>
+<p>A config file can hold the settings of every environment, and varTrack reads out the one being synced. <strong>Which names are environments is what the rule declares</strong>: the values of <code>branch_map</code>, the keys of <code>file_path_map</code>, every branch with <code>branch_as_env</code>, and so on, plus <code>default</code> as the fallback. The rules, and every shape with its result, are in <a href="../../concepts/environment-resolution/#several-environments-in-one-file">Several environments in one file</a>. In short, there are two shapes, and they combine.</p>
+<p>Environment objects at the root, with the settings every environment shares next to them:</p>
+<div class="language-yaml highlight"><pre><span></span><code><span id="__span-14-1"><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a><span class="c1"># configs/app.yaml   (rule: branch_map {main: production, develop: staging})</span>
+</span><span id="__span-14-2"><a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a><span class="nt">max_connections</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">50</span><span class="w">          </span><span class="c1"># no environment: every environment gets it</span>
+</span><span id="__span-14-3"><a id="__codelineno-14-3" name="__codelineno-14-3" href="#__codelineno-14-3"></a>
+</span><span id="__span-14-4"><a id="__codelineno-14-4" name="__codelineno-14-4" href="#__codelineno-14-4"></a><span class="nt">production</span><span class="p">:</span>
+</span><span id="__span-14-5"><a id="__codelineno-14-5" name="__codelineno-14-5" href="#__codelineno-14-5"></a><span class="w">  </span><span class="nt">database_host</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">mongo.prod.internal</span>
+</span><span id="__span-14-6"><a id="__codelineno-14-6" name="__codelineno-14-6" href="#__codelineno-14-6"></a><span class="w">  </span><span class="nt">log_level</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">warn</span>
 </span><span id="__span-14-7"><a id="__codelineno-14-7" name="__codelineno-14-7" href="#__codelineno-14-7"></a><span class="nt">staging</span><span class="p">:</span>
 </span><span id="__span-14-8"><a id="__codelineno-14-8" name="__codelineno-14-8" href="#__codelineno-14-8"></a><span class="w">  </span><span class="nt">database_host</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">mongo.staging.internal</span>
-</span><span id="__span-14-9"><a id="__codelineno-14-9" name="__codelineno-14-9" href="#__codelineno-14-9"></a><span class="w">  </span><span class="nt">max_connections</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">10</span>
-</span><span id="__span-14-10"><a id="__codelineno-14-10" name="__codelineno-14-10" href="#__codelineno-14-10"></a><span class="w">  </span><span class="nt">log_level</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">info</span>
-</span><span id="__span-14-11"><a id="__codelineno-14-11" name="__codelineno-14-11" href="#__codelineno-14-11"></a>
-</span><span id="__span-14-12"><a id="__codelineno-14-12" name="__codelineno-14-12" href="#__codelineno-14-12"></a><span class="nt">default</span><span class="p">:</span>
-</span><span id="__span-14-13"><a id="__codelineno-14-13" name="__codelineno-14-13" href="#__codelineno-14-13"></a><span class="w">  </span><span class="nt">max_connections</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">5</span><span class="w">      </span><span class="c1"># fallback for any unknown env</span>
-</span><span id="__span-14-14"><a id="__codelineno-14-14" name="__codelineno-14-14" href="#__codelineno-14-14"></a><span class="w">  </span><span class="nt">log_level</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">debug</span>
-</span><span id="__span-14-15"><a id="__codelineno-14-15" name="__codelineno-14-15" href="#__codelineno-14-15"></a><span class="w">  </span><span class="nt">cache_ttl</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">60</span>
+</span><span id="__span-14-9"><a id="__codelineno-14-9" name="__codelineno-14-9" href="#__codelineno-14-9"></a><span class="nt">default</span><span class="p">:</span>
+</span><span id="__span-14-10"><a id="__codelineno-14-10" name="__codelineno-14-10" href="#__codelineno-14-10"></a><span class="w">  </span><span class="nt">database_host</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">mongo.local</span>
+</span><span id="__span-14-11"><a id="__codelineno-14-11" name="__codelineno-14-11" href="#__codelineno-14-11"></a><span class="w">  </span><span class="nt">log_level</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">debug</span>
 </span></code></pre></div>
-<p>Push to <code>main</code> (resolved env = <code>production</code>):</p>
+<p>Push to <code>main</code> (env = <code>production</code>):</p>
 <div class="language-text highlight"><pre><span></span><code><span id="__span-15-1"><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a>database_host   = &quot;mongo.prod.internal&quot;
-</span><span id="__span-15-2"><a id="__codelineno-15-2" name="__codelineno-15-2" href="#__codelineno-15-2"></a>max_connections = &quot;100&quot;
-</span><span id="__span-15-3"><a id="__codelineno-15-3" name="__codelineno-15-3" href="#__codelineno-15-3"></a>log_level       = &quot;warn&quot;
-</span><span id="__span-15-4"><a id="__codelineno-15-4" name="__codelineno-15-4" href="#__codelineno-15-4"></a>cache_ttl       = &quot;60&quot;           ← inherited from default
+</span><span id="__span-15-2"><a id="__codelineno-15-2" name="__codelineno-15-2" href="#__codelineno-15-2"></a>log_level       = &quot;warn&quot;
+</span><span id="__span-15-3"><a id="__codelineno-15-3" name="__codelineno-15-3" href="#__codelineno-15-3"></a>max_connections = &quot;50&quot;
 </span></code></pre></div>
-<p>Push from PR #42 (env = <code>pr-42</code>, no match → <code>default</code>):</p>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-16-1"><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a>max_connections = &quot;5&quot;
+<p>Push from PR #42 (env = <code>pr-42</code>, which the file does not name, so <code>default</code>):</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-16-1"><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a>database_host   = &quot;mongo.local&quot;
 </span><span id="__span-16-2"><a id="__codelineno-16-2" name="__codelineno-16-2" href="#__codelineno-16-2"></a>log_level       = &quot;debug&quot;
-</span><span id="__span-16-3"><a id="__codelineno-16-3" name="__codelineno-16-3" href="#__codelineno-16-3"></a>cache_ttl       = &quot;60&quot;
+</span><span id="__span-16-3"><a id="__codelineno-16-3" name="__codelineno-16-3" href="#__codelineno-16-3"></a>max_connections = &quot;50&quot;
 </span></code></pre></div>
-<hr />
-<h3 id="pattern-2-per-field-env-sub-keys-mixed-with-scalars">Pattern 2 — per-field env sub-keys mixed with scalars<a class="headerlink" href="#pattern-2-per-field-env-sub-keys-mixed-with-scalars" title="Permanent link">&para;</a></h3>
-<p>Each field that varies per env has a dict of <code>env → value</code>. Fields that are the same across all envs are plain scalars — they are written as-is for every env.</p>
-<div class="language-yaml highlight"><pre><span></span><code><span id="__span-17-1"><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a><span class="c1"># configs/app.yaml</span>
-</span><span id="__span-17-2"><a id="__codelineno-17-2" name="__codelineno-17-2" href="#__codelineno-17-2"></a><span class="nt">database_host</span><span class="p">:</span>
-</span><span id="__span-17-3"><a id="__codelineno-17-3" name="__codelineno-17-3" href="#__codelineno-17-3"></a><span class="w">  </span><span class="nt">production</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">mongo.prod.internal</span>
-</span><span id="__span-17-4"><a id="__codelineno-17-4" name="__codelineno-17-4" href="#__codelineno-17-4"></a><span class="w">  </span><span class="nt">staging</span><span class="p">:</span><span class="w">    </span><span class="l l-Scalar l-Scalar-Plain">mongo.staging.internal</span>
-</span><span id="__span-17-5"><a id="__codelineno-17-5" name="__codelineno-17-5" href="#__codelineno-17-5"></a><span class="w">  </span><span class="nt">default</span><span class="p">:</span><span class="w">    </span><span class="l l-Scalar l-Scalar-Plain">mongo.local</span>
-</span><span id="__span-17-6"><a id="__codelineno-17-6" name="__codelineno-17-6" href="#__codelineno-17-6"></a>
-</span><span id="__span-17-7"><a id="__codelineno-17-7" name="__codelineno-17-7" href="#__codelineno-17-7"></a><span class="nt">max_connections</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">50</span><span class="w">        </span><span class="c1"># same for every env</span>
-</span><span id="__span-17-8"><a id="__codelineno-17-8" name="__codelineno-17-8" href="#__codelineno-17-8"></a><span class="nt">log_level</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">info</span><span class="w">            </span><span class="c1"># same for every env</span>
-</span><span id="__span-17-9"><a id="__codelineno-17-9" name="__codelineno-17-9" href="#__codelineno-17-9"></a><span class="nt">cache_ttl</span><span class="p">:</span>
-</span><span id="__span-17-10"><a id="__codelineno-17-10" name="__codelineno-17-10" href="#__codelineno-17-10"></a><span class="w">  </span><span class="nt">production</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">300</span>
-</span><span id="__span-17-11"><a id="__codelineno-17-11" name="__codelineno-17-11" href="#__codelineno-17-11"></a><span class="w">  </span><span class="nt">staging</span><span class="p">:</span><span class="w">    </span><span class="l l-Scalar l-Scalar-Plain">60</span>
-</span><span id="__span-17-12"><a id="__codelineno-17-12" name="__codelineno-17-12" href="#__codelineno-17-12"></a><span class="w">  </span><span class="nt">default</span><span class="p">:</span><span class="w">    </span><span class="l l-Scalar l-Scalar-Plain">10</span>
+<p>One value per environment, where only some keys differ:</p>
+<div class="language-yaml highlight"><pre><span></span><code><span id="__span-17-1"><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a><span class="nt">database_host</span><span class="p">:</span>
+</span><span id="__span-17-2"><a id="__codelineno-17-2" name="__codelineno-17-2" href="#__codelineno-17-2"></a><span class="w">  </span><span class="nt">production</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">mongo.prod.internal</span>
+</span><span id="__span-17-3"><a id="__codelineno-17-3" name="__codelineno-17-3" href="#__codelineno-17-3"></a><span class="w">  </span><span class="nt">staging</span><span class="p">:</span><span class="w">    </span><span class="l l-Scalar l-Scalar-Plain">mongo.staging.internal</span>
+</span><span id="__span-17-4"><a id="__codelineno-17-4" name="__codelineno-17-4" href="#__codelineno-17-4"></a><span class="w">  </span><span class="nt">default</span><span class="p">:</span><span class="w">    </span><span class="l l-Scalar l-Scalar-Plain">mongo.local</span>
+</span><span id="__span-17-5"><a id="__codelineno-17-5" name="__codelineno-17-5" href="#__codelineno-17-5"></a><span class="nt">max_connections</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">50</span><span class="w">          </span><span class="c1"># the same for every environment</span>
 </span></code></pre></div>
-<p>Push to <code>main</code> (env = <code>production</code>):</p>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-18-1"><a id="__codelineno-18-1" name="__codelineno-18-1" href="#__codelineno-18-1"></a>database_host   = &quot;mongo.prod.internal&quot;
-</span><span id="__span-18-2"><a id="__codelineno-18-2" name="__codelineno-18-2" href="#__codelineno-18-2"></a>max_connections = &quot;50&quot;
-</span><span id="__span-18-3"><a id="__codelineno-18-3" name="__codelineno-18-3" href="#__codelineno-18-3"></a>log_level       = &quot;info&quot;
-</span><span id="__span-18-4"><a id="__codelineno-18-4" name="__codelineno-18-4" href="#__codelineno-18-4"></a>cache_ttl       = &quot;300&quot;
+<p>An environment's settings override <code>default</code>'s key by key, at every depth. A file with neither the environment nor a <code>default</code> has nothing for that environment: it is skipped, or with <code>strict_validation</code> it fails, and another environment's settings are never written under it.</p>
+<h3 id="combining-with-root_key">Combining with <code>root_key</code><a class="headerlink" href="#combining-with-root_key" title="Permanent link">&para;</a></h3>
+<p>Both shapes work after <code>root_key</code> extraction, so the settings can sit inside a file owned by other tooling:</p>
+<div class="language-yaml highlight"><pre><span></span><code><span id="__span-18-1"><a id="__codelineno-18-1" name="__codelineno-18-1" href="#__codelineno-18-1"></a><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">my-app</span>
+</span><span id="__span-18-2"><a id="__codelineno-18-2" name="__codelineno-18-2" href="#__codelineno-18-2"></a><span class="nt">version</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1.0.0</span>
+</span><span id="__span-18-3"><a id="__codelineno-18-3" name="__codelineno-18-3" href="#__codelineno-18-3"></a>
+</span><span id="__span-18-4"><a id="__codelineno-18-4" name="__codelineno-18-4" href="#__codelineno-18-4"></a><span class="nt">vartrack</span><span class="p">:</span>
+</span><span id="__span-18-5"><a id="__codelineno-18-5" name="__codelineno-18-5" href="#__codelineno-18-5"></a><span class="w">  </span><span class="nt">production</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt"> API_URL</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;https://api.prod.com&quot;</span><span class="p p-Indicator">,</span><span class="nt"> LOG_LEVEL</span><span class="p">:</span><span class="w"> </span><span class="nv">warn</span><span class="w">  </span><span class="p p-Indicator">}</span>
+</span><span id="__span-18-6"><a id="__codelineno-18-6" name="__codelineno-18-6" href="#__codelineno-18-6"></a><span class="w">  </span><span class="nt">staging</span><span class="p">:</span><span class="w">    </span><span class="p p-Indicator">{</span><span class="nt"> API_URL</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;https://api.stg.com&quot;</span><span class="p p-Indicator">,</span><span class="nt">  LOG_LEVEL</span><span class="p">:</span><span class="w"> </span><span class="nv">info</span><span class="w">  </span><span class="p p-Indicator">}</span>
+</span><span id="__span-18-7"><a id="__codelineno-18-7" name="__codelineno-18-7" href="#__codelineno-18-7"></a><span class="w">  </span><span class="nt">default</span><span class="p">:</span><span class="w">    </span><span class="p p-Indicator">{</span><span class="nt"> API_URL</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;https://api.local.com&quot;</span><span class="p p-Indicator">,</span><span class="nt"> LOG_LEVEL</span><span class="p">:</span><span class="w"> </span><span class="nv">debug</span><span class="w"> </span><span class="p p-Indicator">}</span>
+</span><span id="__span-18-8"><a id="__codelineno-18-8" name="__codelineno-18-8" href="#__codelineno-18-8"></a><span class="w">  </span><span class="nt">TIMEOUT</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">30</span>
 </span></code></pre></div>
-<p>Push to <code>develop</code> (env = <code>staging</code>):</p>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-19-1"><a id="__codelineno-19-1" name="__codelineno-19-1" href="#__codelineno-19-1"></a>database_host   = &quot;mongo.staging.internal&quot;
-</span><span id="__span-19-2"><a id="__codelineno-19-2" name="__codelineno-19-2" href="#__codelineno-19-2"></a>max_connections = &quot;50&quot;
-</span><span id="__span-19-3"><a id="__codelineno-19-3" name="__codelineno-19-3" href="#__codelineno-19-3"></a>log_level       = &quot;info&quot;
-</span><span id="__span-19-4"><a id="__codelineno-19-4" name="__codelineno-19-4" href="#__codelineno-19-4"></a>cache_ttl       = &quot;60&quot;
+<div class="language-text highlight"><pre><span></span><code><span id="__span-19-1"><a id="__codelineno-19-1" name="__codelineno-19-1" href="#__codelineno-19-1"></a>rules: [{
+</span><span id="__span-19-2"><a id="__codelineno-19-2" name="__codelineno-19-2" href="#__codelineno-19-2"></a>  file_name: &quot;config.yaml&quot;
+</span><span id="__span-19-3"><a id="__codelineno-19-3" name="__codelineno-19-3" href="#__codelineno-19-3"></a>  root_key:  &quot;vartrack&quot;      // extract the vartrack block first, then read the environments
+</span><span id="__span-19-4"><a id="__codelineno-19-4" name="__codelineno-19-4" href="#__codelineno-19-4"></a>  branch_map: { main: &quot;production&quot;, develop: &quot;staging&quot; }
+</span><span id="__span-19-5"><a id="__codelineno-19-5" name="__codelineno-19-5" href="#__codelineno-19-5"></a>}]
 </span></code></pre></div>
-<hr />
-<h3 id="pattern-3-env-dicts-and-scalar-defaults-at-the-same-level">Pattern 3 — env dicts and scalar defaults at the same level<a class="headerlink" href="#pattern-3-env-dicts-and-scalar-defaults-at-the-same-level" title="Permanent link">&para;</a></h3>
-<p>Some keys at the same nesting level are env names (dicts with overrides), others are plain scalars that apply to every env. Order in the file doesn't matter — varTrack categorizes by value type, not position. The env dict is merged on top of the scalars.</p>
-<div class="language-json highlight"><pre><span></span><code><span id="__span-20-1"><a id="__codelineno-20-1" name="__codelineno-20-1" href="#__codelineno-20-1"></a><span class="p">{</span>
-</span><span id="__span-20-2"><a id="__codelineno-20-2" name="__codelineno-20-2" href="#__codelineno-20-2"></a><span class="w">  </span><span class="nt">&quot;production&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;database_host&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;mongo.prod.internal&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;log_level&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;warn&quot;</span><span class="w">  </span><span class="p">},</span>
-</span><span id="__span-20-3"><a id="__codelineno-20-3" name="__codelineno-20-3" href="#__codelineno-20-3"></a><span class="w">  </span><span class="nt">&quot;staging&quot;</span><span class="p">:</span><span class="w">    </span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;database_host&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;mongo.stg.internal&quot;</span><span class="p">,</span><span class="w">  </span><span class="nt">&quot;log_level&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;info&quot;</span><span class="w">  </span><span class="p">},</span>
-</span><span id="__span-20-4"><a id="__codelineno-20-4" name="__codelineno-20-4" href="#__codelineno-20-4"></a><span class="w">  </span><span class="nt">&quot;default&quot;</span><span class="p">:</span><span class="w">    </span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;database_host&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;mongo.local&quot;</span><span class="p">,</span><span class="w">         </span><span class="nt">&quot;log_level&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;debug&quot;</span><span class="w"> </span><span class="p">},</span>
-</span><span id="__span-20-5"><a id="__codelineno-20-5" name="__codelineno-20-5" href="#__codelineno-20-5"></a><span class="w">  </span><span class="nt">&quot;max_connections&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">50</span><span class="p">,</span>
-</span><span id="__span-20-6"><a id="__codelineno-20-6" name="__codelineno-20-6" href="#__codelineno-20-6"></a><span class="w">  </span><span class="nt">&quot;cache_ttl&quot;</span><span class="p">:</span><span class="w">       </span><span class="mi">60</span><span class="p">,</span>
-</span><span id="__span-20-7"><a id="__codelineno-20-7" name="__codelineno-20-7" href="#__codelineno-20-7"></a><span class="w">  </span><span class="nt">&quot;app_name&quot;</span><span class="p">:</span><span class="w">        </span><span class="s2">&quot;my-service&quot;</span>
-</span><span id="__span-20-8"><a id="__codelineno-20-8" name="__codelineno-20-8" href="#__codelineno-20-8"></a><span class="p">}</span>
-</span></code></pre></div>
-<p>Push to <code>main</code> (env = <code>production</code>):</p>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-21-1"><a id="__codelineno-21-1" name="__codelineno-21-1" href="#__codelineno-21-1"></a>database_host   = &quot;mongo.prod.internal&quot;   ← from production dict
-</span><span id="__span-21-2"><a id="__codelineno-21-2" name="__codelineno-21-2" href="#__codelineno-21-2"></a>log_level       = &quot;warn&quot;                  ← from production dict
-</span><span id="__span-21-3"><a id="__codelineno-21-3" name="__codelineno-21-3" href="#__codelineno-21-3"></a>max_connections = &quot;50&quot;                    ← from scalar
-</span><span id="__span-21-4"><a id="__codelineno-21-4" name="__codelineno-21-4" href="#__codelineno-21-4"></a>cache_ttl       = &quot;60&quot;                    ← from scalar
-</span><span id="__span-21-5"><a id="__codelineno-21-5" name="__codelineno-21-5" href="#__codelineno-21-5"></a>app_name        = &quot;my-service&quot;            ← from scalar
-</span></code></pre></div>
-<p>Push from PR #42 (env = <code>pr-42</code>, no match → <code>default</code> dict):</p>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-22-1"><a id="__codelineno-22-1" name="__codelineno-22-1" href="#__codelineno-22-1"></a>database_host   = &quot;mongo.local&quot;
-</span><span id="__span-22-2"><a id="__codelineno-22-2" name="__codelineno-22-2" href="#__codelineno-22-2"></a>log_level       = &quot;debug&quot;
-</span><span id="__span-22-3"><a id="__codelineno-22-3" name="__codelineno-22-3" href="#__codelineno-22-3"></a>max_connections = &quot;50&quot;
-</span><span id="__span-22-4"><a id="__codelineno-22-4" name="__codelineno-22-4" href="#__codelineno-22-4"></a>cache_ttl       = &quot;60&quot;
-</span><span id="__span-22-5"><a id="__codelineno-22-5" name="__codelineno-22-5" href="#__codelineno-22-5"></a>app_name        = &quot;my-service&quot;
-</span></code></pre></div>
-<p>If there is no <code>default</code> dict and no matching env dict, data is returned unchanged.</p>
-<hr />
-<h3 id="combining-patterns-with-root_key">Combining patterns with <code>root_key</code><a class="headerlink" href="#combining-patterns-with-root_key" title="Permanent link">&para;</a></h3>
-<p>All three patterns work after <code>root_key</code> extraction. This lets you embed varTrack config inside files owned by other tools:</p>
-<div class="language-yaml highlight"><pre><span></span><code><span id="__span-23-1"><a id="__codelineno-23-1" name="__codelineno-23-1" href="#__codelineno-23-1"></a><span class="c1"># package.json style — but in YAML for readability</span>
-</span><span id="__span-23-2"><a id="__codelineno-23-2" name="__codelineno-23-2" href="#__codelineno-23-2"></a><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">my-app</span>
-</span><span id="__span-23-3"><a id="__codelineno-23-3" name="__codelineno-23-3" href="#__codelineno-23-3"></a><span class="nt">version</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1.0.0</span>
-</span><span id="__span-23-4"><a id="__codelineno-23-4" name="__codelineno-23-4" href="#__codelineno-23-4"></a>
-</span><span id="__span-23-5"><a id="__codelineno-23-5" name="__codelineno-23-5" href="#__codelineno-23-5"></a><span class="nt">vartrack</span><span class="p">:</span>
-</span><span id="__span-23-6"><a id="__codelineno-23-6" name="__codelineno-23-6" href="#__codelineno-23-6"></a><span class="w">  </span><span class="nt">production</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt"> API_URL</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;https://api.prod.com&quot;</span><span class="p p-Indicator">,</span><span class="nt"> LOG_LEVEL</span><span class="p">:</span><span class="w"> </span><span class="nv">warn</span><span class="w">  </span><span class="p p-Indicator">}</span>
-</span><span id="__span-23-7"><a id="__codelineno-23-7" name="__codelineno-23-7" href="#__codelineno-23-7"></a><span class="w">  </span><span class="nt">staging</span><span class="p">:</span><span class="w">    </span><span class="p p-Indicator">{</span><span class="nt"> API_URL</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;https://api.stg.com&quot;</span><span class="p p-Indicator">,</span><span class="nt">  LOG_LEVEL</span><span class="p">:</span><span class="w"> </span><span class="nv">info</span><span class="w">  </span><span class="p p-Indicator">}</span>
-</span><span id="__span-23-8"><a id="__codelineno-23-8" name="__codelineno-23-8" href="#__codelineno-23-8"></a><span class="w">  </span><span class="nt">default</span><span class="p">:</span><span class="w">    </span><span class="p p-Indicator">{</span><span class="nt"> API_URL</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;https://api.local.com&quot;</span><span class="p p-Indicator">,</span><span class="nt"> LOG_LEVEL</span><span class="p">:</span><span class="w"> </span><span class="nv">debug</span><span class="w"> </span><span class="p p-Indicator">}</span>
-</span><span id="__span-23-9"><a id="__codelineno-23-9" name="__codelineno-23-9" href="#__codelineno-23-9"></a><span class="w">  </span><span class="nt">TIMEOUT</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">30</span>
-</span></code></pre></div>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-24-1"><a id="__codelineno-24-1" name="__codelineno-24-1" href="#__codelineno-24-1"></a>rules: [{
-</span><span id="__span-24-2"><a id="__codelineno-24-2" name="__codelineno-24-2" href="#__codelineno-24-2"></a>  file_name: &quot;config.yaml&quot;
-</span><span id="__span-24-3"><a id="__codelineno-24-3" name="__codelineno-24-3" href="#__codelineno-24-3"></a>  root_key:  &quot;vartrack&quot;      // extract the vartrack block first, then detect pattern
-</span><span id="__span-24-4"><a id="__codelineno-24-4" name="__codelineno-24-4" href="#__codelineno-24-4"></a>  branch_map: { main: &quot;production&quot;, develop: &quot;staging&quot; }
-</span><span id="__span-24-5"><a id="__codelineno-24-5" name="__codelineno-24-5" href="#__codelineno-24-5"></a>}]
-</span></code></pre></div>
-<p>Push to <code>main</code> → extracts <code>vartrack</code> subtree → detects Pattern 3 → writes <code>API_URL=https://api.prod.com</code>, <code>LOG_LEVEL=warn</code>, <code>TIMEOUT=30</code>.</p>
+<p>Push to <code>main</code> → extracts the <code>vartrack</code> subtree → writes <code>API_URL=https://api.prod.com</code>, <code>LOG_LEVEL=warn</code>, <code>TIMEOUT=30</code>.</p>
 
 
 

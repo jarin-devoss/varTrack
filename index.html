@@ -2007,7 +2007,7 @@
 <pre class="mermaid"><code>flowchart LR
     GIT["📁 Git repo\n(GitHub / Gitea / GitLab)"]
     GW["gateway-service\nGo · :5657"]
-    ORCH["orchestrator-service\nPython · :50051\n─────────────\nRust ETL core"]
+    ORCH["orchestrator-service\nPython · :50051\n─────────────\nETL pipeline"]
     WATCH["watcher-service\nGo · :9091"]
 
     GIT --&gt;|"webhook\n(push / PR)"| GW
@@ -2024,13 +2024,9 @@
 <ol>
 <li>You push a config file.</li>
 <li><strong>gateway-service</strong> (Go) receives the webhook, verifies the HMAC signature, and forwards it via gRPC.</li>
-<li><strong>orchestrator-service</strong> (Python) fetches the file from Git, validates it against a CUE schema, runs the Rust ETL core (diff, merge, prune), and writes to all configured sinks.</li>
+<li><strong>orchestrator-service</strong> (Python) fetches the file from Git, validates it against a CUE schema, reads out the environment being synced, flattens it, compares it with each sink, and writes to all configured sinks.</li>
 <li><strong>watcher-service</strong> (Go) asks the orchestrator on a configurable interval whether each <code>self_heal</code> rule's datasource still matches Git — the orchestrator reads the sink — and on drift has it restore correct state.</li>
 </ol>
-<div class="admonition info">
-<p class="admonition-title">Why Rust inside the orchestrator?</p>
-<p>The ETL core (diff, flatten, merge, prune) is implemented in Rust and called from Python via FFI. This keeps the hot path allocation-free and handles multi-megabyte config payloads without GC pressure, while the Python layer handles I/O, Vault, and sink drivers.</p>
-</div>
 <p><a href="concepts/"><span class="twemoji"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13.22 19.03a.75.75 0 0 1 0-1.06L18.19 13H3.75a.75.75 0 0 1 0-1.5h14.44l-4.97-4.97a.749.749 0 0 1 .326-1.275.75.75 0 0 1 .734.215l6.25 6.25a.75.75 0 0 1 0 1.06l-6.25 6.25a.75.75 0 0 1-1.06 0"/></svg></span> Full architecture overview</a></p>
 <hr />
 <h2 id="where-to-go-from-here">Where to go from here<a class="headerlink" href="#where-to-go-from-here" title="Permanent link">&para;</a></h2>

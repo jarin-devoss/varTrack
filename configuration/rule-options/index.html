@@ -2929,6 +2929,7 @@
 </span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>  → If the file contains a &quot;vartrack&quot; key, only that section is synced.
 </span><span id="__span-1-4"><a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>  → If &quot;vartrack&quot; is absent, the WHOLE FILE is used (soft fallback).
 </span></code></pre></div>
+<p>A root_key set to anything else that the file lacks SKIPS the file: nothing is synced from it ("root_key=… not found in …, skipping").</p>
 <p>Set to "" to always process the entire file regardless of its contents.</p>
 <div class="language-text highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>Examples:
 </span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>  root_key: &quot;properties&quot;  → sync only the &quot;properties&quot; object
@@ -3233,7 +3234,7 @@
 </tbody>
 </table>
 <h2 id="prune"><code>prune</code><a class="headerlink" href="#prune" title="Permanent link">&para;</a></h2>
-<p>Delete keys varTrack wrote before that Git no longer holds: true, or {enabled, protection}. Prune runs once per environment after all its files are written, only on sinks that keep each key separately (Redis, ZooKeeper, MongoDB with STRATEGY_KEY_VALUE). A key changed outside varTrack is kept and reported. protection lists glob patterns of keys that are never deleted; every layer's patterns add up. An object with only protection does not turn pruning on.</p>
+<p>Delete keys varTrack wrote before that Git no longer holds: true, or {enabled, protection}. Prune runs once per environment after all its files are written, only on sinks that keep each key separately (Redis, ZooKeeper, MongoDB with STRATEGY_KEY_VALUE). A key changed outside varTrack is kept and reported. protection lists glob patterns of keys that are never deleted; every layer's patterns add up. An object with only protection does not turn pruning on. When a rule stops reading a file (its file_name changed), that file's keys are pruned like any other, and on MongoDB with STRATEGY_DOCUMENT or STRATEGY_FILE its document is deleted; with prune off they stay in the sink and are shown as not in Git.</p>
 <table>
 <thead>
 <tr>

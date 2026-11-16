@@ -2316,11 +2316,11 @@ health probes are open). Mint a grant from inside the stack and pass it:</p>
 <hr />
 <h2 id="the-end-to-end-regression">The end-to-end regression<a class="headerlink" href="#the-end-to-end-regression" title="Permanent link">&para;</a></h2>
 <p><code>e2e/docker-compose.yml</code> runs the whole product (Gitea, Vault, MongoDB, Redis, ZooKeeper, MinIO, an SSH target,
-the gateway, the orchestrator and the watcher) and then the 23 suites of <code>e2e/init/test_runner.py</code>:</p>
+the gateway, the orchestrator and the watcher) and then the 25 suites of <code>e2e/init/test_runner.py</code>:</p>
 <div class="language-bash highlight"><pre><span></span><code><span id="__span-9-1"><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="nb">cd</span><span class="w"> </span>e2e
 </span><span id="__span-9-2"><a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>docker<span class="w"> </span>compose<span class="w"> </span>up<span class="w"> </span>--build<span class="w"> </span>--detach
 </span><span id="__span-9-3"><a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a>docker<span class="w"> </span>compose<span class="w"> </span><span class="nb">wait</span><span class="w"> </span>e2e-demo<span class="w">       </span><span class="c1"># the exit code is the regression&#39;s: 0 only when every suite passed</span>
-</span><span id="__span-9-4"><a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a>python3<span class="w"> </span>check_results.py<span class="w">           </span><span class="c1"># 23 suites, none failed, none skipped; prints the table</span>
+</span><span id="__span-9-4"><a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a>python3<span class="w"> </span>check_results.py<span class="w">           </span><span class="c1"># 25 suites, none failed, none skipped; prints the table</span>
 </span></code></pre></div>
 <ul>
 <li><strong>A suite that fails fails the run.</strong> <code>e2e-demo</code> exits with the runner's status (<code>demo.sh</code> no longer turns a failure

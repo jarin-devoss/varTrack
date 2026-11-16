@@ -2263,6 +2263,18 @@ them different ports — the e2e stack uses <code>ADMIN_PORT=9093</code> and <co
 <td>Keys pruned</td>
 </tr>
 <tr>
+<td><code>orch_ledger_files_let_go_total</code></td>
+<td>counter</td>
+<td><code>datasource</code></td>
+<td>Files a rule stopped reading that a complete sync let go of an environment's desired state</td>
+</tr>
+<tr>
+<td><code>orch_sink_keys_left_total</code></td>
+<td>counter</td>
+<td><code>datasource</code></td>
+<td>Keys a let-go file wrote that stay in the sink (prune is off, or held them back)</td>
+</tr>
+<tr>
 <td><code>orch_sink_errors_total</code></td>
 <td>counter</td>
 <td><code>sink</code>, <code>operation</code></td>

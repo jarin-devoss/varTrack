@@ -784,6 +784,15 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#a-file-the-rule-stops-reading" class="md-nav__link">
+    <span class="md-ellipsis">
+      A file the rule stops reading
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#pruneprotection" class="md-nav__link">
     <span class="md-ellipsis">
       prune.protection
@@ -1975,6 +1984,15 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#a-file-the-rule-stops-reading" class="md-nav__link">
+    <span class="md-ellipsis">
+      A file the rule stops reading
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#pruneprotection" class="md-nav__link">
     <span class="md-ellipsis">
       prune.protection
@@ -2194,7 +2212,16 @@ This is the default and works well for most configurations. No tuning needed.</p
 <li>If the rules of the tenants cannot be listed when prune runs, nothing is pruned, as when the ledger cannot be read.</li>
 <li>If the delete fails, the sync still succeeds. The keys stay on the list and the next sync retries them (a <code>PruneFailed</code> event).</li>
 </ul>
-<p>Prune applies to sinks that keep each key separately: Redis (hash or strings), ZooKeeper and MongoDB with <code>update_strategy: "STRATEGY_KEY_VALUE"</code>. A sink that replaces a whole object on every write — ConfigMap, S3, Linux server, Helm, MongoDB with its default <code>STRATEGY_DOCUMENT</code> (or <code>STRATEGY_FILE</code>), Redis with the JSON structure — has no stale key to delete. Setting <code>prune</code> on one has no effect.</p>
+<p>Prune applies to sinks that keep each key separately: Redis (hash or strings), ZooKeeper and MongoDB with <code>update_strategy: "STRATEGY_KEY_VALUE"</code>. A sink that replaces a whole object on every write — ConfigMap, S3, Linux server, Helm, MongoDB with its default <code>STRATEGY_DOCUMENT</code> (or <code>STRATEGY_FILE</code>), Redis with the JSON structure — has no stale key to delete. Setting <code>prune</code> on one deletes no key; the one thing it does there is described next, for MongoDB's two document strategies.</p>
+<h3 id="a-file-the-rule-stops-reading">A file the rule stops reading<a class="headerlink" href="#a-file-the-rule-stops-reading" title="Permanent link">&para;</a></h3>
+<p>An environment's desired state is the files its rule names <strong>now</strong>: <code>file_name</code>, or the environment's entry in <code>file_path_map</code>. When a rule changes (a new <code>file_name</code>, or an environment moved to another file) and the environment is synced again, the file it read before is <strong>let go</strong>:</p>
+<ul>
+<li>It leaves the environment's desired state, so the environment is compared with the files the rule names and reads Synced once they match. A sync that did not write every file the rule reads for the environment (a file failed, or was not found in Git) lets nothing go. Nor does a rule whose files cannot be told from the rule alone (a <code>file_path_map</code> rule and an environment that is not one of its entries).</li>
+<li>With <code>prune</code> on, what the file wrote is deleted like any other key Git no longer holds. On a sink that keeps each key (Redis, ZooKeeper, MongoDB <code>STRATEGY_KEY_VALUE</code>) those are its keys, subject to <code>protection</code>, shared key spaces and the changed-outside-varTrack check above. On MongoDB's <code>STRATEGY_DOCUMENT</code> and <code>STRATEGY_FILE</code>, which keep one document per file, it is the file's <strong>document</strong>: it is deleted unless one of its keys matches <code>protection</code> or was changed outside varTrack, and then it is kept whole and the reason is said.</li>
+<li>With <code>prune</code> off nothing is deleted. The keys it wrote stay in the sink, no longer desired and not counted as drift. The Keys tab and the Diff show them as <strong>Not in Git</strong>, with the file that left them.</li>
+<li>It is said, not left to be found: a <strong>File let go</strong> event and a line in the task's result (<em>"old.yaml is no longer read by gitea/mongo for staging: let go; 12 keys it wrote were pruned"</em>, or <em>"… are left in the sink (prune is off)"</em>, or <em>"… its document was deleted"</em>). The file's earlier tasks and events stay. <code>orch_ledger_files_let_go_total</code> and <code>orch_sink_keys_left_total</code> count them (<a href="../../operations/monitoring/">metrics</a>).</li>
+</ul>
+<p>A dry run lists the keys a sync would delete this way together with the other stale keys, on the sinks that keep each key.</p>
 <p><code>prune.last</code> was removed: the delete is always last now. A <code>prune</code> block that only had <code>last</code> is a disabled block; write <code>prune: true</code> or <code>prune: {enabled: true}</code>.</p>
 <h3 id="pruneprotection"><code>prune.protection</code><a class="headerlink" href="#pruneprotection" title="Permanent link">&para;</a></h3>
 <p>Glob patterns for keys that must <strong>never</strong> be deleted, even if they're absent from Git. A pattern is matched against the flat key, like <code>db.host</code>, before the sink formats it for its own layout:</p>

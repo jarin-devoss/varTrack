@@ -1874,9 +1874,18 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#rust-core" class="md-nav__link">
+  <a href="#the-etl-core" class="md-nav__link">
     <span class="md-ellipsis">
-      Rust core
+      The ETL core
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-etl-runs-in-python-parse-the-file-read-the-environment-being-synced-out-of-it-flatten-it-to-dotted-keys-validate-it-against-the-cue-schema-compare-it-with-the-sink-and-write-there-is-one-flatten-transformer_py_flatten-it-walks-the-file-with-an-explicit-stack-so-a-deeply-nested-file-cannot-overflow-the-call-stack" class="md-nav__link">
+    <span class="md-ellipsis">
+      The ETL runs in Python: parse the file, read the environment being synced out of it, flatten it to dotted keys, validate it against the CUE schema, compare it with the sink, and write. There is one flatten (transformer._py_flatten): it walks the file with an explicit stack, so a deeply nested file cannot overflow the call stack.
     </span>
   </a>
   
@@ -1934,8 +1943,8 @@
 <li>Reads the files at the pushed commit, from a bare mirror of the repository kept under <code>GIT_CACHE_DIR</code> (at most 20 repos, least recently used removed first)</li>
 <li>Parses the file (YAML / JSON / TOML / .env / HCL / XML / INI)</li>
 <li>Extracts the subtree under the <code>vartrack</code> root key (if present)</li>
-<li>Detects the environment key pattern (branch-keyed or flat)</li>
-<li>Flattens nested config to <code>{ "key.subkey": "value" }</code> using Rust BFS/DFS</li>
+<li>Reads the settings of the environment being synced out of the file (<a href="environment-resolution/#several-environments-in-one-file">several environments in one file</a>)</li>
+<li>Flattens nested config to <code>{ "key.subkey": "value" }</code></li>
 <li>Applies <code>variables_map</code> overlay if configured</li>
 <li>Validates against the CUE schema for this tenant</li>
 </ol>
@@ -1967,7 +1976,7 @@
 </tr>
 <tr>
 <td><strong>orchestrator-service</strong></td>
-<td>Python + Rust</td>
+<td>Python</td>
 <td>8000 / 50051</td>
 <td>ETL pipeline, CUE validation, multi-sink writer</td>
 </tr>
@@ -2000,7 +2009,7 @@
 </span><span id="__span-1-11"><a id="__codelineno-1-11" name="__codelineno-1-11" href="#__codelineno-1-11"></a>                    │        orchestrator-service           │
 </span><span id="__span-1-12"><a id="__codelineno-1-12" name="__codelineno-1-12" href="#__codelineno-1-12"></a>                    │  ┌────────────────────────────────┐  │
 </span><span id="__span-1-13"><a id="__codelineno-1-13" name="__codelineno-1-13" href="#__codelineno-1-13"></a>                    │  │  read files at pushed commit    │  │
-</span><span id="__span-1-14"><a id="__codelineno-1-14" name="__codelineno-1-14" href="#__codelineno-1-14"></a>                    │  │  parse + flatten (Rust)         │  │
+</span><span id="__span-1-14"><a id="__codelineno-1-14" name="__codelineno-1-14" href="#__codelineno-1-14"></a>                    │  │  parse + flatten                │  │
 </span><span id="__span-1-15"><a id="__codelineno-1-15" name="__codelineno-1-15" href="#__codelineno-1-15"></a>                    │  │  validate CUE schema            │  │
 </span><span id="__span-1-16"><a id="__codelineno-1-16" name="__codelineno-1-16" href="#__codelineno-1-16"></a>                    │  │  write to sinks                 │──┼──► MongoDB
 </span><span id="__span-1-17"><a id="__codelineno-1-17" name="__codelineno-1-17" href="#__codelineno-1-17"></a>                    │  └────────────────────────────────┘  │──► Redis
@@ -2015,35 +2024,8 @@
 </span><span id="__span-1-26"><a id="__codelineno-1-26" name="__codelineno-1-26" href="#__codelineno-1-26"></a>                    └──────────────────────────────────────┘
 </span></code></pre></div>
 <hr />
-<h2 id="rust-core">Rust core<a class="headerlink" href="#rust-core" title="Permanent link">&para;</a></h2>
-<p>Hot-path operations (flattening and merging) are implemented in Rust and exposed to Python via PyO3. Pure-Python fallbacks activate automatically if the Rust extension is not compiled — so the service always works, just slightly slower without it.</p>
-<table>
-<thead>
-<tr>
-<th>Module</th>
-<th>Purpose</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>flatten</code></td>
-<td>BFS / DFS nested dict → flat <code>key.subkey</code> map</td>
-</tr>
-<tr>
-<td><code>merge</code></td>
-<td>Variable map overlay + environment resolution</td>
-</tr>
-<tr>
-<td><code>cue</code></td>
-<td>CUE binary subprocess wrapper</td>
-</tr>
-<tr>
-<td><code>diff</code></td>
-<td>Added / removed / changed sets of two flat maps (the sinks compare in Python)</td>
-</tr>
-</tbody>
-</table>
-<hr />
+<h2 id="the-etl-core">The ETL core<a class="headerlink" href="#the-etl-core" title="Permanent link">&para;</a></h2>
+<h2 id="the-etl-runs-in-python-parse-the-file-read-the-environment-being-synced-out-of-it-flatten-it-to-dotted-keys-validate-it-against-the-cue-schema-compare-it-with-the-sink-and-write-there-is-one-flatten-transformer_py_flatten-it-walks-the-file-with-an-explicit-stack-so-a-deeply-nested-file-cannot-overflow-the-call-stack">The ETL runs in Python: parse the file, read the environment being synced out of it, flatten it to dotted keys, validate it against the CUE schema, compare it with the sink, and write. There is one flatten (<code>transformer._py_flatten</code>): it walks the file with an explicit stack, so a deeply nested file cannot overflow the call stack.<a class="headerlink" href="#the-etl-runs-in-python-parse-the-file-read-the-environment-being-synced-out-of-it-flatten-it-to-dotted-keys-validate-it-against-the-cue-schema-compare-it-with-the-sink-and-write-there-is-one-flatten-transformer_py_flatten-it-walks-the-file-with-an-explicit-stack-so-a-deeply-nested-file-cannot-overflow-the-call-stack" title="Permanent link">&para;</a></h2>
 <h2 id="next">Next<a class="headerlink" href="#next" title="Permanent link">&para;</a></h2>
 <ul>
 <li><a href="destination-template/">Destination template</a> — control where data lands per rule</li>
