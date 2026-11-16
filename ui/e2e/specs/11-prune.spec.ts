@@ -97,6 +97,11 @@ test('a sync of staging says which key it deletes, offers "Sync and delete 1 key
   await expect(preview).toContainText('extra.stale');
   await expect(preview, 'a protected key is not on the list').not.toContainText('extra.keep.me');
   await expect(rule.sync.start).toHaveText('Sync and delete 1 key');
+  // Ticking Dry run does not rename the button, and never makes it promise a delete a dry run will not make.
+  await rule.sync.dryRun.setChecked(true);
+  await expect(rule.sync.start).toHaveText('Sync 1 environment');
+  await rule.sync.dryRun.setChecked(false);
+  await expect(rule.sync.start).toHaveText('Sync and delete 1 key');
   const [taskId] = await rule.sync.startAndCollect();
   await expect(page.getByRole('dialog', { name: 'Prune production keys?' })).toHaveCount(0);
 
