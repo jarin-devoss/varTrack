@@ -63,9 +63,9 @@ regions: [eu, us]
 ```
 
 !!! info "In the demo"
-    The demo's `mongo`, `mongo-primary` and `mongo-dr` datasources use `STRATEGY_DOCUMENT` (collections `variables`, `primary_vars`, `dr_vars`),
-    `mongo-document` uses it with its own collection, `mongo-file` uses `STRATEGY_FILE`, and **`mongo-kv`** (collection `kv_vars`) is the one that
-    uses `STRATEGY_KEY_VALUE`: the shape that keeps single keys, so it is where prune and per-key drift show.
+    The demo's `mongo` datasource uses `STRATEGY_DOCUMENT` (collection `variables`) and `mongo-file` uses `STRATEGY_FILE` (collection `files`).
+    The shape that keeps single keys, `STRATEGY_KEY_VALUE`, is in the end-to-end stack's `mongo-kv` datasource (collection `kv_vars`), which
+    the regression uses to check prune and per-key drift.
 
 ### `STRATEGY_KEY_VALUE`
 

@@ -191,10 +191,12 @@ curl http://localhost:8000/metrics
 
 `demo/` is the stack a person runs to try varTrack: the whole product (Gitea, Vault, MongoDB, Redis, ZooKeeper, MinIO, an
 SSH target, the gateway, the orchestrator, the watcher and the web UI) and a `demo-seed` container that seeds it once and
-syncs each rule. It runs no test. See [`demo/README.md`](https://github.com/jarin-devoss/varTrack/blob/main/demo/README.md).
+syncs six of its seven rules (the seventh is refused on purpose, for the tour to fix). It runs no test. See
+[`demo/README.md`](https://github.com/jarin-devoss/varTrack/blob/main/demo/README.md).
 
-`e2e/docker-compose.yml` includes `demo/docker-compose.yml` (the same services, as the Compose project `e2e`) and adds one
-container, `e2e-regression`, which waits for the seed and runs the 25 suites of `e2e/init/test_runner.py`:
+`e2e/` is a stack of its own, and shares no file with `demo/`: its own `docker-compose.yml` (the Compose project `e2e`),
+`config.cue`, configs, schemas, Gitea image and seed (`e2e-seed`, which creates no webhook). Its `e2e-regression` container
+waits for the seed and runs the 25 suites of `e2e/init/test_runner.py`:
 
 ```bash
 cd e2e

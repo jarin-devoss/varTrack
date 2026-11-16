@@ -10,8 +10,8 @@ cd "$(dirname "$0")"
 COMPOSE="docker compose -f docker-compose.yml"
 CMD=${1:-up}
 
-# The oldest Compose that reads these files: 2.20.0 added `include` (which ../e2e uses) and `docker compose wait`; 2.19 and older
-# reject them. (A CI job checks this number against the real releases: .github/workflows/ci.yml, compose-minimum.)
+# The oldest Compose this demo is checked on: 2.20.0, which reads docker-compose.yml and has `docker compose wait`, which this
+# script uses. (A CI job runs the real releases to check it: .github/workflows/ci.yml, compose-minimum.)
 MIN_COMPOSE=2.20.0
 found=$(docker compose version --short 2>/dev/null | sed 's/^v//') || found=""
 if [ -z "$found" ]; then
