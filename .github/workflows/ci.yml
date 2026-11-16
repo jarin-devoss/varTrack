@@ -294,7 +294,7 @@ jobs:
           cache-to: type=gha,mode=max,scope=${{ matrix.service }}
 
   # ── E2E regression (every PR, and every push to main) ───────────────────────
-  # The e2e-demo container exits with the test runner's status, so `compose wait` fails this job when a
+  # The e2e-regression container exits with the test runner's status, so `compose wait` fails this job when a
   # suite failed. The report is checked as well: a run that skipped or lost a suite is not a pass either.
   e2e:
     name: e2e
@@ -310,12 +310,12 @@ jobs:
         working-directory: e2e
         run: |
           docker compose up --build --detach
-          docker compose wait e2e-demo
+          docker compose wait e2e-regression
 
-      - name: Dump e2e-demo logs
+      - name: Dump e2e-regression logs
         if: always()
         working-directory: e2e
-        run: docker compose logs e2e-demo
+        run: docker compose logs e2e-regression
 
       # 25 suites, none failed, none skipped (e2e/check_results.py); the table is on the job's summary page.
       - name: Check the regression's report

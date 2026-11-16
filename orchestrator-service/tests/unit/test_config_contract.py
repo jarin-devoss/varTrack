@@ -190,7 +190,7 @@ def test_no_service_starts_on_a_config_it_cannot_read_unless_told_it_may(binary,
 
     dependencies.reset()
     monkeypatch.setattr(app_config.subprocess, "run", _run(returncode=1, stderr="broken"))
-    monkeypatch.setattr(app_config._Settings, "CONFIG_PATH", str(REPO / "e2e" / "config.cue"))
+    monkeypatch.setattr(app_config._Settings, "CONFIG_PATH", str(REPO / "demo" / "config.cue"))
     monkeypatch.setenv("MTLS_ENABLED", "false")
     monkeypatch.delenv("VARTRACK_ALLOW_DEGRADED", raising=False)
     for env in ("production", "development"):
@@ -255,7 +255,7 @@ def _built_binary() -> str:
 @pytest.mark.skipif(not _built_binary(), reason="vartrack-bundle is not built")
 def test_the_demo_stacks_configs_load_through_the_real_program_and_these_protos(monkeypatch):
     monkeypatch.setenv("VARTRACK_BUNDLE_BINARY", _built_binary())
-    for name in ("e2e/config.cue", "e2e/live/config.cue"):
+    for name in ("demo/config.cue", "demo/live/config.cue"):
         bundle = app_config._load_cue_bundle(str(REPO / name))
         assert bundle["rules"] and bundle["datasources"]
 
