@@ -251,6 +251,8 @@ def run_stage_etl(ctx: PayloadContext, datasource: str, tenant_id: str) -> ETLRe
                         file_name=Path(file_path).name,
                         strict=True,
                         schema_path=_schema_path,
+                        # The schema is shown each value as the file had it, next to the other form it reads as.
+                        own=transformer.own_forms(parsed, flat_data, variables_map),
                     )
                     validation_status = "ok" if checked else "none"
                 except CUEValidationError as ve:
@@ -402,7 +404,8 @@ def run_stage_etl_content(
         else:
             try:
                 checked = validator.validate(flat_data=flat_data, file_name=Path(file_path).name, strict=True,
-                                             schema_path=_schema_path)
+                                             schema_path=_schema_path,
+                                             own=transformer.own_forms(parsed, flat_data, variables_map))
                 validation_status = "ok" if checked else "none"
             except CUEValidationError as exc:
                 validation_error = str(exc)

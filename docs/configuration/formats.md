@@ -8,15 +8,18 @@ varTrack auto-detects the format of your config file from its extension. All for
 
 | Extension | Format | Notes |
 |---|---|---|
-| `.yaml`, `.yml` | YAML | Nested keys flattened with dot notation |
-| `.json` | JSON | Nested keys flattened with dot notation |
-| `.toml` | TOML | Sections become key prefixes |
-| `.env` | dotenv / KEY=VALUE | One `KEY=value` per line |
-| `.ini` | INI | Section + key become `section.key` |
-| `.hcl` | HCL | Terraform-style config files |
-| `.xml` | XML | Elements become dot-separated keys |
+| `.yaml`, `.yml` | YAML | Nested keys flattened with dot notation. Numbers and booleans keep their types. |
+| `.json` | JSON | Nested keys flattened with dot notation. Numbers and booleans keep their types. |
+| `.toml` | TOML | Sections become key prefixes. Numbers and booleans keep their types. |
+| `.env` | dotenv / KEY=VALUE | One `KEY=value` per line. Every value is text. |
+| `.ini` | INI | Section + key become `section.key`. Every value is text. |
+| `.hcl` | HCL | Terraform-style config files. Numbers and booleans keep their types. |
+| `.xml` | XML | Elements become dot-separated keys. Every value is text. |
 
 Use `--format` on the `vt sync` command to override auto-detection.
+
+!!! note "What a schema sees"
+    The *Flattened result* below is what a sink that stores text gets (every value a string). A [CUE schema](schema-registry.md#cue-schemas) is shown each value **as the file wrote it**, next to the other form it can be read as: `database.port` is the int `27017` in a YAML, JSON, TOML or HCL file, and the text `"27017"` in a `.env`, INI or XML file or when quoted. `int`, `bool` and ranges work for both; see [Numbers and booleans](schema-registry.md#numbers-and-booleans).
 
 ---
 

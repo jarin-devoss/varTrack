@@ -441,13 +441,27 @@ platforms: [{
 
 Validate every config push against a per-tenant CUE schema.
 
-```cue notest
-// In your schema repo: schemas/myapp.cue
-#Config: {
-  database_host:   string
-  max_connections: int & >=1 & <=1000
-  log_level:       "debug" | "info" | "warn" | "error"
-}
+```cue schema
+// In your schema repo: app-settings.yaml.cue, which checks every file named app-settings.yaml.
+// The fields are at the top level: a schema written inside `#Config: { … }` checks nothing.
+database_host:   string
+max_connections: int & >=1 & <=1000
+log_level:       "debug" | "info" | "warn" | "error"
+```
+
+A file it passes, and one it refuses:
+
+```yaml data
+database_host: mongo.prod.internal
+max_connections: 100
+log_level: warn
+```
+
+```yaml data fails
+# expect: max_connections = "5000"
+database_host: mongo.prod.internal
+max_connections: 5000
+log_level: warn
 ```
 
 ```cue
