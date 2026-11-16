@@ -6,3 +6,6 @@ orchestrator-service/app/generated/** linguist-generated=true
 # formats doc comments differently when lines end in CR.
 *.proto text eol=lf
 libs/go/gen/** text eol=lf
+
+# A shell script run on Linux and macOS must not get a CR from a Windows checkout.
+scripts/*.sh text eol=lf
