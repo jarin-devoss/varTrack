@@ -175,6 +175,14 @@ jobs:
           go build -o "$RUNNER_TEMP/bin/vartrack-bundle" ./cmd/vartrack-bundle
           echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
 
+      # The program that checks every file against its schema. The tests that show what a schema can say
+      # (test_readings.py, test_docs_schemas.py) run it for real, and fail here when it is missing.
+      - name: Install cue
+        working-directory: libs/go
+        env:
+          GOBIN: ${{ runner.temp }}/bin
+        run: go install cuelang.org/go/cmd/cue@v0.16.0
+
       - name: Install dependencies
         run: uv pip install --system --require-hashes -r requirements-dev.txt
 
