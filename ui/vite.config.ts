@@ -28,7 +28,8 @@ export default defineConfig(({ mode }) => {
     },
     test: {
       environment: 'node',
-      include: ['src/**/*.test.ts'],
+      // A test that renders says `// @vitest-environment jsdom` at its top; the others run in node.
+      include: ['src/**/*.test.{ts,tsx}'],
     },
   };
 });
