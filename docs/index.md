@@ -124,14 +124,14 @@ It works alongside whatever deploys your services: varTrack only keeps their run
 
 ## Try it in one command
 
-The fastest way to see varTrack in action is the end-to-end demo. It starts a local Git server, MongoDB, ZooKeeper, Redis, and all three varTrack services:
+The fastest way to see varTrack in action is the demo. It starts a local Git server, MongoDB, ZooKeeper, Redis, and all three varTrack services pre-configured, seeds a config repository and syncs it:
 
 ```bash
-cd e2e
+cd demo
 docker compose up
 ```
 
-Push a config change to the local repo and watch it sync automatically.
+Open http://localhost:8080 and sign in with Gitea as `demo-admin` / `VarTrack123`. Push a config change to the local repo and watch it sync automatically; [demo/README.md](https://github.com/jarin-devoss/varTrack/blob/main/demo/README.md) has a short tour (a change in Git, a value changed behind varTrack's back and healed, a dry run, a prune).
 
 ---
 
