@@ -34,19 +34,10 @@ jobs:
         with:
           github_token: ${{ github.token }}
 
-      - name: Generate proto
-        working-directory: .
-        run: buf generate
-
+      # The same check a contributor runs before a push (scripts/check-before-push.sh): buf generate, then libs/go/gen must not change.
       - name: Generated code is current
         working-directory: .
-        run: |
-          if [ -n "$(git status --porcelain -- libs/go/gen)" ]; then
-            git status --short -- libs/go/gen
-            git diff --stat -- libs/go/gen
-            echo "::error::libs/go/gen is out of date: run buf generate and commit the result"
-            exit 1
-          fi
+        run: sh scripts/check-before-push.sh --here --only generated
 
       - name: Tidy
         run: go mod tidy && git diff --exit-code go.mod go.sum
