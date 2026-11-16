@@ -1,5 +1,0 @@
-# The context is the repository root; the image takes only these three files.
-*
-!demo/seed/requirements.txt
-!demo/seed/grant.py
-!e2e/init/test_runner.py

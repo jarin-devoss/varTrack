@@ -1,0 +1,347 @@
+// VarTrack E2E demo bundle.
+// Gitea as the git platform, MongoDB + ZooKeeper as sinks.
+//
+// The rules here are the first layer; schemas/bundle.json (tenant "demo")
+// lays its rules over them — file, branch and sync settings — and the
+// datasources' connection settings come from this file only.
+bundle: {
+	platforms: [
+		{
+			// The demo's Gitea, declared as what it is: a platform's type decides how its API is called,
+			// so `vt` identifies a Gitea token against it, and its webhooks carry X-Gitea-Event.
+			gitea: {
+				endpoint:          "http://gitea:3000"
+				protocol:          "http"
+				token:             "demo-admin-token"
+				org_name:          "vartrack-demo"
+				insecure_skip_verify: true
+				timeout:           "30s"
+				max_retries:       3
+				event_type_header: "X-Gitea-Event"
+				push_event_name:   "push"
+				pr_event_name:     "pull_request"
+			}
+		},
+	]
+
+	// The MongoDB datasources store a file as ONE document per environment (STRATEGY_DOCUMENT, the default): the config nested
+	// under `data`, with its types and arrays. `mongo-kv` is the one that stores one document per KEY (STRATEGY_KEY_VALUE, a
+	// `key` and a string `value`): the shape that keeps single keys, so it is the one prune and per-key drift apply to.
+	// `mongo-document` is the document shape with its own collection, and `mongo-file` stores the file as it parsed.
+	datasources: [
+		{
+			mongo: {
+				tag:                            ""
+				endpoint:                       "mongodb://mongo:27017"
+				host:                           "mongo"
+				port:                           27017
+				database:                       "vartrack"
+				collection:                     "variables"
+				env_as_collection:              false
+				auth_source:                    "admin"
+				ssl:                            false
+				ssl_allow_invalid_certificates: false
+				buffer_size:                    100
+				max_pool_size:                  5
+				connect_timeout_ms:             5000
+				update_strategy:                "STRATEGY_DOCUMENT"
+			}
+		},
+		{
+			zookeeper: {
+				tag:             ""
+				hosts:           ["zookeeper:2181"]
+				session_timeout: "10s"
+			}
+		},
+		{
+			// Primary MongoDB sink — document strategy, collection: primary_vars.
+			mongo: {
+				tag:                            "primary"
+				endpoint:                       "mongodb://mongo:27017"
+				host:                           "mongo"
+				port:                           27017
+				database:                       "vartrack"
+				collection:                     "primary_vars"
+				env_as_collection:              false
+				auth_source:                    "admin"
+				ssl:                            false
+				ssl_allow_invalid_certificates: false
+				buffer_size:                    100
+				max_pool_size:                  5
+				connect_timeout_ms:             5000
+				update_strategy:                "STRATEGY_DOCUMENT"
+			}
+		},
+		{
+			// Per-key MongoDB sink — key-value strategy, collection: kv_vars (one document per key).
+			mongo: {
+				tag:                            "kv"
+				endpoint:                       "mongodb://mongo:27017"
+				host:                           "mongo"
+				port:                           27017
+				database:                       "vartrack"
+				collection:                     "kv_vars"
+				env_as_collection:              false
+				auth_source:                    "admin"
+				ssl:                            false
+				ssl_allow_invalid_certificates: false
+				buffer_size:                    100
+				max_pool_size:                  5
+				connect_timeout_ms:             5000
+				update_strategy:                "STRATEGY_KEY_VALUE"
+			}
+		},
+		{
+			// DR MongoDB sink — same instance, document strategy, separate collection: dr_vars.
+			mongo: {
+				tag:                            "dr"
+				endpoint:                       "mongodb://mongo:27017"
+				host:                           "mongo"
+				port:                           27017
+				database:                       "vartrack"
+				collection:                     "dr_vars"
+				env_as_collection:              false
+				auth_source:                    "admin"
+				ssl:                            false
+				ssl_allow_invalid_certificates: false
+				buffer_size:                    100
+				max_pool_size:                  5
+				connect_timeout_ms:             5000
+				update_strategy:                "STRATEGY_DOCUMENT"
+			}
+		},
+		{
+			// Document-strategy MongoDB sink — one MongoDB document per synced file, always nested.
+			mongo: {
+				tag:                            "document"
+				endpoint:                       "mongodb://mongo:27017"
+				host:                           "mongo"
+				port:                           27017
+				database:                       "vartrack"
+				collection:                     "documents"
+				env_as_collection:              false
+				auth_source:                    "admin"
+				ssl:                            false
+				ssl_allow_invalid_certificates: false
+				buffer_size:                    100
+				max_pool_size:                  5
+				connect_timeout_ms:             5000
+				update_strategy:                "STRATEGY_DOCUMENT"
+			}
+		},
+		{
+			// File-strategy MongoDB sink — one MongoDB document per synced file, the file as it parsed.
+			mongo: {
+				tag:                            "file"
+				endpoint:                       "mongodb://mongo:27017"
+				host:                           "mongo"
+				port:                           27017
+				database:                       "vartrack"
+				collection:                     "files"
+				env_as_collection:              false
+				auth_source:                    "admin"
+				ssl:                            false
+				ssl_allow_invalid_certificates: false
+				buffer_size:                    100
+				max_pool_size:                  5
+				connect_timeout_ms:             5000
+				update_strategy:                "STRATEGY_FILE"
+			}
+		},
+		{
+			// Redis sink for the HASH suites: one hash per environment, database 2.
+			redis: {
+				tag:            "hash"
+				hosts:          ["redis:6379"]
+				database:       2
+				data_structure: "HASH"
+			}
+		},
+		{
+			// Redis sink for the STRING suite: one string per key, database 3.
+			redis: {
+				tag:            "string"
+				hosts:          ["redis:6379"]
+				database:       3
+				data_structure: "STRING"
+			}
+		},
+		{
+			// SSH file sink: the rule's destination_template names the file.
+			linux_server: {
+				tag:            ""
+				host:           "linux-target"
+				port:           22
+				username:       "vartrack"
+				password:       "VarTrack123"
+				base_directory: "/tmp/vartrack"
+				file_paths:     ["app.env"]
+				// The target is a throwaway container with a host key generated at every
+				// start; strict checking (the default) would refuse it. accept-new
+				// records the key in a file outside any volume, so the next stack
+				// (new key) starts clean.
+				host_key_verification: "accept-new"
+				known_hosts_file:      "/tmp/vt_known_hosts"
+			}
+		},
+		{
+			// S3-compatible store (RustFS, which keeps the name "minio").
+			s3: {
+				tag:               ""
+				endpoint:          "http://minio:9002"
+				region:            "us-east-1"
+				bucket:            "vartrack"
+				access_key_id:     "minioadmin"
+				secret_access_key: "minioadmin"
+				force_path_style:  true
+			}
+		},
+		{
+			// Celery broker + gateway nonce store + watcher state store.
+			// DB 0 is used for tasks and ephemeral state.
+			redis: {
+				tag:      "broker"
+				hosts:    ["redis:6379"]
+				database: 0
+			}
+		},
+		{
+			// Celery result backend uses a separate DB to avoid key collisions
+			// with task queue entries.
+			redis: {
+				tag:      "results"
+				hosts:    ["redis:6379"]
+				database: 1
+			}
+		},
+	]
+
+	// Vault, for the @secret() fields of the CUE schema (database.password and
+	// api.secret_key). A field the config file leaves as a plain value is read at
+	// path_prefix, under the field's own name. Rules name no Vault of their own.
+	secret_managers: [
+		{
+			vault: {
+				endpoint:    "http://vault:8200"
+				mount_point: "secret"
+				kv_version:  2
+				path_prefix: "vartrack/configs"
+				token_auth: {token: "root"}
+			}
+		},
+	]
+
+	rules: [
+		{
+			platform:   "gitea"
+			datasource: "mongo"
+			repositories: ["vartrack-demo/demo-configs"]
+			self_heal:    true
+		},
+		{
+			platform:   "gitea"
+			datasource: "zookeeper"
+			repositories: ["vartrack-demo/demo-configs"]
+			self_heal:    true
+		},
+		{
+			platform:   "gitea"
+			datasource: "mongo-document"
+			repositories: ["vartrack-demo/demo-configs"]
+		},
+		{
+			platform:   "gitea"
+			datasource: "mongo-file"
+			repositories: ["vartrack-demo/demo-configs"]
+		},
+		{
+			platform:   "gitea"
+			datasource: "redis-hash"
+			repositories: ["vartrack-demo/demo-configs"]
+		},
+		{
+			platform:   "gitea"
+			datasource: "redis-string"
+			repositories: ["vartrack-demo/demo-configs"]
+			// The gateway judges a CLI call (the Playground, vt sync) by this rule alone: it names the two branches the
+			// rule reads as environments. (The browser suite's tenant bundle.json also sets branch_as_env; the two agree.)
+			branch_map: {develop: "develop", main: "main"}
+		},
+		{
+			platform:   "gitea"
+			datasource: "linux_server"
+			repositories: ["vartrack-demo/demo-configs"]
+		},
+		{
+			platform:   "gitea"
+			datasource: "s3"
+			repositories: ["vartrack-demo/demo-configs"]
+		},
+		{
+			platform:   "gitea"
+			datasource: "mongo-primary"
+			repositories: ["vartrack-demo/demo-configs"]
+		},
+		{
+			platform:   "gitea"
+			datasource: "mongo-kv"
+			repositories: ["vartrack-demo/demo-configs"]
+		},
+		{
+			platform:   "gitea"
+			datasource: "mongo-dr"
+			repositories: ["vartrack-demo/demo-configs"]
+		},
+	]
+
+	// ── Infrastructure wiring ────────────────────────────────────────────────
+	// Each value is the datasource name ({type}-{tag}) that plays that role.
+	// Matches the dedicated fields in bundle.proto (fields 10–12).
+	celery_broker_datasource:  "redis-broker"
+	celery_backend_datasource: "redis-results"
+	gateway_nonce_datasource:  "redis-broker"
+
+	global_tags: {
+		team:        "platform"
+		environment: "demo"
+	}
+
+	// The demo's one tenant, declared by the operator. A push is its own when it comes from
+	// one of its repositories; a push to its schema repository refreshes it. A request can
+	// name a tenant but never makes one.
+	tenants: [{
+		name:         "demo"
+		repositories: ["vartrack-demo/*"]
+		schema_repo: {
+			platform: "gitea"
+			repo:     "vartrack-demo/schemas"
+			branch:   "main"
+		}
+	}]
+
+	// Web UI sign-in with Gitea. The OAuth application is registered by the demo (init/ui_sign_in.py), which writes its
+	// client id and secret where the services read them. The browser reaches the UI on :8080 and Gitea on :3000.
+	ui: {
+		public_url: "http://localhost:8080"
+		auth: {
+			providers: [{
+				platform:      "gitea"
+				client_id:     {file: "/demo-state/ui-sign-in/gitea-client-id"}
+				client_secret: {file: "/demo-state/ui-sign-in/gitea-client-secret"}
+				browser_url:   "http://localhost:3000"
+			}]
+			admins: ["gitea:demo-admin"]
+		}
+	}
+
+	// CLI API (vt, the web UI's Playground): callers use their own Gitea
+	// token, and may do what it may do in the rule's repositories; the
+	// example OPA policy adds: writers never sync production or
+	// configs/secrets/*.
+	auth: {
+		opa: {
+			policy_file: "/app/policies/vartrack_authz.rego"
+		}
+	}
+}

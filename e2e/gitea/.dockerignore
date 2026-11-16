@@ -1,0 +1,3 @@
+# Only gitea-run.sh is needed by the Dockerfile
+*
+!gitea-run.sh
