@@ -67,7 +67,7 @@ Responses are JSON in the shapes defined in [`src/api/types.ts`](src/api/types.t
 
 ### A live stack with real sinks
 
-`e2e/docker-compose.live.yml` runs the whole system with MongoDB, ZooKeeper, Redis, S3 (MinIO), and Kubernetes ConfigMaps and Helm releases on k3s, fed by real pushes through Gitea webhooks. See the comment at the top of that file for the command; then open the UI.
+`demo/docker-compose.live.yml` runs the whole system with MongoDB, ZooKeeper, Redis, S3 (MinIO), and Kubernetes ConfigMaps and Helm releases on k3s, fed by real pushes through Gitea webhooks. See the comment at the top of that file for the command; then open the UI.
 
 ## What a Sync reports
 

@@ -103,10 +103,10 @@ characters, and a `*_FILE` that cannot be read, rather than running unsigned.
 
 Without a secret the orchestrator runs **open**: every call is accepted, as before, and it
 logs `internal authentication is OFF` at startup. This is for a laptop. The repository's
-end-to-end demo (`e2e/docker-compose.yml`) runs with it **on**: one demo `INTERNAL_AUTH_SECRET`
+demo (`demo/docker-compose.yml`, and the regression's `e2e/docker-compose.yml` on top of it) runs with it **on**: one demo `INTERNAL_AUTH_SECRET`
 (overridable with `VARTRACK_DEMO_INTERNAL_AUTH_SECRET`) on the gateway, the orchestrator, the
-watcher and the test runner, which signs its own calls to the orchestrator; its Suite 18 sends the
-calls that must be refused and checks each refusal. (The live UI stack, `e2e/docker-compose.live.yml`,
+watcher, the seed and the test runner, which sign their own calls to the orchestrator; its Suite 18 sends the
+calls that must be refused and checks each refusal. (The live UI stack, `demo/docker-compose.live.yml`,
 still runs open.) To run a production-mode service open on purpose, set `INTERNAL_AUTH_INSECURE=true`;
 there is no other way to get a production orchestrator without authentication.
 

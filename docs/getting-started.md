@@ -14,25 +14,28 @@ Get varTrack running locally in under 10 minutes.
 
 ---
 
-## Option A — E2E demo (fastest)
+## Option A — the demo (fastest)
 
 No manual setup needed. Starts everything in Docker:
 
 ```bash
 git clone https://github.com/jarin-devoss/varTrack
-cd varTrack/e2e
+cd varTrack/demo
 docker compose up
 ```
 
-This starts a local Git server, MongoDB, ZooKeeper, Redis, and all three varTrack services with a pre-configured bundle. Push any config change to the local repo and watch it sync.
+This starts a local Git server, MongoDB, ZooKeeper, Redis, and all three varTrack services with a pre-configured bundle. It seeds a config repository once and syncs it, so the UI opens on rules with environments already written. Push any config change to the local repo and watch it sync; restarting the demo keeps what you pushed (`docker compose down -v`, or `./run.sh reset`, starts again from nothing). [demo/README.md](https://github.com/jarin-devoss/varTrack/blob/main/demo/README.md) has a short tour. It needs Docker with Compose 2.20.0 or newer and about 2 GiB of memory; on Linux install Docker's own packages, not a distribution's `docker-compose` (Compose V1), which does not run it. The [Requirements](https://github.com/jarin-devoss/varTrack/blob/main/demo/README.md#requirements) there also say which ports it uses and how to open a demo that runs on a server. It also serves the web UI at http://localhost:8080 (sign in with Gitea as `demo-admin`, password `VarTrack123`).
+
+`docker compose up` reuses an image that already exists, however old. After you pull new code, add `--build`, or the UI can be newer than the orchestrator behind it and show a blank page. `node e2e/stale-images.mjs` (from the repository root) names every image of a running stack that is older than its sources.
+
+Image builds download dependencies over TLS (`buf` plugins, Go modules, pip and npm packages). On a machine where an antivirus or proxy re-signs HTTPS, the build stops with `x509: certificate signed by unknown authority`: exclude the build hosts from the scan, or see [Run the stack on a machine that cannot build the images](https://github.com/jarin-devoss/varTrack/blob/main/ui/e2e/README.md#run-the-stack-on-a-machine-that-cannot-build-the-images).
 
 ### With more sinks and the web UI
 
-`e2e/docker-compose.live.yml` adds S3 on MinIO and Kubernetes ConfigMaps and Helm releases on k3s, and seeds every sink through real Gitea pushes and webhooks:
+`demo/docker-compose.live.yml` adds S3 on MinIO and Kubernetes ConfigMaps and Helm releases on k3s, and seeds every sink through real Gitea pushes and webhooks:
 
 ```bash
-buf generate          # the orchestrator image needs the Python gRPC stubs
-cd e2e
+cd demo
 docker compose -f docker-compose.yml -f docker-compose.live.yml up -d --build \
   gitea redis mongo zookeeper minio minio-init vault vault-init \
   k3s k3s-kubeconfig orchestrator-api orchestrator-worker gateway watcher live-seed
@@ -40,7 +43,7 @@ docker compose -f docker-compose.yml -f docker-compose.live.yml up -d --build \
 cd ../ui && npm install && npm run dev
 ```
 
-Open the UI at http://localhost:5173. Two Git servers feed the demo, so sign-in covers two platforms: **gitea** (http://localhost:3000, the demo configs) and **gitea-team** (http://127.0.0.1:3001, a payments team with a private repository). Sign in with one and connect the other — every password is `VarTrack123`:
+The images generate their own Python and Go protobuf stubs, so `buf generate` on the host is not needed to run the stack. Open the UI at http://localhost:5173 (this stack's sign-in redirects there, so the dev server must be running; the plain demo's is http://localhost:8080). Two Git servers feed the demo, so sign-in covers two platforms: **gitea** (http://localhost:3000, the demo configs) and **gitea-team** (http://127.0.0.1:3001, a payments team with a private repository). Sign in with one and connect the other — every password is `VarTrack123`:
 
 | Sign in to gitea as… | then connect gitea-team as… | you see |
 |---|---|---|
@@ -51,10 +54,10 @@ The demo's rule settings come in layers ([how a rule is built](configuration/sch
 
 | Layer | In the demo |
 |---|---|
-| `config.cue` | `e2e/live/config.cue`: every rule, the datasources' connections, Vault |
+| `config.cue` | `demo/live/config.cue`: every rule, the datasources' connections, Vault |
 | a tenant's `bundle.json` | tenant `default`: `vartrack-demo/schemas` on gitea, `extends` the `production` preset · tenant `payments`: `payments/schemas` on gitea-team, `extends` the `team` preset on gitea |
 | a repo's `vartrack.json` | `demo-configs` has one on `main` and a different one on `develop`; `payments-config` has `.gitea/vartrack.json`, extending a preset in the payments team's own schema repo |
-| presets | `vartrack-demo/presets` (`e2e/live/presets`): each layer adds `prune.protection` patterns |
+| presets | `vartrack-demo/presets` (`demo/live/presets`): each layer adds `prune.protection` patterns |
 
 Every environment shows its desired state in Git next to the current state in its sink. See [Web UI sign-in](configuration/auth.md#web-ui-sign-in-with-your-git-platform) to turn sign-in off or set it up for your own platforms.
 
