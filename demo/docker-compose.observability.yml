@@ -1,6 +1,6 @@
-# Local dev overlay — adds full observability stack on top of docker-compose.yml
+# Observability overlay — adds the full observability stack on top of docker-compose.yml
 #
-#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up
+#   docker compose -f docker-compose.yml -f docker-compose.observability.yml up
 #
 # Services added: jaeger, otel-collector, elasticsearch, kibana,
 #                 prometheus, grafana, zoonavigator, mongo-express, flower

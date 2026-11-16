@@ -1,19 +1,25 @@
-# VarTrack E2E stack — core services only (CI-compatible)
+# The varTrack demo: the services, their stores, a Git server, and a seeded config repository to push to.
 # Flow: Gitea push → orchestrator-api → Celery worker → MongoDB + ZooKeeper + Redis + S3 + Linux
 #       watcher polls all sinks for drift → calls orchestrator TriggerSync on drift
 #
-# Observability (Jaeger, Grafana, Elasticsearch, Kibana, OTel collector, Prometheus)
-# is intentionally excluded here so CI completes fast without heavy infra.
-# For local dev with full observability, overlay the dev profile:
+#   docker compose up           (from this folder; the UI is at http://localhost:8080, see README.md)
 #
-#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up
+# It runs no tests: the regression and the browser suite are in ../e2e, which includes this file and runs them on it.
+# Observability (Jaeger, Grafana, Elasticsearch, Kibana, OTel collector, Prometheus) is left out so the demo starts fast.
+# To add it, or more sinks:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.observability.yml up
+#   docker compose -f docker-compose.yml -f docker-compose.live.yml up       (see README.md)
+
+# One project name from any directory, so the containers are always vartrack-demo-<service>-1.
+name: vartrack-demo
 
 networks:
   vartrack:
     driver: bridge
 
 volumes:
-  demo-state:          # written by e2e-demo (the web UI's OAuth client), read by the services
+  demo-state:          # written by demo-seed (the web UI's OAuth client), read by the services
   gitea-data:
   mongo-data:
   zookeeper-data:
@@ -73,6 +79,8 @@ services:
       GITEA__security__INSTALL_LOCK: "true"
       GITEA__service__DISABLE_REGISTRATION: "false"
       GITEA__log__LEVEL: Warn
+      # Let Gitea deliver webhooks to the gateway on the compose network (demo-seed creates them; see DEMO_WEBHOOKS).
+      GITEA__webhook__ALLOWED_HOST_LIST: "*"
       GITEA_ADMIN_USER: demo-admin
       GITEA_ADMIN_PASSWORD: VarTrack123
       GITEA_ADMIN_EMAIL: demo-admin@demo.local
@@ -371,7 +379,7 @@ services:
       timeout: 5s
       retries: 15
 
-# ── E2E init + demo script ────────────────────────────────────────────────────
+# ── The web UI, and the seed ──────────────────────────────────────────────────
 
   # The web UI as shipped: the static build behind nginx, proxying /api/* to the services.
   ui:
@@ -387,7 +395,10 @@ services:
     depends_on:
       gateway: {condition: service_healthy}
 
-  e2e-demo:
+  # Seeds the demo once: the organisation, the config and schema repositories, the four accounts and the web UI's sign-in
+  # application, then the first sync of each rule. It exits 0 when the demo is ready. A restart finds it seeded and leaves
+  # what a person has pushed since; `docker compose down -v` starts again from nothing.
+  demo-seed:
     build:
       context: ../e2e/init
       dockerfile: Dockerfile

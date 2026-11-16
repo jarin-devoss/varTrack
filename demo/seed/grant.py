@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
 """
-e2e/init/grant.py
-─────────────────
+demo/seed/grant.py
+──────────────────
 Signed grants for the demo's own calls to the orchestrator.
 
 With internal authentication on (INTERNAL_AUTH_SECRET) the orchestrator accepts a call only when it
 carries ``Authorization: Bearer <grant>``: a compact HS256 token the gateway, the watcher and operators
-mint, and the orchestrator verifies (orchestrator-service/app/api/tokens.py). The demo's test runner and
-demo.sh play the gateway's part, so they mint grants the same way.
+mint, and the orchestrator verifies (orchestrator-service/app/api/tokens.py). The demo's seed script and the
+regression's test runner play the gateway's part, so they mint grants the same way.
 
-Standard library only: e2e/init/requirements.txt is hash-pinned and does not change for this.
+Standard library only: demo/seed/requirements.txt is hash-pinned and does not change for this.
 
     python3 grant.py mint --audience sync --subject e2e-runner --datasource mongo
 """
@@ -81,7 +81,7 @@ def _main(argv: list[str]) -> int:
     sub = parser.add_subparsers(dest="cmd", required=True)
     m = sub.add_parser("mint", help="print a signed grant")
     m.add_argument("--audience", default="sync", choices=AUDIENCES)
-    m.add_argument("--subject", default="e2e-demo")
+    m.add_argument("--subject", default="demo-seed")
     m.add_argument("--tenant", default="")
     m.add_argument("--platform", default="gitea")
     m.add_argument("--datasource", default="")

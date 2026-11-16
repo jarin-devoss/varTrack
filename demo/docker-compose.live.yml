@@ -7,8 +7,8 @@
 # edits a few values directly in the sinks so there is drift to see. (The Linux
 # server sink is left out.)
 #
-# From e2e/ (the orchestrator's Python gRPC stubs must exist first:
-# `buf generate`, see docs/getting-started.md):
+# From demo/ (--build matters: an image that already exists is reused however old
+# it is; the images generate their own protobuf stubs):
 #   docker compose -f docker-compose.yml -f docker-compose.live.yml up -d --build \
 #     gitea redis mongo zookeeper minio minio-init vault vault-init \
 #     k3s k3s-kubeconfig orchestrator-api orchestrator-worker gateway watcher live-seed
@@ -154,7 +154,7 @@ services:
 
   live-seed:
     build:
-      context: ./init
+      context: ./seed
       dockerfile: Dockerfile
     networks: [vartrack]
     entrypoint: ["python3", "/live/seed.py"]
