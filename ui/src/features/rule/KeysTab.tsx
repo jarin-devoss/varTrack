@@ -47,6 +47,9 @@ export function KeysTab({ rule, env, onEnvChange, filter, onFilterChange, onSync
     unmanaged: all.filter(k => k.state === 'unmanaged').length,
   };
   const changed = counts.drifted + counts.missing + counts.unmanaged;
+  // Keys a file the rule no longer reads left in the sink are not drift: the environment reads Synced against the files the rule names now.
+  const drift = counts.drifted + counts.missing;
+  const leftBy = [...new Set(all.filter(k => k.state === 'unmanaged' && k.sourceFile).map(k => k.sourceFile))];
 
   const shown = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -92,15 +95,16 @@ export function KeysTab({ rule, env, onEnvChange, filter, onFilterChange, onSync
         </p>
       )}
 
-      {changed > 0 && target && (
-        <Notice tone="warning">
+      {(drift > 0 || counts.unmanaged > 0) && target && (
+        <Notice tone={drift > 0 ? 'warning' : 'info'}>
           <div className="row row--wrap" style={{ gap: 8 }}>
             <span style={{ flex: 1, minWidth: 240 }}>
-              {rule.selfHeal ? 'Self-heal restores changed and missing keys from Git.' : 'Self-heal is off for this rule — sync to restore Git values.'}{' '}
+              {drift > 0 &&
+                (rule.selfHeal ? 'Self-heal restores changed and missing keys from Git.' : 'Self-heal is off for this rule — sync to restore Git values.')}{' '}
               {counts.unmanaged > 0 &&
-                (rule.prune.enabled
-                  ? 'Keys not in Git are deleted when you sync with prune.'
-                  : 'Keys not in Git are kept because pruning is off.')}
+                `${leftBy.length > 0 ? `${leftBy.join(', ')} is no longer read by the rule: its keys stay in the sink. ` : ''}${
+                  rule.prune.enabled ? 'Keys not in Git are deleted when you sync with prune.' : 'Keys not in Git are kept because pruning is off.'
+                }`}
             </span>
             <button className="btn btn--sm" onClick={() => onSync(env!)} disabled={!rights.sync} title={rights.reason}>
               <Icon name="refresh" size={14} /> Sync {env}
@@ -175,6 +179,12 @@ function KeyTable({ keys, protection }: { keys: KeyEntry[]; protection: string[]
                     <StatusIcon icon={s.icon} tone={s.tone} size={14} />
                     {s.label}
                   </span>
+                  {k.reason && (
+                    <div className="muted" style={{ fontSize: 12, whiteSpace: 'normal' }}>
+                      {k.reason}
+                      {k.sourceFile ? ` (${k.sourceFile})` : ''}
+                    </div>
+                  )}
                 </td>
               </tr>
             );
