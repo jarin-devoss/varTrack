@@ -25,7 +25,7 @@ gateway-service (gRPC) ──► Celery task queue ──► ETL pipeline ──
    → parse file  (YAML / JSON / TOML / .env / HCL / XML / INI)
    → slice subtree under "vartrack" root key
    → detect environment key pattern (branch-keyed or flat)
-   → flatten to { "key.subkey": "value" }  ← Rust BFS/DFS
+   → flatten to { "key.subkey": "value" }
    → apply variables_map overlay
    → validate against CUE schema (per-tenant, fetched from schema repo)
 
@@ -51,27 +51,6 @@ gateway-service (gRPC) ──► Celery task queue ──► ETL pipeline ──
 | `.xml` | XML |
 
 Format is auto-detected from the file extension. Use the `--format` flag on `vt sync` to override.
-
----
-
-## Rust core (`rust_core/`)
-
-Hot-path operations are implemented in Rust and exposed to Python via PyO3. Pure-Python fallbacks activate automatically when the Rust extension is not compiled.
-
-| Module | Purpose |
-|---|---|
-| `flatten` | Non-recursive BFS / DFS dict flattening |
-| `merge` | Variable map overlay + environment resolution |
-| `diff` | Added / removed / changed sets of two flat maps |
-| `cue` | CUE binary subprocess wrapper |
-
-Build the Rust extension:
-
-```bash
-cd rust_core
-maturin develop --release
-# or: make rust
-```
 
 ---
 
@@ -200,7 +179,6 @@ Priority order when resolving the environment from a webhook event:
 - Python 3.11+
 - Redis (Celery broker)
 - MongoDB (primary sink)
-- Rust + maturin (optional — Rust extension; falls back to pure Python)
 - CUE binary (optional — schema validation; skipped if not installed)
 
 ### Install and run
@@ -210,9 +188,6 @@ cd orchestrator-service
 
 # Install dependencies
 pip install -e ".[test,dev]"   # local dev (includes linters + test deps)
-
-# Build Rust extension (optional, for best performance)
-make rust
 
 # Start the API + gRPC server
 make dev           # uvicorn --reload on :8000
@@ -311,13 +286,6 @@ orchestrator-service/
 │   ├── parsers/                # YAML / JSON / TOML / .env / HCL / XML / INI
 │   ├── tasks/                  # Celery task definitions
 │   └── schema_registry/        # Per-tenant CUE schema clone manager
-│
-├── rust_core/                  # Rust extension (PyO3 / maturin)
-│   └── src/
-│       ├── flatten.rs          # BFS / DFS flattening
-│       ├── merge.rs            # Env resolution + overlay
-│       ├── diff.rs             # Added / removed / changed sets
-│       └── cue.rs              # CUE subprocess wrapper
 │
 └── tests/
     ├── unit/                   # Per-module unit tests (no infra needed)

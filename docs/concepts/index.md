@@ -32,8 +32,8 @@ The orchestrator-service:
 1. Reads the files at the pushed commit, from a bare mirror of the repository kept under `GIT_CACHE_DIR` (at most 20 repos, least recently used removed first)
 2. Parses the file (YAML / JSON / TOML / .env / HCL / XML / INI)
 3. Extracts the subtree under the `vartrack` root key (if present)
-4. Detects the environment key pattern (branch-keyed or flat)
-5. Flattens nested config to `{ "key.subkey": "value" }` using Rust BFS/DFS
+4. Reads the settings of the environment being synced out of the file ([several environments in one file](environment-resolution.md#several-environments-in-one-file))
+5. Flattens nested config to `{ "key.subkey": "value" }`
 6. Applies `variables_map` overlay if configured
 7. Validates against the CUE schema for this tenant
 
@@ -53,7 +53,7 @@ Writes the validated flat map to every configured sink:
 | Service | Language | Port | Role |
 |---|---|---|---|
 | **gateway-service** | Go | 5657 | HTTP webhook receiver, platform routing, gRPC forwarder |
-| **orchestrator-service** | Python + Rust | 8000 / 50051 | ETL pipeline, CUE validation, multi-sink writer |
+| **orchestrator-service** | Python | 8000 / 50051 | ETL pipeline, CUE validation, multi-sink writer |
 | **watcher-service** | Go | 9091 | Drift detection, self-heal trigger |
 | **vt** | Go | — | CLI for manual sync and CI/CD |
 
@@ -75,7 +75,7 @@ Writes the validated flat map to every configured sink:
                     │        orchestrator-service           │
                     │  ┌────────────────────────────────┐  │
                     │  │  read files at pushed commit    │  │
-                    │  │  parse + flatten (Rust)         │  │
+                    │  │  parse + flatten                │  │
                     │  │  validate CUE schema            │  │
                     │  │  write to sinks                 │──┼──► MongoDB
                     │  └────────────────────────────────┘  │──► Redis
@@ -92,17 +92,9 @@ Writes the validated flat map to every configured sink:
 
 ---
 
-## Rust core
+## The ETL core
 
-Hot-path operations (flattening and merging) are implemented in Rust and exposed to Python via PyO3. Pure-Python fallbacks activate automatically if the Rust extension is not compiled — so the service always works, just slightly slower without it.
-
-| Module | Purpose |
-|---|---|
-| `flatten` | BFS / DFS nested dict → flat `key.subkey` map |
-| `merge` | Variable map overlay + environment resolution |
-| `cue` | CUE binary subprocess wrapper |
-| `diff` | Added / removed / changed sets of two flat maps (the sinks compare in Python) |
-
+The ETL runs in Python: parse the file, read the environment being synced out of it, flatten it to dotted keys, validate it against the CUE schema, compare it with the sink, and write. There is one flatten (`transformer._py_flatten`): it walks the file with an explicit stack, so a deeply nested file cannot overflow the call stack.
 ---
 
 ## Next

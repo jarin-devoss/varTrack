@@ -17,7 +17,7 @@ import urllib.error
 import urllib.request
 from unittest.mock import MagicMock, patch
 
-for _m in ("vartrack_core", "pymongo", "git", "gitpython"):
+for _m in ("pymongo", "git", "gitpython"):
     sys.modules.setdefault(_m, MagicMock())
 
 import app.tasks.etl  # noqa: E402,F401  (so patch("app.tasks.etl.*") resolves)

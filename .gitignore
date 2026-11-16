@@ -125,9 +125,6 @@ buf.exe
 generated/
 orchestrator-service/app/generated/
 
-# ── Rust ──────────────────────────────────────────────────────────────────────
-orchestrator-service/rust_core/target/
-
 
 .claude
 

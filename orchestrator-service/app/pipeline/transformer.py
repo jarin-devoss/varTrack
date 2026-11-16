@@ -15,9 +15,7 @@ All config formats are normalised to a flat dict with dot-separated keys:
 
   { "database.host": "localhost", "database.port": "5432" }
 
-The Rust core (flatten.rs) is used when available for performance; otherwise
-a pure-Python fallback handles the flattening.  The Python API never changes,
-only the execution engine underneath.
+One implementation flattens (_py_flatten): an explicit stack, so a deeply nested file cannot overflow the call stack.
 _typed_flatten and own_forms read the same traversal with the values left as the file had them.
 
 Variables map overlay
@@ -125,22 +123,10 @@ def _flatten(data: Any, prefix: str = "") -> dict[str, str]:
     """
     Recursively flatten a nested dict/list structure to dot-separated keys.
 
-    Tries the Rust core first (compiled via Maturin/PyO3).  Falls back to
-    the pure-Python implementation if the Rust extension is not available.
+    There is one flatten, and it is the one that runs: _py_flatten.
 
     Returns dict[str, str] — all values coerced to str.
     """
-    try:
-        from vartrack_core import py_flatten_bfs as rust_flatten  # type: ignore[import]
-        # Rust flatten expects a JSON string, returns a JSON string of {str: str}
-        payload = json.dumps(data)
-        result_json = rust_flatten(payload)
-        return json.loads(result_json)
-    except ImportError:
-        pass   # Rust extension not compiled — use Python fallback
-    except Exception:
-        logger.debug("transformer: rust flatten failed, using Python fallback")
-
     return _py_flatten(data, prefix)
 
 
