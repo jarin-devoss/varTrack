@@ -7,6 +7,7 @@ Read API for the web UI, mounted under /v1/ui.
   GET  /ui/rules/{platform}/{datasource}              one rule
   GET  /ui/rules/{platform}/{datasource}/targets/{env}/keys
                                                       current vs desired, key by key
+  DELETE /ui/rules/{platform}/{datasource}/targets/{env}   forget an environment no branch feeds ({env} may hold slashes)
   POST /ui/rules/{platform}/{datasource}/sync         re-sync environments from Git
   GET  /ui/events?rule=&limit=                        newest first
   GET  /ui/tasks?rule=&limit=                         newest first
@@ -339,7 +340,9 @@ def _say_what_feeds(viewer: access.Viewer, rule: dict, tenant: str, targets: lis
             target["notFed"] = decision.reason.removeprefix("permission denied: ")
 
 
-@router.get("/rules/{platform}/{datasource}/targets/{env}/keys")
+# {env:path}: an environment can be a branch name with a slash (branch_as_env: feature/login), and the proxy hands the
+# route the decoded path, so a plain {env} would never match it.
+@router.get("/rules/{platform}/{datasource}/targets/{env:path}/keys")
 def list_keys(request: Request, platform: str, datasource: str, env: str, tenant: str | None = Query(None),
               viewer: access.Viewer = Depends(_viewer)) -> dict[str, Any]:
     from app.pipeline import repo_scope
@@ -439,7 +442,7 @@ def sync_rule(request: Request, platform: str, datasource: str, body: SyncReques
     return {"taskIds": task_ids}
 
 
-@router.delete("/rules/{platform}/{datasource}/targets/{env}", status_code=204)
+@router.delete("/rules/{platform}/{datasource}/targets/{env:path}", status_code=204)
 def forget_target(request: Request, platform: str, datasource: str, env: str, tenant: str | None = Query(None),
                   viewer: access.Viewer = Depends(_viewer)) -> Response:
     """Forget an environment no branch feeds any more. Only an administrator may (with sign-in on), and only an
