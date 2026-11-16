@@ -20,7 +20,8 @@ import (
 // A block that is a whole config starts with `bundle:`. A fragment is placed by its
 // first key: a bundle setting (platforms, rules, ui…) goes in `bundle: { … }`, a rule
 // option in a rule, a datasource, platform or secret manager kind in its list. A block
-// that is deliberately not config is fenced as ```text, or marks itself ```cue notest.
+// that is deliberately not config is fenced as ```text, or marks itself ```cue notest. A schema is fenced
+// ```cue schema: it is not config.cue, and the orchestrator's tests run it on the files that follow it.
 
 const fence = "```"
 
@@ -66,8 +67,8 @@ func docSnippets(t *testing.T) []snippet {
 			for i++; i < len(lines) && !fenceClose.MatchString(lines[i]); i++ {
 				body = append(body, strings.TrimPrefix(lines[i], m[1]))
 			}
-			if strings.Contains(m[2], "notest") {
-				continue
+			if strings.Contains(m[2], "notest") || strings.Contains(m[2], "schema") {
+				continue // a schema is run on files by orchestrator-service/tests/unit/test_docs_schemas.py
 			}
 			out = append(out, snippet{fmt.Sprintf("%s:%d", f, start), strings.Join(body, "\n")})
 		}

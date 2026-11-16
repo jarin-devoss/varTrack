@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url';
 const here = path.dirname(fileURLToPath(import.meta.url));
 
 /**
- * The four people the specs sign in as, all Gitea accounts the demo creates (e2e/init/ui_sign_in.py):
+ * The four people the specs sign in as, all Gitea accounts the demo creates (demo/seed/ui_sign_in.py):
  *
  *   admin     demo-admin     a varTrack admin (config.cue's ui.auth.admins) and the owner of the demo repositories
  *   writer    demo-writer    can push to the config repository, except to its protected branch (main)

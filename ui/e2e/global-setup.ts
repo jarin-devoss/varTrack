@@ -43,8 +43,13 @@ async function signIn(baseURL: string, person: Person): Promise<void> {
   }
 }
 
+/** Sign in as every role and save each browser state. The demo tour needs this and nothing else. */
+export async function signInEveryone(baseURL: string): Promise<void> {
+  for (const role of ROLES) await signIn(baseURL, PEOPLE[role]);
+}
+
 export default async function globalSetup(config: FullConfig): Promise<void> {
   const baseURL = config.projects[0].use.baseURL ?? 'http://localhost:8080';
-  for (const role of ROLES) await signIn(baseURL, PEOPLE[role]);
+  await signInEveryone(baseURL);
   await buildWorld(baseURL);
 }

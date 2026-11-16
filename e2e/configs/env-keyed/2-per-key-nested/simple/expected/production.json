@@ -1,0 +1,4 @@
+{
+  "db.host": "db.prod.internal",
+  "replicas": "6"
+}

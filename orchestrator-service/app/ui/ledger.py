@@ -12,7 +12,9 @@ Keys
 ────
   vt:ui:target:{tenant}:{datasource}:{env}   JSON  last desired state + last sync
                                              (desiredByFile is keyed "{repo}:{file}": the inventory
-                                             prune diffs; pendingPrune holds keys still to delete)
+                                             prune diffs, and holds only the files the rule reads: a complete
+                                             sync lets go a file it no longer reads, whose keys still in the sink
+                                             are noted under letGo; pendingPrune holds keys still to delete)
   vt:ui:targets:{tenant}                     SET   "{datasource}|{env}"
   vt:ui:task:{task_id}                       JSON  task summary (7 days)
   vt:ui:tasks:{tenant}                       LIST  task ids, newest first
@@ -120,6 +122,47 @@ def entries_of(target: dict[str, Any] | None) -> dict[str, dict]:
     return {}
 
 
+def entry_file(name: str, entry: dict) -> str:
+    """The path of the file a desiredByFile entry holds; an entry recorded before entries named their file is keyed by it."""
+    return str(entry.get("file") or name)
+
+
+def entry_paths(name: str, entry: dict) -> list[str]:
+    """The paths an entry holds: its file; an entry recorded before entries named their file is keyed by the path(s)."""
+    if entry.get("file"):
+        return [str(entry["file"])]
+    return [n for n in name.split(",") if n] or [name]
+
+
+def entry_repo(name: str, entry: dict) -> str | None:
+    """The repository an entry's file was read from (the key is "{repo}:{file}"); None for an entry recorded before the
+    key carried the repository."""
+    file = entry_file(name, entry)
+    suffix = ":" + file
+    return name[: -len(suffix)] if name.endswith(suffix) else None
+
+
+def merge_entries(by_file: dict[str, dict]) -> tuple[dict[str, str], dict[str, str], list[str]]:
+    """What a target's per-file entries add up to: (desired, secret digests, the files' paths). A key in two files
+    holds whatever was written last."""
+    desired: dict[str, str] = {}
+    digests: dict[str, str] = {}
+    for entry in by_file.values():
+        for k, v in entry["desired"].items():
+            desired[k] = v
+            if k in entry["secretDigests"]:
+                digests[k] = entry["secretDigests"][k]
+            else:
+                digests.pop(k, None)
+    names: set[str] = set()
+    for name, entry in by_file.items():
+        if entry.get("file"):
+            names.add(entry["file"])
+        else:  # recorded before entries named their file: the key is the path(s)
+            names.update(n for n in name.split(",") if n)
+    return desired, digests, sorted(names)
+
+
 def is_active(task: dict[str, Any], now: float | None = None) -> bool:
     """Still running — not finished, and not abandoned by a worker that died."""
     if task.get("state") not in ACTIVE_STATES:
@@ -181,8 +224,9 @@ def record_target(
         desired = {k: (SECRET_MASK if k in secrets else str(v)) for k, v in flat_data.items()}
         digests = {k: secret_digest(str(v)) for k, v in flat_data.items() if k in secrets}
 
-        # Desired state is kept per file: a push syncs only the files it
-        # touched, and the environment's other files still say what it holds.
+        # Desired state is kept per file. A sync that wrote only some of the files its rule reads (a file failed, or
+        # an environment's other repository fed it) keeps the other entries; a complete one lets go the files the rule
+        # no longer reads (see let_go, called by the recorder).
         prev_raw = r.get(key)
         prev = json.loads(prev_raw) if prev_raw else {}
         by_file = dict(entries_of(prev))
@@ -192,22 +236,7 @@ def record_target(
         by_file.pop(entry_key, None)
         by_file[entry_key] = {"file": file_path, "desired": desired, "secretDigests": digests}  # last written last
 
-        # A key in two files holds whatever was written last.
-        desired, digests = {}, {}
-        for entry in by_file.values():
-            for k, v in entry["desired"].items():
-                desired[k] = v
-                if k in entry["secretDigests"]:
-                    digests[k] = entry["secretDigests"][k]
-                else:
-                    digests.pop(k, None)
-        names: set[str] = set()
-        for name, entry in by_file.items():
-            if entry.get("file"):
-                names.add(entry["file"])
-            else:  # recorded before entries named their file: the key is the path(s)
-                names.update(n for n in name.split(",") if n)
-        files = sorted(names)
+        desired, digests, files = merge_entries(by_file)
         prev_pending: dict[str, dict] = prev.get("pendingPrune") or {}
         wanted = prev_pending if pending_prune is None else pending_prune
         pending = {}
@@ -237,6 +266,10 @@ def record_target(
             "pendingPrune": pending,
             "lastSync": sync,
         }
+        # A file written again is read again, and a key in the desired state is no longer one that was left behind.
+        left = _still_left(prev.get("letGo"), desired, written=entry_key)
+        if left:
+            doc["letGo"] = left
         space = key_space if key_space is not None else prev.get("keySpace")
         if space is not None:
             doc["keySpace"] = space
@@ -244,6 +277,83 @@ def record_target(
         r.sadd(_key("targets", tenant), f"{datasource}|{env}")
     except Exception:
         logger.warning("ui ledger: record_target failed", exc_info=True)
+
+
+def _still_left(let_go: dict[str, dict] | None, desired: dict[str, str], *, written: str = "") -> dict[str, dict]:
+    """A target's letGo without the entry written again (*written*) and without the keys now desired."""
+    out: dict[str, dict] = {}
+    for name, held in (let_go or {}).items():
+        if name == written:
+            continue
+        keys = {k: v for k, v in (held.get("keys") or {}).items() if k not in desired}
+        if keys:
+            out[name] = {**held, "keys": keys}
+    return out
+
+
+def let_go(*, tenant: str, datasource: str, env: str, entries: dict[str, Iterable[str]], task_id: str) -> None:
+    """The rule no longer reads these files for *env*: take their entries (*entries*: the ledger's key of each, with
+    the keys of it that are still in the sink) out of the desired state. Those keys stay noted under letGo, with the
+    value (or secret digest) written, so the environment can show what was left behind: they are no longer desired,
+    and are never counted as drift. Best-effort, like every write here."""
+    try:
+        r = _redis()
+        key = _key("target", tenant, datasource, env)
+        raw = r.get(key)
+        if not raw:
+            return
+        doc = json.loads(raw)
+        by_file = dict(entries_of(doc))
+        let_go_notes = dict(doc.get("letGo") or {})
+        for name, left in entries.items():
+            entry = by_file.pop(name, None)
+            if entry is None:
+                continue
+            kept = {k for k in left if k in entry["desired"]}
+            if kept:
+                let_go_notes[name] = {
+                    "file": entry_file(name, entry), "taskId": task_id, "at": now_iso(),
+                    "keys": {k: {"value": entry["desired"][k], "digest": entry["secretDigests"].get(k)} for k in sorted(kept)},
+                }
+            else:
+                let_go_notes.pop(name, None)
+        desired, digests, files = merge_entries(by_file)
+        doc.update({"desiredByFile": by_file, "desired": desired, "secretDigests": digests, "files": files})
+        left_over = _still_left(let_go_notes, desired)
+        if left_over:
+            doc["letGo"] = left_over
+        else:
+            doc.pop("letGo", None)
+        r.set(key, json.dumps(doc))
+    except Exception:
+        logger.warning("ui ledger: let_go failed", exc_info=True)
+
+
+def settle_let_go(*, tenant: str, datasource: str, env: str, gone: Collection[str]) -> None:
+    """Keys noted under letGo that the sink no longer holds (pruned since, or deleted by hand) are noted no more."""
+    try:
+        r = _redis()
+        key = _key("target", tenant, datasource, env)
+        raw = r.get(key)
+        if not raw:
+            return
+        doc = json.loads(raw)
+        held = doc.get("letGo") or {}
+        gone = set(gone)
+        left = {}
+        for name, note in held.items():
+            keys = {k: v for k, v in note["keys"].items() if k not in gone}
+            if keys:
+                left[name] = {**note, "keys": keys}
+        if left == held:
+            return
+        if left:
+            doc["letGo"] = left
+        else:
+            doc.pop("letGo", None)
+        r.set(key, json.dumps(doc))
+    except Exception:
+        logger.warning("ui ledger: settle_let_go failed", exc_info=True)
 
 
 def update_target_sync(*, tenant: str, datasource: str, env: str, sync: dict[str, Any]) -> None:

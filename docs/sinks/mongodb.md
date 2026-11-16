@@ -70,7 +70,7 @@ regions: [eu, us]
 ### `STRATEGY_KEY_VALUE`
 
 Each config key is stored as a separate document, its value as a string. It is the strategy that keeps a key on its own, so it is the one a
-[prune](../concepts/sync-strategies.md) can delete from (a document strategy replaces the whole file's document on every sync):
+[prune](../concepts/sync-strategies.md) can delete single keys from (a document strategy replaces the whole file's document on every sync; with prune on, it deletes the [document of a file the rule stops reading](../concepts/sync-strategies.md#a-file-the-rule-stops-reading)):
 
 ```json
 { "_vt_env": "production", "key": "database.host",   "value": "mongo.prod.internal" }

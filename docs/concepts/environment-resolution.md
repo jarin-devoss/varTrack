@@ -133,7 +133,7 @@ tag "release-5" → env = "release-5"
 
 ## `root_key` — extracting a subtree before slicing
 
-If your config file has a wrapper key, set `root_key` in the rule to unwrap it first. varTrack extracts the subtree under that key, then runs env auto-detection on it.
+If your config file has a wrapper key, set `root_key` in the rule to unwrap it first. varTrack extracts the subtree under that key, then reads the environments in it ([below](#several-environments-in-one-file)).
 
 ```cue
 rules: [{
@@ -152,143 +152,106 @@ other_tool:
   setting: ignored      # not under root_key — never touched
 ```
 
-`root_key: "vartrack"` → extracts the inner dict → Pattern 1 runs on it → `database_host=mongo.prod.internal` for `production`.
+`root_key: "vartrack"` → extracts the inner dict → its environment objects are read → `database_host=mongo.prod.internal` for `production`.
 
 Set `root_key: ""` to always process the whole file regardless of structure.
 
-If the key doesn't exist in the file, varTrack soft-falls back to the whole file.
+If the key is the default, `vartrack`, and the file does not have it, varTrack uses the whole file. A `root_key` the rule sets to anything else that the file does not have **skips the file**: the log says `root_key=… not found in …, skipping`, and the task reports nothing to do.
 
 ---
 
-## Auto-detection from config file structure
+## Several environments in one file
 
-When your config file itself is keyed by environment, varTrack auto-detects the structure and extracts only the relevant slice — no extra rule config needed. Three patterns are supported.
+When one config file holds the settings of more than one environment, varTrack reads out the one being synced. **Which names are environments is not guessed from the file: it is what the rule declares**, plus the environment being synced and `default`:
 
----
-
-### Pattern 1 — all top-level keys are env names
-
-Every top-level value is a dict. varTrack merges `default` first, then the matching env overrides it.
-
-```yaml
-# configs/app.yaml
-production:
-  database_host: mongo.prod.internal
-  max_connections: 100
-staging:
-  database_host: mongo.staging.internal
-  max_connections: 10
-default:
-  max_connections: 5    # fallback for unknown envs
-  log_level: info
-```
-
-| env | result |
+| The rule names environments with | The names a file may use for them |
 |---|---|
-| `production` | `database_host=mongo.prod.internal`, `max_connections=100`, `log_level=info` |
-| `staging` | `database_host=mongo.staging.internal`, `max_connections=10`, `log_level=info` |
-| `pr-42` | `max_connections=5`, `log_level=info` (from `default`) |
+| `branch_map` | its values (`production`, `staging`), not the branch names |
+| `file_path_map` | its keys |
+| `branch_as_env` | every branch of the repository |
+| `tag_as_env` | every tag of the repository |
+| `pr_as_env` | `pr-<number>` |
 
----
+"The rule" is the rule a sync runs with: `config.cue`, then the tenant's `bundle.json`, then the repository's `vartrack.json` at the pushed commit, then `force`. A `vartrack.json` that adds a `branch_map` entry adds an environment. The branches and tags are read from the copy of the repository varTrack already holds; no call goes to the Git server.
 
-### Pattern 2 — per-field env sub-keys mixed with scalars
+Two rules read the file.
 
-Each field that varies per env has a dict of env→value. Fields that are the same across all envs are plain scalars.
+### At the root: environment objects, and a base
 
-```yaml
-# configs/app.yaml
-database_host:
-  production: mongo.prod.internal
-  staging:    mongo.staging.internal
-  default:    mongo.local
-max_connections: 50     # same for every env — written as-is
-log_level: info
-```
-
-| env | result |
-|---|---|
-| `production` | `database_host=mongo.prod.internal`, `max_connections=50`, `log_level=info` |
-| `staging` | `database_host=mongo.staging.internal`, `max_connections=50`, `log_level=info` |
-| `pr-42` | `database_host=mongo.local`, `max_connections=50`, `log_level=info` |
-
----
-
-### Pattern 3 — env dicts and scalar defaults at the same level
-
-Some keys at the same nesting level are env names (dicts with overrides), others are plain scalars that apply to every env. Order in the file doesn't matter — varTrack categorizes by value type, not position. The env dict is merged on top of the scalars.
+The keys at the root that are environments (an object under a name the rule declares, or `default`) are **environment objects**. Every other key is the **base**: settings every environment shares. An environment gets the base, then `default`, then its own object, each laid over the one before:
 
 ```json
 {
-    "production": { "name": "worn",  "db": "mongo.prod.internal" },
-    "predev":     { "name": "dan",   "db": "mongo.dev.internal"  },
-    "name":       "bob",
-    "age":        33,
-    "timeout":    30
+  "default":    { "db": { "host": "db.internal", "port": 5432 } },
+  "production": { "db": { "host": "db.prod.internal" } }
 }
 ```
 
 | env | result |
 |---|---|
-| `production` | `name=worn`, `db=mongo.prod.internal`, `age=33`, `timeout=30` |
-| `predev` | `name=dan`, `db=mongo.dev.internal`, `age=33`, `timeout=30` |
-| `unknown` (no match, no `default` dict) | data returned unchanged |
+| `production` | `db.host=db.prod.internal`, `db.port=5432` |
+| `staging` (no object of its own) | `db.host=db.internal`, `db.port=5432` (from `default`) |
 
-Add a `default` dict to handle unknown envs:
+The merge goes **key by key, at every depth**: `production` changed `db.host` and kept `db.port`. A list, a number, a string or `null` in the environment replaces what `default` has; lists are never joined.
 
-```json
-{
-    "production": { "name": "worn" },
-    "default":    { "name": "bob" },
-    "age":        33
-}
-```
-
-`unknown` env → `name=bob`, `age=33`.
-
----
-
-### Pattern 3 — env-named top-level dicts mixed with scalar defaults
+Settings that belong to no environment sit next to the environment objects, and an object may override them:
 
 ```json
 {
-    "prod":   { "name": "worn" },
-    "predev": { "name": "dan" },
-    "name":   "bob",
-    "age":    33
+  "timeout_ms": 3000,
+  "default":    { "db": "db.internal" },
+  "production": { "db": "db.prod.internal", "timeout_ms": 1500 }
 }
 ```
-
-Top-level dicts whose key matches the resolved env are applied as overrides. Top-level scalars are universal defaults merged underneath:
 
 | env | result |
 |---|---|
-| `prod` | `name=worn`, `age=33` |
-| `predev` | `name=dan`, `age=33` |
-| `unknown` (no matching dict, no `default` dict) | data returned unchanged |
+| `production` | `db=db.prod.internal`, `timeout_ms=1500` |
+| `staging` | `db=db.internal`, `timeout_ms=3000` |
 
-You can also include a `default` dict for unknown env fallback:
+A root made only of objects, one of them `default` or the environment, is keyed by environment whatever its names: the key of a branch deleted since is an environment object nobody reads, never base settings written into every environment.
+
+### Under the root: one value per environment
+
+An object whose keys are all `default` or environments is **one value per environment**, at any depth and inside lists:
 
 ```json
 {
-    "prod":    { "name": "worn" },
-    "default": { "name": "bob" },
-    "age":     33
+  "replicas": { "default": 2, "production": 6 },
+  "db": { "host": { "default": "db.internal", "production": "db.prod.internal" } }
 }
 ```
 
-`unknown` env → `name=bob`, `age=33`.
+| env | result |
+|---|---|
+| `production` | `replicas=6`, `db.host=db.prod.internal` |
+| `staging` | `replicas=2`, `db.host=db.internal` |
 
----
+An object that has `default` **and a key that is not an environment** is not a value per environment. It is written whole:
+
+```json
+{ "timeouts": { "default": 30, "upload": 300 } }
+```
+
+Every environment gets `timeouts.default=30` and `timeouts.upload=300`.
+
+### An environment the file does not name
+
+| The file has | `qa`, which the file does not name, gets |
+|---|---|
+| a `default` | `default`'s settings |
+| settings of no environment, and no `default` | those settings only |
+| neither | **nothing**: the file is skipped for `qa`. The task ends *nothing to do* and says why (`app-settings.json names no environment 'qa' and no 'default'`). With [`strict_validation`](../configuration/rule-options.md#strict_validation) the file fails with the same words. |
+
+The settings of another environment are never written under `qa`.
 
 ### `default` fallback
 
-In all three patterns, if the resolved env has no matching key, varTrack silently falls back to the `default` key. If there is no `default` either, the data is returned unchanged. This `default` is a key inside the file, not an environment: which environment a push feeds is decided above, and there is no `default` environment.
+This `default` is a key inside the file, not an environment: which environment a push feeds is decided above, and there is no `default` environment. (`branch_map: {main: "default"}` makes an environment of that name, and the file's `default` is then its own.)
 
----
+### With `root_key`
 
-## `root_key` — extracting a subtree before slicing
-
-Real config files often live alongside other tooling config (Spring, Maven, npm, etc.). Use `root_key` to extract only the varTrack-relevant subtree before env-detection runs.
+`root_key` is read first, so the environments can sit inside a block of a file owned by other tooling. Use it to extract only the varTrack-relevant subtree before the environments are read.
 
 ```cue
 rules: [{
@@ -296,11 +259,7 @@ rules: [{
 }]
 ```
 
-Set `root_key: ""` to always process the whole file. If the key doesn't exist, varTrack soft-falls back to the whole file.
-
-### Example — `package.json`
-
-A Node.js project that also carries deploy config inside `package.json`:
+A `package.json` that also carries deploy config:
 
 ```json
 {
@@ -325,40 +284,18 @@ rules: [{
 
 Push to `main` → `API_URL=https://api.prod.com`, `LOG_LEVEL=warn` written to the sink.
 
-### Example — `pom.xml` (Maven)
+### With `branch_as_env`
 
-A Java project with deploy properties in `pom.xml`. varTrack parses XML and extracts the subtree:
+With `branch_as_env` the environments are the repository's branches, so a file can key its settings by branch name, `feature/login` included:
 
-```xml
-<project>
-  <groupId>com.example</groupId>
-  <artifactId>my-service</artifactId>
-
-  <vartrack>
-    <production>
-      <database_host>mongo.prod.internal</database_host>
-      <max_connections>100</max_connections>
-    </production>
-    <staging>
-      <database_host>mongo.staging.internal</database_host>
-      <max_connections>10</max_connections>
-    </staging>
-    <default>
-      <max_connections>5</max_connections>
-    </default>
-  </vartrack>
-</project>
+```json
+{
+  "default": { "replicas": 1 },
+  "main":    { "replicas": 6 }
+}
 ```
 
-```cue
-rules: [{
-  file_name: "pom.xml"
-  root_key:  "vartrack"
-  branch_map: { main: "production", develop: "staging" }
-}]
-```
-
-Push to `main` → `database_host=mongo.prod.internal`, `max_connections=100`.
+Push to `main` → `replicas=6`; a push to any other branch, `e2e-feature` say → `replicas=1`.
 
 ---
 

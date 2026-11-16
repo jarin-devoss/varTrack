@@ -8,15 +8,18 @@ varTrack auto-detects the format of your config file from its extension. All for
 
 | Extension | Format | Notes |
 |---|---|---|
-| `.yaml`, `.yml` | YAML | Nested keys flattened with dot notation |
-| `.json` | JSON | Nested keys flattened with dot notation |
-| `.toml` | TOML | Sections become key prefixes |
-| `.env` | dotenv / KEY=VALUE | One `KEY=value` per line |
-| `.ini` | INI | Section + key become `section.key` |
-| `.hcl` | HCL | Terraform-style config files |
-| `.xml` | XML | Elements become dot-separated keys |
+| `.yaml`, `.yml` | YAML | Nested keys flattened with dot notation. Numbers and booleans keep their types. |
+| `.json` | JSON | Nested keys flattened with dot notation. Numbers and booleans keep their types. |
+| `.toml` | TOML | Sections become key prefixes. Numbers and booleans keep their types. |
+| `.env` | dotenv / KEY=VALUE | One `KEY=value` per line. Every value is text. |
+| `.ini` | INI | Section + key become `section.key`. Every value is text. |
+| `.hcl` | HCL | Terraform-style config files. Numbers and booleans keep their types. |
+| `.xml` | XML | Elements become dot-separated keys. Every value is text. |
 
 Use `--format` on the `vt sync` command to override auto-detection.
+
+!!! note "What a schema sees"
+    The *Flattened result* below is what a sink that stores text gets (every value a string). A [CUE schema](schema-registry.md#cue-schemas) is shown each value **as the file wrote it**, next to the other form it can be read as: `database.port` is the int `27017` in a YAML, JSON, TOML or HCL file, and the text `"27017"` in a `.env`, INI or XML file or when quoted. `int`, `bool` and ranges work for both; see [Numbers and booleans](schema-registry.md#numbers-and-booleans).
 
 ---
 
@@ -185,135 +188,57 @@ This is especially useful when introducing a new file format or env pattern: run
 
 ## Environment key patterns
 
-varTrack auto-detects three patterns for environment-keyed config files. No rule config is needed — the structure is inferred automatically.
+A config file can hold the settings of every environment, and varTrack reads out the one being synced. **Which names are environments is what the rule declares**: the values of `branch_map`, the keys of `file_path_map`, every branch with `branch_as_env`, and so on, plus `default` as the fallback. The rules, and every shape with its result, are in [Several environments in one file](../concepts/environment-resolution.md#several-environments-in-one-file). In short, there are two shapes, and they combine.
 
----
-
-### Pattern 1 — all top-level keys are env names
-
-Every top-level value is a dict. varTrack merges `default` first, then applies the matching env as an override.
+Environment objects at the root, with the settings every environment shares next to them:
 
 ```yaml
-# configs/app.yaml
+# configs/app.yaml   (rule: branch_map {main: production, develop: staging})
+max_connections: 50          # no environment: every environment gets it
+
 production:
   database_host: mongo.prod.internal
-  max_connections: 100
   log_level: warn
-
 staging:
   database_host: mongo.staging.internal
-  max_connections: 10
-  log_level: info
-
 default:
-  max_connections: 5      # fallback for any unknown env
+  database_host: mongo.local
   log_level: debug
-  cache_ttl: 60
 ```
 
-Push to `main` (resolved env = `production`):
+Push to `main` (env = `production`):
 
 ```
 database_host   = "mongo.prod.internal"
-max_connections = "100"
 log_level       = "warn"
-cache_ttl       = "60"           ← inherited from default
-```
-
-Push from PR #42 (env = `pr-42`, no match → `default`):
-
-```
-max_connections = "5"
-log_level       = "debug"
-cache_ttl       = "60"
-```
-
----
-
-### Pattern 2 — per-field env sub-keys mixed with scalars
-
-Each field that varies per env has a dict of `env → value`. Fields that are the same across all envs are plain scalars — they are written as-is for every env.
-
-```yaml
-# configs/app.yaml
-database_host:
-  production: mongo.prod.internal
-  staging:    mongo.staging.internal
-  default:    mongo.local
-
-max_connections: 50        # same for every env
-log_level: info            # same for every env
-cache_ttl:
-  production: 300
-  staging:    60
-  default:    10
-```
-
-Push to `main` (env = `production`):
-
-```
-database_host   = "mongo.prod.internal"
 max_connections = "50"
-log_level       = "info"
-cache_ttl       = "300"
 ```
 
-Push to `develop` (env = `staging`):
-
-```
-database_host   = "mongo.staging.internal"
-max_connections = "50"
-log_level       = "info"
-cache_ttl       = "60"
-```
-
----
-
-### Pattern 3 — env dicts and scalar defaults at the same level
-
-Some keys at the same nesting level are env names (dicts with overrides), others are plain scalars that apply to every env. Order in the file doesn't matter — varTrack categorizes by value type, not position. The env dict is merged on top of the scalars.
-
-```json
-{
-  "production": { "database_host": "mongo.prod.internal", "log_level": "warn"  },
-  "staging":    { "database_host": "mongo.stg.internal",  "log_level": "info"  },
-  "default":    { "database_host": "mongo.local",         "log_level": "debug" },
-  "max_connections": 50,
-  "cache_ttl":       60,
-  "app_name":        "my-service"
-}
-```
-
-Push to `main` (env = `production`):
-
-```
-database_host   = "mongo.prod.internal"   ← from production dict
-log_level       = "warn"                  ← from production dict
-max_connections = "50"                    ← from scalar
-cache_ttl       = "60"                    ← from scalar
-app_name        = "my-service"            ← from scalar
-```
-
-Push from PR #42 (env = `pr-42`, no match → `default` dict):
+Push from PR #42 (env = `pr-42`, which the file does not name, so `default`):
 
 ```
 database_host   = "mongo.local"
 log_level       = "debug"
 max_connections = "50"
-cache_ttl       = "60"
-app_name        = "my-service"
 ```
 
-If there is no `default` dict and no matching env dict, data is returned unchanged.
-
----
-
-### Combining patterns with `root_key`
-
-All three patterns work after `root_key` extraction. This lets you embed varTrack config inside files owned by other tools:
+One value per environment, where only some keys differ:
 
 ```yaml
-# package.json style — but in YAML for readability
+database_host:
+  production: mongo.prod.internal
+  staging:    mongo.staging.internal
+  default:    mongo.local
+max_connections: 50          # the same for every environment
+```
+
+An environment's settings override `default`'s key by key, at every depth. A file with neither the environment nor a `default` has nothing for that environment: it is skipped, or with `strict_validation` it fails, and another environment's settings are never written under it.
+
+### Combining with `root_key`
+
+Both shapes work after `root_key` extraction, so the settings can sit inside a file owned by other tooling:
+
+```yaml
 name: my-app
 version: 1.0.0
 
@@ -327,9 +252,9 @@ vartrack:
 ```cue
 rules: [{
   file_name: "config.yaml"
-  root_key:  "vartrack"      // extract the vartrack block first, then detect pattern
+  root_key:  "vartrack"      // extract the vartrack block first, then read the environments
   branch_map: { main: "production", develop: "staging" }
 }]
 ```
 
-Push to `main` → extracts `vartrack` subtree → detects Pattern 3 → writes `API_URL=https://api.prod.com`, `LOG_LEVEL=warn`, `TIMEOUT=30`.
+Push to `main` → extracts the `vartrack` subtree → writes `API_URL=https://api.prod.com`, `LOG_LEVEL=warn`, `TIMEOUT=30`.

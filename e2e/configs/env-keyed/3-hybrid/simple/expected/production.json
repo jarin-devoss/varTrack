@@ -1,0 +1,4 @@
+{
+  "db": "db.prod.internal",
+  "timeout_ms": "1500"
+}

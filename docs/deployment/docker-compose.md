@@ -174,33 +174,36 @@ curl http://localhost:8000/v1/tasks/<task-id>
 curl http://localhost:8000/metrics
 ```
 
-!!! note "The end-to-end demo stack runs with internal authentication on"
-    `e2e/docker-compose.yml` sets `INTERNAL_AUTH_SECRET` on every service, so the orchestrator answers
+!!! note "The demo stack runs with internal authentication on"
+    `demo/docker-compose.yml` sets `INTERNAL_AUTH_SECRET` on every service, so the orchestrator answers
     `401` to a call without a signed grant, `/docs` and `/metrics` on port 8000 included (only the
     health probes are open). Mint a grant from inside the stack and pass it:
 
     ```bash
-    GRANT=$(docker compose -f e2e/docker-compose.yml exec -T orchestrator-api \
+    GRANT=$(docker compose -f demo/docker-compose.yml exec -T orchestrator-api \
               python -m app.api.tokens mint --audience sync --ttl 600)
     curl -H "Authorization: Bearer $GRANT" http://localhost:8000/metrics
     ```
 
 ---
 
-## The end-to-end regression
+## The demo, and the end-to-end regression on it
 
-`e2e/docker-compose.yml` runs the whole product (Gitea, Vault, MongoDB, Redis, ZooKeeper, MinIO, an SSH target,
-the gateway, the orchestrator and the watcher) and then the 23 suites of `e2e/init/test_runner.py`:
+`demo/` is the stack a person runs to try varTrack: the whole product (Gitea, Vault, MongoDB, Redis, ZooKeeper, MinIO, an
+SSH target, the gateway, the orchestrator, the watcher and the web UI) and a `demo-seed` container that seeds it once and
+syncs each rule. It runs no test. See [`demo/README.md`](https://github.com/jarin-devoss/varTrack/blob/main/demo/README.md).
+
+`e2e/docker-compose.yml` includes `demo/docker-compose.yml` (the same services, as the Compose project `e2e`) and adds one
+container, `e2e-regression`, which waits for the seed and runs the 25 suites of `e2e/init/test_runner.py`:
 
 ```bash
 cd e2e
 docker compose up --build --detach
-docker compose wait e2e-demo       # the exit code is the regression's: 0 only when every suite passed
-python3 check_results.py           # 23 suites, none failed, none skipped; prints the table
+docker compose wait e2e-regression # the exit code is the regression's: 0 only when every suite passed
+python3 check_results.py           # 25 suites, none failed, none skipped; prints the table
 ```
 
-- **A suite that fails fails the run.** `e2e-demo` exits with the runner's status (`demo.sh` no longer turns a failure
-  into a warning), CI checks the report as well (`e2e/check_results.py`), and the report (`e2e/results/benchmark.json`)
+- **A suite that fails fails the run.** `e2e-regression` exits with the runner's status, CI checks the report as well (`e2e/check_results.py`), and the report (`e2e/results/benchmark.json`)
   is not kept in git, so a run that wrote nothing cannot pass on an old one.
 - **Suites wait for the task they started, never for the clock.** Each polls `GET /v1/tasks/{id}` until the task
   reports it has finished (`E2E_TIMEOUT`, default 60 s, is only the ceiling for a hung one), then asserts what the
@@ -214,19 +217,19 @@ python3 check_results.py           # 23 suites, none failed, none skipped; print
 
 ### The web UI in the demo
 
-The same stack serves the web UI on <http://localhost:8080> with sign-in through the demo's Gitea (<http://localhost:3000>).
+The demo serves the web UI on <http://localhost:8080> with sign-in through the demo's Gitea (<http://localhost:3000>).
 The demo creates four Gitea accounts, all with the password `VarTrack123`, to see the UI as each kind of person:
 
 | Account | What they are |
 |---|---|
-| `demo-admin` | a varTrack administrator (`ui.auth.admins` in `config.cue`): sees and syncs every rule |
+| `demo-admin` | a varTrack administrator (`ui.auth.admins` in `demo/config.cue`): sees and syncs every rule |
 | `demo-writer` | can push to the config repository, except to its protected `main` branch |
 | `demo-viewer` | can read the config repository |
 | `demo-outsider` | can read none of it (the config repository is private): sees no rule |
 
 Open the UI, choose *Sign in with Gitea*, and sign in as one of them; Gitea asks for consent the first time.
 
-The demo is a test stack, so it lowers two timers: the watcher looks every `10s` (`POLL_INTERVAL`; the product default is `60s`) and the web UI re-reads a sink after `2` seconds (`UI_COMPARE_TTL_SECONDS`; the default is `10`), so that a test waits seconds, not minutes. Set `WATCHER_POLL_INTERVAL` to change the first.
+The demo lowers two timers, so that a change shows in seconds: the watcher looks every `10s` (`POLL_INTERVAL`; the product default is `60s`) and the web UI re-reads a sink after `2` seconds (`UI_COMPARE_TTL_SECONDS`; the default is `10`), and a test waits seconds, not minutes. Set `WATCHER_POLL_INTERVAL` to change the first.
 
 The UI has its own end-to-end suite, run against this stack by the `ui-e2e` job in CI. See
 [`ui/e2e/README.md`](https://github.com/jarin-devoss/varTrack/blob/main/ui/e2e/README.md) to run it.

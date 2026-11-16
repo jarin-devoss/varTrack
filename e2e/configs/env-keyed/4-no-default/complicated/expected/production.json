@@ -1,0 +1,7 @@
+{
+  "database.host": "db.prod.internal",
+  "database.password": "@secret(secret/e2e-env-keyed/production#db_password)",
+  "database.port": "5432",
+  "replicas": "6",
+  "service": "checkout-api"
+}

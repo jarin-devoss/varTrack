@@ -169,6 +169,19 @@ class OrchestratorMetrics:
             ["sink", "datasource"],
             registry=self._registry,
         )
+        self._ledger_files_let_go_total = Counter(
+            "orch_ledger_files_let_go_total",
+            "Files a rule stopped reading that a complete sync let go of an environment's desired state, by datasource.",
+            ["datasource"],
+            registry=self._registry,
+        )
+        self._sink_keys_left_total = Counter(
+            "orch_sink_keys_left_total",
+            "Keys written by a file the rule no longer reads that stay in the sink (prune is off, or held them back), "
+            "by datasource.",
+            ["datasource"],
+            registry=self._registry,
+        )
         self._sink_errors_total = Counter(
             "orch_sink_errors_total",
             "Total sink write/prune/rollback errors, by sink.",
@@ -337,6 +350,14 @@ class OrchestratorMetrics:
             self._sink_keys_pruned_total.labels(sink, datasource).inc(count)
             if sink == "mongo":
                 self.inc_mongo_pruned(datasource, count)
+
+    def inc_files_let_go(self, datasource: str, count: int) -> None:
+        if count > 0:
+            self._ledger_files_let_go_total.labels(datasource).inc(count)
+
+    def inc_keys_left(self, datasource: str, count: int) -> None:
+        if count > 0:
+            self._sink_keys_left_total.labels(datasource).inc(count)
 
     def inc_sink_error(self, sink: str, operation: str) -> None:
         self._sink_errors_total.labels(sink, operation).inc()

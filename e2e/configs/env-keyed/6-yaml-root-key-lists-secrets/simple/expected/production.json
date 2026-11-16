@@ -1,0 +1,4 @@
+{
+  "db.host": "db.prod.internal",
+  "db.password": "@secret(secret/e2e-env-keyed/production#db_password)"
+}

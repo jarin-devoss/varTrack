@@ -8,9 +8,7 @@ Executed before any test module is imported, so stubs are present for
 every file in the test session.
 
 Dependencies stubbed:
-  vartrack_core  — Rust extension (not compiled in test env; pure-Python
-                   fallback already in place, but the import guard fires first)
-  pymongo        — MongoDB client (no Mongo server in unit tests)
+  pymongo       — MongoDB client (no Mongo server in unit tests)
   git / gitpython— GitPython (no repos in unit tests)
 
 Dependencies NOT stubbed (real packages used):
@@ -32,8 +30,6 @@ if _GENERATED.is_dir() and str(_GENERATED) not in sys.path:
 # ── Register stubs before any app module is imported ─────────────────────────
 
 _STUBS = {
-    # Rust extension (pure-Python fallback exists but import guard fires first)
-    "vartrack_core": MagicMock(),
     # MongoDB client
     "pymongo": MagicMock(),
     "pymongo.errors": MagicMock(),

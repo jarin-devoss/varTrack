@@ -124,7 +124,18 @@ A key is stale when varTrack wrote it before and no file of the environment hold
 - If the rules of the tenants cannot be listed when prune runs, nothing is pruned, as when the ledger cannot be read.
 - If the delete fails, the sync still succeeds. The keys stay on the list and the next sync retries them (a `PruneFailed` event).
 
-Prune applies to sinks that keep each key separately: Redis (hash or strings), ZooKeeper and MongoDB with `update_strategy: "STRATEGY_KEY_VALUE"`. A sink that replaces a whole object on every write — ConfigMap, S3, Linux server, Helm, MongoDB with its default `STRATEGY_DOCUMENT` (or `STRATEGY_FILE`), Redis with the JSON structure — has no stale key to delete. Setting `prune` on one has no effect.
+Prune applies to sinks that keep each key separately: Redis (hash or strings), ZooKeeper and MongoDB with `update_strategy: "STRATEGY_KEY_VALUE"`. A sink that replaces a whole object on every write — ConfigMap, S3, Linux server, Helm, MongoDB with its default `STRATEGY_DOCUMENT` (or `STRATEGY_FILE`), Redis with the JSON structure — has no stale key to delete. Setting `prune` on one deletes no key; the one thing it does there is described next, for MongoDB's two document strategies.
+
+### A file the rule stops reading
+
+An environment's desired state is the files its rule names **now**: `file_name`, or the environment's entry in `file_path_map`. When a rule changes (a new `file_name`, or an environment moved to another file) and the environment is synced again, the file it read before is **let go**:
+
+- It leaves the environment's desired state, so the environment is compared with the files the rule names and reads Synced once they match. A sync that did not write every file the rule reads for the environment (a file failed, or was not found in Git) lets nothing go. Nor does a rule whose files cannot be told from the rule alone (a `file_path_map` rule and an environment that is not one of its entries).
+- With `prune` on, what the file wrote is deleted like any other key Git no longer holds. On a sink that keeps each key (Redis, ZooKeeper, MongoDB `STRATEGY_KEY_VALUE`) those are its keys, subject to `protection`, shared key spaces and the changed-outside-varTrack check above. On MongoDB's `STRATEGY_DOCUMENT` and `STRATEGY_FILE`, which keep one document per file, it is the file's **document**: it is deleted unless one of its keys matches `protection` or was changed outside varTrack, and then it is kept whole and the reason is said.
+- With `prune` off nothing is deleted. The keys it wrote stay in the sink, no longer desired and not counted as drift. The Keys tab and the Diff show them as **Not in Git**, with the file that left them.
+- It is said, not left to be found: a **File let go** event and a line in the task's result (*"old.yaml is no longer read by gitea/mongo for staging: let go; 12 keys it wrote were pruned"*, or *"… are left in the sink (prune is off)"*, or *"… its document was deleted"*). The file's earlier tasks and events stay. `orch_ledger_files_let_go_total` and `orch_sink_keys_left_total` count them ([metrics](../operations/monitoring.md)).
+
+A dry run lists the keys a sync would delete this way together with the other stale keys, on the sinks that keep each key.
 
 `prune.last` was removed: the delete is always last now. A `prune` block that only had `last` is a disabled block; write `prune: true` or `prune: {enabled: true}`.
 

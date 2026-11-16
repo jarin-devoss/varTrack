@@ -1,0 +1,7 @@
+{
+  "db.host": "db.prod.internal",
+  "db.port": "5432",
+  "features.beta": "false",
+  "log_level": "warn",
+  "replicas": "6"
+}

@@ -21,7 +21,7 @@ import unittest
 import pytest
 from unittest.mock import MagicMock, patch
 
-for _m in ("vartrack_core", "pymongo", "git", "gitpython"):
+for _m in ("pymongo", "git", "gitpython"):
     sys.modules.setdefault(_m, MagicMock())
 
 import app.pipeline.sinks  # noqa: E402,F401 — pre-import for patch() resolution

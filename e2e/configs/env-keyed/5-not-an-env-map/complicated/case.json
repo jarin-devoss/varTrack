@@ -1,0 +1,9 @@
+{
+  "file": "app-settings.json",
+  "branches": {
+    "main": "production",
+    "develop": "staging",
+    "e2e-qa": "qa"
+  },
+  "rule": {}
+}

@@ -44,7 +44,9 @@ def test_cli_etl_flattens_the_env_slice(monkeypatch):
     monkeypatch.setattr(manager, "get_schema_manager", lambda *a, **k: _NoSchemas())
 
     content = "staging:\n  db: {host: stg.internal}\nproduction:\n  db: {host: prod.internal}\nmax_connections: 50\n"
-    etl = run_stage_etl_content(ctx=_ctx({"root_key": ""}), file_path="configs/app.yaml", content=content,
+    # A rule names its environments (a rule that names none is refused when it is loaded); the file's keys for them are read.
+    rule = {"root_key": "", "branch_map": {"main": "production", "cli/staging": "staging"}}
+    etl = run_stage_etl_content(ctx=_ctx(rule), file_path="configs/app.yaml", content=content,
                                 fmt="yaml", env="staging", tenant_id="default")
     assert etl.errors == []
     assert len(etl.files) == 1
@@ -99,7 +101,7 @@ def test_validate_content_uses_the_schema(monkeypatch, tmp_path):
     monkeypatch.setattr(schema_utils, "rule_config_for_datasource", lambda t, d, p="": None)
     monkeypatch.setattr(validator_mod.Validator, "_is_cue_available", lambda self: True)
 
-    def fake_vet(self, flat, schema_path, file_name):
+    def fake_vet(self, flat, schema_path, file_name, own=None):
         return "" if flat.get("max_connections", "").isdigit() else "max_connections: conflicting values"
 
     monkeypatch.setattr(validator_mod.Validator, "_run_cue_vet", fake_vet)

@@ -1,5 +1,5 @@
 """
-The demo's grant helper (e2e/init/grant.py) mints what the orchestrator verifies.
+The demo's grant helper (demo/seed/grant.py) mints what the orchestrator verifies.
 
 It is a second implementation of the grant format, written with the standard library because the demo
 image's requirements are hash-pinned. This is the one place it could drift from app/api/tokens.py, so
@@ -16,7 +16,7 @@ import pytest
 from app.api import tokens
 
 SECRET = "demo-secret-demo-secret-demo-secret-0123"
-GRANT_PY = pathlib.Path(__file__).resolve().parents[3] / "e2e" / "init" / "grant.py"
+GRANT_PY = pathlib.Path(__file__).resolve().parents[3] / "demo" / "seed" / "grant.py"
 
 
 @pytest.fixture(scope="module")

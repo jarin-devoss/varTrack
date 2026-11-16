@@ -249,4 +249,38 @@ test.describe('as admin', () => {
     await expect(rule.sync.dryRun).toBeChecked();
     await rule.sync.cancel.click();
   });
+
+  test('ticking Dry run does not rename the Sync button or the panel: the box says what kind of sync it is', async ({ page }) => {
+    const rule = new RulePage(page);
+    await rule.open('gitea/mongo');
+    await rule.syncAll.click();
+    await expect(rule.sync.dialog).toContainText('Sync from Git');
+    const name = (await rule.sync.start.textContent()) ?? '';
+    expect(name).toMatch(/^Sync \d+ environments?$/);
+
+    await rule.sync.dryRun.setChecked(true);
+    await expect(rule.sync.dialog).toContainText('Dry run: nothing is written.');
+    await expect(rule.sync.dialog).toContainText('Sync from Git');
+    await expect(rule.sync.dialog).not.toContainText('Start dry run');
+    await expect(rule.sync.start).toHaveText(name);
+
+    await rule.sync.dryRun.setChecked(false);
+    await expect(rule.sync.dialog).not.toContainText('Dry run: nothing is written.');
+    await expect(rule.sync.start).toHaveText(name);
+    await rule.sync.cancel.click();
+  });
+
+  test('a panel opened as a dry run says so, and becomes a sync when the box is unticked', async ({ page }) => {
+    const rule = new RulePage(page);
+    await rule.open('gitea/mongo');
+    await rule.dryRunAll.click();
+    await expect(rule.sync.dryRun).toBeChecked();
+    await expect(rule.sync.dialog).toContainText('Dry run');
+    await expect(rule.sync.start).toHaveText(/^Start dry run/);
+
+    await rule.sync.dryRun.setChecked(false);
+    await expect(rule.sync.dialog).toContainText('Sync from Git');
+    await expect(rule.sync.start).toHaveText(/^Sync \d+ environments?$/);
+    await rule.sync.cancel.click();
+  });
 });

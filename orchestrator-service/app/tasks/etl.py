@@ -342,7 +342,11 @@ def process_webhook_task(
         overall = "completed" if not failed else (
             f"failed: {len(failed)} of {len(sync_results)} file(s): "
             + "; ".join(f"{r.file_path}: {r.error or r.status}" for r in failed))
-        ui_recorder.task_finished(ui_task, tenant=tenant_id, etl=etl, results=sync_results, message=overall if failed else "")
+        let_go = ui_recorder.task_finished(ui_task, tenant=tenant_id, etl=etl, results=sync_results,
+                                           message=overall if failed else "")
+        if let_go and not failed:
+            # A file the rule no longer reads was let go: the task's result says so, as its page in the UI does.
+            overall = "; ".join([overall, *let_go])
 
         logger.info(
             "stage=sync written=%d errors=%d duration_ms=%.0f",

@@ -14,7 +14,7 @@ from __future__ import annotations
 import sys
 from unittest.mock import MagicMock, patch
 
-for _m in ("vartrack_core", "pymongo", "git", "gitpython"):
+for _m in ("pymongo", "git", "gitpython"):
     sys.modules.setdefault(_m, MagicMock())
 
 import app.tasks.etl  # noqa: E402,F401 — pre-import for pkgutil.resolve_name (Python 3.12+)

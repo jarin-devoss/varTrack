@@ -124,14 +124,14 @@ It works alongside whatever deploys your services: varTrack only keeps their run
 
 ## Try it in one command
 
-The fastest way to see varTrack in action is the end-to-end demo. It starts a local Git server, MongoDB, ZooKeeper, Redis, and all three varTrack services:
+The fastest way to see varTrack in action is the demo. It starts a local Git server, MongoDB, ZooKeeper, Redis, and all three varTrack services pre-configured, seeds a config repository and syncs it:
 
 ```bash
-cd e2e
+cd demo
 docker compose up
 ```
 
-Push a config change to the local repo and watch it sync automatically.
+Open http://localhost:8080 and sign in with Gitea as `demo-admin` / `VarTrack123`. Push a config change to the local repo and watch it sync automatically; [demo/README.md](https://github.com/jarin-devoss/varTrack/blob/main/demo/README.md) has a short tour (a change in Git, a value changed behind varTrack's back and healed, a dry run, a prune).
 
 ---
 
@@ -141,7 +141,7 @@ Push a config change to the local repo and watch it sync automatically.
 flowchart LR
     GIT["📁 Git repo\n(GitHub / Gitea / GitLab)"]
     GW["gateway-service\nGo · :5657"]
-    ORCH["orchestrator-service\nPython · :50051\n─────────────\nRust ETL core"]
+    ORCH["orchestrator-service\nPython · :50051\n─────────────\nETL pipeline"]
     WATCH["watcher-service\nGo · :9091"]
 
     GIT -->|"webhook\n(push / PR)"| GW
@@ -159,11 +159,8 @@ flowchart LR
 
 1. You push a config file.
 2. **gateway-service** (Go) receives the webhook, verifies the HMAC signature, and forwards it via gRPC.
-3. **orchestrator-service** (Python) fetches the file from Git, validates it against a CUE schema, runs the Rust ETL core (diff, merge, prune), and writes to all configured sinks.
+3. **orchestrator-service** (Python) fetches the file from Git, validates it against a CUE schema, reads out the environment being synced, flattens it, compares it with each sink, and writes to all configured sinks.
 4. **watcher-service** (Go) asks the orchestrator on a configurable interval whether each `self_heal` rule's datasource still matches Git — the orchestrator reads the sink — and on drift has it restore correct state.
-
-!!! info "Why Rust inside the orchestrator?"
-    The ETL core (diff, flatten, merge, prune) is implemented in Rust and called from Python via FFI. This keeps the hot path allocation-free and handles multi-megabyte config payloads without GC pressure, while the Python layer handles I/O, Vault, and sink drivers.
 
 [:octicons-arrow-right-24: Full architecture overview](concepts/index.md)
 

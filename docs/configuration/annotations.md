@@ -126,18 +126,50 @@ field changed  datasource=mongo  env=production  field=database.password
 
 ## Full schema example
 
-```cue notest
+```cue schema
 // app.yaml.cue at the root of the schema repo — checks every file named app.yaml
-"app.port":          string & =~"^[0-9]+$"   @logger()
+"app.port":          int & >=1024 & <=65535   @logger()
 "log.level":         "debug" | "info" | "warn" | "error"
 "database.host":     string & !=""            @logger()
-"database.port":     string & =~"^[0-9]+$"   @logger()
+"database.port":     int & >0                 @logger()
 "database.password": string & !=""            @secret() @logger()
 "api.secret_key":    string & !=""            @secret()
-"max_connections"?:  string & =~"^[0-9]+$"
+"max_connections"?:  int & >=1
 ```
 
-The fields are at the top level, not inside a `#Definition` — `cue vet` checks the data only against top-level fields. Values are strings, as the file is flattened first, so a number is a string matching a pattern; see [CUE schemas](schema-registry.md#cue-schemas).
+A file it passes:
+
+```yaml data
+app:
+  port: 8080
+log:
+  level: info
+database:
+  host: db.internal
+  port: 5432
+  password: "@secret(secret/myapp/db#password)"
+api:
+  secret_key: "@secret(secret/myapp/api#secret_key)"
+max_connections: 50
+```
+
+and one it refuses, with the key and the value as written:
+
+```yaml data fails
+# expect: app.port = "80" in app.yaml
+app:
+  port: 80
+log:
+  level: info
+database:
+  host: db.internal
+  port: 5432
+  password: "@secret(secret/myapp/db#password)"
+api:
+  secret_key: "@secret(secret/myapp/api#secret_key)"
+```
+
+The fields are at the top level, not inside a `#Definition` — `cue vet` checks the data only against top-level fields, so a schema written inside `#Config: { … }` checks nothing. A value is checked as the file wrote it, so `int`, `bool` and ranges work, and `"8080"` in quotes passes `int` too; see [Numbers and booleans](schema-registry.md#numbers-and-booleans).
 
 Register the schema in your bundle:
 

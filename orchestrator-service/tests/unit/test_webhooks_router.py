@@ -15,7 +15,7 @@ from __future__ import annotations
 import sys
 from unittest.mock import MagicMock, patch
 
-for _m in ("vartrack_core", "pymongo", "git", "gitpython"):
+for _m in ("pymongo", "git", "gitpython"):
     sys.modules.setdefault(_m, MagicMock())
 
 # Pre-import so patch("app.tasks.etl.*") can resolve via pkgutil in Python 3.12+.

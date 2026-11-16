@@ -207,18 +207,41 @@ def _keys_held_by_rules(
     return held
 
 
+def let_go_of(
+    rule_config: dict, repo_url: str, env: str, written: dict[str, tuple[str, dict]], target: dict | None,
+) -> dict[str, dict]:
+    """The entries of env's ledger target that this sync lets go: files of *repo_url* the rule no longer reads for env.
+
+    Only a complete sync lets a file go: every file the rule reads for env (repo_scope.files_of) is among *written*,
+    this sync's files for env. A sync that wrote only some of them (one failed, was refused, was not found) changes
+    nothing, as flux prunes only after a build with no errors. An entry another repository fed is not this sync's to
+    judge: the rule names the same files for every repository, but each is read on its own push."""
+    from app.pipeline import repo_scope
+    from app.ui import ledger
+
+    files = repo_scope.files_of(rule_config, env)
+    if not files or not files <= {path for path, _ in written.values()}:
+        return {}
+    mine = ledger.repo_name(repo_url)
+    return {name: entry for name, entry in ledger.entries_of(target).items()
+            if not files.intersection(ledger.entry_paths(name, entry)) and ledger.entry_repo(name, entry) in (None, mine)}
+
+
 def _stale_keys(
     tenant_id: str, datasource: str, rule_config: dict, sink_cls: Any, env: str,
     written: dict[str, tuple[str, dict]], sharers: list[str] | None = None,
+    dropped: Iterable[str] = (),
 ) -> tuple[set[str], dict[str, tuple[Any, str | None]]]:
     """The keys varTrack wrote to env before that nothing holds any more: the
     old inventory minus the new one. Returns them with the value (or secret
     digest) last written for each.
 
     *written* is this sync's files for env: inventory key -> (file path, flat
-    data). The environment's other files keep their keys, and so do the
-    environments that share env's key space (two that land on the same Redis
-    hash or znode path write the same keys). *sharers* collects
+    data). The environment's other files keep their keys, except the *dropped*
+    ones (let_go_of: files the rule no longer reads), whose keys are stale like
+    any key Git no longer holds. The environments that share env's key space
+    keep theirs (two that land on the same Redis hash or znode path write the
+    same keys). *sharers* collects
     the other targets that hold keys in env's key space. Raises when the
     ledger cannot be read."""
     from app.ui import ledger
@@ -227,8 +250,9 @@ def _stale_keys(
     old_entries = ledger.entries_of(target)
     pending: dict[str, dict] = (target or {}).get("pendingPrune") or {}
 
+    gone = set(dropped)
     rewritten = set(written) | {path for path, _ in written.values()}
-    kept = {key: entry for key, entry in old_entries.items() if key not in rewritten}
+    kept = {key: entry for key, entry in old_entries.items() if key not in rewritten and key not in gone}
     new = _inventory(kept) | {key for _, flat in written.values() for key in flat}
 
     space = key_space_id(sink_cls, rule_config, tenant_id, env)
@@ -253,6 +277,7 @@ def _stale_keys(
 @dataclass
 class PruneOutcome:
     pruned:       int = 0
+    deleted:      list[str] = field(default_factory=list)   # the keys it deleted
     pending:      list[str] | None = None   # None: prune did not run
     skipped:      list[str] = field(default_factory=list)
     error:        str = ""
@@ -263,7 +288,7 @@ class PruneOutcome:
 
 def _prune_environment(
     sink: Any, rule_config: dict, prune_cfg: Any, tenant_id: str, datasource: str, env: str,
-    written: dict[str, tuple[str, dict]],
+    written: dict[str, tuple[str, dict]], dropped: Iterable[str] = (),
 ) -> PruneOutcome | None:
     """Delete env's stale keys, once, after all its files were written.
 
@@ -280,7 +305,7 @@ def _prune_environment(
         return None
     sharers: list[str] = []
     try:
-        stale, expected = _stale_keys(tenant_id, datasource, rule_config, sink_cls, env, written, sharers)
+        stale, expected = _stale_keys(tenant_id, datasource, rule_config, sink_cls, env, written, sharers, dropped)
     except Exception:
         logger.warning("prune: the ledger of %s/%s cannot be read - nothing is pruned", datasource, env,
                        exc_info=True)
@@ -318,7 +343,107 @@ def _prune_environment(
     except Exception as exc:
         logger.exception("prune: %s/%s failed", datasource, env)
         return PruneOutcome(pending=to_delete, skipped=skipped, error=str(exc), shared_with=shared)
-    return PruneOutcome(pruned=pruned, pending=[], skipped=skipped, shared_with=shared)
+    return PruneOutcome(pruned=pruned, deleted=to_delete, pending=[], skipped=skipped, shared_with=shared)
+
+
+def _prune_files(
+    sink: Any, prune_cfg: Any, datasource: str, env: str, dropped: dict[str, dict], left: dict[str, list[str]],
+) -> tuple[set[str], dict[str, str]]:
+    """On a sink that keeps each file as its own object (prunes_files), delete the object of every file the rule no
+    longer reads, once, after the writes. *left* is, per dropped entry, the keys it wrote that nothing else holds.
+
+    The object is kept whole, and the reason said, when a key of it matches prune.protection, when something changed
+    one of its keys outside varTrack (as prune never deletes a key it did not write), or when the sink cannot be
+    read. Returns (the entries whose object was deleted, why each of the others was kept)."""
+    from app.ui import ledger
+
+    deleted: set[str] = set()
+    kept: dict[str, str] = {}
+    for name, entry in dropped.items():
+        file = ledger.entry_file(name, entry)
+        keys = left.get(name, [])
+        protected = [k for k in keys if any(fnmatch.fnmatch(k, p) for p in prune_cfg.protection)]
+        if protected:
+            kept[name] = f"{len(protected)} of its keys are protected ({', '.join(protected[:3])}{' …' if len(protected) > 3 else ''})"
+            continue
+        try:
+            if keys:
+                sink.strict_reads = True
+                try:
+                    live = sink.read_values(keys, datasource, env)
+                finally:
+                    sink.strict_reads = False
+                digests = entry.get("secretDigests") or {}
+                changed = [k for k in keys
+                           if ledger.key_state(entry["desired"][k], live.get(k), digests.get(k)) == "drifted"]
+                if changed:
+                    kept[name] = f"changed outside varTrack: {', '.join(changed[:3])}{' …' if len(changed) > 3 else ''}"
+                    continue
+            sink.delete_file_data(datasource, env, file)
+            deleted.add(name)
+        except Exception as exc:
+            logger.warning("prune: the document of %s in %s/%s was not deleted: %s", file, datasource, env, exc)
+            kept[name] = f"could not be deleted: {exc}"
+    return deleted, kept
+
+
+def _let_go_report(
+    sink: Any, rule_config: dict, prune_cfg: Any, tenant_id: str, datasource: str, env: str,
+    written: dict[str, tuple[str, dict]], dropped: dict[str, dict], outcome: PruneOutcome | None,
+) -> list[dict]:
+    """What this sync did about each file the rule no longer reads for env (let_go_of): which of the keys it wrote are
+    left in the sink, which were pruned, and whether its document was deleted. For the recorder, which takes the
+    entries out of the ledger's desired state and says so."""
+    from app.pipeline.sinks.settings import for_rule
+    from app.ui import ledger
+
+    sink_cls = type(sink)
+    try:
+        stale, _ = _stale_keys(tenant_id, datasource, rule_config, sink_cls, env, written, dropped=set(dropped))
+    except Exception:
+        # The ledger cannot say who else holds a key: what this sync wrote is the one thing known to be held.
+        stale = None
+    rewritten = {k for _, flat in written.values() for k in flat}
+    pruned_keys = set(outcome.deleted) if outcome else set()
+    left: dict[str, list[str]] = {
+        name: sorted(k for k in entry["desired"]
+                     if k not in rewritten and k not in pruned_keys and (stale is None or k in stale))
+        for name, entry in dropped.items()
+    }
+    # "Left in the sink" is what the sink holds: a rule that also moved the environment elsewhere (destination_template)
+    # leaves nothing at the new place. A read that fails says nothing, and the list stands.
+    candidates = sorted({k for keys in left.values() for k in keys})
+    if candidates:
+        sink.strict_reads = True
+        try:
+            held = sink.read_values(candidates, datasource, env)
+            left = {name: [k for k in keys if held.get(k) is not None] for name, keys in left.items()}
+        except Exception as exc:
+            logger.warning("let go: %s/%s could not be read to see what the files left (%s)", datasource, env, exc)
+        finally:
+            sink.strict_reads = False
+
+    documents: set[str] = set()
+    kept: dict[str, str] = {}
+    prunes_files = getattr(sink_cls, "prunes_files", None)
+    if prune_cfg.enabled and prunes_files and prunes_files(for_rule(rule_config, datasource), rule_config):
+        documents, kept = _prune_files(sink, prune_cfg, datasource, env, dropped, left)
+
+    report = []
+    for name, entry in dropped.items():
+        keys = sorted(entry["desired"])
+        gone = name in documents
+        report.append({
+            "entry": name,
+            "file": ledger.entry_file(name, entry),
+            "keys": len(keys),
+            "left": [] if gone else left[name],
+            "pruned": [k for k in keys if k in pruned_keys],
+            "document": gone,
+            "prune": bool(prune_cfg.enabled),
+            **({"keptBecause": kept[name]} if name in kept else {}),
+        })
+    return report
 
 
 def prune_candidates(
@@ -344,7 +469,9 @@ def prune_candidates(
     out: dict[str, list[str]] = {}
     for env, written in written_by_env.items():
         try:
-            stale, _ = _stale_keys(tenant_id, datasource, rule_config, sink_cls, env, written)
+            # Files the rule no longer reads are stale too, as a sync would find them.
+            dropped = let_go_of(rule_config, repo_url, env, written, ledger.get_target(tenant_id, datasource, env))
+            stale, _ = _stale_keys(tenant_id, datasource, rule_config, sink_cls, env, written, dropped=set(dropped))
         except Exception:
             logger.warning("prune: the ledger of %s/%s cannot be read - no candidates listed", datasource, env)
             continue
@@ -592,9 +719,22 @@ def run_stage_sync(
                     logger.warning("prune skipped: %d file(s) of this push failed before the sync (%s)",
                                    len(etl.errors), ", ".join(etl.errors))
                 for env, written in (written_by_env.items() if not etl.errors else ()):
+                    # Files the rule no longer reads for env, found before prune: their keys are stale like any other.
+                    try:
+                        from app.ui import ledger as _ledger
+                        dropped = let_go_of(rule_config, repo, env, written, _ledger.get_target(tenant_id, datasource, env))
+                    except Exception:
+                        logger.warning("let go: the ledger of %s/%s cannot be read - no file is let go", datasource, env,
+                                       exc_info=True)
+                        dropped = {}
                     outcome = _prune_environment(
-                        sink, rule_config, prune_cfg, tenant_id, datasource, env, written)
+                        sink, rule_config, prune_cfg, tenant_id, datasource, env, written, dropped)
                     last = next((r for r in reversed(results) if r.env == env and r.status == "ok"), None)
+                    if dropped and last is not None:
+                        last.let_go = _let_go_report(sink, rule_config, prune_cfg, tenant_id, datasource, env,
+                                                     written, dropped, outcome)
+                        _count(lambda m: (m.inc_files_let_go(datasource, len(last.let_go)),
+                                          m.inc_keys_left(datasource, sum(len(g["left"]) for g in last.let_go))))
                     if outcome is None or last is None:
                         continue
                     last.pruned = outcome.pruned
@@ -642,6 +782,7 @@ def sync_result_to_dict(r: SyncResult) -> dict:
         **({"prune_pending": r.prune_pending} if r.prune_pending is not None else {}),
         **({"prune_skipped": r.prune_skipped} if r.prune_skipped else {}),
         **({"prune_error": r.prune_error} if r.prune_error else {}),
+        **({"let_go": r.let_go} if r.let_go else {}),
         **({"key_space": r.key_space} if r.key_space else {}),
         **({"validation": r.validation, "schema": r.schema, "schema_source": r.schema_source}
            if r.validation else {}),

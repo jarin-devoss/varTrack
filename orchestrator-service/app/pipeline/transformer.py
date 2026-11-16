@@ -15,9 +15,8 @@ All config formats are normalised to a flat dict with dot-separated keys:
 
   { "database.host": "localhost", "database.port": "5432" }
 
-The Rust core (flatten.rs) is used when available for performance; otherwise
-a pure-Python fallback handles the flattening.  The Python API never changes,
-only the execution engine underneath.
+One implementation flattens (_py_flatten): an explicit stack, so a deeply nested file cannot overflow the call stack.
+_typed_flatten and own_forms read the same traversal with the values left as the file had them.
 
 Variables map overlay
 ─────────────────────
@@ -124,22 +123,10 @@ def _flatten(data: Any, prefix: str = "") -> dict[str, str]:
     """
     Recursively flatten a nested dict/list structure to dot-separated keys.
 
-    Tries the Rust core first (compiled via Maturin/PyO3).  Falls back to
-    the pure-Python implementation if the Rust extension is not available.
+    There is one flatten, and it is the one that runs: _py_flatten.
 
     Returns dict[str, str] — all values coerced to str.
     """
-    try:
-        from vartrack_core import py_flatten_bfs as rust_flatten  # type: ignore[import]
-        # Rust flatten expects a JSON string, returns a JSON string of {str: str}
-        payload = json.dumps(data)
-        result_json = rust_flatten(payload)
-        return json.loads(result_json)
-    except ImportError:
-        pass   # Rust extension not compiled — use Python fallback
-    except Exception:
-        logger.debug("transformer: rust flatten failed, using Python fallback")
-
     return _py_flatten(data, prefix)
 
 
@@ -185,6 +172,53 @@ def _py_flatten(data: Any, prefix: str = "") -> dict[str, str]:
                 result[pfx] = str(node)
 
     return result
+
+
+def _flat_text(value: Any) -> str:
+    """The text _py_flatten writes for a leaf: what a sink that stores text gets."""
+    if value is None:
+        return ""
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    return str(value)
+
+
+def _typed_flatten(data: Any) -> dict[str, Any]:
+    """_py_flatten with the leaves left as the file had them (int, float, bool, None, str)."""
+    result: dict[str, Any] = {}
+    stack: list[tuple[Any, str]] = [(data, "")]
+    while stack:
+        node, pfx = stack.pop()
+        if isinstance(node, dict):
+            for key, value in node.items():
+                stack.append((value, f"{pfx}.{key}" if pfx else str(key)))
+        elif isinstance(node, (list, tuple, set, frozenset)):
+            items = enumerate(sorted(str(v) for v in node)) if isinstance(node, (set, frozenset)) else enumerate(node)
+            for i, item in items:
+                stack.append((item, f"{pfx}.{i}" if pfx else str(i)))
+        else:
+            result[pfx] = node
+    return result
+
+
+def own_forms(parsed: Any, flat_data: dict[str, str], variables_map: dict[str, str] | None = None) -> dict[str, Any]:
+    """
+    Each key of *flat_data* with the value the file gave it: an int, float, bool or None where the parser
+    produced one, a string where the file has a string (and for every value of a .env, .properties, INI or XML
+    file, which are text). *flat_data* itself stays text.
+
+    A value varTrack changed (a resolved or masked secret) is the text it now holds. This is what the schema
+    check is shown; nothing written to a sink comes from it.
+    """
+    typed = _typed_flatten(parsed) if isinstance(parsed, (dict, list)) else {}
+    for new_key, src_key in (variables_map or {}).items():
+        if src_key in typed:
+            typed[new_key] = typed.pop(src_key)
+    own: dict[str, Any] = {}
+    for key, text in flat_data.items():
+        value = typed.get(key, text)
+        own[key] = value if _flat_text(value) == text else text
+    return own
 
 
 def unflatten(flat: dict[str, Any], sep: str = ".") -> dict:

@@ -1,0 +1,12 @@
+{
+  "replicas": {
+    "default": 2,
+    "production": 6
+  },
+  "db": {
+    "host": {
+      "default": "db.internal",
+      "production": "db.prod.internal"
+    }
+  }
+}

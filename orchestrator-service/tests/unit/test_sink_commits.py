@@ -182,7 +182,6 @@ class FakeZk:
 
 @pytest.fixture
 def zk_sink(monkeypatch):
-    monkeypatch.setitem(sys.modules, "vartrack_core", None)   # no native differ: every key is written
     from app.pipeline.sinks.zookeeper import ZookeeperSink
 
     def make(zk):

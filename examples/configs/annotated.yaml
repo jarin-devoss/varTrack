@@ -1,0 +1,35 @@
+# A file that passes examples/schemas/annotated_schema.cue.
+# Numbers and booleans are written as such; "8080" in quotes would pass the same `int`.
+
+app_port: 8080
+log_level: info
+
+feature:
+  dark_mode: false
+  new_onboarding: true
+
+database:
+  host: prod-db.internal
+  port: 5432
+  password: "@secret(secret/myapp/db#password)"
+  max_connections: 200
+  min_connections: 10
+
+api:
+  stripe_key: "@secret(secret/myapp/api#stripe_key)"
+  sendgrid_key: "@secret(secret/myapp/api#sendgrid_key)"
+  payments_url: https://payments.example.com
+
+auth:
+  jwt_secret: "@secret(secret/myapp/auth#jwt_secret)"
+  refresh_secret: "@secret(secret/myapp/auth#refresh_secret)"
+  access_token_ttl_seconds: 900
+  refresh_token_ttl_seconds: 86400
+
+cache:
+  ttl_seconds: 300
+  max_keys: 10000
+
+otel:
+  endpoint: http://otel-collector:4317
+  service_name: my-service

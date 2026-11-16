@@ -2,22 +2,22 @@
 """
 VarTrack E2E Test Runner
 ========================
-Runs 22 test suites across 8 sink configurations (MongoDB document,
+Runs 25 test suites across 8 sink configurations (MongoDB document,
 MongoDB file, ZooKeeper slash, Redis hash, Redis string, Linux server,
 S3/MinIO) plus CUE schema validation, HashiCorp Vault secret injection,
 dual-datasource @secret suites, self-heal drift correction, forged and unsigned
-calls refused, dry-run verification, branch_map, structured prune, and
-task status polling.
+calls refused, dry-run verification, branch_map, structured prune, task status
+polling, schema_map, a file that holds the settings of every environment, and a rule that stops reading a file.
 
 Every suite waits for the task it started (GET /v1/tasks/{id}), never for the clock, and asserts what the
 task itself reports: its state, the files it synced, and the commit of the tenant's schema repository it
 validated against. A suite that cannot pass is a bug to fix, not to retry: the run exits 1 when any suite
-fails, and CI reads benchmark.json (23 suites, 0 failed, 0 skipped).
+fails, and CI reads benchmark.json (25 suites, 0 failed, 0 skipped).
 
 Outputs a benchmark JSON report to /results/benchmark.json.
 
 Usage:
-    python3 test_runner.py [--settings-dir /demo/schemas/settings]
+    python3 test_runner.py [--settings-dir /e2e/schemas/settings]
                            [--results-dir /results]
                            [--orchestrator http://orchestrator-api:8000]
                            [--gitea http://gitea:3000]
@@ -118,6 +118,19 @@ def _redact(text: object) -> str:
     text = _REDACT_KV.sub(r'\1***', text)
     return grant.redact(text)
 
+def hand_back(folder: Path) -> None:
+    """Give everything the runner wrote under *folder* to the folder's own owner. The runner is root in its container, and a folder
+    bind-mounted from a Linux host would otherwise be left holding files only root can remove (Docker Desktop hides this). Whoever owns
+    the mounted folder, the person who started the stack, owns what is in it; nothing to set up, and nothing to do when it is already so."""
+    try:
+        owner = folder.stat()
+        for path in [folder, *folder.rglob("*")]:
+            if path.lstat().st_uid != owner.st_uid or path.lstat().st_gid != owner.st_gid:
+                os.chown(path, owner.st_uid, owner.st_gid, follow_symlinks=False)
+    except (OSError, AttributeError) as exc:      # AttributeError: os.chown does not exist where this is not a container on Linux
+        warn(f"could not hand {folder} back to its owner: {_exc_type(exc)}")
+
+
 def warn(msg: str) -> None:
     print(f"{colour.YELLOW}  ⚠{colour.NC} {_redact(msg)}")
 
@@ -187,6 +200,33 @@ class GiteaClient:
     def push_config_file(self, content: bytes, message: str) -> str:
         """Push app-settings.yaml to the config repo (used for CUE rejection tests)."""
         return self.push_file(CONFIG_REPO, CONFIG_FILE, content, message)
+
+    def push_file_on(self, repo: str, filepath: str, content: bytes, message: str, branch: str) -> str:
+        """push_file on *branch*: create or update *filepath* there and return the branch's head afterwards."""
+        path = f"/repos/{GITEA_ORG}/{repo}/contents/{filepath}"
+        b64 = base64.b64encode(content).decode()
+        existing = self._api("GET", path, params={"ref": branch})
+        body = {"message": message, "content": b64, "branch": branch}
+        if existing.ok:
+            if existing.json().get("content", "").replace("\n", "") == b64:
+                return self.get_head_sha(repo, branch)
+            resp = self._api("PUT", path, json={**body, "sha": existing.json()["sha"]})
+        else:
+            resp = self._api("POST", path, json=body)
+        if not resp.ok:
+            raise RuntimeError(f"could not push {repo}/{filepath} on {branch}: {resp.status_code} {resp.text[:160]}")
+        return resp.json()["commit"]["sha"]
+
+    def delete_file_on(self, repo: str, filepath: str, message: str, branch: str) -> None:
+        """Remove *filepath* from *branch*; fine if it is not there."""
+        path = f"/repos/{GITEA_ORG}/{repo}/contents/{filepath}"
+        existing = self._api("GET", path, params={"ref": branch})
+        if existing.ok:
+            self._api("DELETE", path, json={"message": message, "sha": existing.json()["sha"], "branch": branch})
+
+    def delete_branch(self, repo: str, branch: str) -> None:
+        """Remove *branch* from the config repo; fine if it is not there."""
+        self._api("DELETE", f"/repos/{GITEA_ORG}/{repo}/branches/{branch}")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -727,6 +767,43 @@ def trigger_webhook(orchestrator: str, datasource: str, tenant: str,
         return None
 
 
+def trigger_push(orchestrator: str, datasource: str, branch: str, commit_sha: str, gitea_url: str,
+                 paths: list[str]) -> str | None:
+    """A push event for *branch* at *commit_sha*, as Gitea sends it: the task id the orchestrator answers with."""
+    touched = {"id": commit_sha, "message": "E2E test commit", "added": paths, "removed": [], "modified": []}
+    payload = {
+        "ref": f"refs/heads/{branch}",
+        "before": "0" * 40,
+        "after": commit_sha,
+        "repository": {
+            "id": 1,
+            "name": CONFIG_REPO,
+            "full_name": f"{GITEA_ORG}/{CONFIG_REPO}",
+            "owner": {"name": GITEA_ORG, "login": GITEA_ORG},
+            "clone_url": f"{gitea_url}/{GITEA_ORG}/{CONFIG_REPO}.git",
+            "html_url": f"{gitea_url}/{GITEA_ORG}/{CONFIG_REPO}",
+            "default_branch": "main",
+        },
+        "pusher": {"name": "e2e-runner", "email": "e2e@vartrack.local"},
+        "commits": [touched],
+        "head_commit": touched,
+    }
+    try:
+        resp = _client(orchestrator).post(
+            f"/v1/webhooks/{datasource}",
+            datasource=datasource,
+            json=payload,
+            headers={"Content-Type": "application/json", "X-Gitea-Event": "push"},
+        )
+        if resp.ok:
+            return resp.json().get("task_id")
+        warn(f"Webhook returned {resp.status_code}")
+        return None
+    except Exception as exc:
+        warn(f"Webhook exception for {datasource}: {_exc_type(exc)}")
+        return None
+
+
 def dry_run_webhook(orchestrator: str, datasource: str, tenant: str,
                     commit_sha: str, gitea_url: str) -> dict | None:
     payload = {
@@ -1107,7 +1184,7 @@ def verify_mongo_untouched(rule: dict, result: SuiteResult, what: str) -> None:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Suite definitions (23 total)
+# Suite definitions (25 total)
 # ─────────────────────────────────────────────────────────────────────────────
 
 def suite_01_mongo_doc_basic(orchestrator, gitea, gitea_url, rules):
@@ -1324,7 +1401,14 @@ def suite_15_cue_strict_reject(orchestrator, gitea, gitea_url, rules,
         if task_id:
             result.task_id = task_id
             # The task is finished when it says so: only then is "nothing written" a fact.
-            check_rejected(result, wait_for_task(orchestrator, task_id), "strict_validation")
+            outcome = wait_for_task(orchestrator, task_id)
+            check_rejected(result, outcome, "strict_validation")
+            if outcome.finished:
+                # The bad file also has a number out of the schema's range (database.max_connections: int & <=1000),
+                # which the quoted "5000" in the file is checked as: the failure names it with its value.
+                said = outcome.message + " ".join(str(f.get("error", "")) for f in outcome.files)
+                result.add_check("The failure names the number out of range (database.max_connections = \"5000\")",
+                                 'database.max_connections = "5000"' in said, said[:300])
         verify_mongo_untouched(rule, result, "CUE strict reject (write blocked)")
 
     try:
@@ -1834,6 +1918,462 @@ def suite_23_schema_map(orchestrator, gitea, gitea_url, rules,
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Suite 24 — a file that holds the settings of every environment
+# ─────────────────────────────────────────────────────────────────────────────
+#
+# e2e/configs/env-keyed/<case>/<simple|complicated>/ holds a file, its case.json (the rule's options over the base
+# rule, and the branch → environment each file is pushed to) and expected/<env>.json: the flat keys that
+# environment's document must hold, written by hand. A value written @secret(secret/e2e-env-keyed/<env>#db_password)
+# stands for the secret this suite put in Vault for that environment.
+
+ENV_KEYED_DIR = Path("/e2e/configs/env-keyed")
+VAULT_URL = os.environ.get("VAULT_ADDR", "http://vault:8200")
+ENV_KEYED_SECRETS = {"default": "e2e-secret-default-7f3a", "staging": "e2e-secret-staging-2c91",
+                     "production": "e2e-secret-production-b405"}
+
+
+def _vault_put(name: str, value: str) -> None:
+    resp = requests.post(f"{VAULT_URL}/v1/secret/data/e2e-env-keyed/{name}", headers={"X-Vault-Token": "root"},
+                         json={"data": {"db_password": value}}, timeout=10)
+    if not resp.ok:
+        raise RuntimeError(f"could not put the {name} secret in Vault: {resp.status_code}")
+
+
+def _vault_delete(name: str) -> None:
+    try:
+        requests.delete(f"{VAULT_URL}/v1/secret/metadata/e2e-env-keyed/{name}", headers={"X-Vault-Token": "root"}, timeout=10)
+    except requests.RequestException:
+        pass
+
+
+def _flat_text(data, prefix: str = "") -> dict[str, str]:
+    """A document's `data` as the dotted keys of flattening, each value as text: {"a": {"b": [1, true]}} → a.b.0=1, a.b.1=true."""
+    if isinstance(data, dict):
+        out: dict[str, str] = {}
+        for key, value in data.items():
+            out.update(_flat_text(value, f"{prefix}.{key}" if prefix else str(key)))
+        return out
+    if isinstance(data, list):
+        out = {}
+        for i, value in enumerate(data):
+            out.update(_flat_text(value, f"{prefix}.{i}" if prefix else str(i)))
+        return out
+    return {prefix: "" if data is None else ("true" if data is True else "false" if data is False else str(data))}
+
+
+def _with_secrets(flat: dict[str, str]) -> dict[str, str]:
+    """An expected value that is a reference to a Vault secret, as the value the suite put there."""
+    out = {}
+    for key, value in flat.items():
+        if value.startswith("@secret(") and value.endswith(")"):
+            path = value[len("@secret("):-1].partition("#")[0]
+            out[key] = ENV_KEYED_SECRETS[path.rsplit("/", 1)[-1]]
+        else:
+            out[key] = value
+    return out
+
+
+def _differences(actual: dict[str, str], expected: dict[str, str]) -> str:
+    """What differs between an environment's keys and the expected ones: "" when they are the same."""
+    missing = sorted(set(expected) - set(actual))
+    extra = sorted(set(actual) - set(expected))
+    changed = sorted(k for k in expected if k in actual and actual[k] != expected[k])
+    parts = []
+    if missing:
+        parts.append("missing " + ", ".join(f"{k}={expected[k]!r}" for k in missing[:6]))
+    if extra:
+        parts.append("extra " + ", ".join(f"{k}={actual[k]!r}" for k in extra[:6]))
+    if changed:
+        parts.append("changed " + ", ".join(f"{k}: {actual[k]!r}, expected {expected[k]!r}" for k in changed[:6]))
+    return "; ".join(parts)
+
+
+def _env_keyed_cases() -> list[Path]:
+    return sorted(p.parent for p in ENV_KEYED_DIR.glob("*/*/case.json"))
+
+
+def _env_documents(rule: dict) -> dict[str, dict]:
+    """The documents the rule wrote, by the environment each holds."""
+    client = MongoClient(rule.get("mongo_uri", "mongodb://mongo:27017"), serverSelectionTimeoutMS=5000)
+    try:
+        col = client[rule.get("database", "vartrack")][rule["destination_template"]]
+        return {d["_vt_env"]: d.get("data", {}) for d in col.find({}, {"_id": 0}) if "_vt_env" in d}
+    finally:
+        client.close()
+
+
+def suite_24_env_keyed(orchestrator, gitea, gitea_url, rules, redis_rules, update_dir: Path | None = None):
+    """A file that holds the settings of every environment: 7 cases, a simple and a complicated file each. Each is pushed to
+    a branch per environment, synced, and the document each environment holds is compared with its expected keys. An
+    environment the file does not name, with no default, gets nothing (and fails the file with strict_validation).
+    update_dir: write the keys actually found as expected/<env>.json files under it (the layout of the case directories)."""
+    result = SuiteResult(24, "A file with every environment in it (7 cases, simple and complicated)",
+                         "01_mongo_document.json", rules[0]["datasource"])
+    banner("Suite 24: a file that holds the settings of every environment")
+    branches_made: set[str] = set()
+    files_pushed: list[tuple[str, str]] = []
+    try:
+        cases = _env_keyed_cases()
+        result.add_check("The case directories are there (7 cases, 14 files)", len(cases) == 14, str(len(cases)))
+        for name, value in ENV_KEYED_SECRETS.items():
+            _vault_put(name, value)
+
+        for directory in cases:
+            case = json.loads((directory / "case.json").read_text(encoding="utf-8"))
+            label = f"{directory.parent.name}/{directory.name}"
+            branches: dict[str, str] = case["branches"]                      # branch → the environment it feeds
+            in_repo = f"env-keyed/{directory.parent.name}-{directory.name}/{case['file']}"
+            options = {"destination_template": f"e2e-env-keyed-{directory.parent.name}-{directory.name}",
+                       "file_name": in_repo, "branch_as_env": False, "branch_map": dict(branches), **case["rule"]}
+            if options.get("branch_as_env"):
+                options.pop("branch_map")
+            if case.get("schema"):
+                schema_path = f"env-keyed/{directory.parent.name}-{directory.name}.cue"
+                gitea.push_schema_file(schema_path, (directory / case["schema"]).read_bytes(), f"e2e: schema of {label}")
+                options["schema_map"] = [{"match": in_repo, "schema": schema_path}]
+            own = _variant(rules, **options)
+            reset_destination(own[0], tuple(branches.values()))
+            bundle = own
+            redis_own = None
+            if case.get("redis_hash"):
+                redis_options = {**options, "destination_template": "e2e-env-keyed-redis-{env}"}
+                redis_own = _variant(redis_rules, **redis_options)
+                reset_destination(redis_own[0], tuple(branches.values()))
+                bundle = own + redis_own
+
+            result.schema_commit = gitea.push_bundle(bundle)
+            tenant = own[0].get("tenant_id", DEMO_TENANT)
+            warmed = warm_schema(orchestrator, tenant)
+            result.add_check(f"{label}: the rule is loaded at the pushed bundle",
+                             warmed["schema_commit"] == result.schema_commit and warmed["rules_loaded"] > 0,
+                             f"holds={warmed['schema_commit'][:12] or '(none)'} pushed={result.schema_commit[:12]}")
+
+            content = (directory / case["file"]).read_bytes()
+            shas: dict[str, str] = {}
+            for branch in branches:
+                if branch != "main" and branch not in branches_made:
+                    gitea.ensure_branch(CONFIG_REPO, branch)
+                    branches_made.add(branch)
+            for branch in branches:
+                shas[branch] = gitea.push_file_on(CONFIG_REPO, in_repo, content, f"e2e: {label}", branch)
+                files_pushed.append((in_repo, branch))
+
+            outcomes = {}
+            for branch, env in branches.items():
+                task_id = trigger_push(orchestrator, own[0]["datasource"], branch, shas[branch], gitea_url, [in_repo])
+                result.add_check(f"{label}: push to {branch} accepted", task_id is not None, str(task_id))
+                if task_id:
+                    outcomes[env] = wait_for_task(orchestrator, task_id)
+
+            documents = _env_documents(own[0]) if HAS_MONGO else {}
+            for env in branches.values():
+                outcome = outcomes.get(env)
+                if env in case.get("nothing_for", []):
+                    # a task with nothing to do carries the reason per file in `unfed` (its message is only the state)
+                    said = " ".join(str(v) for v in ((outcome.raw.get("unfed") or {}).values() if outcome else ())) or (
+                        (outcome.message if outcome else "") or "")
+                    result.add_check(f"{label}: {env} is skipped, and the task says the file names no {env!r} and no 'default'",
+                                     bool(outcome) and outcome.state == "SUCCEEDED"
+                                     and f"names no environment {env!r} and no 'default'" in said, said[:200])
+                    result.add_check(f"{label}: {env} has no document (nothing of another environment is written under it)",
+                                     env not in documents and env.replace("/", "_") not in documents,
+                                     f"documents for {sorted(documents)}")
+                    continue
+                if outcome:
+                    check_synced(result, outcome, f"{label}: {env}: ")
+                expected_path = directory / "expected" / f"{env.replace('/', '_')}.json"
+                actual = _flat_text(documents.get(env, documents.get(env.replace("/", "_"), {})))
+                if update_dir is not None:
+                    target = update_dir / directory.parent.name / directory.name / "expected" / expected_path.name
+                    target.parent.mkdir(parents=True, exist_ok=True)
+                    target.write_text(json.dumps(dict(sorted(actual.items())), indent=2) + "\n", encoding="utf-8")
+                expected = _with_secrets(json.loads(expected_path.read_text(encoding="utf-8")))
+                diff = _differences(actual, expected)
+                result.add_check(f"{label}: {env} holds exactly the {len(expected)} expected keys", diff == "", diff or f"{len(actual)} keys")
+
+            if case.get("strict_check"):
+                env = case["strict_check"]
+                branch = next(b for b, e in branches.items() if e == env)
+                strict = _variant(own, strict_validation=True)
+                result.schema_commit = gitea.push_bundle(strict)
+                warm_schema(orchestrator, tenant)
+                task_id = trigger_push(orchestrator, strict[0]["datasource"], branch, shas[branch], gitea_url, [in_repo])
+                failed = wait_for_task(orchestrator, task_id) if task_id else None
+                said = (failed.message if failed else "") or ""
+                result.add_check(f"{label}: with strict_validation the file fails for {env}, with the same words",
+                                 bool(failed) and failed.state == "FAILED" and f"names no environment {env!r} and no 'default'" in said
+                                 and "strict_validation" in said, said[:200])
+
+            if redis_own is not None:
+                _check_env_keyed_redis(result, label, redis_own[0], orchestrator, gitea_url, branches, shas, in_repo, directory)
+
+        result.finish("pass" if all(c["passed"] for c in result.checks) else "fail")
+    except Exception as exc:
+        result.error = traceback.format_exc()
+        err(f"Suite 24 raised exception: {exc}")
+        result.finish("fail")
+    finally:
+        for in_repo, branch in files_pushed:
+            gitea.delete_file_on(CONFIG_REPO, in_repo, "e2e: remove the env-keyed file", branch)
+        for branch in sorted(branches_made):
+            gitea.delete_branch(CONFIG_REPO, branch)
+        for name in ENV_KEYED_SECRETS:
+            _vault_delete(name)
+        if HAS_REDIS:
+            try:
+                r = redis_lib.Redis(host="redis", port=6379, db=2, socket_timeout=5, decode_responses=True)
+                stale = r.keys("e2e-env-keyed-redis-*")
+                if stale:
+                    r.delete(*stale)
+                r.close()
+            except Exception:
+                pass
+
+    colour_code = colour.GREEN if result.status == "pass" else colour.RED
+    print(f"\n  {colour_code}→ Suite 24 {result.status.upper()} ({result.duration_ms:.0f} ms){colour.NC}")
+    return result
+
+
+def _check_env_keyed_redis(result, label, redis_rule, orchestrator, gitea_url, branches, shas, in_repo, directory) -> None:
+    """The same file written to a Redis hash, one hash per environment: the flat keys a text sink gets."""
+    outcomes = {}
+    for branch, env in branches.items():
+        task_id = trigger_push(orchestrator, redis_rule["datasource"], branch, shas[branch], gitea_url, [in_repo])
+        result.add_check(f"{label} (Redis hash): push to {branch} accepted", task_id is not None, str(task_id))
+        if task_id:
+            outcomes[env] = wait_for_task(orchestrator, task_id)
+    if not HAS_REDIS:
+        result.add_check(f"{label} (Redis hash): redis-py available", False, "not installed")
+        return
+    r = redis_lib.Redis(host="redis", port=6379, db=int(redis_rule.get("redis_db", 2)), socket_timeout=5, decode_responses=True)
+    try:
+        for env in branches.values():
+            if env in outcomes:
+                check_synced(result, outcomes[env], f"{label} (Redis hash): {env}: ")
+            expected = json.loads((directory / "expected" / f"{env.replace('/', '_')}.json").read_text(encoding="utf-8"))
+            # the hash is named by the template, with ":vartrack" after it (the Redis sink's hash key)
+            actual = r.hgetall(redis_rule["destination_template"].format(env=env) + ":vartrack")
+            diff = _differences(actual, expected)
+            result.add_check(f"{label} (Redis hash): {env} holds exactly the {len(expected)} expected keys",
+                             diff == "", diff or f"{len(actual)} fields")
+    finally:
+        r.close()
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Suite 25: a rule that stops reading a file lets it go
+# ─────────────────────────────────────────────────────────────────────────────
+
+LET_GO_DIR = "e2e-let-go"
+LET_GO_FILES = {
+    "a": (f"{LET_GO_DIR}/a.yaml", 'a_only: "1"\na_extra: "2"\nshared_value: same\n'),
+    "b": (f"{LET_GO_DIR}/b.yaml", 'b_only: "3"\nshared_value: same\n'),
+    "broken": (f"{LET_GO_DIR}/broken.yaml", "a: [unclosed\n"),
+    "missing": (f"{LET_GO_DIR}/missing.yaml", ""),                 # never pushed: the rule names a file Git does not have
+}
+A_KEYS = {"a_only": "1", "a_extra": "2", "shared_value": "same"}
+B_KEYS = {"b_only": "3", "shared_value": "same"}
+
+
+def _ledger(db: int = 0):
+    """The orchestrator's ledger (what the web UI reads), in Redis database 0."""
+    return redis_lib.Redis(host="redis", port=6379, db=db, socket_timeout=5, decode_responses=True)
+
+
+def _let_go_target(datasource: str, env: str, tenant: str) -> dict:
+    r = _ledger()
+    try:
+        raw = r.get(f"vt:ui:target:{tenant}:{datasource}:{env}")
+        return json.loads(raw) if raw else {}
+    finally:
+        r.close()
+
+
+def _let_go_events(datasource: str, env: str, tenant: str, task_ids: set[str]) -> list[dict]:
+    """The FileLetGo events of the given tasks (the event list keeps what earlier runs said of the same environment)."""
+    r = _ledger()
+    try:
+        events = [json.loads(raw) for raw in r.lrange(f"vt:ui:events:{tenant}", 0, -1)]
+    finally:
+        r.close()
+    return [e for e in events if e.get("rule") == f"gitea/{datasource}" and e.get("env") == env
+            and e.get("reason") == "FileLetGo" and e.get("taskId") in task_ids]
+
+
+def _forget_let_go_target(datasource: str, env: str, tenant: str) -> None:
+    """Start the suite's own environment from nothing: what the ledger kept of an earlier run of it is not this run's."""
+    r = _ledger()
+    try:
+        r.delete(f"vt:ui:target:{tenant}:{datasource}:{env}", f"vt:ui:drift:{tenant}:{datasource}:{env}")
+        r.srem(f"vt:ui:targets:{tenant}", f"{datasource}|{env}")
+    finally:
+        r.close()
+
+
+def _entry_files(target: dict) -> set[str]:
+    return {e.get("file", name) for name, e in (target.get("desiredByFile") or {}).items()}
+
+
+def _redis_hash_of(rule: dict, env: str) -> dict[str, str]:
+    r = redis_lib.Redis(host="redis", port=6379, db=int(rule.get("redis_db", 2)), socket_timeout=5, decode_responses=True)
+    try:
+        return r.hgetall(rule["destination_template"].format(env=env) + ":vartrack")
+    finally:
+        r.close()
+
+
+def _documents_by_file(rule: dict, env: str) -> set[str]:
+    """The files the documents of *env* in the rule's collection came from (every one is tagged _vt_file)."""
+    client = MongoClient(rule.get("mongo_uri", "mongodb://mongo:27017"), serverSelectionTimeoutMS=5000)
+    try:
+        collection = client[rule.get("database", "vartrack")][rule["destination_template"].format(env=env)]
+        return {d.get("_vt_file") for d in collection.find({"_vt_env": env}, {"_vt_file": 1, "_id": 0})}
+    finally:
+        client.close()
+
+
+def suite_25_file_let_go(orchestrator, gitea, gitea_url, redis_rules, document_rules):
+    """A rule that stops reading a file lets it go: the environment's desired state is the files its rule names now.
+    A rule is changed from file A to file B and the same branch is synced again, on a Redis hash (keys) and on a MongoDB
+    document sink (a document per file), each with prune on and off. With prune the keys (or the document) of A are
+    deleted; without it they stay in the sink, no longer desired, and are noted. A sync that could not read B changes
+    nothing: A is still what the environment holds."""
+    result = SuiteResult(25, "A rule that stops reading a file lets it go", "05_redis_hash.json", redis_rules[0]["datasource"])
+    banner("Suite 25: a rule that stops reading a file")
+    branches: list[str] = []
+    pushed: list[tuple[str, str]] = []
+    if not (HAS_REDIS and HAS_MONGO):
+        result.add_check("redis-py and pymongo are available", False, f"redis={HAS_REDIS} mongo={HAS_MONGO}")
+        result.finish("fail")
+        return result
+
+    def scenario(name: str, base: list[dict], read: list[str], *, prune: bool, destination: str, check: bool = True):
+        """Sync *base*'s rule once per file named in *read* (each time the rule names only that one), on a branch and an
+        environment of its own. Returns the rule used last, the environment, the tenant and each sync's outcome.
+        *check*: each sync must have finished and written (checked at once, against the schemas pushed for it)."""
+        branch = env = f"e2e-letgo-{name}"
+        gitea.ensure_branch(CONFIG_REPO, branch)
+        branches.append(branch)
+        sha = ""
+        for _, (path, content) in LET_GO_FILES.items():
+            if content:
+                sha = gitea.push_file_on(CONFIG_REPO, path, content.encode(), f"e2e: {name}", branch)
+                pushed.append((path, branch))
+        outcomes, rule = [], base
+        for file in read:
+            rule = _variant(base, file_name=file, prune=prune, branch_as_env=False, branch_map={branch: env},
+                            destination_template=destination)
+            if not outcomes:
+                reset_destination(rule[0], (env,))
+                _forget_let_go_target(rule[0]["datasource"], env, rule[0].get("tenant_id", DEMO_TENANT))
+            result.schema_commit = gitea.push_bundle(rule)
+            tenant = rule[0].get("tenant_id", DEMO_TENANT)
+            warmed = warm_schema(orchestrator, tenant)
+            result.add_check(f"{name}: the rule reading {file} is loaded at the pushed bundle",
+                             warmed["schema_commit"] == result.schema_commit and warmed["rules_loaded"] > 0,
+                             f"holds={warmed['schema_commit'][:12] or '(none)'} pushed={result.schema_commit[:12]}")
+            task_id = trigger_push(orchestrator, rule[0]["datasource"], branch, sha, gitea_url, [file])
+            result.add_check(f"{name}: push of {file} accepted", task_id is not None, str(task_id))
+            outcomes.append(wait_for_task(orchestrator, task_id) if task_id else None)
+            if check and outcomes[-1]:
+                check_synced(result, outcomes[-1], f"{name}: the sync of {file}: ")
+        return rule, env, rule[0].get("tenant_id", DEMO_TENANT), outcomes
+
+    a, b = LET_GO_FILES["a"][0], LET_GO_FILES["b"][0]
+    try:
+        redis_dest = "e2e-letgo-redis-{env}"
+        doc_dest = "e2e-letgo-doc-{env}"
+
+        # ── A Redis hash, prune on: A's keys are deleted ──────────────────────
+        rule, env, tenant, (first, second) = scenario("pruned", redis_rules, [a, b], prune=True, destination=redis_dest)
+        target = _let_go_target(rule[0]["datasource"], env, tenant)
+        said = [e["message"] for e in _let_go_events(rule[0]["datasource"], env, tenant, {t.task_id for t in (first, second) if t})]
+        diff = _differences(_redis_hash_of(rule[0], env), B_KEYS)
+        result.add_check("pruned: the hash holds B's keys and shared ones, and A's own keys are deleted", diff == "", diff or "ok")
+        result.add_check("pruned: the environment's desired state is B alone", _entry_files(target) == {b}, str(sorted(_entry_files(target))))
+        result.add_check("pruned: nothing it wrote is left to note", not target.get("letGo"), str(target.get("letGo")))
+        result.add_check("pruned: an event says A was let go and its 2 keys pruned",
+                         len(said) == 1 and f"{a} is no longer read by gitea/{rule[0]['datasource']} for {env}: let go" in said[0]
+                         and "2 keys it wrote were pruned" in said[0], "; ".join(said))
+        result.add_check("pruned: the task's result says the same", bool(second) and "2 keys it wrote were pruned" in (second.message or ""),
+                         (second.message if second else "")[:200])
+
+        # ── A Redis hash, prune off: A's keys stay, no longer desired ─────────
+        rule, env, tenant, (first, second) = scenario("kept", redis_rules, [a, b], prune=False, destination=redis_dest)
+        target = _let_go_target(rule[0]["datasource"], env, tenant)
+        said = [e["message"] for e in _let_go_events(rule[0]["datasource"], env, tenant, {t.task_id for t in (first, second) if t})]
+        diff = _differences(_redis_hash_of(rule[0], env), {**A_KEYS, **B_KEYS})
+        result.add_check("kept: with prune off, A's keys stay in the hash next to B's", diff == "", diff or "ok")
+        result.add_check("kept: the environment's desired state is B's keys alone",
+                         _entry_files(target) == {b} and set(target.get("desired", {})) == set(B_KEYS),
+                         f"{sorted(_entry_files(target))} {sorted(target.get('desired', {}))}")
+        left = {k for held in (target.get("letGo") or {}).values() for k in held.get("keys", {})}
+        result.add_check("kept: the keys A left are noted, apart from the desired state", left == {"a_only", "a_extra"}, str(sorted(left)))
+        result.add_check("kept: the event says its 2 keys are left because prune is off",
+                         len(said) == 1 and said[0].endswith("2 keys it wrote are left in the sink (prune is off)"), "; ".join(said))
+
+        # ── A document sink, prune on: A's document is deleted ────────────────
+        rule, env, tenant, (first, second) = scenario("doc-pruned", document_rules, [a, b], prune=True, destination=doc_dest)
+        files = _documents_by_file(rule[0], env)
+        said = [e["message"] for e in _let_go_events(rule[0]["datasource"], env, tenant, {t.task_id for t in (first, second) if t})]
+        result.add_check("doc-pruned: only B's document is left in the collection", files == {b}, str(sorted(map(str, files))))
+        result.add_check("doc-pruned: the event says A's document was deleted",
+                         len(said) == 1 and said[0].endswith("its document was deleted"), "; ".join(said))
+        result.add_check("doc-pruned: the desired state is B alone",
+                         _entry_files(_let_go_target(rule[0]["datasource"], env, tenant)) == {b}, "")
+
+        # ── A document sink, prune off: both documents stay ───────────────────
+        rule, env, tenant, (first, second) = scenario("doc-kept", document_rules, [a, b], prune=False, destination=doc_dest)
+        files = _documents_by_file(rule[0], env)
+        target = _let_go_target(rule[0]["datasource"], env, tenant)
+        result.add_check("doc-kept: with prune off A's document stays next to B's", files == {a, b}, str(sorted(map(str, files))))
+        result.add_check("doc-kept: A's keys are noted, and the desired state is B alone",
+                         _entry_files(target) == {b} and any(held.get("file") == a for held in (target.get("letGo") or {}).values()),
+                         str(target.get("letGo")))
+
+        # ── A sync that could not read the new file changes nothing ───────────
+        rule, env, tenant, (first, broken, missing) = scenario(
+            "unread", redis_rules, [a, LET_GO_FILES["broken"][0], LET_GO_FILES["missing"][0]], prune=True, destination=redis_dest,
+            check=False)
+        target = _let_go_target(rule[0]["datasource"], env, tenant)
+        result.add_check("unread: a file that cannot be parsed fails its task",
+                         bool(broken) and broken.state == "FAILED", broken.said() if broken else "no outcome")
+        result.add_check("unread: a file Git does not have syncs nothing", bool(missing) and not missing.files,
+                         missing.said() if missing else "no outcome")
+        diff = _differences(_redis_hash_of(rule[0], env), A_KEYS)
+        result.add_check("unread: A's keys are still in the hash", diff == "", diff or "ok")
+        result.add_check("unread: A is still what the environment holds, and nothing was let go",
+                         _entry_files(target) == {a} and not _let_go_events(
+                             rule[0]["datasource"], env, tenant, {t.task_id for t in (first, broken, missing) if t}),
+                         str(sorted(_entry_files(target))))
+
+        result.finish("pass" if all(c["passed"] for c in result.checks) else "fail")
+    except Exception as exc:
+        result.error = traceback.format_exc()
+        err(f"Suite 25 raised exception: {exc}")
+        result.finish("fail")
+    finally:
+        for path, branch in pushed:
+            gitea.delete_file_on(CONFIG_REPO, path, "e2e: remove the let-go file", branch)
+        for branch in branches:
+            gitea.delete_branch(CONFIG_REPO, branch)
+        try:
+            r = _ledger(2)
+            stale = r.keys("e2e-letgo-*")
+            if stale:
+                r.delete(*stale)
+            r.close()
+            client = MongoClient("mongodb://mongo:27017", serverSelectionTimeoutMS=5000)
+            for name in client["vartrack"].list_collection_names():
+                if name.startswith("e2e-letgo-doc-"):
+                    client["vartrack"].drop_collection(name)
+            client.close()
+        except Exception:
+            pass
+    return result
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Main
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -1848,7 +2388,7 @@ def load_settings(settings_dir: str) -> dict[str, list[dict]]:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="VarTrack E2E test runner")
-    parser.add_argument("--settings-dir", default="/demo/schemas/settings")
+    parser.add_argument("--settings-dir", default="/e2e/schemas/settings")
     parser.add_argument("--results-dir",  default="/results")
     parser.add_argument("--orchestrator", default=os.environ.get("ORCHESTRATOR_URL",
                                                                   "http://orchestrator-api:8000"))
@@ -1856,6 +2396,9 @@ def main() -> None:
                                                                   "http://gitea:3000"))
     parser.add_argument("--gitea-user",   default=os.environ.get("GITEA_ADMIN_USER", "demo-admin"))
     parser.add_argument("--gitea-pass",   default=os.environ.get("GITEA_ADMIN_PASSWORD", "VarTrack123"))
+    parser.add_argument("--update-env-keyed", action="store_true",
+                        help="suite 24 also writes the keys it found as expected/<env>.json files, in the layout of "
+                             "e2e/configs/env-keyed, under <results-dir>/env-keyed-actual (copy them over to accept a change)")
     args = parser.parse_args()
     # Every call the suites make to the orchestrator is signed with the demo's INTERNAL_AUTH_SECRET.
     args.orchestrator = OrchestratorClient(args.orchestrator, os.environ.get("INTERNAL_AUTH_SECRET", ""))
@@ -1864,7 +2407,7 @@ def main() -> None:
 
     gitea = GiteaClient(args.gitea, args.gitea_user, args.gitea_pass)
 
-    banner("VarTrack E2E Test Runner — 23 Suites / 8 Sinks + CUE + Vault")
+    banner("VarTrack E2E Test Runner — 25 Suites / 8 Sinks + CUE + Vault")
     run_started = datetime.now(timezone.utc).isoformat()
     global_t0 = time.monotonic()
 
@@ -1900,6 +2443,8 @@ def main() -> None:
     orig_config = Path(CONFIG_LOCAL).read_bytes()
     bad_config = orig_config.replace(
         b"log_level: INFO", b"log_level: VERBOSE"
+    ).replace(
+        b'max_connections: "100"', b'max_connections: "5000"'      # out of the schema's int & <=1000
     )
 
     results: list[SuiteResult] = []
@@ -1945,6 +2490,14 @@ def main() -> None:
     results.append(suite_22_task_status_polling(args.orchestrator, gitea, args.gitea, mongo_doc))
     results.append(suite_23_schema_map(args.orchestrator, gitea, args.gitea, mongo_docs))
 
+    # ── A file that holds every environment (24) ──────────────────────────────
+    results.append(suite_24_env_keyed(
+        args.orchestrator, gitea, args.gitea, mongo_doc, redis_hash,
+        update_dir=Path(args.results_dir) / "env-keyed-actual" if args.update_env_keyed else None))
+
+    # ── A rule that stops reading a file (25) ─────────────────────────────────
+    results.append(suite_25_file_let_go(args.orchestrator, gitea, args.gitea, redis_hash, mongo_docs))
+
     # ── Summary ───────────────────────────────────────────────────────────────
     total_ms   = (time.monotonic() - global_t0) * 1000
     passed     = sum(1 for r in results if r.status == "pass")
@@ -1986,6 +2539,7 @@ def main() -> None:
     with open(out_path, "w") as fh:
         json.dump(benchmark, fh, indent=2)
     ok(f"Benchmark written → {out_path}")
+    hand_back(Path(args.results_dir))
 
     sys.exit(0 if failed == 0 else 1)
 
