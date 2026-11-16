@@ -44,13 +44,15 @@ def test_a_prune_without_last_is_not_reported():
     ("helm", {}, False),
     ("linux_server-web", {}, False),
     ("redis", {"data_structure": "JSON"}, False),
-    ("mongo-primary", {"update_strategy": "STRATEGY_FILE"}, False),
-    ("mongo-primary", {"update_strategy": "STRATEGY_DOCUMENT"}, False),
+    # one document per file: prune deletes the document of a file the rule stops reading
+    ("mongo-primary", {"update_strategy": "STRATEGY_FILE"}, True),
+    ("mongo-primary", {"update_strategy": "STRATEGY_DOCUMENT"}, True),
+    ("mongo-primary", {}, True),
     ("redis", {}, True),
     ("mongo", {"update_strategy": "STRATEGY_KEY_VALUE"}, True),
     ("zookeeper", {}, True),
 ])
-def test_prune_is_reported_only_where_the_sink_replaces_a_whole_object(monkeypatch, datasource, block, effective):
+def test_prune_is_reported_only_where_it_can_delete_neither_a_key_nor_a_file_document(monkeypatch, datasource, block, effective):
     kind, _, tag = datasource.partition("-")
     bundle = {"datasources": [{kind: {**({"tag": tag} if tag else {}), **block}}]}
     monkeypatch.setattr("app.pipeline.datasource_settings._bundle", lambda: bundle)
