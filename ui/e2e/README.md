@@ -10,12 +10,12 @@ and the gateway's permission engine, and no test of any one of them could fail.
 
 ## Run them
 
-The way CI runs them, in one command from `ui/` (clean volumes, the 25-suite regression, the browser tests, the coverage check):
+The way CI runs them, in one command from `ui/` (the demo tour on a demo of its own, then clean volumes, the 25-suite regression, the browser tests, the coverage check):
 
 ```sh
 npm ci
 npm run test:e2e:install      # once: the browser
-npm run test:e2e:stack        # everything; --no-up for a stack that is already up, --keep to leave it running
+npm run test:e2e:stack        # everything; --no-up for a stack that is already up, --keep to leave it running, --no-tour to skip the tour
 ```
 
 Against a stack you already have (`docker compose up` in `e2e/`), with the UI image on :8080 — **not the Vite dev server**, whose
