@@ -59,7 +59,8 @@ CUE validation schemas — define the shape and constraints for your config file
 |---|---|
 | `app_schema.cue` | Open struct: validates specific keys, allows extras |
 | `strict_schema.cue` | Closed struct: rejects any undeclared key |
-| `annotated_schema.cue` | Full example with `@secret()` and `@logger()` on every field type |
+| `annotated_schema.cue` | Full example with `@secret()` and `@logger()` on every field type, and `int`, `bool` and ranges |
+| `vars.env.cue` | Schema for `configs/vars.env`: a `.env` file's values are text, and `int` and `bool` still check them |
 
 Reference a schema in your rule settings to validate every push before it reaches the sink.
 

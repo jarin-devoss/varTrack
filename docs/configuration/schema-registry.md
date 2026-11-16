@@ -104,7 +104,50 @@ database:
 
 A schema checks the data as the sink receives it, not the file as written: after [`root_key`](rule-options.md#root_key) is taken out, the [environment slice](../concepts/environment-resolution.md) is picked, the data is flattened to dotted keys, [`variables_map`](rule-options.md#variables_map) renames are applied and [`@secret()`](annotations.md#secret) values are read.
 
-**Every value is a string by then:** `5432` is `"5432"`, `true` is `"true"`, `null` is `""`. Write `string & =~"^[0-9]+$"` for a number — `int` rejects every value.
+### Numbers and booleans
+
+A schema says `int`, `float`, `number` or `bool` for a value, and a range (`int & >=1024 & <=65535`), and the check holds however the file wrote it. Each value is shown to the schema as **the file wrote it, next to the other form it can be read as**:
+
+| In the file | The schema sees |
+|---|---|
+| `port: 8080` (YAML, JSON, TOML, HCL) | the int `8080`, or the text `"8080"` |
+| `port: "8080"` (quoted), or `PORT=8080` in a `.env`, `.properties`, INI or XML file | the text `"8080"`, or the int `8080` |
+| `ratio: 0.5` | the float `0.5`, or the text `"0.5"` |
+| `debug: true`, or `DEBUG=TRUE` | the bool `true`, or the text |
+| `zip: "0123"`, `name: checkout` | the text only |
+| `PORT=` (an empty value), or `port: ""` | the text `""`, or `null` |
+| `port:` or `port: null` (YAML, JSON) | `null`, or the text `""` |
+
+The type the schema asks for picks the form, so `int` and `string & =~"^[0-9]+$"` both pass `8080`, and a schema written the old way keeps working. Which text reads as which type is one fixed rule: **a number is a number in JSON's grammar** (the text, as it stands, with no space around it), and a boolean is `true` or `false` in any case:
+
+| Text | Reads as | Not |
+|---|---|---|
+| `0`, `-5`, `8080` | an int | `0123`, `+5`, `1_000`, `0x1F`, `0o17`, ` 5`: a leading zero, a sign, a separator, a base or a space is text |
+| `0.5`, `1.10`, `2.5e10`, `1e5` | a float, with the digits the file wrote (`int` refuses `1e5`; `number` takes it) | `.5`, `5.`, `NaN`, `Infinity` |
+| `true`, `False`, `TRUE` | a bool | `yes`, `no`, `on`, `off`, `1`, `0` |
+
+The rule is narrower than CUE's own number syntax on purpose: CUE reads `0x1F` as 31 and `1_000` as 1000, and a color code or an identifier written that way in a `.env` file would otherwise pass `int`.
+
+A zip code, an account number or `0123` is never a number, so it stays text. **Nothing is converted:** the schema checks the value, and the file decides how it is written, so `"8080"` passes `int` and a sink that keeps the file's types (MongoDB `STRATEGY_DOCUMENT` and `STRATEGY_FILE`, S3) still stores the string. A failure names the key and the value as written: `DATABASE_PORT = "5432" in app.env`.
+
+**An empty value is also `null`**, as an empty field is in every tool that reads text into typed columns. A schema says "a number, or left empty" with `int | null`; a plain `int` still refuses an empty value, and so does `string & !=""`:
+
+```cue schema
+"PORT": int | null
+```
+
+```env data
+PORT=
+```
+
+```env data
+PORT=8080
+```
+
+```env data fails
+# expect: PORT = "abc" in app.env
+PORT=abc
+```
 
 ### Example
 
@@ -122,41 +165,106 @@ features:
   dark_mode: true
 ```
 
-which the schema sees as:
+which the schema sees as these dotted keys, each with its value as the file wrote it:
 
 ```json
 {
   "app.name":           "checkout",
   "database.host":      "db.internal",
-  "database.port":      "5432",
+  "database.port":      5432,
   "log.level":          "info",
-  "features.dark_mode": "true"
+  "features.dark_mode": true
 }
 ```
 
 The schema repo has `app.yaml.cue`:
 
-```cue notest
+```cue schema
 // Required: a file without one of these keys fails.
 "app.name":      string & !=""
 "database.host": string & !=""
-"database.port": string & =~"^[0-9]{1,5}$"
+"database.port": int & >=1 & <=65535
 
 // One of a fixed set of values.
 "log.level": "debug" | "info" | "warn" | "error"
 
 // Optional: checked only when the file has it.
-"features.dark_mode"?: "true" | "false"
+"features.dark_mode"?: bool
 ```
 
-This file passes. With `port: 55x` and `level: verbose` it fails with:
+This file passes:
+
+```yaml data
+app:
+  name: checkout
+database:
+  host: db.internal
+  port: 5432
+log:
+  level: info
+features:
+  dark_mode: true
+```
+
+So does the same file with `port: "5432"` in quotes: a value that reads as an int is an int to the schema.
+
+```yaml data
+app:
+  name: checkout
+database:
+  host: db.internal
+  port: "5432"
+log:
+  level: info
+```
+
+With `port: 55x` and `level: verbose` it fails with each key and the value as written, then CUE's own text:
+
+```yaml data fails
+# expect: database.port = "55x" in app.yaml
+app:
+  name: checkout
+database:
+  host: db.internal
+  port: 55x
+log:
+  level: verbose
+features:
+  dark_mode: true
+```
 
 ```
+database.port = "55x" in app.yaml
+log.level = "verbose" in app.yaml
+"database.port": conflicting values "55x" and int (mismatched types string and int)
 "log.level": 4 errors in empty disjunction: …
-"database.port": invalid value "55x" (out of bound =~"^[0-9]{1,5}$")
 ```
 
-and without `app.name` with `"app.name": incomplete value !=""`.
+A number out of range names the bound, `invalid value 70000 (out of bound <=65535)`, and a file without `app.name` fails with `"app.name": incomplete value !=""`:
+
+```yaml data fails
+# expect: "app.name": incomplete value
+database:
+  host: db.internal
+  port: 5432
+log:
+  level: info
+```
+
+A value the type does not allow, here `dark_mode: maybe`, is refused the same way:
+
+```yaml data fails
+# expect: features.dark_mode = "maybe" in app.yaml
+app:
+  name: checkout
+database:
+  host: db.internal
+  port: 5432
+log:
+  level: info
+features:
+  dark_mode: maybe
+```
 
 Keys the schema does not name are allowed. To reject them, wrap the schema in `close({ … })`:
 
@@ -180,7 +288,15 @@ With `strict_validation` **every file has to be checked**: a file no schema chec
 
 [`vt validate`](../cli/index.md#vt-validate) always treats a failure as an error and exits 1, so a pull request check catches it before the merge.
 
-To try a schema on your machine, put the flat form above in `data.json` and run `cue vet app.yaml.cue data.json`.
+To try a schema on your machine, run `vt validate --file configs/app.yaml --datasource mongo`: it goes through the same parse, flatten and check as a sync, so what it says is what a sync would say. To run `cue vet -c` by hand, write the data as CUE with each value's readings, which is the form varTrack gives it:
+
+```text
+"database.port": *5432 | "5432"
+"features.dark_mode": *true | "true"
+"app.name": "checkout"
+```
+
+(`*` marks the form the file wrote; the other is the form it can be read as.)
 
 ---
 
