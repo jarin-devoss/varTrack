@@ -46,14 +46,15 @@ export interface VarTrackApi {
 
 const ApiContext = createContext<VarTrackApi | null>(null);
 
-export function ApiProvider({ children }: { children: ReactNode }) {
+/** *api*: the API to use instead of the live one built from the connection settings (a test supplies its own). */
+export function ApiProvider({ children, api: given }: { children: ReactNode; api?: VarTrackApi }) {
   const [prefs] = usePrefs();
   const { gatewayUrl, orchestratorUrl, watcherUrl, token } = prefs.connection;
-  const api = useMemo(
-    () => createLiveApi({ gatewayUrl, orchestratorUrl, watcherUrl, token }),
-    [gatewayUrl, orchestratorUrl, watcherUrl, token],
+  const live = useMemo(
+    () => (given ? null : createLiveApi({ gatewayUrl, orchestratorUrl, watcherUrl, token })),
+    [given, gatewayUrl, orchestratorUrl, watcherUrl, token],
   );
-  return <ApiContext.Provider value={api}>{children}</ApiContext.Provider>;
+  return <ApiContext.Provider value={(given ?? live)!}>{children}</ApiContext.Provider>;
 }
 
 export function useApi(): VarTrackApi {

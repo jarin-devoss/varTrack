@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useApi } from '../api';
-import { Notice } from '../components/common';
+import { LoadingRows, Notice } from '../components/common';
 import { Icon } from '../components/Icon';
 import { TokenForm } from '../features/TokenForm';
 import { appPath, platformLabel } from '../lib/platforms';
@@ -38,6 +38,10 @@ export function LoginPage() {
     if (session.data?.enabled && session.data.authenticated) navigate(returnUrl, { replace: true });
   }, [session.data, returnUrl, navigate]);
 
+  // Which way to sign in is the orchestrator's answer. Until it comes there is none to show, and when it cannot be had the
+  // page says so: the token form is the answer "sign-in is off", which it has not given.
+  const waiting = session.loading;
+  const unreachable = session.data === undefined && session.error !== undefined;
   const sso = session.data?.enabled ? session.data : null;
   const platforms = sso?.platforms ?? [];
   const names = platforms.map(platformLabel);
@@ -49,14 +53,32 @@ export function LoginPage() {
         <div className="login__brand">
           <h1 style={{ fontSize: 24, fontWeight: 600 }}>Sign in to varTrack</h1>
           <p className="muted">
-            {sso
-              ? `Sign in with ${provider}. You see the rules whose repositories ${provider} lets you read, and sync the ones you can write to.` +
-                (names.length > 1 ? ' Signed in with one platform, you can connect the others to see their rules too.' : '')
-              : 'Use the bearer token from your identity provider — the same one vt login stores.'}
+            {waiting
+              ? 'Checking how to sign in…'
+              : unreachable
+                ? 'The orchestrator did not answer, so how to sign in is not known yet.'
+                : sso
+                  ? `Sign in with ${provider}. You see the rules whose repositories ${provider} lets you read, and sync the ones you can write to.` +
+                    (names.length > 1 ? ' Signed in with one platform, you can connect the others to see their rules too.' : '')
+                  : 'Use the bearer token from your identity provider — the same one vt login stores.'}
           </p>
         </div>
 
-        {sso ? (
+        {waiting ? (
+          <div className="card" aria-busy="true">
+            <LoadingRows rows={2} height={40} />
+          </div>
+        ) : unreachable ? (
+          <div className="card stack">
+            <Notice tone="critical">Can't reach the orchestrator to tell how to sign in. Check that it is running and that the connection settings point at it.</Notice>
+            <div className="row" style={{ justifyContent: 'space-between', fontSize: 13 }}>
+              <button className="btn btn--sm" onClick={session.reload}>
+                Try again
+              </button>
+              <Link to="/settings">Connection settings</Link>
+            </div>
+          </div>
+        ) : sso ? (
           <div className="card stack">
             {error && <Notice tone="critical">{LOGIN_ERRORS[error] ?? 'Sign-in failed. Try again.'}</Notice>}
             {sso.error && <Notice tone="critical">Sign-in is misconfigured on the server; the orchestrator's log says why.</Notice>}
