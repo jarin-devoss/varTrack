@@ -42,7 +42,7 @@ jobs:
             rm -f results/benchmark.json
             docker compose up --detach
             # exits with the test runner's status: non-zero when a suite failed
-            docker compose wait e2e-demo
+            docker compose wait e2e-regression
             python3 check_results.py results/benchmark.json
             cp results/benchmark.json "results/benchmark-$i.json"
             echo "::endgroup::"

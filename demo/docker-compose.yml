@@ -1,0 +1,428 @@
+# The varTrack demo: the services, their stores, a Git server, and a seeded config repository to push to.
+# Flow: Gitea push → orchestrator-api → Celery worker → MongoDB + ZooKeeper + Redis + S3 + Linux
+#       watcher polls all sinks for drift → calls orchestrator TriggerSync on drift
+#
+#   docker compose up           (from this folder; the UI is at http://localhost:8080, see README.md)
+#
+# It runs no tests: the regression and the browser suite are in ../e2e, which includes this file and runs them on it.
+# Observability (Jaeger, Grafana, Elasticsearch, Kibana, OTel collector, Prometheus) is left out so the demo starts fast.
+# To add it, or more sinks:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.observability.yml up
+#   docker compose -f docker-compose.yml -f docker-compose.live.yml up       (see README.md)
+
+# One project name from any directory, so the containers are always vartrack-demo-<service>-1.
+name: vartrack-demo
+
+networks:
+  vartrack:
+    driver: bridge
+
+volumes:
+  demo-state:          # written by demo-seed (the web UI's OAuth client), read by the services
+  gitea-data:
+  mongo-data:
+  zookeeper-data:
+  zookeeper-log:
+  s3-data:
+  vault-data:
+  schema-cache:
+  git-cache:
+
+# ── Infrastructure ────────────────────────────────────────────────────────────
+
+services:
+  redis:
+    image: redis:7-alpine
+    networks: [vartrack]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  mongo:
+    image: mongo:7
+    networks: [vartrack]
+    volumes:
+      - mongo-data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')", "--quiet"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  zookeeper:
+    image: zookeeper:3.9
+    networks: [vartrack]
+    environment:
+      ZOO_MY_ID: 1
+      ZOO_STANDALONE_ENABLED: "true"
+    volumes:
+      - zookeeper-data:/data
+      - zookeeper-log:/datalog
+    healthcheck:
+      test: ["CMD-SHELL", "zkServer.sh status 2>/dev/null | grep -q Mode || (echo ruok | bash -c 'cat > /dev/tcp/localhost/2181' 2>/dev/null && echo ok)"]
+      interval: 10s
+      timeout: 10s
+      retries: 15
+
+  gitea:
+    build:
+      context: ./gitea
+      dockerfile: Dockerfile
+    networks: [vartrack]
+    environment:
+      GITEA__database__DB_TYPE: sqlite3
+      GITEA__server__ROOT_URL: http://gitea:3000
+      GITEA__server__HTTP_PORT: "3000"
+      GITEA__security__INSTALL_LOCK: "true"
+      GITEA__service__DISABLE_REGISTRATION: "false"
+      GITEA__log__LEVEL: Warn
+      # Let Gitea deliver webhooks to the gateway on the compose network (demo-seed creates them; see DEMO_WEBHOOKS).
+      GITEA__webhook__ALLOWED_HOST_LIST: "*"
+      GITEA_ADMIN_USER: demo-admin
+      GITEA_ADMIN_PASSWORD: VarTrack123
+      GITEA_ADMIN_EMAIL: demo-admin@demo.local
+    volumes:
+      - gitea-data:/data
+    ports:
+      - "3000:3000"
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "-u", "demo-admin:VarTrack123", "http://localhost:3000/api/v1/user"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+
+# ── Gateway ───────────────────────────────────────────────────────────────────
+
+  gateway:
+    build:
+      # The repository root: the gateway builds against the shared libs/go.
+      context: ..
+      dockerfile: gateway-service/Dockerfile
+    networks: [vartrack]
+    environment:
+      APP_ENV: demo
+      # Internal authentication is on: the orchestrator accepts a call only with a signed grant, and the
+      # gateway, the watcher and the test runner each sign theirs. A demo value; read it from a file
+      # (INTERNAL_AUTH_SECRET_FILE) anywhere real.
+      INTERNAL_AUTH_SECRET: "${VARTRACK_DEMO_INTERNAL_AUTH_SECRET:-demo-internal-auth-secret-0123456789abcdef}"
+      LOG_LEVEL: INFO
+      CONFIG_PATH: /app/config.cue
+      ORCHESTRATOR_ADDR: "orchestrator-api:50051"
+      GATEWAY_ADDR: ":5657"
+      ADMIN_ADDR: ":9092"
+      # The permission engine, served to the orchestrator's web UI.
+      AUTHZ_ADDR: ":5658"
+      MTLS_ENABLED: "false"
+      OTEL_ENABLED: "false"
+      JAEGER_ENABLED: "false"
+      ELK_ENABLED: "false"
+    volumes:
+      - ./config.cue:/app/config.cue:ro,z
+      - demo-state:/demo-state:ro
+      # The CLI API's OPA policy (auth.opa.policy_file in the bundle).
+      - ../examples/policies:/app/policies:ro,z
+    ports:
+      - "5657:5657"
+      - "9092:9092"
+    depends_on:
+      orchestrator-api: {condition: service_healthy}
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:9092/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+# ── Orchestrator ──────────────────────────────────────────────────────────────
+
+  orchestrator-api:
+    build:
+      # The repository root: the image generates its Python stubs from proto/.
+      context: ..
+      dockerfile: orchestrator-service/docker/Dockerfile
+    networks: [vartrack]
+    command: ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--log-level", "info"]
+    environment:
+      APP_ENV: demo
+      # Internal authentication is on: the orchestrator accepts a call only with a signed grant, and the
+      # gateway, the watcher and the test runner each sign theirs. A demo value; read it from a file
+      # (INTERNAL_AUTH_SECRET_FILE) anywhere real.
+      INTERNAL_AUTH_SECRET: "${VARTRACK_DEMO_INTERNAL_AUTH_SECRET:-demo-internal-auth-secret-0123456789abcdef}"
+      LOG_LEVEL: INFO
+      CONFIG_PATH: /app/config.cue
+      ORCHESTRATOR_HTTP_ADDR: "0.0.0.0:8000"
+      # The web UI re-reads a sink after 2 s here (10 s by default), so a page shows a change within seconds.
+      UI_COMPARE_TTL_SECONDS: "2"
+      ADMIN_HOST: "0.0.0.0"
+      ADMIN_PORT: "9093"
+      # The web UI asks the gateway's permission engine what a signed-in user may see and do.
+      GATEWAY_AUTHZ_ADDR: "gateway:5658"
+      CELERY_BROKER_URL: "redis://redis:6379/0"
+      CELERY_RESULT_BACKEND: "redis://redis:6379/0"
+      SCHEMA_CACHE_DIR: /app/schema_registry
+      GIT_CACHE_DIR: /app/git_cache
+      MTLS_ENABLED: "false"
+      CORS_ORIGINS: "*"
+      GIT_ALLOWED_HOSTS: "gitea"
+      # The config repository is private: git adds the demo admin's credentials for this host only, so logs keep
+      # showing the plain URL.
+      GIT_CONFIG_COUNT: "1"
+      GIT_CONFIG_KEY_0: url.http://demo-admin:VarTrack123@gitea:3000/.insteadOf
+      GIT_CONFIG_VALUE_0: http://gitea:3000/
+      PROM_ENABLED: "true"
+      PROM_PORT: "9090"
+      OTEL_ENABLED: "false"
+      JAEGER_ENABLED: "false"
+      ELK_ENABLED: "false"
+    volumes:
+      - ./config.cue:/app/config.cue:ro,z
+      - demo-state:/demo-state:ro
+      - schema-cache:/app/schema_registry
+      - git-cache:/app/git_cache
+    ports:
+      - "8000:8000"
+      - "9090:9090"
+      - "9093:9093"
+    depends_on:
+      redis:     {condition: service_healthy}
+      mongo:     {condition: service_healthy}
+      zookeeper: {condition: service_healthy}
+    healthcheck:
+      test: ["CMD", "python3", "-c",
+             "import urllib.request; r = urllib.request.urlopen('http://localhost:9093/health/readiness'); exit(0 if r.status == 200 else 1)"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
+  orchestrator-worker:
+    build:
+      # The repository root: the image generates its Python stubs from proto/.
+      context: ..
+      dockerfile: orchestrator-service/docker/Dockerfile
+    networks: [vartrack]
+    command: ["celery", "-A", "app.worker.celery", "worker",
+              "--loglevel=info", "-Q", "webhooks,sync,schema",
+              "--concurrency=4"]
+    environment:
+      APP_ENV: demo
+      # Internal authentication is on: the orchestrator accepts a call only with a signed grant, and the
+      # gateway, the watcher and the test runner each sign theirs. A demo value; read it from a file
+      # (INTERNAL_AUTH_SECRET_FILE) anywhere real.
+      INTERNAL_AUTH_SECRET: "${VARTRACK_DEMO_INTERNAL_AUTH_SECRET:-demo-internal-auth-secret-0123456789abcdef}"
+      LOG_LEVEL: INFO
+      CONFIG_PATH: /app/config.cue
+      CELERY_BROKER_URL: "redis://redis:6379/0"
+      CELERY_RESULT_BACKEND: "redis://redis:6379/0"
+      SCHEMA_CACHE_DIR: /app/schema_registry
+      GIT_CACHE_DIR: /app/git_cache
+      GIT_ALLOWED_HOSTS: "gitea"
+      # The config repository is private: git adds the demo admin's credentials for this host only, so logs keep
+      # showing the plain URL.
+      GIT_CONFIG_COUNT: "1"
+      GIT_CONFIG_KEY_0: url.http://demo-admin:VarTrack123@gitea:3000/.insteadOf
+      GIT_CONFIG_VALUE_0: http://gitea:3000/
+      OTEL_ENABLED: "false"
+      JAEGER_ENABLED: "false"
+      ELK_ENABLED: "false"
+    volumes:
+      - ./config.cue:/app/config.cue:ro,z
+      - demo-state:/demo-state:ro
+      - schema-cache:/app/schema_registry
+      - git-cache:/app/git_cache
+    depends_on:
+      redis:            {condition: service_healthy}
+      mongo:            {condition: service_healthy}
+      zookeeper:        {condition: service_healthy}
+      orchestrator-api: {condition: service_healthy}
+
+# ── Watcher ───────────────────────────────────────────────────────────────────
+
+  watcher:
+    build:
+      # The repository root: the watcher builds against the shared libs/go.
+      context: ..
+      dockerfile: watcher-service/Dockerfile
+    networks: [vartrack]
+    environment:
+      APP_ENV: demo
+      # Internal authentication is on: the orchestrator accepts a call only with a signed grant, and the
+      # gateway, the watcher and the test runner each sign theirs. A demo value; read it from a file
+      # (INTERNAL_AUTH_SECRET_FILE) anywhere real.
+      INTERNAL_AUTH_SECRET: "${VARTRACK_DEMO_INTERNAL_AUTH_SECRET:-demo-internal-auth-secret-0123456789abcdef}"
+      LOG_LEVEL: INFO
+      CONFIG_PATH: /app/config.cue
+      ORCHESTRATOR_ADDR: "orchestrator-api:50051"
+      HEAL_TIMEOUT: 30s
+      # A test stack looks every 10 s so that a spec waits seconds, not minutes (the product default is 60 s).
+      POLL_INTERVAL: ${WATCHER_POLL_INTERVAL:-10s}
+      ADMIN_ADDR: ":9091"
+      OTEL_ENABLED: "false"
+      JAEGER_ENABLED: "false"
+      ELK_ENABLED: "false"
+    volumes:
+      - ./config.cue:/app/config.cue:ro,z
+      - demo-state:/demo-state:ro
+    ports:
+      - "9091:9091"
+    depends_on:
+      orchestrator-api: {condition: service_healthy}
+      mongo:            {condition: service_healthy}
+      zookeeper:        {condition: service_healthy}
+      redis:            {condition: service_healthy}
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:9091/health/readiness"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+# ── S3-compatible object store ────────────────────────────────────────────────
+# RustFS: MinIO no longer publishes its images. The service keeps the name
+# "minio", its ports and its credentials, which the configs and tests use.
+
+  minio:
+    image: rustfs/rustfs:1.0.1
+    networks: [vartrack]
+    environment:
+      RUSTFS_ADDRESS: ":9002"
+      RUSTFS_ACCESS_KEY: minioadmin
+      RUSTFS_SECRET_KEY: minioadmin
+      RUSTFS_CONSOLE_ENABLE: "true"
+      RUSTFS_CONSOLE_ADDRESS: ":9001"
+    volumes:
+      - s3-data:/data
+    ports:
+      - "9001:9001"
+      - "9002:9002"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:9002/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 60s
+
+  minio-init:
+    image: amazon/aws-cli:2.37.13
+    networks: [vartrack]
+    depends_on:
+      minio: {condition: service_healthy}
+    environment:
+      AWS_ACCESS_KEY_ID: minioadmin
+      AWS_SECRET_ACCESS_KEY: minioadmin
+      AWS_DEFAULT_REGION: us-east-1
+    entrypoint: >
+      /bin/sh -c "
+        { aws --endpoint-url http://minio:9002 s3api head-bucket --bucket vartrack 2>/dev/null ||
+          aws --endpoint-url http://minio:9002 s3 mb s3://vartrack; } &&
+        echo 'S3 bucket ready'
+      "
+    restart: "no"
+
+# ── HashiCorp Vault (secret resolver) ─────────────────────────────────────────
+
+  vault:
+    image: hashicorp/vault:1.17
+    networks: [vartrack]
+    environment:
+      VAULT_DEV_ROOT_TOKEN_ID: "root"
+      VAULT_DEV_LISTEN_ADDRESS: "0.0.0.0:8200"
+      VAULT_ADDR: "http://0.0.0.0:8200"
+    cap_add: [IPC_LOCK]
+    volumes:
+      - vault-data:/vault/file
+    ports:
+      - "8200:8200"
+    healthcheck:
+      test: ["CMD", "vault", "status"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+
+  vault-init:
+    image: hashicorp/vault:1.17
+    networks: [vartrack]
+    environment:
+      VAULT_ADDR: "http://vault:8200"
+      VAULT_TOKEN: "root"
+    depends_on:
+      vault: {condition: service_healthy}
+    entrypoint:
+      - /bin/sh
+      - -c
+      - "vault kv put secret/vartrack/configs database.password=supersecret123 api.secret_key=api-secret-xyz789 && echo 'Vault secrets seeded'"
+    restart: "no"
+
+# ── Linux target (SSH file sink) ───────────────────────────────────────────────
+
+  linux-target:
+    image: alpine:3.19
+    networks: [vartrack]
+    command: >
+      /bin/sh -c "
+        apk add --no-cache openssh-server &&
+        mkdir -p /run/sshd &&
+        ssh-keygen -A &&
+        adduser -D -s /bin/sh vartrack &&
+        echo 'vartrack:VarTrack123' | chpasswd &&
+        mkdir -p /home/vartrack/.ssh &&
+        echo 'PermitRootLogin no' >> /etc/ssh/sshd_config &&
+        echo 'PasswordAuthentication yes' >> /etc/ssh/sshd_config &&
+        /usr/sbin/sshd -D
+      "
+    ports:
+      - "2222:22"
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z localhost 22 2>/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+
+# ── The web UI, and the seed ──────────────────────────────────────────────────
+
+  # The web UI as shipped: the static build behind nginx, proxying /api/* to the services.
+  ui:
+    build:
+      context: ../ui
+    networks: [vartrack]
+    environment:
+      GATEWAY_URL: http://gateway:5657
+      ORCHESTRATOR_URL: http://orchestrator-api:8000
+      WATCHER_URL: http://watcher:9091
+    ports:
+      - "8080:8080"
+    depends_on:
+      gateway: {condition: service_healthy}
+
+  # Seeds the demo once: the organisation, the config and schema repositories, the four accounts and the web UI's sign-in
+  # application, then the first sync of each rule. It exits 0 when the demo is ready. A restart finds it seeded and leaves
+  # what a person has pushed since; `docker compose down -v` starts again from nothing.
+  demo-seed:
+    build:
+      context: ./seed
+      dockerfile: Dockerfile
+    networks: [vartrack]
+    environment:
+      ORCHESTRATOR_URL: http://orchestrator-api:8000
+      INTERNAL_AUTH_SECRET: "${VARTRACK_DEMO_INTERNAL_AUTH_SECRET:-demo-internal-auth-secret-0123456789abcdef}"
+      GITEA_URL: http://gitea:3000
+      GITEA_ADMIN_USER: demo-admin
+      GITEA_ADMIN_PASSWORD: VarTrack123
+      DEMO_STATE: /demo-state
+      GATEWAY_URL: http://gateway:5657
+      # on: a push to the config repository syncs it, as in real use. The regression (../e2e) sets off: its suites push to
+      # that repository all the time and start every sync they check themselves.
+      DEMO_WEBHOOKS: "${DEMO_WEBHOOKS:-on}"
+    volumes:
+      - ./configs:/demo/configs:ro,z
+      - ./schemas:/demo/schemas:ro,z
+      - demo-state:/demo-state
+    depends_on:
+      gitea:            {condition: service_healthy}
+      orchestrator-api: {condition: service_healthy}
+      orchestrator-worker:
+        condition: service_started
+      watcher:
+        condition: service_healthy
+    restart: "no"

@@ -294,7 +294,7 @@ jobs:
           cache-to: type=gha,mode=max,scope=${{ matrix.service }}
 
   # ── E2E regression (every PR, and every push to main) ───────────────────────
-  # The e2e-demo container exits with the test runner's status, so `compose wait` fails this job when a
+  # The e2e-regression container exits with the test runner's status, so `compose wait` fails this job when a
   # suite failed. The report is checked as well: a run that skipped or lost a suite is not a pass either.
   e2e:
     name: e2e
@@ -310,12 +310,20 @@ jobs:
         working-directory: e2e
         run: |
           docker compose up --build --detach
-          docker compose wait e2e-demo
+          docker compose wait e2e-regression
 
-      - name: Dump e2e-demo logs
+      # The runner is root in its container, and e2e/results is a bind mount of this checkout: on Linux, what it wrote would be root's
+      # and could not be removed without sudo. It hands the folder's contents back to the folder's owner (the user who ran the stack).
+      - name: The report belongs to the user who ran the stack
+        run: |
+          owner=$(stat -c %U e2e/results/benchmark.json)
+          echo "benchmark.json is owned by ${owner}; this job runs as $(id -un)"
+          test "${owner}" = "$(id -un)"
+
+      - name: Dump e2e-regression logs
         if: always()
         working-directory: e2e
-        run: docker compose logs e2e-demo
+        run: docker compose logs e2e-regression
 
       # 25 suites, none failed, none skipped (e2e/check_results.py); the table is on the job's summary page.
       - name: Check the regression's report
@@ -343,6 +351,28 @@ jobs:
         working-directory: e2e
         run: docker compose down -v --remove-orphans
 
+  # ── The oldest Docker Compose the demo supports ──────────────────────────────
+  # demo/run.sh and demo/README.md say Compose 2.20.0 is the minimum: `include` (which e2e/ uses) and `docker compose wait` arrived
+  # there, and 2.19 reads neither file. This runs the release itself (no daemon is needed to read a file) on both folders, so that
+  # number cannot drift from what Compose does: if the files start to need something newer, this fails and the number moves.
+  compose-minimum:
+    name: compose ${{ matrix.compose }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        compose: [v2.20.0, v2.23.0]
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: demo/ and e2e/ read, and `wait` exists
+        run: |
+          compose() { docker run --rm -v "$PWD:/repo:ro" -w "/repo/$1" --entrypoint /docker-compose "docker/compose-bin:${{ matrix.compose }}" "${@:2}"; }
+          compose demo config --quiet
+          compose e2e config --quiet
+          compose demo wait --help > /dev/null
+
   # ── UI end-to-end (every PR, and every push to main) ─────────────────────────
   # The web UI in a browser against the same stack as `e2e`: it signs in through Gitea as an admin, a writer, a reader and an
   # outsider, builds its repositories and rules, and uses every screen the way people do (ui/e2e/README.md). Two checks keep it
@@ -361,13 +391,6 @@ jobs:
 
       - uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5 # v4.1.0
 
-      # The regression runs once on the way up; the stack (with the UI image on :8080) stays up for the browser tests.
-      - name: Start the stack
-        working-directory: e2e
-        run: |
-          docker compose up --build --detach
-          docker compose wait e2e-demo
-
       - name: Install the UI's dependencies
         working-directory: ui
         run: npm ci --no-audit --no-fund
@@ -375,6 +398,38 @@ jobs:
       - name: Install the browser
         working-directory: ui
         run: npx playwright install --with-deps chromium
+
+      # The demo tour (demo/README.md) first, on a demo of its own: the demo as a person runs it, with its webhooks on and nothing a
+      # suite wrote. The test reads the README and does every step of it. The demo is taken down before the regression's stack
+      # (the same services, the webhooks off) comes up on the same ports.
+      - name: Start the demo
+        working-directory: demo
+        run: |
+          docker compose up --build --detach
+          docker compose wait demo-seed
+
+      - name: The demo tour
+        working-directory: ui
+        env:
+          VT_UI_URL: http://localhost:8080
+        run: npm run test:e2e:tour
+
+      - name: Dump the demo's logs
+        if: failure()
+        working-directory: demo
+        run: docker compose logs --no-color --timestamps
+
+      - name: Take the demo down
+        if: always()
+        working-directory: demo
+        run: docker compose down -v --remove-orphans
+
+      # The regression runs once on the way up; the stack (with the UI image on :8080) stays up for the browser tests.
+      - name: Start the stack
+        working-directory: e2e
+        run: |
+          docker compose up --build --detach
+          docker compose wait e2e-regression
 
       - name: Unit tests and the coverage manifest
         working-directory: ui

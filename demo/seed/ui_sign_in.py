@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Set the demo up for signing in to the web UI as different people.
 
-Run by demo.sh after the repositories hold their first commit. It creates:
+Run by seed.sh after the repositories hold their first commit. It creates:
 
   demo-writer    can push to the demo's config repository, except to its protected branch (main)
   demo-viewer    can read it, nothing more

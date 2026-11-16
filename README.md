@@ -40,14 +40,14 @@ Branch `develop` maps to `staging`, PR #42 maps to `pr-42` — each environment 
 
 ## Try it in one command
 
-The fastest way to see VarTrack in action is the end-to-end demo. It starts a local Git server, MongoDB, ZooKeeper, Redis, and all three VarTrack services pre-configured:
+The fastest way to see VarTrack in action is the demo. It starts a local Git server, MongoDB, ZooKeeper, Redis, and all three VarTrack services pre-configured, seeds a config repository and syncs it:
 
 ```bash
-cd e2e
+cd demo
 docker compose up
 ```
 
-Push a config change to the local repo and watch it sync automatically.
+Open http://localhost:8080 and sign in with Gitea as `demo-admin` / `VarTrack123`. Push a config change to the local repo and watch it sync automatically; [demo/README.md](demo/README.md) has a short tour (a change in Git, a value changed behind VarTrack's back and healed, a dry run, a prune).
 
 ---
 
@@ -612,7 +612,8 @@ varTrack/
 ├── cli/                          # Go — vt command-line tool
 ├── ui/                           # React — web UI
 ├── examples/                     # Example bundles and config files
-└── e2e/                          # End-to-end demo + test suite
+├── demo/                         # A stack to try varTrack in: services, a Git server, a seeded config repo, a tour
+└── e2e/                          # The regression suite, run on the demo's stack
 ```
 
 ---

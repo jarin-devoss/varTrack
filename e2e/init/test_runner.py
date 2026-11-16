@@ -17,7 +17,7 @@ fails, and CI reads benchmark.json (25 suites, 0 failed, 0 skipped).
 Outputs a benchmark JSON report to /results/benchmark.json.
 
 Usage:
-    python3 test_runner.py [--settings-dir /demo/schemas/settings]
+    python3 test_runner.py [--settings-dir /e2e/schemas/settings]
                            [--results-dir /results]
                            [--orchestrator http://orchestrator-api:8000]
                            [--gitea http://gitea:3000]
@@ -117,6 +117,19 @@ def _redact(text: object) -> str:
     text = _REDACT_URL_CREDS.sub(r'\1***\2', text)
     text = _REDACT_KV.sub(r'\1***', text)
     return grant.redact(text)
+
+def hand_back(folder: Path) -> None:
+    """Give everything the runner wrote under *folder* to the folder's own owner. The runner is root in its container, and a folder
+    bind-mounted from a Linux host would otherwise be left holding files only root can remove (Docker Desktop hides this). Whoever owns
+    the mounted folder, the person who started the stack, owns what is in it; nothing to set up, and nothing to do when it is already so."""
+    try:
+        owner = folder.stat()
+        for path in [folder, *folder.rglob("*")]:
+            if path.lstat().st_uid != owner.st_uid or path.lstat().st_gid != owner.st_gid:
+                os.chown(path, owner.st_uid, owner.st_gid, follow_symlinks=False)
+    except (OSError, AttributeError) as exc:      # AttributeError: os.chown does not exist where this is not a container on Linux
+        warn(f"could not hand {folder} back to its owner: {_exc_type(exc)}")
+
 
 def warn(msg: str) -> None:
     print(f"{colour.YELLOW}  ⚠{colour.NC} {_redact(msg)}")
@@ -1913,7 +1926,7 @@ def suite_23_schema_map(orchestrator, gitea, gitea_url, rules,
 # environment's document must hold, written by hand. A value written @secret(secret/e2e-env-keyed/<env>#db_password)
 # stands for the secret this suite put in Vault for that environment.
 
-ENV_KEYED_DIR = Path("/demo/configs/env-keyed")
+ENV_KEYED_DIR = Path("/e2e/configs/env-keyed")
 VAULT_URL = os.environ.get("VAULT_ADDR", "http://vault:8200")
 ENV_KEYED_SECRETS = {"default": "e2e-secret-default-7f3a", "staging": "e2e-secret-staging-2c91",
                      "production": "e2e-secret-production-b405"}
@@ -2375,7 +2388,7 @@ def load_settings(settings_dir: str) -> dict[str, list[dict]]:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="VarTrack E2E test runner")
-    parser.add_argument("--settings-dir", default="/demo/schemas/settings")
+    parser.add_argument("--settings-dir", default="/e2e/schemas/settings")
     parser.add_argument("--results-dir",  default="/results")
     parser.add_argument("--orchestrator", default=os.environ.get("ORCHESTRATOR_URL",
                                                                   "http://orchestrator-api:8000"))
@@ -2526,6 +2539,7 @@ def main() -> None:
     with open(out_path, "w") as fh:
         json.dump(benchmark, fh, indent=2)
     ok(f"Benchmark written → {out_path}")
+    hand_back(Path(args.results_dir))
 
     sys.exit(0 if failed == 0 else 1)
 

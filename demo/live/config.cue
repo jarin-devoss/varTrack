@@ -11,7 +11,7 @@
 // repo's vartrack.json goes over both. bundle.json only holds what it adds
 // (key_format, helm_values_mode, ...); connection settings and secrets come
 // from this file only. Both "extends" presets from vartrack-demo/presets (see
-// e2e/live/presets).
+// demo/live/presets).
 bundle: {
 	platforms: [
 		{

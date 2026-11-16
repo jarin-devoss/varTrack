@@ -64,7 +64,7 @@ export async function buildWorld(baseURL: string): Promise<void> {
   const gitea = await Gitea.connect();
   const http = await request.newContext();
   try {
-    const settings = read('e2e', 'configs', SETTINGS);
+    const settings = read('demo', 'configs', SETTINGS);
 
     // Branches and files. main is protected (only demo-admin pushes), so the admin's pushes to it are the ones that land.
     await gitea.ensureBranch(CONFIG_REPO, WORLD.openBranch);
@@ -76,9 +76,9 @@ export async function buildWorld(baseURL: string): Promise<void> {
     }
 
     // Schemas and the rules.
-    await gitea.put(SCHEMA_REPO, `${SETTINGS}.cue`, read('e2e', 'schemas', 'cue', `${SETTINGS}.cue`), 'ui-e2e: schema');
+    await gitea.put(SCHEMA_REPO, `${SETTINGS}.cue`, read('demo', 'schemas', 'cue', `${SETTINGS}.cue`), 'ui-e2e: schema');
     for (const team of ['team-a', 'team-b']) {
-      await gitea.put(SCHEMA_REPO, `teams/${team}.cue`, read('e2e', 'schemas', 'cue', 'teams', `${team}.cue`), `ui-e2e: ${team} schema`);
+      await gitea.put(SCHEMA_REPO, `teams/${team}.cue`, read('demo', 'schemas', 'cue', 'teams', `${team}.cue`), `ui-e2e: ${team} schema`);
     }
     await gitea.put(SCHEMA_REPO, 'bundle.json', read('ui', 'e2e', 'world', 'bundle.json'), 'ui-e2e: the rules');
 

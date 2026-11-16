@@ -1,7 +1,7 @@
 import crypto from 'node:crypto';
 
 /**
- * A signed internal grant, the way e2e/init/grant.py mints one (and app/api/tokens.py verifies it): a compact HS256
+ * A signed internal grant, the way demo/seed/grant.py mints one (and app/api/tokens.py verifies it): a compact HS256
  * token. The UI itself never holds one (it signs in with a session); the specs use one to do what only the stack's own
  * services may do, such as asking the orchestrator to read the schema repository afresh after a spec has changed it.
  */

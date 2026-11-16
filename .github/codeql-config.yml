@@ -1,5 +1,6 @@
 paths-ignore:
   - e2e/
+  - demo/
   - orchestrator-service/tests/
   - gateway-service/e2e/
 

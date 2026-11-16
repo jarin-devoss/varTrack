@@ -1,6 +1,6 @@
-# Local dev overlay — adds full observability stack on top of docker-compose.yml
+# Observability overlay — adds the full observability stack on top of docker-compose.yml
 #
-#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up
+#   docker compose -f docker-compose.yml -f docker-compose.observability.yml up
 #
 # Services added: jaeger, otel-collector, elasticsearch, kibana,
 #                 prometheus, grafana, zoonavigator, mongo-express, flower
@@ -35,7 +35,7 @@ services:
     networks: [vartrack]
     command: ["--config=/etc/otel-collector-config.yaml"]
     volumes:
-      - ./otel-collector-config.yaml:/etc/otel-collector-config.yaml:ro
+      - ./otel-collector-config.yaml:/etc/otel-collector-config.yaml:ro,z
     depends_on:
       jaeger: {condition: service_healthy}
     ports:
@@ -73,7 +73,7 @@ services:
     image: prom/prometheus:latest
     networks: [vartrack]
     volumes:
-      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro,z
     ports:
       - "9095:9090"
     command:
