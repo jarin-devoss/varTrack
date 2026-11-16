@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { useApi, type VarTrackApi } from '../api';
 import { usePrefs } from './prefs';
 
@@ -26,6 +26,8 @@ interface Entry {
   updatedAt?: number;
   inFlight?: Promise<void>;
   listeners: Set<() => void>;
+  /** Counts every change of the entry (data, error, a request starting or ending): what useSyncExternalStore compares. */
+  version: number;
 }
 
 // Per API instance, so changing the connection or tenant starts from nothing.
@@ -35,7 +37,7 @@ function entryFor(api: VarTrackApi, key: string): Entry {
   let cache = caches.get(api);
   if (!cache) caches.set(api, (cache = new Map()));
   let entry = cache.get(key);
-  if (!entry) cache.set(key, (entry = { listeners: new Set() }));
+  if (!entry) cache.set(key, (entry = { listeners: new Set(), version: 0 }));
   return entry;
 }
 
@@ -45,7 +47,25 @@ export function peekQuery<T>(api: VarTrackApi, key: string): T | undefined {
 }
 
 function notify(entry: Entry) {
+  entry.version += 1;
   for (const listener of entry.listeners) listener();
+}
+
+function accept(entry: Entry, data: unknown) {
+  entry.data = data;
+  entry.error = undefined;
+  entry.updatedAt = Date.now();
+}
+
+/**
+ * Put an answer in the cache as if a request had returned it, and tell whoever is subscribed. The same steps a request's
+ * answer takes, at a moment the caller picks: a test uses it to land an answer between a component's render and its
+ * subscription, which promises alone cannot place reliably.
+ */
+export function setQueryData<T>(api: VarTrackApi, key: string, data: T): void {
+  const entry = entryFor(api, key);
+  accept(entry, data);
+  notify(entry);
 }
 
 /** Fetch unless a request is already in flight or the answer is younger than *maxAgeMs*. */
@@ -53,11 +73,7 @@ function revalidate(api: VarTrackApi, entry: Entry, fetcher: (api: VarTrackApi) 
   if (entry.inFlight) return;
   if (entry.updatedAt !== undefined && Date.now() - entry.updatedAt < maxAgeMs) return;
   entry.inFlight = fetcher(api).then(
-    data => {
-      entry.data = data;
-      entry.error = undefined;
-      entry.updatedAt = Date.now();
-    },
+    data => accept(entry, data),
     error => {
       // Keep the last good data; screens show the error only when there is none.
       entry.error = error;
@@ -83,22 +99,31 @@ export function useQuery<T>(
 ): QueryState<T> {
   const api = useApi();
   const [prefs] = usePrefs();
-  const [, rerender] = useState(0);
   const entry = key === null ? undefined : entryFor(api, key);
 
   // Latest fetcher without re-subscribing on every render.
   const fetcherRef = useRef(fetcher);
   fetcherRef.current = fetcher;
 
+  // The entry is read at render and subscribed to afterwards. useSyncExternalStore reads its version again once it has
+  // subscribed, so an answer that lands between the two re-renders this component: with a plain listener added in an
+  // effect, that answer reached nobody, and a component that never asks again (poll: false) kept the empty state.
+  const subscribe = useCallback(
+    (listener: () => void) => {
+      if (!entry) return () => {};
+      entry.listeners.add(listener);
+      return () => {
+        entry.listeners.delete(listener);
+      };
+    },
+    [entry],
+  );
+  useSyncExternalStore(subscribe, () => entry?.version ?? 0);
+
   useEffect(() => {
     if (!entry) return;
-    const listener = () => rerender(n => n + 1);
-    entry.listeners.add(listener);
     // Opened (again): refresh unless another component just did.
     revalidate(api, entry, a => fetcherRef.current(a), 1000);
-    return () => {
-      entry.listeners.delete(listener);
-    };
   }, [api, entry]);
 
   const interval = opts.poll === false || !prefs.live ? 0 : (opts.poll ?? DEFAULT_POLL_MS);
