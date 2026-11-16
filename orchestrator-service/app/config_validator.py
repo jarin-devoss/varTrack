@@ -200,7 +200,8 @@ def _prune_last(options: dict, where: str, result: Result) -> None:
 
 
 def _prune_without_effect(rule: dict, datasource: str, where: str, result: Result) -> None:
-    """prune on a sink that replaces a whole object on every write does nothing."""
+    """prune on a sink that replaces a whole object on every write deletes no key. It still deletes the document of a
+    file the rule stops reading, on a sink that keeps one document per file (MongoDB's DOCUMENT and FILE)."""
     from app.pipeline.sinks import sink_class
     from app.pipeline.sinks.settings import for_rule
     from app.tasks.payload import extract_prune_config
@@ -208,7 +209,8 @@ def _prune_without_effect(rule: dict, datasource: str, where: str, result: Resul
     cls = sink_class(datasource)
     if cls is None or not extract_prune_config(rule).enabled:
         return
-    if not cls.prunes_keys(for_rule(rule, datasource), rule):
+    settings = for_rule(rule, datasource)
+    if not cls.prunes_keys(settings, rule) and not cls.prunes_files(settings, rule):
         result.warnings.append(f"{where}: prune has no effect on {datasource} — it replaces the whole "
                                f"{cls.object_name} on every write, so no stale key is left")
 

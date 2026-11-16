@@ -174,6 +174,8 @@ def _file_result(r: Any, dry_run_file: dict | None = None) -> dict[str, Any]:
         **({"prunePending": r.prune_pending} if r.prune_pending is not None else {}),
         **({"pruneSkipped": r.prune_skipped} if r.prune_skipped else {}),
         **({"pruneError": r.prune_error} if r.prune_error else {}),
+        # Files the rule no longer reads for this environment, let go by this sync (on its last file).
+        **({"letGo": r.let_go} if getattr(r, "let_go", None) else {}),
         **({"validation": r.validation, "schema": r.schema, "schemaSource": r.schema_source}
            if getattr(r, "validation", "") else {}),
         **({"schemaNote": r.schema_note} if getattr(r, "schema_note", "") else {}),
@@ -189,11 +191,14 @@ def task_finished(
     dry_run_files: list[dict] | None = None,
     would_prune: dict[str, list[str]] | None = None,
     message: str = "",
-) -> None:
+) -> list[str]:
     """Record the outcome of a task and, for written files, the new desired state. *would_prune* is what a dry run
-    found a sync would delete, per environment (empty when nothing, or when the rule does not prune)."""
+    found a sync would delete, per environment (empty when nothing, or when the rule does not prune).
+
+    Returns what the sync let go, in words (a file its rule no longer reads), for the task's own result to say too;
+    empty when nothing was."""
     if not task:
-        return
+        return []
     try:
         results = results or []
         files = [_file_result(r) for r in results] if not dry_run_files else [_file_result(None, f) for f in dry_run_files]
@@ -222,22 +227,27 @@ def task_finished(
                 task["wouldPrune"] = would_prune
             ledger.record_task(task, tenant=tenant)
             if task.get("preview"):
-                return
+                return []
             ledger.record_event(tenant=tenant, reason="SyncFailed" if failed else "SyncSucceeded", rule=task["rule"],
                                 task_id=task["taskId"],
                                 message=f"dry run: {task['message']}" if failed
                                 else f"dry run: {checked} keys would be written, nothing changed")
-            return
+            return []
 
         # The task is marked finished only after the desired state it wrote is
         # recorded: in between, the watcher's CheckDatasource would see no sync
         # running, compare the new values with the old desired state, and heal.
+        notes: list[str] = []
         try:
-            _record_envs(task, tenant=tenant, envs=envs, files=files, etl=etl)
+            notes = _record_envs(task, tenant=tenant, envs=envs, files=files, etl=etl)
         finally:
+            if notes:  # a file the rule stopped reading is said in the task's result, not only in an event
+                task["message"] = "; ".join([task.get("message") or "", *notes]).lstrip("; ")
             ledger.record_task(task, tenant=tenant)
+        return notes
     except Exception:
         logger.warning("ui recorder: task_finished failed", exc_info=True)
+        return []
 
 
 # "partial" and "rolled_back" are what a failure elsewhere in the sync did to a file that was written; the
@@ -263,8 +273,34 @@ def _rolls_back(datasource: str) -> bool:
     return bool(getattr(cls, "can_restore", False))
 
 
-def _record_envs(task: dict[str, Any], *, tenant: str, envs: list[str], files: list[dict], etl: Any) -> None:
+def _plural(n: int, word: str) -> str:
+    return f"{n} {word}{'s' if n != 1 else ''}"
+
+
+def let_go_sentence(group: dict[str, Any], rule: str, env: str) -> str:
+    """What a sync did about one file its rule no longer reads for *env* (stage_sync._let_go_report), in words:
+    which of the keys it wrote were pruned and which stay in the sink, and what became of its document."""
+    parts: list[str] = []
+    if group.get("document"):
+        parts.append("its document was deleted")
+    if group.get("pruned"):
+        n = len(group["pruned"])
+        parts.append(f"{_plural(n, 'key')} it wrote {'was' if n == 1 else 'were'} pruned")
+    if group.get("left"):
+        n = len(group["left"])
+        parts.append(f"{_plural(n, 'key')} it wrote {'is' if n == 1 else 'are'} left in the sink"
+                     + ("" if group.get("prune") else " (prune is off)"))
+    if group.get("keptBecause"):
+        parts.append(f"its document was kept: {group['keptBecause']}")
+    return (f"{group['file']} is no longer read by {rule} for {env}: let go"
+            + (f"; {'; '.join(parts)}" if parts else "; nothing it wrote is left in the sink"))
+
+
+def _record_envs(task: dict[str, Any], *, tenant: str, envs: list[str], files: list[dict], etl: Any) -> list[str]:
+    """Record each environment's desired state, its events, and what the sync let go. Returns what it let go, in words,
+    for the task's result."""
     rule, datasource, trigger = task["rule"], task["datasource"], task["trigger"]
+    notes: list[str] = []
     etl_files = {(f.file_path, f.env): f for f in (etl.files if etl else [])}
     first_failure = next((f for f in files if f["status"] not in _DONE), None)
     rolled_back = first_failure is not None and _rolls_back(datasource)
@@ -329,6 +365,16 @@ def _record_envs(task: dict[str, Any], *, tenant: str, envs: list[str], files: l
                                 task_id=task["taskId"], message=str(error))
             continue
 
+        # A complete sync lets go the files the rule no longer reads: out of the desired state, with what is left of
+        # them in the sink noted. Only a sync that wrote every file the rule reads for the environment says so.
+        for group in next((f["letGo"] for f in env_files if f.get("letGo")), []):
+            ledger.let_go(tenant=tenant, datasource=datasource, env=env, entries={group["entry"]: group["left"]},
+                          task_id=task["taskId"])
+            sentence = let_go_sentence(group, rule, env)
+            notes.append(f"{sentence}" if len(envs) == 1 else f"{env}: {sentence}")
+            ledger.record_event(tenant=tenant, reason="FileLetGo", rule=rule, env=env, task_id=task["taskId"],
+                                message=sentence)
+
         ledger.record_event(
             tenant=tenant, reason="HealSucceeded" if trigger == "self_heal" else "SyncSucceeded",
             rule=rule, env=env, task_id=task["taskId"],
@@ -355,6 +401,7 @@ def _record_envs(task: dict[str, Any], *, tenant: str, envs: list[str], files: l
                                     message=f"{len(keys)} key{'s' if len(keys) != 1 else ''} no longer in Git "
                                             f"changed outside varTrack, not deleted: {', '.join(keys[:5])}"
                                             + (" …" if len(keys) > 5 else ""))
+    return notes
 
 
 def _shared_key_space(tenant: str, rule: str, env: str, task_id: str, env_files: list[dict], datasource: str) -> None:
