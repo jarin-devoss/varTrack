@@ -1,0 +1,30 @@
+{
+  "service": "checkout-api",
+  "replicas": {
+    "default": 2,
+    "production": 6
+  },
+  "log_level": {
+    "default": "debug",
+    "staging": "info",
+    "production": "warn"
+  },
+  "database": {
+    "host": {
+      "default": "db.internal",
+      "staging": "db.staging.internal",
+      "production": "db.prod.internal"
+    },
+    "port": 5432,
+    "pool": {
+      "max": {
+        "default": 10,
+        "production": 100
+      }
+    }
+  },
+  "regions": [
+    "us-east-1",
+    "eu-west-1"
+  ]
+}

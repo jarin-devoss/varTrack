@@ -1,0 +1,12 @@
+{
+  "database.host": "db.internal",
+  "database.password": "@secret(secret/e2e-env-keyed/default#db_password)",
+  "database.port": "5432",
+  "service": "checkout-api",
+  "upstreams.0.name": "payments",
+  "upstreams.0.url": "http://payments.internal",
+  "upstreams.0.weight": "1",
+  "upstreams.1.name": "fraud",
+  "upstreams.1.url": "http://fraud.internal",
+  "upstreams.1.weight": "1"
+}

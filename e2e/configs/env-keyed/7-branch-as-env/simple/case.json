@@ -1,0 +1,10 @@
+{
+  "file": "app-settings.json",
+  "branches": {
+    "main": "main",
+    "e2e-feature": "e2e-feature"
+  },
+  "rule": {
+    "branch_as_env": true
+  }
+}

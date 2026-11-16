@@ -1,0 +1,12 @@
+{
+  "allowed_origins.0": "https://staging.checkout.example.com",
+  "allowed_origins.1": "http://localhost:3000",
+  "app.log_level": "info",
+  "app.name": "checkout-api",
+  "database.host": "db.staging.internal",
+  "database.pool.max": "10",
+  "database.pool.min": "2",
+  "database.port": "5432",
+  "features.beta_api": "true",
+  "features.dark_mode": "false"
+}

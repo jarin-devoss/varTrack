@@ -1,0 +1,8 @@
+{
+  "production": {
+    "db": "db.prod.internal"
+  },
+  "staging": {
+    "db": "db.staging.internal"
+  }
+}

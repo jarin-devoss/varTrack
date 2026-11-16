@@ -1,0 +1,24 @@
+config:
+  default:
+    service: checkout-api
+    database:
+      host: db.internal
+      port: 5432
+      password: "@secret(secret/e2e-env-keyed/default#db_password)"
+    upstreams:
+      - name: payments
+        url: http://payments.internal
+        weight: { default: 1, production: 5 }
+      - name: fraud
+        url: http://fraud.internal
+        weight: 1
+  staging:
+    database:
+      host: db.staging.internal
+      password: "@secret(secret/e2e-env-keyed/staging#db_password)"
+  production:
+    database:
+      host: db.prod.internal
+      password: "@secret(secret/e2e-env-keyed/production#db_password)"
+other_tool:
+  not_for_vartrack: true

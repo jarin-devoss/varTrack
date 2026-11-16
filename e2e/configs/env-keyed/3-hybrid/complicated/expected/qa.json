@@ -1,0 +1,10 @@
+{
+  "database.host": "db.internal",
+  "database.pool.max": "10",
+  "database.port": "5432",
+  "debug": "false",
+  "log_level": "info",
+  "replicas": "2",
+  "service": "checkout-api",
+  "timeout_ms": "3000"
+}

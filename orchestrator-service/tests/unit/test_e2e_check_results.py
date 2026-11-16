@@ -14,6 +14,17 @@ import pytest
 CHECK_PY = pathlib.Path(__file__).resolve().parents[3] / "e2e" / "check_results.py"
 
 
+def _load_gate():
+    spec = importlib.util.spec_from_file_location("e2e_check_results", CHECK_PY)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+# How many suites the gate expects: read from the gate, so adding a suite changes one number, in e2e/check_results.py.
+N = _load_gate().EXPECTED_SUITES
+
+
 @pytest.fixture(scope="module")
 def gate():
     spec = importlib.util.spec_from_file_location("e2e_check_results", CHECK_PY)
@@ -29,7 +40,7 @@ def suite(n, status="pass", checks=None, error=None):
 
 
 def report(statuses=None, total=None):
-    statuses = statuses or ["pass"] * 23
+    statuses = statuses or ["pass"] * N
     suites = [suite(i + 1, status) for i, status in enumerate(statuses)]
     return {
         "summary": {
@@ -53,11 +64,11 @@ def run(gate, monkeypatch, *argv):
 
 def test_a_complete_green_run_passes(gate, tmp_path, monkeypatch, capsys):
     assert run(gate, monkeypatch, write(tmp_path, report())) == 0
-    assert "23/23 passed" in capsys.readouterr().out
+    assert f"{N}/{N} passed" in capsys.readouterr().out
 
 
 def test_a_failed_suite_fails_the_run_and_is_named(gate, tmp_path, monkeypatch, capsys):
-    statuses = ["pass"] * 23
+    statuses = ["pass"] * N
     statuses[13] = "fail"
     body = report(statuses)
     body["suites"][13]["checks"] = [{"name": "database.password resolved", "passed": False, "detail": "[placeholder]"}]
@@ -68,25 +79,25 @@ def test_a_failed_suite_fails_the_run_and_is_named(gate, tmp_path, monkeypatch, 
 
 
 def test_a_skipped_suite_is_not_a_pass(gate, tmp_path, monkeypatch):
-    statuses = ["pass"] * 22 + ["skip"]
+    statuses = ["pass"] * (N - 1) + ["skip"]
     assert run(gate, monkeypatch, write(tmp_path, report(statuses))) == 1
 
 
 def test_a_run_that_lost_a_suite_is_not_a_pass(gate, tmp_path, monkeypatch, capsys):
-    # every suite it ran passed, and the summary says so: it still ran 22 of 23
-    assert run(gate, monkeypatch, write(tmp_path, report(["pass"] * 22))) == 1
-    assert "22 suite(s) in the report, 23 expected" in capsys.readouterr().out
+    # every suite it ran passed, and the summary says so: it still ran one fewer than expected
+    assert run(gate, monkeypatch, write(tmp_path, report(["pass"] * (N - 1)))) == 1
+    assert f"{N - 1} suite(s) in the report, {N} expected" in capsys.readouterr().out
 
 
 def test_a_suite_in_the_report_twice_is_not_a_pass(gate, tmp_path, monkeypatch):
     body = report()
-    body["suites"][22] = dict(body["suites"][21])
+    body["suites"][N - 1] = dict(body["suites"][N - 2])
     assert run(gate, monkeypatch, write(tmp_path, body)) == 1
 
 
 def test_a_summary_that_disagrees_with_the_suites_does_not_hide_a_failure(gate, tmp_path, monkeypatch):
     body = report()
-    body["suites"][3]["status"] = "fail"          # the summary still claims 23 passed
+    body["suites"][3]["status"] = "fail"          # the summary still claims every suite passed
     assert run(gate, monkeypatch, write(tmp_path, body)) == 1
 
 
@@ -111,9 +122,9 @@ def test_the_expected_count_can_be_given(gate, tmp_path, monkeypatch):
 def test_the_table_goes_to_the_github_step_summary(gate, tmp_path, monkeypatch):
     summary = tmp_path / "summary.md"
     monkeypatch.setenv("GITHUB_STEP_SUMMARY", str(summary))
-    run(gate, monkeypatch, write(tmp_path, report(["pass"] * 22 + ["fail"])))
+    run(gate, monkeypatch, write(tmp_path, report(["pass"] * (N - 1) + ["fail"])))
     text = summary.read_text(encoding="utf-8")
-    assert "22/23 passed" in text and "| 23 | suite 23 | fail |" in text
+    assert f"{N - 1}/{N} passed" in text and f"| {N} | suite {N} | fail |" in text
 
 
 def test_a_suite_that_raised_shows_its_traceback(gate, tmp_path, monkeypatch, capsys):

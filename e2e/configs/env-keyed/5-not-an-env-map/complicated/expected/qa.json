@@ -1,0 +1,13 @@
+{
+  "http.log_level": "info",
+  "http.retry.default.max": "3",
+  "http.retry.payments.max": "5",
+  "queues.0.limits.burst": "50",
+  "queues.0.limits.default": "10",
+  "queues.0.name": "orders",
+  "queues.1.limits": "5",
+  "queues.1.name": "emails",
+  "service": "checkout-api",
+  "timeouts.default": "30",
+  "timeouts.upload": "300"
+}

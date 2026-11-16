@@ -1,0 +1,32 @@
+{
+  "default": {
+    "replicas": 1,
+    "log_level": "debug",
+    "db": {
+      "host": "db.dev.internal",
+      "port": 5432
+    },
+    "features": {
+      "beta": {
+        "default": false,
+        "develop": true,
+        "feature/login": true
+      }
+    }
+  },
+  "main": {
+    "replicas": 6,
+    "log_level": "warn",
+    "db": {
+      "host": "db.prod.internal"
+    }
+  },
+  "develop": {
+    "log_level": "info"
+  },
+  "feature/login": {
+    "db": {
+      "host": "db.login-test.internal"
+    }
+  }
+}

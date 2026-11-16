@@ -12,7 +12,7 @@ const read = (...parts: string[]) => fs.readFileSync(path.join(repoRoot, ...part
 
 /**
  * What the specs find when they start: the same repositories, branches, schemas and rules whatever an earlier run or
- * the 23 regression suites left behind. It is built through the product, as a person would:
+ * the 25 regression suites left behind. It is built through the product, as a person would:
  *
  *   - `develop` exists next to `main`, both holding the demo's config file, and team-a/ and team-b/ hold one each;
  *   - the schema repository holds the CUE schemas and `world/bundle.json`, a rule for each kind of environment;

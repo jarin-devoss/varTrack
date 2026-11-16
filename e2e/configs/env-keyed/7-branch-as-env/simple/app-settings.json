@@ -1,0 +1,8 @@
+{
+  "default": {
+    "replicas": 1
+  },
+  "main": {
+    "replicas": 6
+  }
+}

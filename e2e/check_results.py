@@ -2,7 +2,7 @@
 """
 Fail unless the e2e regression ran every suite and every suite passed.
 
-    python3 e2e/check_results.py [e2e/results/benchmark.json] [--expect 23]
+    python3 e2e/check_results.py [e2e/results/benchmark.json] [--expect 25]
 
 Reads the report the test runner writes (init/test_runner.py). Exit status: 0 when the run is complete and
 green, 1 when a suite failed or was skipped or fewer/more suites ran than expected, 2 when there is no
@@ -19,7 +19,7 @@ import os
 import sys
 from pathlib import Path
 
-EXPECTED_SUITES = 23   # change together with the suites in init/test_runner.py
+EXPECTED_SUITES = 25   # change together with the suites in init/test_runner.py
 
 
 def num(suite: dict) -> str:
