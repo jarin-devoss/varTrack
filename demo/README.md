@@ -2,9 +2,11 @@
 
 A varTrack you can push to. One command starts the whole product: a Git server (Gitea), MongoDB, ZooKeeper, Redis, S3,
 Vault, an SSH target, the gateway, the orchestrator, the watcher and the web UI. A `demo-seed` container then seeds it once:
-a config repository with one file, `app-settings.yaml`, three rules that read it, and a first sync of each.
+a config repository with one file, `app-settings.yaml`, seven rules that read it (MongoDB twice, ZooKeeper, Redis twice, an SSH
+file and S3), and a first sync of six of them. The seventh is declared and **refused on purpose**: step 7 of the tour shows
+why, and fixes it.
 
-It runs no test. The regression and the browser suite live in [`../e2e`](../e2e) and run on this same stack.
+It runs no test. The regression and the browser suite live in [`../e2e`](../e2e), which is a stack of its own: the two share no file.
 
 ## Requirements
 
@@ -49,32 +51,40 @@ Four accounts exist, all with the password `VarTrack123`:
 | `demo-viewer` | can read the config repository: sees the rules, can dry-run, cannot sync |
 | `demo-outsider` | can read none of it (the config repository is private): sees no rule |
 
-The three rules, all reading `app-settings.yaml` on `main` into an environment called `default`:
+Seven rules are declared in `config.cue`, all reading `app-settings.yaml` on `main` into an environment called `default`:
 
 | Rule | Writes to | Self-heal |
 |---|---|---|
-| `gitea/mongo` | MongoDB, collection `variables`, one document for the file | on |
+| `gitea/mongo` | MongoDB, collection `variables`: one document for the file, with its values nested | on |
+| `gitea/mongo-file` | MongoDB, collection `files`: the file as it parsed, one document | off |
 | `gitea/zookeeper` | ZooKeeper, one znode per key under `/demo/default` | on |
 | `gitea/redis-hash` | Redis database 2, the hash `demo:redis-hash:default:vartrack` | off |
+| `gitea/linux_server` | the SSH target: the file `/tmp/vartrack/default.env` | off |
+| `gitea/s3` | S3 (MinIO): the object `configs/default/config.json` in the bucket `vartrack` | off |
+| `gitea/redis-string` | Redis database 3, one string per key | **refused** until step 7 |
+
+`gitea/redis-string` is in `config.cue` and not in the tenant's `bundle.json` (the `schemas` repository), which says what each rule
+reads: so it names no file to read, and the UI says so.
 
 The watcher looks every 10 seconds and the UI re-reads a store after 2, so everything below shows within seconds.
 
 ## The tour
 
-Eight short things to do. Each is something you do, then what you should see. The commands are for a shell in this folder
+Nine short things to do. Each is something you do, then what you should see. The commands are for a shell in this folder
 (`demo/`); a test runs every one of them on a fresh demo, so what is written here is what happens.
 
 ### 1. Sign in and look
 
 Open <http://localhost:8080> and sign in with Gitea as `demo-admin` (Gitea asks for consent the first time). The *Rules* page
-lists `gitea/mongo`, `gitea/zookeeper` and `gitea/redis-hash`, each with its `default` environment in sync with Git.
-Open one: *Environments* shows the desired state in Git next to the current state in the store, and *Keys* lists every key.
+lists six rules, each with its `default` environment in sync with Git, and `gitea/redis-string` with a red *Refused* and the
+reason (step 7 is about it). Open one: *Environments* shows the desired state in Git next to the current state in the store, and
+*Keys* lists every key.
 
 ### 2. Change Git, and watch it sync
 
 Open <http://localhost:3000/vartrack-demo/demo-configs/_edit/main/app-settings.yaml>, change `ttl_seconds` under `cache` from
-`"300"` to `"310"`, and commit. The push reaches varTrack through a webhook the seed created. On a rule's *Events* tab you see
-*Push received* then *Synced*, and its *Keys* tab shows `cache.ttl_seconds` as `310`.
+`"300"` to `"310"`, and commit. The push reaches varTrack through a webhook the seed created per rule. On a rule's *Events* tab you
+see *Push received* then *Synced*, and its *Keys* tab shows `cache.ttl_seconds` as `310`.
 
 The same change from a shell, if you prefer:
 
@@ -87,12 +97,17 @@ curl -s -u demo-admin:VarTrack123 -X PUT -H 'Content-Type: application/json' \
   -d "{\"message\":\"cache ttl 310\",\"content\":\"$NEW\",\"sha\":\"$SHA\"}" "$API" > /dev/null
 ```
 
-See it in the stores themselves:
+See it in each store, one command per rule: the two MongoDB documents (`gitea/mongo` keeps the file's values nested in one
+document, `gitea/mongo-file` keeps the file as it parsed), a znode, a Redis hash field, a line of the file on the SSH target, and
+the object in S3:
 
 ```sh tour
-docker compose exec -T redis redis-cli -n 2 HGET demo:redis-hash:default:vartrack cache.ttl_seconds
 docker compose exec -T mongo mongosh vartrack --quiet --eval 'db.variables.findOne({_vt_env: "default"}).data.cache.ttl_seconds'
+docker compose exec -T mongo mongosh vartrack --quiet --eval 'db.files.findOne({_vt_env: "default"}).data.cache.ttl_seconds'
 docker compose exec -T zookeeper zkCli.sh -server localhost:2181 get /demo/default/cache/ttl_seconds
+docker compose exec -T redis redis-cli -n 2 HGET demo:redis-hash:default:vartrack cache.ttl_seconds
+docker compose exec -T linux-target grep ttl_seconds /tmp/vartrack/default.env
+docker compose run --rm --no-deps -T --entrypoint aws minio-init --endpoint-url http://minio:9002 s3 cp s3://vartrack/configs/default/config.json -
 ```
 
 ### 3. Drift, healed
@@ -146,12 +161,39 @@ curl -s -u demo-admin:VarTrack123 -X PUT -H 'Content-Type: application/json' \
 The rules have `prune` on, so a key Git no longer holds is deleted from the store. `gitea/redis-hash`'s *Events* tab shows
 *Keys pruned*, and the field is gone from the hash.
 
-### 7. As someone else
+### 7. A refused rule
+
+Back on the *Rules* page, `gitea/redis-string` is *Refused*, and says why: it names no environment and no file to read. A rule has
+two halves. `config.cue` declares it (here: which Git platform, which store, which repository), and the tenant's `bundle.json`, in
+the `vartrack-demo/schemas` repository, says what it reads (which file, from which branch, into which environment). The seed wrote
+entries for six rules, and none for `gitea/redis-string`.
+
+Add its entry. In Gitea, open <http://localhost:3000/vartrack-demo/schemas/_edit/main/bundle.json>, add one more object like the
+others with `"datasource": "redis-string"`, and commit; or from a shell:
+
+```sh tour
+API=http://localhost:3000/api/v1/repos/vartrack-demo/schemas/contents/bundle.json
+FILE=$(curl -s -u demo-admin:VarTrack123 "$API")
+SHA=$(echo "$FILE" | sed -n 's/.*"sha":"\([^"]*\)".*/\1/p' | head -1)
+NEW=$({ echo "$FILE" | sed -n 's/.*"content":"\([^"]*\)".*/\1/p' | base64 -d | sed '$d'; printf '  ,{"platform":"gitea","datasource":"redis-string","repo_url":"http://gitea:3000/vartrack-demo/demo-configs.git","file_name":"app-settings.yaml","branch":"main","sync_mode":"SYNC_MODE_GIT_UPSERT_ALL","destination_template":"demo:redis-string:{env}","prune":true,"branch_map":{"main":"default"}}\n]\n'; } | base64 | tr -d '\n')
+curl -s -u demo-admin:VarTrack123 -X PUT -H 'Content-Type: application/json' \
+  -d "{\"message\":\"add the redis-string rule\",\"content\":\"$NEW\",\"sha\":\"$SHA\"}" "$API" > /dev/null
+```
+
+The push to the schema repository reaches varTrack through one more webhook the seed created, so the rule is read again at once. It
+is no longer refused: `gitea/redis-string` has a `default` environment that is not synced yet. Press *Sync default*, and the file
+is written to Redis as one string per key, in database 3 (a key's dots become underscores):
+
+```sh tour
+docker compose exec -T redis redis-cli -n 3 GET demo:redis-string:default:cache_ttl_seconds
+```
+
+### 8. As someone else
 
 Sign out and sign in as `demo-viewer`: the rules are there, *Dry run* works, and *Sync* is disabled with the reason beside it.
 Sign in as `demo-outsider`: the *Rules* page is empty, because that account can read none of the config repository.
 
-### 8. Start over
+### 9. Start over
 
 ```sh
 docker compose down -v
@@ -167,5 +209,5 @@ docker compose down -v
   [Getting started](../docs/getting-started.md#with-more-sinks-and-the-web-ui).
 - **Traces, metrics, logs.** `docker compose -f docker-compose.yml -f docker-compose.observability.yml up` adds Jaeger,
   Prometheus, Grafana, Elasticsearch and Kibana.
-- **The tests.** `../e2e` includes this stack and adds the regression's runner; `../ui/e2e` is the browser suite. The tour above
-  is run by `ui/e2e/tour/demo-tour.spec.ts`, which reads this file.
+- **The tests.** `../e2e` has its own stack, with the regression's runner; `../ui/e2e` is the browser suite, which runs on that
+  one. The tour above is run by `ui/e2e/tour/demo-tour.spec.ts`, which reads this file.

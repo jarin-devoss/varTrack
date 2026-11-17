@@ -4,7 +4,7 @@
 #
 #   docker compose up           (from this folder; the UI is at http://localhost:8080, see README.md)
 #
-# It runs no tests: the regression and the browser suite are in ../e2e, which includes this file and runs them on it.
+# It runs no tests. The regression and the browser suite are in ../e2e, a stack of its own: the two share no file.
 # Observability (Jaeger, Grafana, Elasticsearch, Kibana, OTel collector, Prometheus) is left out so the demo starts fast.
 # To add it, or more sinks:
 #
@@ -79,7 +79,7 @@ services:
       GITEA__security__INSTALL_LOCK: "true"
       GITEA__service__DISABLE_REGISTRATION: "false"
       GITEA__log__LEVEL: Warn
-      # Let Gitea deliver webhooks to the gateway on the compose network (demo-seed creates them; see DEMO_WEBHOOKS).
+      # Let Gitea deliver webhooks to the gateway on the compose network (demo-seed creates them).
       GITEA__webhook__ALLOWED_HOST_LIST: "*"
       GITEA_ADMIN_USER: demo-admin
       GITEA_ADMIN_PASSWORD: VarTrack123
@@ -410,10 +410,8 @@ services:
       GITEA_ADMIN_USER: demo-admin
       GITEA_ADMIN_PASSWORD: VarTrack123
       DEMO_STATE: /demo-state
+      # A push to the config repository syncs it, as in real use: demo-seed creates a Gitea webhook per rule, to the gateway.
       GATEWAY_URL: http://gateway:5657
-      # on: a push to the config repository syncs it, as in real use. The regression (../e2e) sets off: its suites push to
-      # that repository all the time and start every sync they check themselves.
-      DEMO_WEBHOOKS: "${DEMO_WEBHOOKS:-on}"
     volumes:
       - ./configs:/demo/configs:ro,z
       - ./schemas:/demo/schemas:ro,z
@@ -421,6 +419,10 @@ services:
     depends_on:
       gitea:            {condition: service_healthy}
       orchestrator-api: {condition: service_healthy}
+      # The SSH file and the S3 object are written by the first sync: the target and the bucket have to be there.
+      linux-target:     {condition: service_healthy}
+      minio-init:       {condition: service_completed_successfully}
+      vault-init:       {condition: service_completed_successfully}
       orchestrator-worker:
         condition: service_started
       watcher:

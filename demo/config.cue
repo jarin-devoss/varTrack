@@ -1,5 +1,7 @@
-// VarTrack E2E demo bundle.
-// Gitea as the git platform, MongoDB + ZooKeeper as sinks.
+// varTrack demo bundle.
+// Gitea as the git platform; MongoDB (two rules), ZooKeeper, Redis, an SSH file and S3 as sinks. Every rule syncs but
+// redis-string, which is left out of the tenant's bundle.json on purpose, so that the UI shows a refused rule (step 7 of
+// the tour in README.md fixes it).
 //
 // The rules here are the first layer; schemas/bundle.json (tenant "demo")
 // lays its rules over them — file, branch and sync settings — and the
@@ -25,9 +27,7 @@ bundle: {
 	]
 
 	// The MongoDB datasources store a file as ONE document per environment (STRATEGY_DOCUMENT, the default): the config nested
-	// under `data`, with its types and arrays. `mongo-kv` is the one that stores one document per KEY (STRATEGY_KEY_VALUE, a
-	// `key` and a string `value`): the shape that keeps single keys, so it is the one prune and per-key drift apply to.
-	// `mongo-document` is the document shape with its own collection, and `mongo-file` stores the file as it parsed.
+	// under `data`, with its types and arrays. `mongo-file` stores the file as it parsed, in a collection of its own.
 	datasources: [
 		{
 			mongo: {
@@ -52,82 +52,6 @@ bundle: {
 				tag:             ""
 				hosts:           ["zookeeper:2181"]
 				session_timeout: "10s"
-			}
-		},
-		{
-			// Primary MongoDB sink — document strategy, collection: primary_vars.
-			mongo: {
-				tag:                            "primary"
-				endpoint:                       "mongodb://mongo:27017"
-				host:                           "mongo"
-				port:                           27017
-				database:                       "vartrack"
-				collection:                     "primary_vars"
-				env_as_collection:              false
-				auth_source:                    "admin"
-				ssl:                            false
-				ssl_allow_invalid_certificates: false
-				buffer_size:                    100
-				max_pool_size:                  5
-				connect_timeout_ms:             5000
-				update_strategy:                "STRATEGY_DOCUMENT"
-			}
-		},
-		{
-			// Per-key MongoDB sink — key-value strategy, collection: kv_vars (one document per key).
-			mongo: {
-				tag:                            "kv"
-				endpoint:                       "mongodb://mongo:27017"
-				host:                           "mongo"
-				port:                           27017
-				database:                       "vartrack"
-				collection:                     "kv_vars"
-				env_as_collection:              false
-				auth_source:                    "admin"
-				ssl:                            false
-				ssl_allow_invalid_certificates: false
-				buffer_size:                    100
-				max_pool_size:                  5
-				connect_timeout_ms:             5000
-				update_strategy:                "STRATEGY_KEY_VALUE"
-			}
-		},
-		{
-			// DR MongoDB sink — same instance, document strategy, separate collection: dr_vars.
-			mongo: {
-				tag:                            "dr"
-				endpoint:                       "mongodb://mongo:27017"
-				host:                           "mongo"
-				port:                           27017
-				database:                       "vartrack"
-				collection:                     "dr_vars"
-				env_as_collection:              false
-				auth_source:                    "admin"
-				ssl:                            false
-				ssl_allow_invalid_certificates: false
-				buffer_size:                    100
-				max_pool_size:                  5
-				connect_timeout_ms:             5000
-				update_strategy:                "STRATEGY_DOCUMENT"
-			}
-		},
-		{
-			// Document-strategy MongoDB sink — one MongoDB document per synced file, always nested.
-			mongo: {
-				tag:                            "document"
-				endpoint:                       "mongodb://mongo:27017"
-				host:                           "mongo"
-				port:                           27017
-				database:                       "vartrack"
-				collection:                     "documents"
-				env_as_collection:              false
-				auth_source:                    "admin"
-				ssl:                            false
-				ssl_allow_invalid_certificates: false
-				buffer_size:                    100
-				max_pool_size:                  5
-				connect_timeout_ms:             5000
-				update_strategy:                "STRATEGY_DOCUMENT"
 			}
 		},
 		{
@@ -247,11 +171,6 @@ bundle: {
 		},
 		{
 			platform:   "gitea"
-			datasource: "mongo-document"
-			repositories: ["vartrack-demo/demo-configs"]
-		},
-		{
-			platform:   "gitea"
 			datasource: "mongo-file"
 			repositories: ["vartrack-demo/demo-configs"]
 		},
@@ -261,12 +180,11 @@ bundle: {
 			repositories: ["vartrack-demo/demo-configs"]
 		},
 		{
+			// Declared here and left out of the tenant's bundle.json on purpose: it names no environment and no file to read, so
+			// the UI shows it refused, and says why. Step 7 of the tour (README.md) adds its entry to bundle.json.
 			platform:   "gitea"
 			datasource: "redis-string"
 			repositories: ["vartrack-demo/demo-configs"]
-			// The gateway judges a CLI call (the Playground, vt sync) by this rule alone: it names the two branches the
-			// rule reads as environments. (The browser suite's tenant bundle.json also sets branch_as_env; the two agree.)
-			branch_map: {develop: "develop", main: "main"}
 		},
 		{
 			platform:   "gitea"
@@ -276,21 +194,6 @@ bundle: {
 		{
 			platform:   "gitea"
 			datasource: "s3"
-			repositories: ["vartrack-demo/demo-configs"]
-		},
-		{
-			platform:   "gitea"
-			datasource: "mongo-primary"
-			repositories: ["vartrack-demo/demo-configs"]
-		},
-		{
-			platform:   "gitea"
-			datasource: "mongo-kv"
-			repositories: ["vartrack-demo/demo-configs"]
-		},
-		{
-			platform:   "gitea"
-			datasource: "mongo-dr"
 			repositories: ["vartrack-demo/demo-configs"]
 		},
 	]
@@ -305,6 +208,14 @@ bundle: {
 	global_tags: {
 		team:        "platform"
 		environment: "demo"
+	}
+
+	// The schema repository the gateway's schema-registry webhook (POST /webhooks/schema-registry) answers for: a push to it makes
+	// the orchestrator read the tenant's bundle.json again at once, instead of after SCHEMA_TTL_SECONDS (step 7 of the tour).
+	schema_registry: {
+		platform: "gitea"
+		repo:     "vartrack-demo/schemas"
+		branch:   "main"
 	}
 
 	// The demo's one tenant, declared by the operator. A push is its own when it comes from

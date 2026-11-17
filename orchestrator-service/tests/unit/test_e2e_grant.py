@@ -1,5 +1,6 @@
 """
-The demo's grant helper (demo/seed/grant.py) mints what the orchestrator verifies.
+The grant helpers (demo/seed/grant.py, and e2e/init/grant.py: each stack has its own copy, and they share no file) mint what the
+orchestrator verifies. Every test runs on both.
 
 It is a second implementation of the grant format, written with the standard library because the demo
 image's requirements are hash-pinned. This is the one place it could drift from app/api/tokens.py, so
@@ -16,12 +17,13 @@ import pytest
 from app.api import tokens
 
 SECRET = "demo-secret-demo-secret-demo-secret-0123"
-GRANT_PY = pathlib.Path(__file__).resolve().parents[3] / "demo" / "seed" / "grant.py"
+REPO = pathlib.Path(__file__).resolve().parents[3]
+GRANT_COPIES = [REPO / "demo" / "seed" / "grant.py", REPO / "e2e" / "init" / "grant.py"]
 
 
-@pytest.fixture(scope="module")
-def grant():
-    spec = importlib.util.spec_from_file_location("e2e_grant", GRANT_PY)
+@pytest.fixture(scope="module", params=GRANT_COPIES, ids=["demo", "e2e"])
+def grant(request):
+    spec = importlib.util.spec_from_file_location("e2e_grant", request.param)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module

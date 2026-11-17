@@ -33,7 +33,7 @@ function run(label, command, commandArgs, options = {}) {
 let failed = 0;
 if (!flags.has('--no-up') && !flags.has('--no-tour')) {
   // The tour is about the demo as a person runs it (webhooks on, nothing a suite wrote), so it has a demo of its own, from demo/,
-  // under its own project name; the regression's stack below is the same services with the webhooks off.
+  // under its own project name; the e2e stack below is a stack of its own, and shares no file with it.
   const downDemo = () => run('Clearing the demo', 'docker', ['compose', 'down', '-v', '--remove-orphans'], { cwd: demo });
   downDemo();
   const tourEnv = { ...process.env, VT_UI_URL: process.env.VT_UI_URL ?? 'http://localhost:8080', VT_TOUR_PROJECT: 'vartrack-demo' };

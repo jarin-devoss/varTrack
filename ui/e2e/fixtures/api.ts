@@ -30,6 +30,8 @@ export interface ApiRule {
   datasource: string;
   canSync?: boolean;
   selfHeal?: boolean;
+  /** Set when the rule was refused as it was loaded (it names no environments and no file to read); says why. */
+  refused?: string;
   targets: ApiTarget[];
 }
 

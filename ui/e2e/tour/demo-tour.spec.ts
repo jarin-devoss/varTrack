@@ -25,7 +25,9 @@ const GIT_BASH = 'C:\\Program Files\\Git\\bin\\bash.exe';
 const BASH = process.env.VT_BASH ?? (process.platform === 'win32' && fs.existsSync(GIT_BASH) ? GIT_BASH : 'bash');
 
 const HASH = 'demo:redis-hash:default:vartrack';
-const RULES = ['gitea/mongo', 'gitea/zookeeper', 'gitea/redis-hash'] as const;
+/** The rules that sync from the start; the seventh, gitea/redis-string, is refused until step 7. */
+const RULES = ['gitea/mongo', 'gitea/mongo-file', 'gitea/zookeeper', 'gitea/redis-hash', 'gitea/linux_server', 'gitea/s3'] as const;
+const REFUSED = 'gitea/redis-string';
 
 interface Step {
   n: number;
@@ -85,13 +87,15 @@ type Check = (step: Step, ctx: Context) => Promise<void>;
 type Context = Parameters<Parameters<typeof test>[2]>[0];
 
 const CHECKS: Record<number, Check> = {
-  // 1. Sign in and look: three rules, each with its `default` environment in sync with Git.
+  // 1. Sign in and look: six rules in sync, and the seventh refused, with its reason.
   async 1(_step, { page, api }) {
     await page.goto('/rules');
     for (const rule of RULES) await expect(page.getByText(rule, { exact: true }).first()).toBeVisible();
     await expect
       .poll(async () => (await api.rules()).filter(r => RULES.includes(r.name as (typeof RULES)[number])).map(r => r.targets.map(t => `${t.env}:${t.drift}`).join()).sort())
-      .toEqual(['default:in_sync', 'default:in_sync', 'default:in_sync']);
+      .toEqual(RULES.map(() => 'default:in_sync'));
+    await expect(page.getByRole('article', { name: `${REFUSED}: Refused` })).toBeVisible();
+    await expect(page.getByTestId('refused-reason')).toContainText('names no environments and no file to read');
     const rulePage = new RulePage(page);
     await rulePage.open('gitea/mongo');
     expect(await rulePage.envNames()).toEqual(['default']);
@@ -102,8 +106,11 @@ const CHECKS: Record<number, Check> = {
   // 2. Change Git, and watch it sync: the push reaches the rules through the webhooks; every store takes the new value.
   async 2(step, { page, api }) {
     sh(step.blocks[0]);
-    const reads = step.blocks[1];
-    await expect.poll(() => sh(reads), { timeout: 60_000, message: 'every store holds 310 after the push' }).toMatch(/310[\s\S]*310[\s\S]*310/);
+    const reads = step.blocks[1].split('\n').filter(Boolean);
+    expect(reads.length, 'one read per rule').toBe(RULES.length);
+    for (const read of reads) {
+      await expect.poll(() => sh(read), { timeout: 60_000, message: `${read.slice(0, 80)} holds 310 after the push` }).toContain('310');
+    }
     const events = await api.events('&rule=gitea/mongo');
     expect(events.some(e => e.reason === 'SyncSucceeded' && e.time >= startedAt), 'gitea/mongo says it synced').toBe(true);
     const rulePage = new RulePage(page);
@@ -166,11 +173,30 @@ const CHECKS: Record<number, Check> = {
       .toBe(true);
   },
 
-  // 7. As someone else: the viewer reads and dry-runs but cannot sync; the outsider sees nothing. (Below, with their own sign-ins.)
-  async 7() {},
+  // 7. A refused rule: it says why; its entry is added to the tenant's bundle.json, and it syncs.
+  async 7(step, { page, api }) {
+    const rule = (await api.rules()).find(r => r.name === REFUSED);
+    expect(rule?.refused, 'the rule is refused, with its reason').toContain('names no environments and no file to read');
+    sh(step.blocks[0]);
+    await expect
+      .poll(async () => {
+        const r = (await api.rules()).find(x => x.name === REFUSED);
+        return r && !r.refused ? r.targets.map(t => t.env).join() : 'still refused';
+      }, { timeout: 60_000, message: 'the schema push reads the rule again: it is no longer refused' })
+      .toBe('default');
+    const rulePage = new RulePage(page);
+    await rulePage.open(REFUSED);
+    const task = await rulePage.syncEnv('default');
+    await api.succeeded(task);
+    expect(sh(step.blocks[1]).trim(), 'the key is a string in Redis').toBe('310');
+    expect(sh('docker compose exec -T redis redis-cli -n 3 EXISTS demo:redis-string:default:features_debug_mode').trim(), 'without the key step 6 removed from Git').toBe('0');
+  },
 
-  // 8. Start over: documentation only, and it has to say how.
-  async 8(step) {
+  // 8. As someone else: the viewer reads and dry-runs but cannot sync; the outsider sees nothing. (Below, with their own sign-ins.)
+  async 8() {},
+
+  // 9. Start over: documentation only, and it has to say how.
+  async 9(step) {
     expect(step.blocks, 'the way to start over is not run by the tour').toEqual([]);
     expect(step.fences.some(f => f.info === 'sh' && f.body.includes('docker compose down -v'))).toBe(true);
   },
@@ -180,14 +206,14 @@ test.describe('the demo tour', () => {
   test('every step of the README has a check, and every check a step', () => {
     expect(steps.map(s => s.n)).toEqual(Object.keys(CHECKS).map(Number).sort((a, b) => a - b));
     for (const step of steps) {
-      const expected = step.n === 7 || step.n === 8 || step.n === 1 ? 0 : 1;
+      const expected = step.n === 1 || step.n === 8 || step.n === 9 ? 0 : 1;
       expect(step.blocks.length >= expected, `step ${step.n} (${step.title}) has the command blocks its check runs`).toBe(true);
     }
   });
 
   test.describe.serial('as the administrator', () => {
     test.use(as('admin'));
-    for (const n of [1, 2, 3, 4, 5, 6, 8]) {
+    for (const n of [1, 2, 3, 4, 5, 6, 7, 9]) {
       const step = steps.find(s => s.n === n);
       test(`step ${n}: ${step?.title ?? '(missing from the README)'}`, async ({ page, api }) => {
         await CHECKS[n](byNumber(n), { page, api } as Context);
@@ -195,10 +221,10 @@ test.describe('the demo tour', () => {
     }
   });
 
-  test.describe('as someone else (step 7)', () => {
+  test.describe('as someone else (step 8)', () => {
     test.describe('the viewer', () => {
       test.use(as('reader'));
-      test('step 7: the rules are there, a dry run works, Sync is disabled with the reason', async ({ page }) => {
+      test('step 8: the rules are there, a dry run works, Sync is disabled with the reason', async ({ page }) => {
         const rulePage = new RulePage(page);
         await rulePage.open('gitea/redis-hash');
         await expect(rulePage.envSync('default')).toBeDisabled();
@@ -207,9 +233,9 @@ test.describe('the demo tour', () => {
     });
     test.describe('the outsider', () => {
       test.use(as('outsider'));
-      test('step 7: the Rules page is empty', async ({ page, api }) => {
+      test('step 8: the Rules page is empty', async ({ page, api }) => {
         await page.goto('/rules');
-        for (const rule of RULES) await expect(page.getByText(rule, { exact: true })).toHaveCount(0);
+        for (const rule of [...RULES, REFUSED]) await expect(page.getByText(rule, { exact: true })).toHaveCount(0);
         expect(await api.rules()).toEqual([]);
       });
     });

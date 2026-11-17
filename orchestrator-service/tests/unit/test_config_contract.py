@@ -255,7 +255,7 @@ def _built_binary() -> str:
 @pytest.mark.skipif(not _built_binary(), reason="vartrack-bundle is not built")
 def test_the_demo_stacks_configs_load_through_the_real_program_and_these_protos(monkeypatch):
     monkeypatch.setenv("VARTRACK_BUNDLE_BINARY", _built_binary())
-    for name in ("demo/config.cue", "demo/live/config.cue"):
+    for name in ("demo/config.cue", "demo/live/config.cue", "e2e/config.cue"):
         bundle = app_config._load_cue_bundle(str(REPO / name))
         assert bundle["rules"] and bundle["datasources"]
 

@@ -343,9 +343,9 @@ jobs:
         run: docker compose down -v --remove-orphans
 
   # ── The oldest Docker Compose the demo supports ──────────────────────────────
-  # demo/run.sh and demo/README.md say Compose 2.20.0 is the minimum: `include` (which e2e/ uses) and `docker compose wait` arrived
-  # there, and 2.19 reads neither file. This runs the release itself (no daemon is needed to read a file) on both folders, so that
-  # number cannot drift from what Compose does: if the files start to need something newer, this fails and the number moves.
+  # demo/run.sh and demo/README.md say Compose 2.20.0 is the minimum they are checked on. This runs the release itself (no daemon
+  # is needed to read a file) on both folders, so that number cannot drift from what Compose does: if the files start to need
+  # something newer, this fails and the number moves.
   compose-minimum:
     name: compose ${{ matrix.compose }}
     runs-on: ubuntu-latest
@@ -391,8 +391,8 @@ jobs:
         run: npx playwright install --with-deps chromium
 
       # The demo tour (demo/README.md) first, on a demo of its own: the demo as a person runs it, with its webhooks on and nothing a
-      # suite wrote. The test reads the README and does every step of it. The demo is taken down before the regression's stack
-      # (the same services, the webhooks off) comes up on the same ports.
+      # suite wrote. The test reads the README and does every step of it. The demo is taken down before the e2e stack (a stack
+      # of its own, which shares no file with the demo) comes up on the same ports.
       - name: Start the demo
         working-directory: demo
         run: |
