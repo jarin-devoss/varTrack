@@ -2317,9 +2317,11 @@ health probes are open). Mint a grant from inside the stack and pass it:</p>
 <h2 id="the-demo-and-the-end-to-end-regression-on-it">The demo, and the end-to-end regression on it<a class="headerlink" href="#the-demo-and-the-end-to-end-regression-on-it" title="Permanent link">&para;</a></h2>
 <p><code>demo/</code> is the stack a person runs to try varTrack: the whole product (Gitea, Vault, MongoDB, Redis, ZooKeeper, MinIO, an
 SSH target, the gateway, the orchestrator, the watcher and the web UI) and a <code>demo-seed</code> container that seeds it once and
-syncs each rule. It runs no test. See <a href="https://github.com/jarin-devoss/varTrack/blob/main/demo/README.md"><code>demo/README.md</code></a>.</p>
-<p><code>e2e/docker-compose.yml</code> includes <code>demo/docker-compose.yml</code> (the same services, as the Compose project <code>e2e</code>) and adds one
-container, <code>e2e-regression</code>, which waits for the seed and runs the 25 suites of <code>e2e/init/test_runner.py</code>:</p>
+syncs six of its seven rules (the seventh is refused on purpose, for the tour to fix). It runs no test. See
+<a href="https://github.com/jarin-devoss/varTrack/blob/main/demo/README.md"><code>demo/README.md</code></a>.</p>
+<p><code>e2e/</code> is a stack of its own, and shares no file with <code>demo/</code>: its own <code>docker-compose.yml</code> (the Compose project <code>e2e</code>),
+<code>config.cue</code>, configs, schemas, Gitea image and seed (<code>e2e-seed</code>, which creates no webhook). Its <code>e2e-regression</code> container
+waits for the seed and runs the 25 suites of <code>e2e/init/test_runner.py</code>:</p>
 <div class="language-bash highlight"><pre><span></span><code><span id="__span-9-1"><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="nb">cd</span><span class="w"> </span>e2e
 </span><span id="__span-9-2"><a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>docker<span class="w"> </span>compose<span class="w"> </span>up<span class="w"> </span>--build<span class="w"> </span>--detach
 </span><span id="__span-9-3"><a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a>docker<span class="w"> </span>compose<span class="w"> </span><span class="nb">wait</span><span class="w"> </span>e2e-regression<span class="w"> </span><span class="c1"># the exit code is the regression&#39;s: 0 only when every suite passed</span>

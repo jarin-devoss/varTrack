@@ -2146,9 +2146,9 @@
 </span></code></pre></div>
 <div class="admonition info">
 <p class="admonition-title">In the demo</p>
-<p>The demo's <code>mongo</code>, <code>mongo-primary</code> and <code>mongo-dr</code> datasources use <code>STRATEGY_DOCUMENT</code> (collections <code>variables</code>, <code>primary_vars</code>, <code>dr_vars</code>),
-<code>mongo-document</code> uses it with its own collection, <code>mongo-file</code> uses <code>STRATEGY_FILE</code>, and <strong><code>mongo-kv</code></strong> (collection <code>kv_vars</code>) is the one that
-uses <code>STRATEGY_KEY_VALUE</code>: the shape that keeps single keys, so it is where prune and per-key drift show.</p>
+<p>The demo's <code>mongo</code> datasource uses <code>STRATEGY_DOCUMENT</code> (collection <code>variables</code>) and <code>mongo-file</code> uses <code>STRATEGY_FILE</code> (collection <code>files</code>).
+The shape that keeps single keys, <code>STRATEGY_KEY_VALUE</code>, is in the end-to-end stack's <code>mongo-kv</code> datasource (collection <code>kv_vars</code>), which
+the regression uses to check prune and per-key drift.</p>
 </div>
 <h3 id="strategy_key_value"><code>STRATEGY_KEY_VALUE</code><a class="headerlink" href="#strategy_key_value" title="Permanent link">&para;</a></h3>
 <p>Each config key is stored as a separate document, its value as a string. It is the strategy that keeps a key on its own, so it is the one a
