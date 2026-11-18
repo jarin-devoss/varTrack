@@ -41,10 +41,12 @@ dependencies = [
     "PyYAML>=6",
     # tomllib is stdlib in Python 3.11+; tomli is the backport
     "tomli>=2.0; python_version < '3.11'",
+    # TOML is read with tomllib; this writes it, for a FILE sink that keeps or converts a file (app/parsers/formats.py)
+    "tomli-w>=1.0",
     # Safe XML parsing (defusedxml protects against XML bomb / XXE attacks)
     "defusedxml>=0.7",
 
-    # HCL parsing (Terraform .tf / .tfvars) — required for correct parsing of
+    # HCL parsing (Terraform .tf, .hcl) — required for correct parsing of
     # nested blocks. Without this, hcl_parser.py silently falls back to the
     # KV parser which mishandles nested HCL structures.
     "python-hcl2>=8.1.2",
