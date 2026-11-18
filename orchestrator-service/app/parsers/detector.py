@@ -10,8 +10,11 @@ The file tracked by a rule can be literally anything:
 Detection order (first match wins)
 ───────────────────────────────────
 1. Exact basename match      (.env, Makefile, web.config …)
-2. Basename-prefix match     (.env.staging starts with ".env")
-3. Innermost file extension  (appsettings.Production.json → .json)
+2. Innermost file extension  (appsettings.Production.json → .json, variables.tf → .tf)
+3. Basename-prefix match     (.env.staging starts with ".env"), only for a name whose
+                             extensions are none that is known: a file's extension says
+                             what it is before its name does (settings.json is JSON,
+                             not the YAML that "settings" stands for)
 4. "sniff"                   caller will try every parser in sequence
 
 Returned format strings
@@ -88,6 +91,9 @@ def detect(file_path: str) -> str:
     detect("web.config")                    → "xml"
     detect("uwsgi.cfg")                     → "ini"
     detect("variables.tfvars")              → "kv"
+    detect("variables.tf")                  → "hcl"
+    detect("settings.json")                 → "json"
+    detect("application.properties")        → "kv"
     detect("some_unknown_file")             → "sniff"
     """
     p = Path(file_path)
@@ -97,14 +103,14 @@ def detect(file_path: str) -> str:
     if basename in _BASENAME:
         return _BASENAME[basename]
 
-    # 2. Basename-prefix  (.env.staging, .env.prod, .env.local …)
-    for prefix, fmt in _BASENAME.items():
-        if basename.startswith(prefix + "."):
-            return fmt
-
-    # 3. Innermost extension (handles compound names)
+    # 2. Innermost extension (handles compound names)
     for ext in reversed([s.lower() for s in p.suffixes]):
         if ext in _EXT:
             return _EXT[ext]
+
+    # 3. Basename-prefix  (.env.staging, .env.prod, .env.local …): no extension of it is one that is known
+    for prefix, fmt in _BASENAME.items():
+        if basename.startswith(prefix + "."):
+            return fmt
 
     return "sniff"
