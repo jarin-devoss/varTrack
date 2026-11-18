@@ -22,8 +22,10 @@ The objects follow the datasource's update_strategy (S3Config):
 
   STRATEGY_KEY_VALUE — one object per key:   {prefix}/db.host
   STRATEGY_DOCUMENT  — {prefix}/config.json, always nested
-  STRATEGY_FILE      — {prefix}/config.json, in the shape the file parsed to:
-                       nested for JSON, YAML, TOML …, flat for .env / .properties
+  STRATEGY_FILE      — the file itself: {prefix}/<the file's name>, in the file's own format (YAML stays YAML, XML
+                       stays XML), or in the one the rule's file_format names. The file as it is in Git when
+                       nothing changed it; else rendered by that format's writer (app/parsers/formats.py). A
+                       file_pattern names the object instead, and its extension says the format.
   unset              — as before: one object per key with s3_one_file_per_key,
                        otherwise {prefix}/config.json with the flat keys
 """
@@ -40,6 +42,7 @@ from urllib.parse import quote, unquote
 from app.pipeline.sinks.base import BaseSink, update_strategy
 from app.pipeline.sinks.labels import VarTrackLabels
 from app.pipeline.sinks.key_formatter import resolve_destination
+from app.pipeline.sinks.file_output import file_output
 from app.pipeline.transformer import _flatten, as_nested
 from app.utils.enums.sync_mode import SyncMode
 
@@ -49,6 +52,16 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 _S3_TAG_LIMIT = 10
+
+
+def _family_of_rule(rule: dict) -> "str | None":
+    """The parser family of the file a rule reads (from its file_name), or None when the rule does not name one."""
+    name = rule.get("file_name")
+    if not isinstance(name, str) or not name:
+        return None
+    from app.parsers import detector
+    family = detector.detect(name)
+    return None if family == "sniff" else family
 
 
 class S3Sink(BaseSink):
@@ -90,6 +103,13 @@ class S3Sink(BaseSink):
 
         # The single-document object's name; "{env}" is the environment.
         self._file_pattern    = s.get("file_pattern") or "config.json"
+        # STRATEGY_FILE: the object is the file. A file_pattern the datasource sets names it (and its extension
+        # says the format); the rule's file_format names the format; xml_root_tag the root element XML needs.
+        self._file_mode       = self._strategy == "STRATEGY_FILE"
+        self._given_pattern   = s.get("file_pattern") or ""
+        self._file_format     = rule.get("file_format") or None
+        self._xml_root        = rule.get("xml_root_tag") or "config"
+        self._source_family   = _family_of_rule(rule)
         self._content_type    = s.get("content_type") or ""
         # Server-side encryption on every object written: AES256 or aws:kms.
         self._put_extra: dict[str, str] = {}
@@ -142,9 +162,13 @@ class S3Sink(BaseSink):
         labels: VarTrackLabels,
         total_sources: int,
         data: Any = None,
+        source_text: str = "",
     ) -> dict[str, Any]:
         # Build final tag string: static → dynamic → vartrack labels (last wins)
         tagging = self._resolve_tags(flat_data, labels)
+
+        if self._file_mode:
+            return self._write_file(flat_data, sync_mode, env, file_path, data, source_text, tagging)
 
         # GIT_SMART_REPAIR: an object that already holds the file is not put again; one per key, only the
         # keys whose object differs.
@@ -185,6 +209,12 @@ class S3Sink(BaseSink):
         if not keys:
             return {}
         prefix = self._key_prefix(env)
+        if self._file_mode:
+            try:
+                stored = self._file_values(env)
+            except Exception as exc:
+                return self._read_failed(exc, "S3Sink.read_values")
+            return {k: stored[k] for k in keys if k in stored}
         try:
             if self._one_per_key:
                 out: dict[str, str] = {}
@@ -203,6 +233,58 @@ class S3Sink(BaseSink):
             return {}
         except Exception as exc:
             return self._read_failed(exc, "S3Sink.read_values")
+
+    # ── STRATEGY_FILE: the file as a file ─────────────────────────────────────
+
+    def _write_file(self, flat_data: dict[str, str], sync_mode: SyncMode, env: str, file_path: str, data: Any,
+                    source_text: str, tagging: str) -> dict[str, Any]:
+        out = file_output(
+            source_text=source_text, file_path=file_path, data=data, flat_data=flat_data,
+            file_format=self._file_format, given_name=self._object_name(env) if self._given_pattern else None,
+            xml_root=self._xml_root,
+        )
+        key = f"{self._key_prefix(env)}/{out.name}"
+        plan = self._plan_object(flat_data, sync_mode, lambda: self._stored_file(key, out.fmt))
+        outcome = {"unchanged": plan.unchanged, **({"note": plan.note, "sync_mode": plan.mode} if plan.note else {})}
+        if not plan.write:
+            return {"written": 0, **outcome}
+        self._s3.put_object(
+            Bucket=self._bucket, Key=key, Body=out.content,
+            ContentType=self._content_type or out.content_type, Tagging=tagging, **self._put_extra,
+        )
+        logger.debug("S3: put s3://%s/%s (%s%s)", self._bucket, key, out.fmt.name, ", as it is in Git" if out.copied else "")
+        return {"written": len(flat_data), **outcome}
+
+    def _stored_file(self, key: str, fmt: Any) -> "dict[str, str] | None":
+        """What the object at *key* holds now, as the flat keys Git's file has; None when there is no such object."""
+        from app.parsers import formats
+        try:
+            obj = self._s3.get_object(Bucket=self._bucket, Key=key)
+        except self._s3.exceptions.NoSuchKey:
+            return None
+        return formats.stored_flat(obj["Body"].read().decode("utf-8"), fmt,
+                                   source_family=self._source_family, xml_root=self._xml_root)
+
+    def _file_values(self, env: str) -> "dict[str, str]":
+        """Every key the environment's objects hold: each object under its prefix whose name says a format varTrack reads,
+        parsed by that format's own parser."""
+        from app.parsers import formats
+        prefix = self._key_prefix(env) + "/"
+        out: dict[str, str] = {}
+        token: str | None = None
+        while True:
+            listing = self._s3.list_objects_v2(Bucket=self._bucket, Prefix=prefix, **({"ContinuationToken": token} if token else {}))
+            for item in listing.get("Contents", []):
+                name = item["Key"][len(prefix):]
+                fmt = formats.format_named_by(name)
+                if "/" in name or fmt is None:
+                    continue
+                obj = self._s3.get_object(Bucket=self._bucket, Key=item["Key"])
+                out.update(formats.stored_flat(obj["Body"].read().decode("utf-8"), fmt,
+                                               source_family=self._source_family, xml_root=self._xml_root))
+            if not listing.get("IsTruncated"):
+                return out
+            token = listing.get("NextContinuationToken")
 
     # ── Tag resolution ────────────────────────────────────────────────────────
 
@@ -256,11 +338,10 @@ class S3Sink(BaseSink):
         return f"{self._prefix}/{env}".lstrip("/")
 
     def _document(self, flat_data: dict[str, str], data: Any) -> Any:
-        """What config.json holds: always nested for DOCUMENT, the file as it parsed for FILE."""
+        """What config.json holds: always nested for DOCUMENT, the flat keys otherwise. (STRATEGY_FILE writes the file
+        itself: _write_file.)"""
         if self._strategy == "STRATEGY_DOCUMENT":
             return as_nested(data if data is not None else flat_data)
-        if self._strategy == "STRATEGY_FILE" and data is not None:
-            return data
         return flat_data
 
     def _object_name(self, env: str) -> str:

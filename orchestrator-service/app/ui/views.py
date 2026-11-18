@@ -120,6 +120,7 @@ NOT_SHOWN_IN_UI: dict[str, str] = {
     "repo_url": "where the rule's files are cloned from; the page lists the repositories",
     "key_format": "a sink's layout choice; the page shows the keys as written",
     "file_format": "a sink's layout choice; the page shows the keys as written",
+    "xml_root_tag": "a sink's layout choice; the page shows the keys as written",
     "env_as_filename": "a sink's layout choice; the page shows the keys as written",
     "helm_values_mode": "a sink's layout choice; the page shows the keys as written",
     "s3_object_tags": "a sink's layout choice; the page shows the keys as written",

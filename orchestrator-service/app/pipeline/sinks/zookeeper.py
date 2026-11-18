@@ -149,6 +149,7 @@ class ZookeeperSink(BaseSink):
         labels: VarTrackLabels,
         total_sources: int,
         data: Any = None,
+        source_text: str = "",
     ) -> dict[str, Any]:
         # Auto-provision: ensure_path creates every node in the path that
         # doesn't exist yet, including new env subtrees like /pr-42/.

@@ -69,7 +69,8 @@ def fsync_directory(directory: str | os.PathLike[str]) -> None:
 
 def write_durably(path: str | os.PathLike[str], content: str, *, encoding: str = "utf-8") -> None:
     """Write *content* to *path* (a file of its own, not the one being replaced) and flush it to disk."""
-    with open(path, "w", encoding=encoding) as fh:
+    # newline="": the text is written as it is given (a CRLF file stays CRLF, whatever host this runs on).
+    with open(path, "w", encoding=encoding, newline="") as fh:
         fh.write(content)
         fh.flush()
         os.fsync(fh.fileno())

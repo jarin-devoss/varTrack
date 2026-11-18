@@ -45,6 +45,9 @@ class ETLFile:
     # keys for .env / .properties — with flat_data's renames and secrets. For
     # sinks that store the file as one document (update_strategy DOCUMENT, FILE).
     data:          Any = None
+    # The file as it is in Git, for a sink that stores the file in its own format: it writes this back as it is when
+    # nothing changed the file (no environment slice, root_key, secret or rename), and renders `data` otherwise.
+    source_text:   str = ""
 
 @dataclass
 class ETLResult:

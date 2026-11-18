@@ -211,6 +211,7 @@ class MongoSink(BaseSink):
         labels: VarTrackLabels,
         total_sources: int,
         data: Any = None,
+        source_text: str = "",
     ) -> dict[str, Any]:
         # Collection is auto-provisioned here for new envs (pr-42, v1.2.3 …)
         collection = self._collection_for_env(env)

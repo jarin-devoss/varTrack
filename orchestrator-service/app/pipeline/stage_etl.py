@@ -323,6 +323,7 @@ def run_stage_etl(ctx: PayloadContext, datasource: str, tenant_id: str) -> ETLRe
                 logger_fields=_logger_fields,
                 secret_fields=frozenset(_secret_fields.keys()),
                 data=transformer.file_shape(parsed, flat_data, variables_map),
+                source_text=content,
             ))
 
             outcome = "ok" if validation_status in ("ok", "none") else "validation_failed"
@@ -486,6 +487,7 @@ def run_stage_etl_content(
             logger_fields=_logger_fields,
             secret_fields=frozenset(_secret_fields.keys()),
             data=transformer.file_shape(parsed, flat_data, variables_map),
+            source_text=content,
         ))
 
     except Exception as exc:
