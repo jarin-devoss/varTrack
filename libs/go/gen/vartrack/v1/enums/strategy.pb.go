@@ -33,6 +33,7 @@ const (
 	Strategy_STRATEGY_DOCUMENT Strategy = 2
 	// Write each file as one document, in the shape it parsed to: nested for
 	// JSON, YAML, TOML and the other tree formats, flat for .env and .properties.
+	// On S3 and a Linux server the document is the file itself, in its own format (or the one file_format names).
 	Strategy_STRATEGY_FILE Strategy = 3
 )
 
