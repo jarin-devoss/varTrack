@@ -157,6 +157,7 @@ def _bundle(data: Any, name: str, tenant_id: str, result: Result) -> None:
             # What config.cue and this bundle.json make of the rule names no environments: it is refused when loaded.
             result.errors.append(f"{where} would be refused and not loaded: {why}")
         _prune_without_effect(layered, datasource, where, result)
+        _file_format_against_name(layered, datasource, where, result)
 
 
 def _repeated_rules(rules: list[dict], name: str, result: Result) -> None:
@@ -197,6 +198,49 @@ def _prune_last(options: dict, where: str, result: Result) -> None:
             f"after all its files are written"
             + ("; a prune block with only `last` is disabled: write `prune: true`"
                if isinstance(block, dict) and not enabled else ""))
+
+
+def _file_format_against_name(rule: dict, datasource: str, where: str, result: Result) -> None:
+    """A FILE sink (S3, a Linux server) writes the format file_format names, and a file name's extension says the format
+    too: both together must agree, or the file would be named one thing and written as another."""
+    from app.parsers import formats
+    from app.pipeline.sinks import sink_class
+    from app.pipeline.sinks.base import update_strategy
+    from app.pipeline.sinks.settings import for_rule
+
+    if not rule.get("file_format") or sink_class(datasource) is None:
+        return
+    try:
+        want = formats.target(rule["file_format"])
+    except ValueError as exc:
+        result.errors.append(f"{where}: {exc}")
+        return
+    if want is None:
+        return
+    try:
+        settings = for_rule(rule, datasource)
+        if update_strategy(settings.get("update_strategy")) != "STRATEGY_FILE":
+            return
+    except Exception:
+        return
+    def option(key: str) -> Any:
+        try:
+            return settings.get(key)    # a datasource has the fields of its own kind only
+        except AttributeError:
+            return None
+
+    # S3 names its object with file_pattern (its destination_template is the key prefix, not a name); a Linux server's
+    # destination_template, or else its first file path, is the file.
+    if datasource.split("-", 1)[0] == "s3":
+        name = option("file_pattern") or ""
+    else:
+        name = rule.get("destination_template") or option("file_paths") or ""
+    name = name[0] if isinstance(name, (list, tuple)) and name else name
+    named = formats.format_named_by(str(name)) if name else None
+    if named and named.name != want.name:
+        result.errors.append(
+            f"{where}: file_format is {want.name}, but the file name {name} says {named.name} (its extension is its format): "
+            f"name the file for {want.name}, or leave file_format out and let the name say it")
 
 
 def _prune_without_effect(rule: dict, datasource: str, where: str, result: Result) -> None:

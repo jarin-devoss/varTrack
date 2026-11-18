@@ -98,12 +98,15 @@ class BaseSink(IFactory, ABC):
         tenant_id: str = "default",
         total_sources: int = 1,
         data: Any = None,
+        source_text: str = "",
     ) -> dict[str, Any]:
         """
         Build VarTrack labels then delegate to ``_write()``.
 
         *data* is the file in the shape it parsed to (ETLFile.data), for sinks
         that store the file as one document; None when only the flat keys are known.
+        *source_text* is the file as it is in Git: a sink that stores the file in its own
+        format writes it back as it is when nothing changed it.
 
         Labels are built once here so every concrete sink receives them
         without duplicating the construction logic.
@@ -129,6 +132,7 @@ class BaseSink(IFactory, ABC):
             labels=labels,
             total_sources=total_sources,
             data=data,
+            source_text=source_text,
         )
 
     # ── Interface every sink must implement ───────────────────────────────────
@@ -148,6 +152,7 @@ class BaseSink(IFactory, ABC):
         labels: VarTrackLabels,
         total_sources: int,
         data: Any = None,
+        source_text: str = "",
     ) -> dict[str, Any]:
         """Perform the actual write. Returns ``{"written": int}``. Deleting
         stale keys is not a write's job: stage_sync does it once per

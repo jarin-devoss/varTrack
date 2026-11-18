@@ -1,5 +1,5 @@
 # Example config file — HCL (Terraform/HashiCorp) format.
-# VarTrack parses .hcl and .tfvars files using python-hcl2.
+# VarTrack parses .hcl and .tf files using python-hcl2.
 
 app_name    = "my-service"
 app_version = "1.0.0"

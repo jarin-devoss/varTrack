@@ -272,8 +272,6 @@ def _s3(**cfg) -> S3Sink:
 @pytest.mark.parametrize("cfg,flat,data,expected", [
     ({"update_strategy": "STRATEGY_DOCUMENT"}, TREE_FLAT, TREE, TREE),
     ({"update_strategy": "STRATEGY_DOCUMENT"}, PROPERTIES, PROPERTIES, {"db": {"host": "x", "port": "5432"}}),
-    ({"update_strategy": "STRATEGY_FILE"}, TREE_FLAT, TREE, TREE),
-    ({"update_strategy": "STRATEGY_FILE"}, PROPERTIES, PROPERTIES, PROPERTIES),
     ({}, TREE_FLAT, TREE, TREE_FLAT),  # unset: config.json with the flat keys, as before
 ])
 def test_s3_config_json_follows_update_strategy(cfg, flat, data, expected):

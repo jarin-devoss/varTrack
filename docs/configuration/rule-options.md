@@ -46,6 +46,7 @@ Every option a rule can have, and where it may be set. A rule is built from up t
 | [`helm_values_mode`](#helm_values_mode) | string | yes | yes | — | the upper layer replaces it |
 | [`s3_object_tags`](#s3_object_tags) | object (string → string) | yes | yes | — | the upper layer replaces it |
 | [`s3_tag_keys`](#s3_tag_keys) | list | yes | yes | — | the upper layer replaces it |
+| [`xml_root_tag`](#xml_root_tag) | string | yes | yes | — | the upper layer replaces it |
 
 ## `platform`
 
@@ -378,7 +379,7 @@ How a nested key is flattened into a flat destination key: "dot", "flat", …
 
 ## `file_format`
 
-Linux server: the format the file is written in. Left out, the file's extension.
+The format a file is written in: yaml, json, toml, hcl, xml, ini, env or properties. With STRATEGY_FILE (S3, a Linux server) the file is converted to it. Left out, the format is the one the sink's file name says by its extension (a path ending in .json is JSON), else the file's own: YAML stays YAML, XML stays XML. A Linux server without STRATEGY_FILE writes its flat keys in it, and takes the file's extension when it is left out.
 
 | | |
 |---|---|
@@ -423,5 +424,15 @@ S3: keys whose values become object tags.
 | | |
 |---|---|
 | Type | list |
+| Set in | `config.cue`, `bundle.json` |
+| Across layers | the upper layer replaces it |
+
+## `xml_root_tag`
+
+The root element XML needs when a file is written as XML and its tree has more than one top-level key (it has one root element, and a file from another format has none). "config" when left out. Reading the file back removes it.
+
+| | |
+|---|---|
+| Type | string |
 | Set in | `config.cue`, `bundle.json` |
 | Across layers | the upper layer replaces it |

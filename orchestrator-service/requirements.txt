@@ -1194,6 +1194,10 @@ structlog==25.5.0 \
     --hash=sha256:098522a3bebed9153d4570c6d0288abf80a031dfdb2048d59a49e9dc2190fc98 \
     --hash=sha256:a8453e9b9e636ec59bd9e79bbd4a72f025981b3ba0f5837aebf48f02f37a7f9f
     # via orchestrator-service (pyproject.toml)
+tomli-w==1.2.0 \
+    --hash=sha256:188306098d013b691fcadc011abd66727d3c414c571bb01b1a174ba8c983cf90 \
+    --hash=sha256:2dd14fac5a47c27be9cd4c976af5a12d87fb1f0b4512f81d69cce3b35ae25021
+    # via orchestrator-service (pyproject.toml)
 tornado==6.5.5 \
     --hash=sha256:192b8f3ea91bd7f1f50c06955416ed76c6b72f96779b962f07f911b91e8d30e9 \
     --hash=sha256:2c9a876e094109333f888539ddb2de4361743e5d21eece20688e3e351e4990a6 \

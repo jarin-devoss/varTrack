@@ -104,10 +104,26 @@ def _sniff(content: str, file_path: str) -> Any:
     Try every parser in order and return the first non-empty result.
     Last resort: return whatever kv_parser produces (always succeeds).
     """
+    return _sniff_format(content, file_path)[1]
+
+
+def format_of(content: str, file_path: str) -> str:
+    """The parser family that reads this file: yaml, json, toml, xml, ini, kv or hcl.
+
+    What load() uses: the file name says it, and a name that does not (no extension, .config) leaves it to the content.
+    """
+    fmt = detector.detect(file_path)
+    return fmt if fmt != "sniff" else _sniff_format(content, file_path)[0]
+
+
+def _sniff_format(content: str, file_path: str) -> tuple[str, Any]:
+    """(the format that read the content, what it read) — the first parser that gets a non-empty result."""
     stripped = content.strip()
 
     # Cheap heuristic short-circuits before trying all parsers
-    if stripped.startswith(("{", "[")):
+    if file_path.lower().endswith(".config") and not stripped.startswith("<"):
+        _formats = ["ini", "kv"]    # a .config that is not XML is INI: YAML would take "a = b" for a string
+    elif stripped.startswith(("{", "[")):
         _formats = ["json", "yaml", "toml", "ini", "kv"]
     elif stripped.startswith("<"):
         _formats = ["xml", "kv"]
@@ -121,13 +137,13 @@ def _sniff(content: str, file_path: str) -> Any:
             result = _parse_with(fmt, content, file_path)
             if result:
                 logger.debug("sniff succeeded with format=%s for %s", fmt, file_path)
-                return result
+                return fmt, result
         except Exception:
             continue
 
     # kv_parser always returns something (even if empty)
     from app.parsers import kv_parser
-    return kv_parser.parse(content, file_path)
+    return "kv", kv_parser.parse(content, file_path)
 
 
 # Format names a caller may give (vt sync --format) → the parser that reads them.

@@ -6,6 +6,10 @@ Linux server / plain-file sink.
 Writes config data to files on a local (or SSH-mounted) filesystem.
 Supported file formats: .env  .json  .properties  .ini  .yaml
 
+With update_strategy STRATEGY_FILE the file is written as a file, in its own format: YAML stays YAML, XML stays XML (and
+.toml, .hcl too), as it is in Git when nothing changed it. The path says the format, as its extension does: a path that ends
+in .json gets JSON, whatever the source was. The rule's file_format names one instead. See file_output.py.
+
 Key format: DOT (default) or FLAT
 ──────────────────────────────────
   "dot"  (default)  "db.host.port"  →  key as-is  (JSON / YAML fields, .env key)
@@ -55,7 +59,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Protocol, TYPE_CHECKING
 
-from app.pipeline.sinks.base import BaseSink
+from app.pipeline.sinks.base import BaseSink, update_strategy
+from app.pipeline.sinks.file_output import file_output
 from app.pipeline.sinks.labels import VarTrackLabels
 from app.pipeline.sinks.key_formatter import (
     KeyFormat, format_keys, key_format_from_str, validate_sink_format,
@@ -110,6 +115,11 @@ class LinuxServerSink(BaseSink):
         # Takes precedence over the datasource's file path + env_as_filename / env_as_path when set.
         self._dest_tpl  = rule.get("destination_template", "")
         self._file_format     = rule.get("file_format", self._base_path.suffix.lstrip(".") or "env")
+        # STRATEGY_FILE: the file as a file. rule file_format (explicit) and xml_root_tag are read by file_output.
+        self._file_mode       = update_strategy(s.get("update_strategy")) == "STRATEGY_FILE"
+        self._explicit_format = rule.get("file_format") or None
+        self._xml_root        = rule.get("xml_root_tag") or "config"
+        self._source_family   = _family_of_rule(rule)
 
         fmt_name         = rule.get("key_format", "dot")
         self._key_format = key_format_from_str(fmt_name)
@@ -169,8 +179,11 @@ class LinuxServerSink(BaseSink):
         labels: VarTrackLabels,
         total_sources: int,
         data: Any = None,
+        source_text: str = "",
     ) -> dict[str, Any]:
         target = self._resolve_path(env)
+        if self._file_mode:
+            return self._write_as_file(target, flat_data, sync_mode, file_path, data, source_text)
         formatted = format_keys(flat_data, self._key_format)
 
         # GIT_SMART_REPAIR: a file that already holds exactly these keys is not written (no temp file, no
@@ -186,6 +199,36 @@ class LinuxServerSink(BaseSink):
         logger.info("LinuxServerSink: wrote %s env=%s%s", target.as_posix(), env, " over SSH" if self._ssh else "")
 
         return {"written": len(flat_data), "path": str(target), **outcome}
+
+    def _write_as_file(self, target: Any, flat_data: dict[str, str], sync_mode: SyncMode, file_path: str, data: Any,
+                       source_text: str) -> dict[str, Any]:
+        """STRATEGY_FILE: the file at the rule's path, in its own format (the path's extension says it, unless the rule's
+        file_format does), as it is in Git when nothing changed it."""
+        out = file_output(source_text=source_text, file_path=file_path, data=data, flat_data=flat_data,
+                          file_format=self._explicit_format, given_name=target.name, xml_root=self._xml_root)
+        plan = self._plan_object(flat_data, sync_mode, lambda: self._stored_file(target, out.fmt))
+        outcome = {"unchanged": plan.unchanged, **({"note": plan.note, "sync_mode": plan.mode} if plan.note else {})}
+        if not plan.write:
+            return {"written": 0, "path": str(target), **outcome}
+        _write_file(self._fs, target.as_posix(), out.content.decode("utf-8"), self._write_opts)
+        logger.info("LinuxServerSink: wrote %s (%s%s)%s", target.as_posix(), out.fmt.name,
+                    ", as it is in Git" if out.copied else "", " over SSH" if self._ssh else "")
+        return {"written": len(flat_data), "path": str(target), **outcome}
+
+    def _stored_file(self, target: Any, fmt: Any) -> "dict[str, str] | None":
+        """What the file holds now, as the flat keys Git's file has; None when there is no file."""
+        from app.parsers import formats
+        try:
+            text = self._fs.read(target.as_posix())
+        except FileNotFoundError:
+            return None
+        return formats.stored_flat(text, fmt, source_family=self._source_family, xml_root=self._xml_root)
+
+    def _file_format_of(self, target: Any) -> Any:
+        """The format a FILE rule's file at *target* is in: the rule's, else the one its name says, else its source's."""
+        from app.parsers import formats
+        return (formats.target(self._explicit_format) or formats.format_named_by(target.name)
+                or formats.default_target(self._source_family or "kv", target.name))
 
     def _stored_flat(self, target: Any) -> "dict[str, str] | None":
         """The keys the file holds now, in the sink's key format; None when there is no file."""
@@ -215,6 +258,11 @@ class LinuxServerSink(BaseSink):
         try:
             target = self._resolve_path(env)
             content = self._fs.read(target.as_posix())
+            if self._file_mode:
+                from app.parsers import formats
+                stored = formats.stored_flat(content, self._file_format_of(target),
+                                             source_family=self._source_family, xml_root=self._xml_root)
+                return {k: stored[k] for k in keys if k in stored}
             values = _parse(content, self._file_format)
         except FileNotFoundError:
             return {}
@@ -230,6 +278,16 @@ class LinuxServerSink(BaseSink):
 
 
 # ── Renderers ─────────────────────────────────────────────────────────────────
+
+def _family_of_rule(rule: dict) -> "str | None":
+    """The parser family of the file a rule reads (from its file_name), or None when the rule does not name one."""
+    name = rule.get("file_name")
+    if not isinstance(name, str) or not name:
+        return None
+    from app.parsers import detector
+    family = detector.detect(name)
+    return None if family == "sniff" else family
+
 
 def _render(data: dict[str, str], fmt: str, labels: VarTrackLabels, env: str) -> str:
     """Serialise flat_data to the target file format."""

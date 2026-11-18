@@ -1,7 +1,7 @@
 // The browser suite, run the way CI runs it, in one command:
 //
 //   0. the demo tour (demo/README.md, "The tour"), on a demo of its own started from demo/ and taken down again;
-//   1. the stack on clean volumes (e2e/docker-compose.yml: the demo, with the UI image on :8080, and the regression on it) and its 25-suite regression;
+//   1. the stack on clean volumes (e2e/docker-compose.yml: the demo, with the UI image on :8080, and the regression on it) and its 26-suite regression;
 //   2. the browser tests against that UI;
 //   3. the coverage check on what they did (every spec the manifest relies on ran and passed).
 //
@@ -51,7 +51,7 @@ if (!flags.has('--no-up')) {
   const down = () => run('Clearing the stack', 'docker', ['compose', 'down', '-v', '--remove-orphans'], { cwd: e2e });
   down();
   if (run('Bringing the stack up', 'docker', ['compose', 'up', '--build', '--detach'], { cwd: e2e }) !== 0) process.exit(1);
-  if (run('The 25-suite regression', 'docker', ['compose', 'wait', 'e2e-regression'], { cwd: e2e }) !== 0) {
+  if (run('The 26-suite regression', 'docker', ['compose', 'wait', 'e2e-regression'], { cwd: e2e }) !== 0) {
     console.error('The regression failed: the browser suite is not run on a stack that is not sound.');
     process.exit(1);
   }

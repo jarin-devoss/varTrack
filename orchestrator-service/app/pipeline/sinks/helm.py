@@ -82,6 +82,7 @@ class HelmSink(BaseSink):
         labels: VarTrackLabels,
         total_sources: int,
         data: Any = None,
+        source_text: str = "",
     ) -> dict[str, Any]:
         # GIT_SMART_REPAIR: values the release (or values file) already holds are not applied again, so a
         # sync that changes nothing is not a new release revision.

@@ -1,0 +1,19 @@
+[
+  {
+    "platform": "gitea",
+    "datasource": "s3-file",
+    "repo_url": "http://gitea:3000/vartrack-demo/demo-configs.git",
+    "file_name": "app-settings.yaml",
+    "repositories": [
+      "vartrack-demo/demo-configs"
+    ],
+    "branch_as_env": false,
+    "branch": "main",
+    "sync_mode": "SYNC_MODE_GIT_UPSERT_ALL",
+    "self_heal": false,
+    "branch_map": {
+      "main": "default"
+    },
+    "destination_template": "e2e-formats/{env}"
+  }
+]

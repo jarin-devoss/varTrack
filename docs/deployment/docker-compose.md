@@ -196,13 +196,13 @@ syncs six of its seven rules (the seventh is refused on purpose, for the tour to
 
 `e2e/` is a stack of its own, and shares no file with `demo/`: its own `docker-compose.yml` (the Compose project `e2e`),
 `config.cue`, configs, schemas, Gitea image and seed (`e2e-seed`, which creates no webhook). Its `e2e-regression` container
-waits for the seed and runs the 25 suites of `e2e/init/test_runner.py`:
+waits for the seed and runs the 26 suites of `e2e/init/test_runner.py`:
 
 ```bash
 cd e2e
 docker compose up --build --detach
 docker compose wait e2e-regression # the exit code is the regression's: 0 only when every suite passed
-python3 check_results.py           # 25 suites, none failed, none skipped; prints the table
+python3 check_results.py           # 26 suites, none failed, none skipped; prints the table
 ```
 
 - **A suite that fails fails the run.** `e2e-regression` exits with the runner's status, CI checks the report as well (`e2e/check_results.py`), and the report (`e2e/results/benchmark.json`)

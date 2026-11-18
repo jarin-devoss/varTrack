@@ -41,7 +41,7 @@ The SSH key is read from a file, so give `private_key` as `{file: "/path"}`. `pa
 
 `destination_template` on the rule takes precedence over `base_directory` and `file_paths`. Missing directories are created.
 
-The file's extension sets its format: `.env` writes `key=value` lines; `.json`, `.yaml`, `.properties` and `.ini` are written in their own format. Keys are written as they come out of the config file, sorted; `.env`, `.properties` and `.ini` files start with a header line:
+With `update_strategy: STRATEGY_FILE` the file is written **as a file**, in its own format and as it is in Git when nothing changed it (see [what a file sink writes](../configuration/formats.md#what-a-file-sink-writes)); the path's extension says the format, and a rule's `file_format` converts it. Without it, the file's extension sets its format: `.env` writes `key=value` lines; `.json`, `.yaml`, `.properties` and `.ini` are written in their own format. Keys are written as they come out of the config file, sorted; `.env`, `.properties` and `.ini` files start with a header line:
 
 ```bash
 # /etc/app/production/app.env — from a YAML file with database.host, feature.dark_mode, max_connections

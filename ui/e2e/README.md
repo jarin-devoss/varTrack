@@ -10,7 +10,7 @@ and the gateway's permission engine, and no test of any one of them could fail.
 
 ## Run them
 
-The way CI runs them, in one command from `ui/` (the demo tour on a demo of its own, then clean volumes, the 25-suite regression, the browser tests, the coverage check):
+The way CI runs them, in one command from `ui/` (the demo tour on a demo of its own, then clean volumes, the 26-suite regression, the browser tests, the coverage check):
 
 ```sh
 npm ci
@@ -81,7 +81,7 @@ services:
 cd e2e
 F="-f docker-compose.yml -f /tmp/vt-stack/override.yml"
 docker compose $F up -d --no-build
-docker compose $F wait e2e-regression                           # the 25-suite regression
+docker compose $F wait e2e-regression                           # the 26-suite regression
 cd ../ui && VT_ALLOW_STALE_IMAGES=1 VT_UI_URL=http://localhost:8080 npm run test:e2e:stack -- --no-up
 ```
 

@@ -642,6 +642,7 @@ def run_stage_sync(
                     write_result = sink.write(
                         flat_data=etl_file.flat_data,
                         data=etl_file.data,
+                        source_text=etl_file.source_text,
                         sync_mode=sync_mode,
                         datasource=datasource,
                         env=etl_file.env,

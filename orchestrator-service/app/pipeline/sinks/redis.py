@@ -128,6 +128,7 @@ class RedisSink(BaseSink):
         labels: VarTrackLabels,
         total_sources: int,
         data: Any = None,
+        source_text: str = "",
     ) -> dict[str, Any]:
         prefix = self._key_prefix(datasource, env)
         # GIT_SMART_REPAIR writes the keys whose value differs, and nothing when none does; the JSON structure

@@ -41,7 +41,8 @@ message LinuxServerConfig {
   ];
   bool env_as_path = 8 [(google.api.field_behavior) = OPTIONAL];
   optional string base_directory = 9 [(google.api.field_behavior) = OPTIONAL];
-  Strategy update_strategy = 10 [(buf.validate.field).enum.defined_only = true, (vartrack.v1.config) = {unused_reason: "the linux_server sink does not read it yet, so set in config.cue it has no effect"}];
+  // STRATEGY_FILE writes each file as a file, in its own format (see rule.proto file_format); any other value writes the flat keys.
+  Strategy update_strategy = 10 [(buf.validate.field).enum.defined_only = true];
   string file_mode = 11 [
     (buf.validate.field).string.pattern = "^0[0-7]{3}$",
     (google.api.field_behavior) = OPTIONAL

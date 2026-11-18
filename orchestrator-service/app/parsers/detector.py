@@ -16,6 +16,7 @@ Detection order (first match wins)
                              what it is before its name does (settings.json is JSON,
                              not the YAML that "settings" stands for)
 4. "sniff"                   caller will try every parser in sequence
+                             (also .config: it is XML or INI, and only the content says)
 
 Returned format strings
 ───────────────────────
@@ -69,7 +70,7 @@ _EXT: dict[str, str] = {
     ".ini":        "ini",
     ".cfg":        "ini",
     ".conf":       "ini",
-    ".config":     "ini",
+    ".config":     "sniff",  # XML (machine.config, app.config) or INI: loader._sniff looks at the content
     ".properties": "kv",
     ".env":        "kv",
     ".tfvars":     "kv",

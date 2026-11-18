@@ -165,6 +165,7 @@ class ConfigmapSink(BaseSink):
         labels: VarTrackLabels,
         total_sources: int,
         data: Any = None,
+        source_text: str = "",
     ) -> dict[str, Any]:
         from kubernetes.client.exceptions import ApiException
 

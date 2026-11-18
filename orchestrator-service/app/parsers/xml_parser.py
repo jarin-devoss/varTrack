@@ -26,7 +26,9 @@ When an element has BOTH child elements AND a text value, the text is
 captured under the special "#text" key so it is not silently discarded.
 
 Attributes are stored under the special "@attrs" key so they survive
-the BFS flattener without colliding with child elements.
+the BFS flattener without colliding with child elements. That holds for a
+leaf element too: it keeps its attributes, and its text under "#text" when it
+has both.
 
 StopIteration safety
 ─────────────────────
@@ -107,8 +109,16 @@ def _element_to_dict(node: ET.Element, ns_map: dict[str, str]) -> dict[str, Any]
             result["#text"] = text
 
     else:
-        # Leaf node – store text value (may be empty string)
-        result = (node.text or "").strip()  # type: ignore[assignment]
+        # Leaf node – its text (may be empty string). A leaf with attributes keeps them next to its text, so
+        # <feature name="dark_mode">true</feature> is {"@attrs": {"name": "dark_mode"}, "#text": "true"} and
+        # <add key="DbHost" value="db1"/> is {"@attrs": {"key": "DbHost", "value": "db1"}}: where a file puts its
+        # values in attributes (web.config), they are not lost. A leaf without attributes stays its text.
+        text = (node.text or "").strip()
+        if result:
+            if text:
+                result["#text"] = text
+        else:
+            result = text  # type: ignore[assignment]
 
     return {tag: result}
 

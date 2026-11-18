@@ -316,7 +316,7 @@ jobs:
         working-directory: e2e
         run: docker compose logs e2e-regression
 
-      # 25 suites, none failed, none skipped (e2e/check_results.py); the table is on the job's summary page.
+      # 26 suites, none failed, none skipped (e2e/check_results.py); the table is on the job's summary page.
       - name: Check the regression's report
         if: always()
         run: python3 e2e/check_results.py e2e/results/benchmark.json

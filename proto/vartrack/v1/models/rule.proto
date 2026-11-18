@@ -392,7 +392,10 @@ message Rule {
     (vartrack.v1.config) = {settable_in: BUNDLE_JSON}
   ];
 
-  // Linux server: the format the file is written in. Left out, the file's extension.
+  // The format a file is written in: yaml, json, toml, hcl, xml, ini, env or properties.
+  // With STRATEGY_FILE (S3, a Linux server) the file is converted to it. Left out, the format is the one the sink's file
+  // name says by its extension (a path ending in .json is JSON), else the file's own: YAML stays YAML, XML stays XML.
+  // A Linux server without STRATEGY_FILE writes its flat keys in it, and takes the file's extension when it is left out.
   string file_format = 41 [
     (google.api.field_behavior) = OPTIONAL,
     (vartrack.v1.config) = {settable_in: BUNDLE_JSON}
@@ -424,6 +427,13 @@ message Rule {
 
   reserved 46;
   reserved "vercel_sensitive_keys";
+
+  // The root element XML needs when a file is written as XML and its tree has more than one top-level key (it has one
+  // root element, and a file from another format has none). "config" when left out. Reading the file back removes it.
+  string xml_root_tag = 47 [
+    (google.api.field_behavior) = OPTIONAL,
+    (vartrack.v1.config) = {settable_in: BUNDLE_JSON}
+  ];
 
   // ── Metadata (output only) ───────────────────────────────────────────────────
 
