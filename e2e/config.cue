@@ -198,6 +198,35 @@ bundle: {
 			}
 		},
 		{
+			// S3 with the FILE strategy (suite 26): the object is the file itself, in its own format.
+			s3: {
+				tag:               "file"
+				endpoint:          "http://minio:9002"
+				region:            "us-east-1"
+				bucket:            "vartrack"
+				access_key_id:     "minioadmin"
+				secret_access_key: "minioadmin"
+				force_path_style:  true
+				update_strategy:   "STRATEGY_FILE"
+			}
+		},
+		{
+			// SSH file sink with the FILE strategy (suite 26): the file at the rule's path, in its own format.
+			linux_server: {
+				tag:                   "file"
+				host:                  "linux-target"
+				port:                  22
+				username:              "vartrack"
+				password:              "VarTrack123"
+				base_directory:        "/tmp/vartrack"
+				file_paths:            ["app.env"]
+				create_directories:    true
+				update_strategy:       "STRATEGY_FILE"
+				host_key_verification: "accept-new"
+				known_hosts_file:      "/tmp/vt_known_hosts"
+			}
+		},
+		{
 			// Celery broker + gateway nonce store + watcher state store.
 			// DB 0 is used for tasks and ephemeral state.
 			redis: {
@@ -276,6 +305,16 @@ bundle: {
 		{
 			platform:   "gitea"
 			datasource: "s3"
+			repositories: ["vartrack-demo/demo-configs"]
+		},
+		{
+			platform:   "gitea"
+			datasource: "s3-file"
+			repositories: ["vartrack-demo/demo-configs"]
+		},
+		{
+			platform:   "gitea"
+			datasource: "linux_server-file"
 			repositories: ["vartrack-demo/demo-configs"]
 		},
 		{

@@ -1,0 +1,108 @@
+{
+  "app.env": {
+    "app.name": "demo-app",
+    "app.env": "production",
+    "database.host": "mongo.prod.internal",
+    "database.port": "27017",
+    "database.tls": "true",
+    "cache.ttl_seconds": "300",
+    "cache.backends.0": "redis",
+    "cache.backends.1": "memcached",
+    "features.dark_mode": "true",
+    "features.beta_ui": "false"
+  },
+  "app.hcl": {
+    "app.name": "demo-app",
+    "app.env": "production",
+    "database.host": "mongo.prod.internal",
+    "database.port": "27017",
+    "database.tls": "true",
+    "cache.ttl_seconds": "300",
+    "cache.backends.0": "redis",
+    "cache.backends.1": "memcached",
+    "features.dark_mode": "true",
+    "features.beta_ui": "false"
+  },
+  "app.ini": {
+    "app.name": "demo-app",
+    "app.env": "production",
+    "database.host": "mongo.prod.internal",
+    "database.port": "27017",
+    "database.tls": "true",
+    "cache.ttl_seconds": "300",
+    "cache.backends.0": "redis",
+    "cache.backends.1": "memcached",
+    "features.dark_mode": "true",
+    "features.beta_ui": "false"
+  },
+  "app.json": {
+    "app.name": "demo-app",
+    "app.env": "production",
+    "database.host": "mongo.prod.internal",
+    "database.port": "27017",
+    "database.tls": "true",
+    "cache.ttl_seconds": "300",
+    "cache.backends.0": "redis",
+    "cache.backends.1": "memcached",
+    "features.dark_mode": "true",
+    "features.beta_ui": "false"
+  },
+  "app.properties": {
+    "app.name": "demo-app",
+    "app.env": "production",
+    "database.host": "mongo.prod.internal",
+    "database.port": "27017",
+    "database.tls": "true",
+    "cache.ttl_seconds": "300",
+    "cache.backends.0": "redis",
+    "cache.backends.1": "memcached",
+    "features.dark_mode": "true",
+    "features.beta_ui": "false"
+  },
+  "app.toml": {
+    "app.name": "demo-app",
+    "app.env": "production",
+    "database.host": "mongo.prod.internal",
+    "database.port": "27017",
+    "database.tls": "true",
+    "cache.ttl_seconds": "300",
+    "cache.backends.0": "redis",
+    "cache.backends.1": "memcached",
+    "features.dark_mode": "true",
+    "features.beta_ui": "false"
+  },
+  "app.xml": {
+    "config.app.name": "demo-app",
+    "config.app.env": "production",
+    "config.database.host": "mongo.prod.internal",
+    "config.database.port": "27017",
+    "config.database.tls": "true",
+    "config.cache.ttl_seconds": "300",
+    "config.cache.backends.0": "redis",
+    "config.cache.backends.1": "memcached",
+    "config.features.dark_mode": "true",
+    "config.features.beta_ui": "false"
+  },
+  "app.yaml": {
+    "app.name": "demo-app",
+    "app.env": "production",
+    "database.host": "mongo.prod.internal",
+    "database.port": "27017",
+    "database.tls": "true",
+    "cache.ttl_seconds": "300",
+    "cache.backends.0": "redis",
+    "cache.backends.1": "memcached",
+    "features.dark_mode": "true",
+    "features.beta_ui": "false"
+  },
+  "web.config": {
+    "configuration.appSettings.add.0.@attrs.key": "DbHost",
+    "configuration.appSettings.add.0.@attrs.value": "mongo.prod.internal",
+    "configuration.appSettings.add.1.@attrs.key": "DbPort",
+    "configuration.appSettings.add.1.@attrs.value": "27017"
+  },
+  "main.tf": {
+    "variable.0.region.default": "us-east-1",
+    "locals.0.name": "demo-app"
+  }
+}

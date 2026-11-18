@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- varTrack format fixture: the same settings in every format -->
+<config>
+  <app>
+    <name>demo-app</name>
+    <env>production</env>
+  </app>
+  <database>
+    <host>mongo.prod.internal</host>
+    <port>27017</port>
+    <tls>true</tls>
+  </database>
+  <cache>
+    <ttl_seconds>300</ttl_seconds>
+    <backends>redis</backends>
+    <backends>memcached</backends>
+  </cache>
+  <features>
+    <dark_mode>true</dark_mode>
+    <beta_ui>false</beta_ui>
+  </features>
+</config>

@@ -2,17 +2,18 @@
 """
 VarTrack E2E Test Runner
 ========================
-Runs 25 test suites across 8 sink configurations (MongoDB document,
+Runs 26 test suites across 8 sink configurations (MongoDB document,
 MongoDB file, ZooKeeper slash, Redis hash, Redis string, Linux server,
 S3/MinIO) plus CUE schema validation, HashiCorp Vault secret injection,
 dual-datasource @secret suites, self-heal drift correction, forged and unsigned
 calls refused, dry-run verification, branch_map, structured prune, task status
-polling, schema_map, a file that holds the settings of every environment, and a rule that stops reading a file.
+polling, schema_map, a file that holds the settings of every environment, a rule that stops reading a file, and a
+file that keeps its format or takes another (every format, on S3 and over SSH).
 
 Every suite waits for the task it started (GET /v1/tasks/{id}), never for the clock, and asserts what the
 task itself reports: its state, the files it synced, and the commit of the tenant's schema repository it
 validated against. A suite that cannot pass is a bug to fix, not to retry: the run exits 1 when any suite
-fails, and CI reads benchmark.json (25 suites, 0 failed, 0 skipped).
+fails, and CI reads benchmark.json (26 suites, 0 failed, 0 skipped).
 
 Outputs a benchmark JSON report to /results/benchmark.json.
 
@@ -1184,7 +1185,7 @@ def verify_mongo_untouched(rule: dict, result: SuiteResult, what: str) -> None:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Suite definitions (25 total)
+# Suite definitions (26 total)
 # ─────────────────────────────────────────────────────────────────────────────
 
 def suite_01_mongo_doc_basic(orchestrator, gitea, gitea_url, rules):
@@ -2374,6 +2375,373 @@ def suite_25_file_let_go(orchestrator, gitea, gitea_url, redis_rules, document_r
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Suite 26 — a file keeps its format, or takes the one the rule names
+# ─────────────────────────────────────────────────────────────────────────────
+#
+# e2e/configs/formats holds the same settings in every format varTrack reads (YAML, JSON, TOML, HCL, XML, INI, .env,
+# .properties), a web.config whose values are XML attributes, and a Terraform file whose HCL is blocks. They go through a
+# rule with the FILE strategy on S3 and on the SSH target, which is one bundle per stage: file_path_map feeds a different
+# file into each environment, so one sync writes them all.
+#
+#   keep      each file lands in its own format, byte for byte what Git has (comments, order and quoting included)
+#   changed   a variables_map renames a key, so the sync changes the file: it is rendered, in the same format
+#   convert   file_format names another format: every source into every target, each read back with that format's parser
+#   drift     a value of the stored file is edited behind varTrack's back: the rule reads drifted, a sync puts it back
+
+FORMATS_DIR = Path("/e2e/configs/formats")
+FORMATS_IN_REPO = "e2e-formats"
+FORMAT_FILES = ("app.yaml", "app.json", "app.toml", "app.hcl", "app.xml", "app.ini", "app.env", "app.properties",
+                "web.config", "main.tf")
+BASE_FORMATS = {"yaml": "app.yaml", "json": "app.json", "toml": "app.toml", "hcl": "app.hcl", "xml": "app.xml",
+                "ini": "app.ini", "env": "app.env", "properties": "app.properties"}
+TARGET_SUFFIX = {"yaml": ".yaml", "json": ".json", "toml": ".toml", "hcl": ".hcl", "xml": ".xml", "ini": ".ini",
+                 "env": ".env", "properties": ".properties"}
+FORMATS_ROOT = {"s3": "e2e-formats", "ssh": "/tmp/e2e-formats"}
+FORMATS_BUCKET = "vartrack"
+
+# The secret case: each file in secret/ holds database.password = @secret(secret/e2e-formats#password), written the way
+# its format writes a string (HCL's value keeps its quotes). The schema marks the field @secret(); an XML file's keys
+# start with its root element, so it has a schema of its own.
+FORMATS_SECRET_VALUE = "e2e-formats-secret-4d1b"
+FORMATS_SECRET_SCHEMAS = {"formats/secret.cue": "secret.cue", "formats/secret-xml.cue": "secret-xml.cue"}
+FORMATS_SCHEMAS_DIR = Path("/e2e/schemas/cue/formats")
+
+
+def _formats_vault_put() -> None:
+    resp = requests.post(f"{VAULT_URL}/v1/secret/data/e2e-formats", headers={"X-Vault-Token": "root"},
+                         json={"data": {"password": FORMATS_SECRET_VALUE}}, timeout=10)
+    if not resp.ok:
+        raise RuntimeError(f"could not put the e2e-formats secret in Vault: {resp.status_code}")
+
+
+def _formats_vault_delete() -> None:
+    try:
+        requests.delete(f"{VAULT_URL}/v1/secret/metadata/e2e-formats", headers={"X-Vault-Token": "root"}, timeout=10)
+    except requests.RequestException:
+        pass
+
+
+def _flat_tree(node, prefix: str = "") -> dict[str, str]:
+    """A parsed tree as the flat keys a sink that stores text gets."""
+    out: dict[str, str] = {}
+    if isinstance(node, dict):
+        for k, v in node.items():
+            out.update(_flat_tree(v, f"{prefix}.{k}" if prefix else str(k)))
+    elif isinstance(node, list):
+        for i, v in enumerate(node):
+            out.update(_flat_tree(v, f"{prefix}.{i}" if prefix else str(i)))
+    else:
+        out[prefix] = "" if node is None else ("true" if node is True else "false" if node is False else str(node))
+    return out
+
+
+def _xml_tree(el):
+    kids = list(el)
+    if not kids:
+        return (el.text or "").strip()
+    groups: dict[str, list] = {}
+    for kid in kids:
+        groups.setdefault(kid.tag, []).append(_xml_tree(kid))
+    return {tag: (vals[0] if len(vals) == 1 else vals) for tag, vals in groups.items()}
+
+
+def _parsed_flat(fmt: str, text: str) -> dict[str, str] | None:
+    """The flat keys *text* holds, read as *fmt* by the standard library. None for a format this image has no parser for
+    (YAML, HCL): those are checked by each key's name and value instead (_missing_leaves)."""
+    if fmt == "json":
+        return _flat_tree(json.loads(text))
+    if fmt == "toml":
+        import tomllib
+        return _flat_tree(tomllib.loads(text))
+    if fmt == "ini":
+        import configparser
+        parser = configparser.ConfigParser(interpolation=None)
+        parser.optionxform = str  # type: ignore[assignment]
+        parser.read_string(text)
+        out = dict(parser.defaults())
+        for section in parser.sections():
+            for key in parser[section]:
+                if key not in parser.defaults():
+                    out[f"{section}.{key}"] = parser[section][key]
+        return out
+    if fmt == "xml":
+        import xml.etree.ElementTree as ET
+        root = ET.fromstring(text)
+        return _flat_tree({root.tag: _xml_tree(root)})
+    if fmt in ("env", "properties"):
+        out = {}
+        for line in text.splitlines():
+            line = line.strip()
+            if line and line[0] not in "#;!" and "=" in line:
+                k, _, v = line.partition("=")
+                v = v.strip()
+                out[k.strip()] = v[1:-1] if len(v) >= 2 and v[0] == v[-1] == '"' else v
+        return out
+    return None
+
+
+def _missing_leaves(text: str, expected: dict[str, str]) -> list[str]:
+    """The keys of *expected* whose last name and value are not on one line of *text*, in YAML or HCL form."""
+    missing = []
+    for key, value in expected.items():
+        leaf = key.rsplit(".", 1)[-1]
+        if leaf.isdigit():          # a list item: its value stands on a line of its own
+            pattern = rf"""^\s*(-\s*)?["']?{re.escape(value)}["']?,?\s*$"""
+        else:
+            pattern = rf"""^\s*["']?{re.escape(leaf)}["']?\s*[:=]\s*["']?{re.escape(value)}["']?,?\s*$"""
+        if not re.search(pattern, text, re.M):
+            missing.append(key)
+    return missing
+
+
+def _stored_problem(fmt: str, text: str, expected: dict[str, str], *, wrapped: bool = False) -> str:
+    """"" when *text* holds exactly the keys of *expected* read as *fmt*; else what differs. *wrapped*: the root element
+    XML needs for a file that has none is not one of the keys."""
+    try:
+        flat = _parsed_flat(fmt, text)
+    except Exception as exc:     # a file that does not parse as the format it is named for
+        return f"does not parse as {fmt}: {_exc_type(exc)} {str(exc)[:100]}"
+    if flat is None:
+        missing = _missing_leaves(text, expected)
+        return f"{len(missing)} of {len(expected)} keys not found as {fmt}: {missing[:3]}" if missing else ""
+    if wrapped:
+        flat = {k.removeprefix("config."): v for k, v in flat.items()}
+    return _differences(flat, expected)
+
+
+def _s3_formats_client():
+    return boto3.client(
+        "s3", endpoint_url=os.environ.get("MINIO_ENDPOINT", "http://minio:9002"),
+        aws_access_key_id=os.environ.get("MINIO_ACCESS_KEY", "minioadmin"),
+        aws_secret_access_key=os.environ.get("MINIO_SECRET_KEY", "minioadmin"),
+        region_name="us-east-1", config=BotoConfig(signature_version="s3v4"))
+
+
+def _s3_objects(prefix: str) -> dict[str, bytes]:
+    s3 = _s3_formats_client()
+    out: dict[str, bytes] = {}
+    for page in s3.get_paginator("list_objects_v2").paginate(Bucket=FORMATS_BUCKET, Prefix=prefix):
+        for obj in page.get("Contents", []):
+            out[obj["Key"]] = s3.get_object(Bucket=FORMATS_BUCKET, Key=obj["Key"])["Body"].read()
+    return out
+
+
+def _s3_clear(prefix: str) -> None:
+    s3 = _s3_formats_client()
+    for key in _s3_objects(prefix):
+        s3.delete_object(Bucket=FORMATS_BUCKET, Key=key)
+
+
+def _ssh_run(command: str) -> str:
+    ssh = _ssh_client({})
+    try:
+        _, stdout, _ = ssh.exec_command(command)
+        return stdout.read().decode()
+    finally:
+        ssh.close()
+
+
+def _ssh_file(path: str) -> bytes | None:
+    ssh = _ssh_client({})
+    try:
+        sftp = ssh.open_sftp()
+        try:
+            with sftp.open(path, "rb") as fh:
+                return fh.read()
+        except OSError:
+            return None
+        finally:
+            sftp.close()
+    finally:
+        ssh.close()
+
+
+def _drift_of(session, orchestrator, datasource: str, env: str) -> str:
+    resp = session.get(f"{orchestrator}/v1/ui/rules/gitea/{datasource}", params={"fresh": "true"}, timeout=40)
+    resp.raise_for_status()
+    return next((t.get("drift", "") for t in resp.json().get("targets", []) if t.get("env") == env), "(no such environment)")
+
+
+def suite_26_file_formats(orchestrator, gitea, gitea_url, s3_rules, linux_rules):
+    """A FILE sink writes a file in its own format, byte for byte when nothing changed it, rendered in that format when a
+    sync changed it, and in another format when the rule names one. Every format varTrack reads, on S3 and on the SSH
+    target: kept, changed, converted into every other format, and edited behind varTrack's back."""
+    result = SuiteResult(26, "A file keeps its format, or takes the one the rule names (every format, S3 and SSH)",
+                         "13_s3_file.json", s3_rules[0]["datasource"])
+    banner("Suite 26: a file keeps its format, or takes the one the rule names")
+    if not (HAS_BOTO and HAS_SSH):
+        result.add_check("boto3 and paramiko are available", False, f"boto3={HAS_BOTO} paramiko={HAS_SSH}")
+        result.finish("fail")
+        return result
+
+    expected = json.loads((FORMATS_DIR / "expected.json").read_text(encoding="utf-8"))
+    fixtures = {name: (FORMATS_DIR / name).read_bytes() for name in FORMAT_FILES}
+    rules = {"s3": s3_rules, "ssh": linux_rules}
+    pushed: list[str] = []
+
+    def renamed(name: str) -> dict[str, str]:
+        """What the file's keys are after the variables_map below renames database.host (XML keeps its root element)."""
+        out = {}
+        for key, value in expected[name].items():
+            out[key.replace("database.host", "database.hostname") if key.endswith("database.host") else key] = value
+        return out
+
+    def stage(sink: str, tag: str, files: dict[str, str], **options):
+        """One bundle for one sink: a rule that feeds a different file into each environment; synced once."""
+        own = _variant(rules[sink], destination_template=f"{FORMATS_ROOT[sink]}/{tag}/{{env}}", branch_as_env=False,
+                       file_path_map=files, **options)
+        own[0].pop("file_name", None)
+        own[0].pop("branch_map", None)
+        if sink == "s3":
+            _s3_clear(f"{FORMATS_ROOT[sink]}/{tag}/")
+        else:
+            _ssh_run(f"rm -rf {FORMATS_ROOT[sink]}/{tag}")
+        result.schema_commit = gitea.push_bundle(own)
+        warmed = warm_schema(orchestrator, DEMO_TENANT)
+        result.add_check(f"{sink}/{tag}: the rule is loaded at the pushed bundle",
+                         warmed["schema_commit"] == result.schema_commit and warmed["rules_loaded"] > 0,
+                         f"holds={warmed['schema_commit'][:12] or '(none)'} pushed={result.schema_commit[:12]}")
+        outcome = sync_and_wait(result, orchestrator, own[0]["datasource"], DEMO_TENANT, gitea.get_head_sha(CONFIG_REPO),
+                                gitea_url, label=f"{sink}/{tag}: ")
+        return own, outcome
+
+    def stored(sink: str, tag: str, env: str) -> dict[str, bytes]:
+        """What the sink holds for *env*, by name: the objects under its prefix, or the one file."""
+        if sink == "s3":
+            prefix = f"{FORMATS_ROOT[sink]}/{tag}/{env}/"
+            return {key.removeprefix(prefix): body for key, body in _s3_objects(prefix).items()}
+        body = _ssh_file(f"{FORMATS_ROOT[sink]}/{tag}/{env}")
+        return {"": body} if body is not None else {}
+
+    def single(sink: str, held: dict[str, bytes], name: str) -> bytes | None:
+        """The file the sink holds, named *name* on S3 (the one file on a server, whose path is the rule's)."""
+        return held.get(name if sink == "s3" else "")
+
+    try:
+        # The fixtures, pushed once: every stage reads them from the config repository.
+        for name in FORMAT_FILES:
+            path = f"{FORMATS_IN_REPO}/{name}"
+            gitea.push_file_on(CONFIG_REPO, path, fixtures[name], f"e2e: format fixture {name}", "main")
+            pushed.append(path)
+        # The secret case: the files with a reference, the schemas that mark the field, and the secret in Vault.
+        for name in BASE_FORMATS.values():
+            path = f"{FORMATS_IN_REPO}/secret/{name}"
+            gitea.push_file_on(CONFIG_REPO, path, (FORMATS_DIR / "secret" / name).read_bytes(),
+                               f"e2e: format fixture secret/{name}", "main")
+            pushed.append(path)
+        for schema, source in FORMATS_SECRET_SCHEMAS.items():
+            gitea.push_schema_file(schema, (FORMATS_SCHEMAS_DIR / source).read_bytes(), f"e2e: schema {schema}")
+        _formats_vault_put()
+
+        for sink in ("s3", "ssh"):
+            # ── keep: each file in its own format, byte for byte what Git has ──────────────────────────────────────
+            files = {name: f"{FORMATS_IN_REPO}/{name}" for name in FORMAT_FILES}
+            own, _ = stage(sink, "keep", files)
+            for name in FORMAT_FILES:
+                held = stored(sink, "keep", name)
+                body = single(sink, held, name)
+                result.add_check(f"{sink}/keep: {name} is stored under its own name" if sink == "s3"
+                                 else f"{sink}/keep: {name} is stored at the rule's path",
+                                 body is not None and (sink != "s3" or set(held) == {name}), str(sorted(held)))
+                result.add_check(f"{sink}/keep: {name} is the file as it is in Git, byte for byte (comments, order and quoting kept)",
+                                 body == fixtures[name], "" if body == fixtures[name] else f"{len(body or b'')} bytes, Git has {len(fixtures[name])}")
+
+            # ── changed: a rename makes the sync change the file, and it is rendered in the same format ───────────
+            hostname = {"database.hostname": "database.host", "config.database.hostname": "config.database.host"}
+            changed_files = {name: f"{FORMATS_IN_REPO}/{name}" for name in BASE_FORMATS.values()}
+            stage(sink, "changed", changed_files, variables_map=hostname)
+            for fmt, name in BASE_FORMATS.items():
+                held = stored(sink, "changed", name)
+                body = single(sink, held, name)
+                text = (body or b"").decode("utf-8", "replace")
+                problem = "no file" if body is None else _stored_problem(fmt, text, renamed(name))
+                result.add_check(f"{sink}/changed: {name} is rendered in its own format, with its key renamed",
+                                 body is not None and problem == "" and body != fixtures[name], problem or "ok")
+
+            # ── secret: a reference inside a value is replaced, and the file is rendered in its own format ───────
+            # A reference is the whole value in most formats; in HCL it is inside the string's quotes, which stay.
+            secret_files = {name: f"{FORMATS_IN_REPO}/secret/{name}" for name in BASE_FORMATS.values()}
+            stage(sink, "secret", secret_files, schema_map=[
+                {"match": f"{FORMATS_IN_REPO}/secret/app.xml", "schema": "formats/secret-xml.cue"},
+                {"match": f"{FORMATS_IN_REPO}/secret/**", "schema": "formats/secret.cue"}])
+            for fmt, name in BASE_FORMATS.items():
+                held = stored(sink, "secret", name)
+                body = single(sink, held, name)
+                text = (body or b"").decode("utf-8", "replace")
+                prefix = "config." if fmt == "xml" else ""
+                want = {f"{prefix}app.name": "demo-app", f"{prefix}database.host": "mongo.prod.internal",
+                        f"{prefix}database.password": FORMATS_SECRET_VALUE}
+                problem = "no file" if body is None else _stored_problem(fmt, text, want)
+                result.add_check(f"{sink}/secret: {name} holds the secret, in its own format, and nothing else changed",
+                                 body is not None and problem == "", problem or "ok")
+                result.add_check(f"{sink}/secret: {name} has no reference left in it",
+                                 body is not None and "@secret(" not in text,
+                                 "ok" if "@secret(" not in text else "a reference is still in the file")
+                if fmt == "hcl":
+                    result.add_check(f"{sink}/secret: the secret is inside the quotes of the HCL string it replaced",
+                                     re.search(rf'password\s*=\s*"{re.escape(FORMATS_SECRET_VALUE)}"', text) is not None,
+                                     text[:200])
+
+            # ── convert: file_format names another format: every source into every target ─────────────────────────
+            for target, suffix in TARGET_SUFFIX.items():
+                convert_files = {f"from-{fmt}": f"{FORMATS_IN_REPO}/{name}" for fmt, name in BASE_FORMATS.items()}
+                stage(sink, f"to-{target}", convert_files, file_format=target)
+                for fmt, name in BASE_FORMATS.items():
+                    held = stored(sink, f"to-{target}", f"from-{fmt}")
+                    want = name if fmt == target else name.rsplit(".", 1)[0] + suffix      # an S3 object's name
+                    body = single(sink, held, want)
+                    if fmt == target:
+                        ok, detail = body == fixtures[name], "not the file as it is in Git"
+                    else:
+                        text = (body or b"").decode("utf-8", "replace")
+                        problem = "no file" if body is None else _stored_problem(
+                            target, text, expected[name], wrapped=(target == "xml" and fmt != "xml"))
+                        ok, detail = body is not None and problem == "", problem
+                    result.add_check(f"{sink}/convert: {name} into {target}" + (f" as {want}" if sink == "s3" else ""),
+                                     ok, "ok" if ok else detail)
+
+        # ── drift: a value edited behind varTrack's back is read as drift, and a sync puts the file back ───────────
+        session = ui_session(orchestrator, gitea_url)
+        sha = gitea.get_head_sha(CONFIG_REPO)
+        for sink, name, command in (("s3", "app.yaml", None), ("ssh", "app.toml", "sed -i 's/27017/9999/' {path}")):
+            files = {name: f"{FORMATS_IN_REPO}/{name}"}
+            own, _ = stage(sink, "drift", files)
+            datasource = own[0]["datasource"]
+            if sink == "s3":
+                key = f"{FORMATS_ROOT[sink]}/drift/{name}/{name}"
+                _s3_formats_client().put_object(Bucket=FORMATS_BUCKET, Key=key, Body=fixtures[name].replace(b"27017", b"9999"))
+            else:
+                _ssh_run(command.format(path=f"{FORMATS_ROOT[sink]}/drift/{name}"))
+            drift = _drift_of(session, orchestrator, datasource, name)
+            result.add_check(f"{sink}/drift: the edited {name} reads as drifted", drift == "drifted", drift)
+            sync_and_wait(result, orchestrator, datasource, DEMO_TENANT, sha, gitea_url, label=f"{sink}/drift: ")
+            body = single(sink, stored(sink, "drift", name), name)
+            result.add_check(f"{sink}/drift: a sync puts {name} back as it is in Git", body == fixtures[name],
+                             "" if body == fixtures[name] else "still different")
+            drift = _drift_of(session, orchestrator, datasource, name)
+            result.add_check(f"{sink}/drift: and it reads in sync again", drift == "in_sync", drift)
+
+        result.finish("pass" if all(c["passed"] for c in result.checks) else "fail")
+    except Exception as exc:
+        result.error = traceback.format_exc()
+        err(f"Suite 26 raised exception: {exc}")
+        result.finish("fail")
+    finally:
+        for path in pushed:
+            try:
+                gitea.delete_file_on(CONFIG_REPO, path, "e2e: remove the format fixture", "main")
+            except Exception:
+                pass
+        try:
+            _s3_clear(f"{FORMATS_ROOT['s3']}/")
+            _ssh_run(f"rm -rf {FORMATS_ROOT['ssh']}")
+        except Exception:
+            pass
+        _formats_vault_delete()
+    return result
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Main
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -2407,7 +2775,7 @@ def main() -> None:
 
     gitea = GiteaClient(args.gitea, args.gitea_user, args.gitea_pass)
 
-    banner("VarTrack E2E Test Runner — 25 Suites / 8 Sinks + CUE + Vault")
+    banner("VarTrack E2E Test Runner — 26 Suites / 8 Sinks + CUE + Vault")
     run_started = datetime.now(timezone.utc).isoformat()
     global_t0 = time.monotonic()
 
@@ -2423,6 +2791,8 @@ def main() -> None:
     redis_str   = s.get("06_redis_string.json",     [{}])
     linux       = s.get("07_linux_server.json",     [{}])
     s3_minio    = s.get("08_s3_minio.json",         [{}])
+    s3_file     = s.get("13_s3_file.json",          [{}])
+    linux_file  = s.get("14_linux_file.json",       [{}])
     vault_mongo = s.get("09_vault_mongo.json",      [{}])
     cue_strict  = s.get("10_cue_strict_mongo.json", [{}])
     dual_mongo  = s.get("11_dual_mongo_secret.json", [{}, {}])
@@ -2497,6 +2867,9 @@ def main() -> None:
 
     # ── A rule that stops reading a file (25) ─────────────────────────────────
     results.append(suite_25_file_let_go(args.orchestrator, gitea, args.gitea, redis_hash, mongo_docs))
+
+    # ── A file keeps its format, or takes the one the rule names (26) ─────────────────────────────────────────
+    results.append(suite_26_file_formats(args.orchestrator, gitea, args.gitea, s3_file, linux_file))
 
     # ── Summary ───────────────────────────────────────────────────────────────
     total_ms   = (time.monotonic() - global_t0) * 1000

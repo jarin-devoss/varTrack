@@ -1,0 +1,16 @@
+# varTrack format fixture: the same settings in every format
+app:
+  name: demo-app
+  env: production
+database:
+  host: mongo.prod.internal
+  port: 27017
+  tls: true
+cache:
+  ttl_seconds: 300
+  backends:
+    - redis
+    - memcached
+features:
+  dark_mode: true
+  beta_ui: false
