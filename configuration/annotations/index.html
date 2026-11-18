@@ -2066,6 +2066,7 @@
 </span><span id="__span-0-11"><a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a>  jwt_secret: &quot;@secret(secret/myapp/auth#jwt_secret)&quot;
 </span></code></pre></div></p>
 <p>The format is <code>@secret(mount/path#field)</code> — mount path + <code>#</code> + field name inside the Vault secret.</p>
+<p>The reference may sit <strong>inside</strong> the value. An HCL string keeps its quotes, so <code>password = "@secret(secret/myapp/db#password)"</code> is the value <code>"@secret(...)"</code> with them: only the reference is replaced, and the quotes stay (<code>password = "the-secret"</code>), so the file still parses as HCL. The same goes for a reference inside other text (<code>postgres://app:@secret(secret/myapp/db#password)@db/app</code>). A value that holds <strong>two</strong> references is refused, naming the field: a field holds one secret.</p>
 <h3 id="what-happens-at-etl-time">What happens at ETL time<a class="headerlink" href="#what-happens-at-etl-time" title="Permanent link">&para;</a></h3>
 <div class="language-text highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>1. Parse schema → find @secret-annotated fields
 </span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>2. For each field present in flat_data:
