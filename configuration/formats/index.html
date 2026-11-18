@@ -1114,6 +1114,30 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#what-a-file-sink-writes" class="md-nav__link">
+    <span class="md-ellipsis">
+      What a file sink writes
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="What a file sink writes">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#converting-a-file-file_format" class="md-nav__link">
+    <span class="md-ellipsis">
+      Converting a file: file_format
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#examples" class="md-nav__link">
     <span class="md-ellipsis">
       Examples
@@ -1926,6 +1950,30 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#what-a-file-sink-writes" class="md-nav__link">
+    <span class="md-ellipsis">
+      What a file sink writes
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="What a file sink writes">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#converting-a-file-file_format" class="md-nav__link">
+    <span class="md-ellipsis">
+      Converting a file: file_format
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#examples" class="md-nav__link">
     <span class="md-ellipsis">
       Examples
@@ -2040,15 +2088,75 @@
 <tr>
 <td><code>.xml</code></td>
 <td>XML</td>
-<td>Elements become dot-separated keys. Every value is text.</td>
+<td>Elements become dot-separated keys. An attribute is under <code>@attrs</code> (<code>add.@attrs.key</code>) and the text of an element that has attributes or children under <code>#text</code>, so a <code>web.config</code> keeps its <code>key</code> and <code>value</code>. Every value is text.</td>
 </tr>
 </tbody>
 </table>
+<p>A file's <strong>extension</strong> says its format before its name does: <code>settings.json</code> is JSON, <code>database.toml</code> is TOML and <code>variables.tf</code> is HCL, though <code>settings</code>, <code>database</code> and <code>variables</code> on their own stand for YAML. Only a name with no known extension keeps the format its name stands for (<code>.env.staging</code>, <code>application</code>). A <code>.tfvars</code> file is read as <code>key = "value"</code> lines (so a string's quotes are not in its value) and is not a format a file sink writes.</p>
 <p>Use <code>--format</code> on the <code>vt sync</code> command to override auto-detection.</p>
 <div class="admonition note">
 <p class="admonition-title">What a schema sees</p>
 <p>The <em>Flattened result</em> below is what a sink that stores text gets (every value a string). A <a href="../schema-registry/#cue-schemas">CUE schema</a> is shown each value <strong>as the file wrote it</strong>, next to the other form it can be read as: <code>database.port</code> is the int <code>27017</code> in a YAML, JSON, TOML or HCL file, and the text <code>"27017"</code> in a <code>.env</code>, INI or XML file or when quoted. <code>int</code>, <code>bool</code> and ranges work for both; see <a href="../schema-registry/#numbers-and-booleans">Numbers and booleans</a>.</p>
 </div>
+<hr />
+<h2 id="what-a-file-sink-writes">What a file sink writes<a class="headerlink" href="#what-a-file-sink-writes" title="Permanent link">&para;</a></h2>
+<p>A sink with <code>update_strategy: STRATEGY_FILE</code> (S3 and a Linux server) stores each file <strong>as a file</strong>, not as keys.</p>
+<ul>
+<li><strong>In its own format.</strong> A YAML file is a YAML file in the store, an XML file is XML, and so on for JSON, TOML, HCL, INI, <code>.env</code> and <code>.properties</code>.</li>
+<li><strong>As it is in Git when nothing changed it</strong>: byte for byte, with its comments, order, quoting and line endings. A sync changes a file when it takes an <a href="../../concepts/environment-resolution/">environment out of it</a>, extracts a <code>root_key</code>, resolves a secret or renames a key (<code>variables_map</code>).</li>
+<li><strong>Rendered in the same format when it did.</strong> The result keeps the source's key order and indentation, but not comments, which a rendered file cannot carry. varTrack reads what it wrote back with that format's own parser: when it would not read as what was meant (a key lost, a value changed), the sync fails and names the key. A file is never written as something that reads differently from Git.</li>
+<li><strong>Under its own name.</strong> S3 stores it at <code>&lt;prefix&gt;/&lt;the file's name&gt;</code>; a Linux server writes it at the rule's path. A name the sink is given says the format by its extension (<code>file_pattern: "{env}.json"</code> on S3, a <code>destination_template</code> ending in <code>.yaml</code> on a server), so a path that ends in <code>.json</code> gets JSON whatever the source was.</li>
+</ul>
+<h3 id="converting-a-file-file_format">Converting a file: <code>file_format</code><a class="headerlink" href="#converting-a-file-file_format" title="Permanent link">&para;</a></h3>
+<p>A rule's <code>file_format</code> (<code>yaml</code>, <code>json</code>, <code>toml</code>, <code>hcl</code>, <code>xml</code>, <code>ini</code>, <code>env</code> or <code>properties</code>) names the format a FILE sink writes, whatever the source was. The file takes the new format's extension (<code>app-settings.yaml</code> with <code>file_format: json</code> is <code>app-settings.json</code>), unless the sink was given a name. <strong>A file name whose extension says another format than <code>file_format</code> is refused when the rule loads</strong>, naming both.</p>
+<table>
+<thead>
+<tr>
+<th>Into</th>
+<th>What it holds</th>
+<th>What it refuses (the sync fails, naming the key)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>YAML, JSON</td>
+<td>any file</td>
+<td>nothing</td>
+</tr>
+<tr>
+<td>TOML</td>
+<td>tables, arrays, numbers, booleans</td>
+<td>a <code>null</code> (TOML has none)</td>
+</tr>
+<tr>
+<td>HCL</td>
+<td>attributes and objects; strings are written quoted</td>
+<td>a key HCL cannot write so that it reads back the same</td>
+</tr>
+<tr>
+<td>XML</td>
+<td>elements and repeated elements; <code>@attrs</code> are attributes and <code>#text</code> the text of an element that has attributes</td>
+<td>a key that is not an XML name (<code>1st</code>, <code>a b</code>), or a namespaced one</td>
+</tr>
+<tr>
+<td>INI</td>
+<td>sections from the first part of a dotted key</td>
+<td>a key outside any section next to sections: INI would read it into every section</td>
+</tr>
+<tr>
+<td><code>.env</code>, <code>.properties</code></td>
+<td>one <code>key=value</code> per dotted key</td>
+<td>a value on more than one line</td>
+</tr>
+</tbody>
+</table>
+<ul>
+<li><strong>XML needs one root element.</strong> A file with several top-level keys is wrapped in <code>&lt;config&gt;</code> (<code>xml_root_tag</code> names another), and reading it back removes it again, so the keys do not change.</li>
+<li><strong>A flat file becomes a tree</strong> for a format that holds one: <code>database.host=x</code> is <code>database: {host: x}</code>, and the keys <code>items.0</code>, <code>items.1</code> are a list.</li>
+<li><strong>A source with no types gives strings.</strong> XML, INI, <code>.env</code> and <code>.properties</code> have only text, so <code>port=5432</code> becomes <code>port: "5432"</code> in YAML.</li>
+<li><strong>Drift</strong> compares the stored file with Git's keys. For a file converted into HCL or into XML with the added root, a rule that names its file (<code>file_name</code>) removes the quotes and the root before it compares; a rule with a <code>file_path_map</code> has no single source format, and reads them as written.</li>
+<li><strong>HCL comments are not settings.</strong> They are no longer synced as <code>__comments__</code> keys.</li>
+</ul>
 <hr />
 <h2 id="examples">Examples<a class="headerlink" href="#examples" title="Permanent link">&para;</a></h2>
 <div class="tabbed-set tabbed-alternate" data-tabs="1:6"><input checked="checked" id="__tabbed_1_1" name="__tabbed_1" type="radio" /><input id="__tabbed_1_2" name="__tabbed_1" type="radio" /><input id="__tabbed_1_3" name="__tabbed_1" type="radio" /><input id="__tabbed_1_4" name="__tabbed_1" type="radio" /><input id="__tabbed_1_5" name="__tabbed_1" type="radio" /><input id="__tabbed_1_6" name="__tabbed_1" type="radio" /><div class="tabbed-labels"><label for="__tabbed_1_1">YAML</label><label for="__tabbed_1_2">JSON</label><label for="__tabbed_1_3">.env</label><label for="__tabbed_1_4">TOML</label><label for="__tabbed_1_5">INI</label><label for="__tabbed_1_6">HCL</label></div>

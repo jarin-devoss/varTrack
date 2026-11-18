@@ -1380,6 +1380,15 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#xml_root_tag" class="md-nav__link">
+    <span class="md-ellipsis">
+      xml_root_tag
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -2450,6 +2459,15 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#xml_root_tag" class="md-nav__link">
+    <span class="md-ellipsis">
+      xml_root_tag
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -2769,6 +2787,14 @@
 <tr>
 <td><a href="#s3_tag_keys"><code>s3_tag_keys</code></a></td>
 <td>list</td>
+<td>yes</td>
+<td>yes</td>
+<td>—</td>
+<td>the upper layer replaces it</td>
+</tr>
+<tr>
+<td><a href="#xml_root_tag"><code>xml_root_tag</code></a></td>
+<td>string</td>
 <td>yes</td>
 <td>yes</td>
 <td>—</td>
@@ -3498,7 +3524,7 @@
 </tbody>
 </table>
 <h2 id="file_format"><code>file_format</code><a class="headerlink" href="#file_format" title="Permanent link">&para;</a></h2>
-<p>Linux server: the format the file is written in. Left out, the file's extension.</p>
+<p>The format a file is written in: yaml, json, toml, hcl, xml, ini, env or properties. With STRATEGY_FILE (S3, a Linux server) the file is converted to it. Left out, the format is the one the sink's file name says by its extension (a path ending in .json is JSON), else the file's own: YAML stays YAML, XML stays XML. A Linux server without STRATEGY_FILE writes its flat keys in it, and takes the file's extension when it is left out.</p>
 <table>
 <thead>
 <tr>
@@ -3606,6 +3632,30 @@
 <tr>
 <td>Type</td>
 <td>list</td>
+</tr>
+<tr>
+<td>Set in</td>
+<td><code>config.cue</code>, <code>bundle.json</code></td>
+</tr>
+<tr>
+<td>Across layers</td>
+<td>the upper layer replaces it</td>
+</tr>
+</tbody>
+</table>
+<h2 id="xml_root_tag"><code>xml_root_tag</code><a class="headerlink" href="#xml_root_tag" title="Permanent link">&para;</a></h2>
+<p>The root element XML needs when a file is written as XML and its tree has more than one top-level key (it has one root element, and a file from another format has none). "config" when left out. Reading the file back removes it.</p>
+<table>
+<thead>
+<tr>
+<th></th>
+<th></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Type</td>
+<td>string</td>
 </tr>
 <tr>
 <td>Set in</td>

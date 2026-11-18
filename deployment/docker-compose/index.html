@@ -2321,11 +2321,11 @@ syncs six of its seven rules (the seventh is refused on purpose, for the tour to
 <a href="https://github.com/jarin-devoss/varTrack/blob/main/demo/README.md"><code>demo/README.md</code></a>.</p>
 <p><code>e2e/</code> is a stack of its own, and shares no file with <code>demo/</code>: its own <code>docker-compose.yml</code> (the Compose project <code>e2e</code>),
 <code>config.cue</code>, configs, schemas, Gitea image and seed (<code>e2e-seed</code>, which creates no webhook). Its <code>e2e-regression</code> container
-waits for the seed and runs the 25 suites of <code>e2e/init/test_runner.py</code>:</p>
+waits for the seed and runs the 26 suites of <code>e2e/init/test_runner.py</code>:</p>
 <div class="language-bash highlight"><pre><span></span><code><span id="__span-9-1"><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="nb">cd</span><span class="w"> </span>e2e
 </span><span id="__span-9-2"><a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>docker<span class="w"> </span>compose<span class="w"> </span>up<span class="w"> </span>--build<span class="w"> </span>--detach
 </span><span id="__span-9-3"><a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a>docker<span class="w"> </span>compose<span class="w"> </span><span class="nb">wait</span><span class="w"> </span>e2e-regression<span class="w"> </span><span class="c1"># the exit code is the regression&#39;s: 0 only when every suite passed</span>
-</span><span id="__span-9-4"><a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a>python3<span class="w"> </span>check_results.py<span class="w">           </span><span class="c1"># 25 suites, none failed, none skipped; prints the table</span>
+</span><span id="__span-9-4"><a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a>python3<span class="w"> </span>check_results.py<span class="w">           </span><span class="c1"># 26 suites, none failed, none skipped; prints the table</span>
 </span></code></pre></div>
 <ul>
 <li><strong>A suite that fails fails the run.</strong> <code>e2e-regression</code> exits with the runner's status, CI checks the report as well (<code>e2e/check_results.py</code>), and the report (<code>e2e/results/benchmark.json</code>)

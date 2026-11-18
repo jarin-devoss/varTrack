@@ -2089,7 +2089,7 @@
 </tr>
 <tr>
 <td><code>STRATEGY_FILE</code></td>
-<td><code>config.json</code>, in the shape the file parsed to: nested for YAML, JSON, TOML…, flat for <code>.env</code> and <code>.properties</code></td>
+<td>The file itself, in its own format and under its own name: <code>acme/production/app-settings.yaml</code> is YAML, an XML file is XML. <a href="../../configuration/formats/#what-a-file-sink-writes">As it is in Git when nothing changed it</a>, else rendered in that format. <code>file_format</code> converts it</td>
 </tr>
 <tr>
 <td>unset</td>
@@ -2149,11 +2149,11 @@
 </tr>
 <tr>
 <td><code>content_type</code></td>
-<td>The objects' <code>Content-Type</code>; otherwise JSON for <code>config.json</code> and a guess per key</td>
+<td>The objects' <code>Content-Type</code>; otherwise the file's own (<code>application/yaml</code>, <code>application/json</code>, <code>application/xml</code>, …) under <code>STRATEGY_FILE</code>, JSON for <code>config.json</code> and a guess per key</td>
 </tr>
 <tr>
 <td><code>file_pattern</code></td>
-<td>The name of the single object (<code>config.json</code> by default); <code>{env}</code> is the environment</td>
+<td>The name of the single object (<code>config.json</code> by default); <code>{env}</code> is the environment. Under <code>STRATEGY_FILE</code> it is not needed (the file's own name is used), and when set its extension says the format</td>
 </tr>
 </tbody>
 </table>
