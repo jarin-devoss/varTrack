@@ -177,6 +177,57 @@ class TestResolveSecrets(unittest.TestCase):
         self.assertEqual(resolve_secrets(flat, {}, _SECRETS_CONFIG), flat)
 
 
+class TestAReferenceInsideAValue(unittest.TestCase):
+    """An HCL string keeps its quotes, so its value is "@secret(path#key)" with them."""
+
+    def _resolve(self, value, fetched="s3cr3t", fields=None):
+        client = MagicMock()
+        client.get_secret.return_value = fetched
+        with patch("app.pipeline.secret_resolver.VaultClient", MagicMock(return_value=client)):
+            out = resolve_secrets({"db.password": value}, fields or {"db.password": None}, _SECRETS_CONFIG)
+        return out["db.password"], client
+
+    def test_a_reference_that_is_the_whole_value_is_replaced_by_the_secret(self):
+        value, client = self._resolve("@secret(secret/app/db#password)")
+        self.assertEqual(value, "s3cr3t")
+        client.get_secret.assert_called_once_with("app/db", key="password")
+
+    def test_a_reference_inside_quotes_keeps_the_quotes(self):
+        value, client = self._resolve('"@secret(secret/app/db#password)"')
+        self.assertEqual(value, '"s3cr3t"')
+        client.get_secret.assert_called_once_with("app/db", key="password")     # not the field's name at path_prefix
+
+    def test_a_reference_inside_other_text_keeps_the_text(self):
+        value, _ = self._resolve("postgres://app:@secret(secret/app/db#password)@db:5432/app")
+        self.assertEqual(value, "postgres://app:s3cr3t@db:5432/app")
+
+    def test_two_references_in_one_value_are_refused_naming_the_field(self):
+        with self.assertRaises(ValueError) as caught:
+            self._resolve("@secret(secret/a#x):@secret(secret/b#y)")
+        self.assertIn("db.password", str(caught.exception))
+
+    def test_a_value_that_holds_no_reference_is_read_from_the_field_name(self):
+        _, client = self._resolve('"placeholder"')
+        client.get_secret.assert_called_once_with(_SECRETS_CONFIG["default"]["path_prefix"], key="db.password")
+
+    def test_a_key_the_schema_does_not_mark_is_not_resolved(self):
+        client = MagicMock()
+        flat = {"db.host": '"@secret(secret/app/db#password)"'}
+        with patch("app.pipeline.secret_resolver.VaultClient", MagicMock(return_value=client)):
+            out = resolve_secrets(flat, {"db.password": None}, _SECRETS_CONFIG)
+        self.assertEqual(out, flat)
+        client.get_secret.assert_not_called()
+
+    def test_the_secret_alone_is_given_to_the_masker(self):
+        with patch("app.pipeline.secret_resolver.register_secret") as register:
+            self._resolve('"@secret(secret/app/db#password)"', fetched="s3cr3t")
+        register.assert_called_once_with("s3cr3t")
+
+    def test_a_dry_run_masks_the_whole_field(self):
+        value, _ = self._resolve('"@secret(secret/app/db#password)"')
+        self.assertEqual(mask_secrets({"db.password": value}, {"db.password": None}), {"db.password": "***"})
+
+
 
 if __name__ == "__main__":
     unittest.main()

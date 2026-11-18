@@ -39,6 +39,9 @@ Where the secret is (per field)
 A value written as "@secret(mount/path#key)" in the config file names the
 secret: path (the manager's mount point may lead it) and key. Any other
 value is looked up at the manager's path_prefix under the field's name.
+The reference may sit inside the value (an HCL string keeps its quotes:
+"@secret(path#key)"): only the reference is replaced and the text around it
+is kept. A value that holds two references is refused.
 """
 from __future__ import annotations
 
@@ -162,7 +165,8 @@ def resolve_secrets(
                 f"{field} is a @secret field, but config.cue defines no usable secret manager {sm_name!r}",
                 what=field)
 
-        path, key = _secret_location(result[field], field, sm_config)
+        inline = _reference(result[field], field)
+        path, key = _secret_location(inline, field, sm_config)
         try:
             value = _fetch_from_sm(sm_config, path, key)
         except Exception as exc:
@@ -170,7 +174,7 @@ def resolve_secrets(
             raise SecretUnavailable(
                 f"{field}: cannot read {path}#{key} from secret manager {sm_name!r}: {exc}", what=field) from None
         register_secret(value)
-        result[field] = value
+        result[field] = _put_in(result[field], inline, value)
         logger.debug("secret_resolver: injected @secret field")
 
     return result
@@ -209,20 +213,41 @@ def mask_secrets(
 
 # ── Internal ──────────────────────────────────────────────────────────────────
 
-_VALUE_REF_RE = re.compile(r"^@secret\((?P<path>[^#()]+)#(?P<key>[^#()]+)\)$")
+_INLINE_REF_RE = re.compile(r"@secret\((?P<path>[^#()]+)#(?P<key>[^#()]+)\)")
 
 
-def _secret_location(value: Any, field: str, sm_config: dict) -> tuple[str, str]:
-    """(path, key) of a field's secret: from an "@secret(mount/path#key)"
-    value, else the manager's path_prefix and the field's name."""
-    m = _VALUE_REF_RE.match(str(value).strip()) if isinstance(value, str) else None
-    if not m:
+def _reference(value: Any, field: str) -> "re.Match[str] | None":
+    """The "@secret(mount/path#key)" a field's value holds, or None.
+
+    The reference is the whole value, or sits inside it: an HCL string keeps its quotes, so its value is
+    "@secret(path#key)" with the quotes, and only the reference is to be replaced. A value that holds two is
+    refused: one secret per field keeps the field's masking whole."""
+    if not isinstance(value, str):
+        return None
+    found = list(_INLINE_REF_RE.finditer(value))
+    if len(found) > 1:
+        raise ValueError(f"{field}: the value holds {len(found)} @secret(...) references; a field holds one")
+    return found[0] if found else None
+
+
+def _secret_location(ref: "re.Match[str] | None", field: str, sm_config: dict) -> tuple[str, str]:
+    """(path, key) of a field's secret: from its "@secret(mount/path#key)" reference,
+    else the manager's path_prefix and the field's name."""
+    if ref is None:
         return sm_config.get("path_prefix", ""), field
-    path = m.group("path").strip().strip("/")
+    path = ref.group("path").strip().strip("/")
     mount = str(sm_config.get("mount_point") or "secret").strip("/")
     if path.startswith(mount + "/"):
         path = path[len(mount) + 1:]
-    return path, m.group("key").strip()
+    return path, ref.group("key").strip()
+
+
+def _put_in(text: str, ref: "re.Match[str] | None", secret: str) -> str:
+    """The field's value with the secret in place of the reference: the secret alone when the reference was the
+    whole value, else the text around it kept (an HCL string's quotes)."""
+    if ref is None or text.strip() == ref.group(0):
+        return secret
+    return text[:ref.start()] + secret + text[ref.end():]
 
 
 def effective_secrets(rule_config: dict, bundle: dict | None = None) -> dict:

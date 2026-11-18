@@ -33,6 +33,8 @@ auth:
 
 The format is `@secret(mount/path#field)` — mount path + `#` + field name inside the Vault secret.
 
+The reference may sit **inside** the value. An HCL string keeps its quotes, so `password = "@secret(secret/myapp/db#password)"` is the value `"@secret(...)"` with them: only the reference is replaced, and the quotes stay (`password = "the-secret"`), so the file still parses as HCL. The same goes for a reference inside other text (`postgres://app:@secret(secret/myapp/db#password)@db/app`). A value that holds **two** references is refused, naming the field: a field holds one secret.
+
 ### What happens at ETL time
 
 ```
