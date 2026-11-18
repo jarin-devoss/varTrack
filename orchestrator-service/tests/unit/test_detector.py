@@ -43,6 +43,9 @@ from app.parsers.detector import detect
     ("Makefile", "kv"),
     ("web.config", "xml"),
     ("app.config", "xml"),
+    # a .config file that is not a known name is XML or INI by what it holds
+    ("machine.config", "sniff"),
+    ("settings.config", "sniff"),
 ])
 def test_the_format_a_file_name_says(name, fmt):
     assert detect(name) == fmt
