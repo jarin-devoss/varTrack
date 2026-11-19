@@ -60,6 +60,7 @@ nav:
   - Reference:
     - vt Commands: cli/index.md
     - Environment Variables: reference/environment-variables.md
+    - HTTP & gRPC API: reference/http-api.md
     - FAQ: faq.md
 
 theme:
