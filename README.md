@@ -179,8 +179,9 @@ See the [Docker Compose guide](docs/deployment/docker-compose.md) for the full w
 
 #### Prerequisites
 
-- Go 1.21+ · Python 3.11+ · a Celery broker (Redis or MongoDB) · at least one configured sink
+- Go 1.26+ · Python 3.11+ · Git · Redis (the Celery broker, which also holds the sync ledger and the locks) · at least one configured sink
 - `buf` CLI ([install](https://buf.build/docs/installation)) — only needed to build from source
+- The `cue` CLI, v0.6.0 or newer ([install](https://cuelang.org/docs/introduction/installation/)) — the orchestrator validates files with it
 
 #### 1. Clone and generate proto code
 
@@ -191,6 +192,13 @@ buf generate
 ```
 
 `.gitattributes` keeps the `.proto` files LF on every OS, so `buf generate` gives the same Go code on Windows and Linux (a checkout made before that needs `rm -rf proto && git checkout -- proto`). `buf generate` writes the Go code once, to `libs/go/gen` (the gateway and the watcher both build against that module), and the Python stubs to `orchestrator-service/app/generated`.
+
+The orchestrator reads `config.cue` with `vartrack-bundle`, the same loader the gateway and the watcher use; build it and put it on the `PATH` (or set `VARTRACK_BUNDLE_BINARY`):
+
+```bash
+(cd libs/go && go install ./cmd/vartrack-bundle)
+export PATH="$(go env GOPATH)/bin:$PATH"
+```
 
 #### 2. Write your `config.cue`
 
@@ -230,24 +238,31 @@ bundle: {
 
 #### 3. Start the services
 
+Each Go service is a module of its own, so it is run from its own folder:
+
 ```bash
 # gateway-service
+cd gateway-service
 APP_ENV=dev \
 ORCHESTRATOR_ADDR=localhost:50051 \
-CONFIG_PATH=config.cue \
-go run ./gateway-service/cmd
+CONFIG_PATH=../config.cue \
+go run ./cmd
 
 # orchestrator-service (new terminal)
 cd orchestrator-service
 pip install -e .
+export CONFIG_PATH=../config.cue PYTHONPATH=app/generated/proto/python
 uvicorn main:app --host 0.0.0.0 --port 8000 &
 python -m app.worker
 
 # watcher-service (new terminal)
+cd watcher-service
 ORCHESTRATOR_ADDR=localhost:50051 \
-CONFIG_PATH=config.cue \
-go run ./watcher-service/cmd
+CONFIG_PATH=../config.cue \
+go run ./cmd
 ```
+
+The broker is `CELERY_BROKER_URL` (default `redis://localhost:6379/0`) unless `config.cue` names a Redis datasource in `celery_broker_datasource`.
 
 #### 4. Register a webhook in GitHub
 

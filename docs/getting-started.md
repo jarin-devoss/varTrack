@@ -6,11 +6,15 @@ Get varTrack running locally in under 10 minutes.
 
 ## Prerequisites
 
-- Go 1.21+
+For the demo (Option A), only Docker with Compose 2.20.0 or newer. To build from source (Option B):
+
+- Go 1.26+
 - Python 3.11+
-- A Celery broker — Redis or MongoDB (configured via `celery_broker_datasource` in the bundle)
+- Git
+- Redis: the Celery broker, which also holds the sync ledger and the locks (`CELERY_BROKER_URL`, or a Redis datasource named by `celery_broker_datasource` in the bundle)
 - At least one configured sink
 - [`buf` CLI](https://buf.build/docs/installation) — for proto code generation
+- The [`cue` CLI](https://cuelang.org/docs/introduction/installation/), v0.6.0 or newer — the orchestrator validates files with it
 
 ---
 
@@ -67,13 +71,19 @@ Every environment shows its desired state in Git next to the current state in it
 
 ## Option B — Build from source
 
-### 1. Clone and generate proto code
+### 1. Clone, generate proto code, and build the config loader
 
 ```bash
 git clone https://github.com/jarin-devoss/varTrack
 cd varTrack
 buf generate
+
+# vartrack-bundle reads config.cue for the orchestrator, exactly as the gateway and the watcher read it
+(cd libs/go && go install ./cmd/vartrack-bundle)
+export PATH="$(go env GOPATH)/bin:$PATH"     # or set VARTRACK_BUNDLE_BINARY to the file
 ```
+
+Without `vartrack-bundle` the orchestrator refuses to start: it never runs on a `config.cue` the gateway would not accept.
 
 ### 2. Write `config.cue`
 
@@ -115,11 +125,14 @@ bundle: {
 
 ### 3. Start the gateway-service
 
+Each Go service is a module of its own, so it is run from its own folder:
+
 ```bash
+cd gateway-service
 APP_ENV=dev \
 ORCHESTRATOR_ADDR=localhost:50051 \
-CONFIG_PATH=config.cue \
-go run ./gateway-service/cmd
+CONFIG_PATH=../config.cue \
+go run ./cmd
 ```
 
 Listens on `:5657` (webhooks) and `:9090` (metrics/health).
@@ -129,6 +142,7 @@ Listens on `:5657` (webhooks) and `:9090` (metrics/health).
 ```bash
 cd orchestrator-service
 pip install -e .
+export CONFIG_PATH=../config.cue PYTHONPATH=app/generated/proto/python   # the stubs buf generate wrote
 
 # API + gRPC server
 uvicorn main:app --host 0.0.0.0 --port 8000 &
@@ -140,9 +154,10 @@ python -m app.worker
 ### 5. Start the watcher-service
 
 ```bash
+cd watcher-service
 ORCHESTRATOR_ADDR=localhost:50051 \
-CONFIG_PATH=config.cue \
-go run ./watcher-service/cmd
+CONFIG_PATH=../config.cue \
+go run ./cmd
 ```
 
 Every 60 seconds by default, asks the orchestrator whether each `self_heal` rule's datasource still matches Git.
@@ -227,10 +242,6 @@ vt sync --file app-settings.yaml --datasource mongo-primary --env staging --wait
     Understand how the watcher detects and heals config drift
 
 </div>
-
----
-
-## Next steps
 
 - [Configuration files](configuration/index.md) — where `config.cue`, `bundle.json` and `vartrack.json` live, and how they make a rule
 - [Onboard a config repository](guides/onboard-a-repository.md) — your own repository, end to end
