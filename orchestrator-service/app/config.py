@@ -38,6 +38,8 @@ CUE → settings mappings
   global_tags["git_cache_max_entries"]→ GIT_CACHE_MAX_ENTRIES
   global_tags["schema_cache_dir"]     → SCHEMA_CACHE_DIR  (Path)
   global_tags["schema_ttl"]           → SCHEMA_TTL_SECONDS (int)
+  workers { concurrency, max_tasks_per_child } → WORKERS (a dict; app/worker/options.py reads it,
+                                      under the command line and the environment)
 
 HOST and PORT are derived from ORCHESTRATOR_HTTP_ADDR.
 DEBUG and CORS_ORIGINS are env-var-only.
@@ -355,6 +357,14 @@ def _bundle_overrides(bundle: dict[str, Any]) -> dict[str, Any]:
         except (ValueError, TypeError):
             logger.warning("global_tags.schema_ttl is not an integer: %r", schema_ttl)
 
+    # ── Workers ───────────────────────────────────────────────────────────────
+    # The block was checked when the bundle was loaded (workers.concurrency is 1 to 64), so it is kept
+    # as it is. Unlike the settings above it does not win over the environment: the size of a machine
+    # is the machine's to say (app/worker/options.py).
+    workers = bundle.get("workers")
+    if isinstance(workers, dict) and workers:
+        overrides["WORKERS"] = dict(workers)
+
     return overrides
 
 
@@ -401,6 +411,10 @@ class _Settings:
     # ── Celery (CUE bundle resolves these from tagged datasources) ────────────
     CELERY_BROKER_URL: str      = os.getenv("CELERY_BROKER_URL", "redis://localhost:6379/0")
     CELERY_RESULT_BACKEND: str  = os.getenv("CELERY_RESULT_BACKEND", "redis://localhost:6379/0")
+
+    # config.cue's workers block (concurrency, max_tasks_per_child), empty when it has none.
+    # Read by app/worker/options.py, which puts the environment and the command line over it.
+    WORKERS: dict[str, int] = {}
 
     # ── Schema registry ───────────────────────────────────────────────────────
     SCHEMA_CACHE_DIR: Path    = Path(os.getenv("SCHEMA_CACHE_DIR", "/tmp/schema_registry"))

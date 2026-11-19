@@ -490,6 +490,43 @@ See [Drift Detection](../concepts/drift-detection.md) for how the watcher uses t
 
 ---
 
+## `workers`
+
+How each orchestrator worker runs. A worker is the process that does the syncs: it takes a task from the queue, reads the files from Git, checks them and writes the store.
+
+```cue
+workers: {
+  concurrency:         8     // syncs one worker container runs at once, 1 to 64 (default 4)
+  max_tasks_per_child: 500   // a pool process is replaced after this many syncs, 0 for never (default 200)
+}
+```
+
+| Key | Meaning | Default | Allowed |
+|---|---|---|---|
+| `concurrency` | Syncs one worker container runs at once (Celery pool processes) | `4` | 1 to 64 |
+| `max_tasks_per_child` | A pool process is replaced after this many syncs, which bounds its memory growth. `0` never replaces one | `200` | 0 or more |
+
+Both keys are optional. A value outside its range is refused when the file is loaded, with the key named.
+
+**Both are defaults for the machine.** The worker (`python -m app.worker`) reads each setting from the first of these that names it:
+
+1. the command line: `--concurrency`, `--max-tasks-per-child`;
+2. the environment: `VARTRACK_WORKER_CONCURRENCY`, `VARTRACK_WORKER_MAX_TASKS_PER_CHILD`;
+3. `config.cue`'s `workers`;
+4. the default.
+
+One `config.cue` is often shared by machines of different sizes, and how many syncs fit on a machine is that machine's to say. The worker logs where each value came from when it starts:
+
+```text
+worker: concurrency=8 (config.cue workers.concurrency), max_tasks_per_child=200 (default)
+```
+
+`WORKER_CONCURRENCY`, the variable the compose file used to pass as a flag, is still read for one release. It is under `VARTRACK_WORKER_CONCURRENCY` and over `config.cue`, and the worker says to use the new name.
+
+**The number of worker containers is not set here.** varTrack does not start its own containers: Compose (`docker compose up -d --scale orchestrator-worker=3`) or a Kubernetes Deployment's `replicas` does. See [High availability and scaling](../operations/high-availability.md).
+
+---
+
 ## `ui`
 
 The web UI: where users open it, and sign-in with your Git platforms. Each user sees the rules whose repositories their own account on the rule's platform can read, and syncs the ones it can write to. Without `ui.auth` the UI is open.
