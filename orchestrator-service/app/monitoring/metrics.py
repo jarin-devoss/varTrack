@@ -113,6 +113,13 @@ class OrchestratorMetrics:
             registry=self._registry,
         )
 
+        self._older_commit_skipped_total = Counter(
+            "vartrack_older_commit_skipped_total",
+            "Files a sync did not write because a newer commit of them was already written.",
+            ["datasource"],
+            registry=self._registry,
+        )
+
         self._dependency_up = Gauge(
             "vartrack_dependency_up",
             "1 when the dependency (config.cue, git, secrets, schemas:<tenant>, redis) is usable, "
@@ -315,6 +322,9 @@ class OrchestratorMetrics:
 
     def set_dependency_up(self, dependency: str, up: bool) -> None:
         self._dependency_up.labels(dependency).set(1 if up else 0)
+
+    def inc_older_commit_skipped(self, datasource: str) -> None:
+        self._older_commit_skipped_total.labels(datasource).inc()
 
     # ── ETL pipeline methods ──────────────────────────────────────────────────
 
