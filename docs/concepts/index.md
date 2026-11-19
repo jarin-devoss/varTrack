@@ -41,10 +41,24 @@ The orchestrator-service:
 
 Writes the validated flat map to every configured sink:
 
+- Takes the lock of the place it writes: one sync at a time writes a place, whatever the number of workers
+- Leaves a file alone when a newer commit of it is already written there ([below](#an-older-commit-never-overwrites-a-newer-one))
 - Picks the sync strategy (`AUTO`, `GIT_UPSERT_ALL` or `GIT_SMART_REPAIR`)
 - Runs writes to all matching sinks in parallel
 - Prunes stale keys once per environment, after all its files are written, if `prune` is enabled on the rule
 - Rolls back (deletes written data) if a write fails partway through
+
+### An older commit never overwrites a newer one
+
+Two pushes to one branch make two syncs, and the workers may run them in either order. Each file written to a place has its commit remembered, and a sync that is about to write a file asks Git whether the commit already written is a descendant of its own. If it is, its own is the older one: the file is left alone, the sync is still a success, and the file says why:
+
+```text
+skipped: commit 3f9a1c0d2b4e is newer than 91be7d02c5aa and is already written to production
+```
+
+It writes when the commits are the same, when its own is the newer one, when the history is unrelated (a force push), and whenever nothing can say (no record, Redis or the commit cannot be reached). Skipping is only ever for a commit Git itself says is older. The record is per file and per place: a newer commit that did not write a file is no reason to skip an older one that did.
+
+A push from the CLI (`vt sync`) carries a label rather than a commit, so it is not ordered.
 
 ---
 
