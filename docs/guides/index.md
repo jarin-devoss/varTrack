@@ -10,6 +10,7 @@ details.
 | The team running varTrack | Get a deployment ready for production | [Production checklist](../operations/production-checklist.md) |
 | The team running varTrack | Upgrade from v0.2.x | [Upgrading](../operations/upgrading.md) |
 | Anyone | Find out why a sync did not happen, or did something unexpected | [Troubleshooting](../operations/troubleshooting.md) |
+| Anyone trying varTrack | See every sink, two Git servers and rules built in layers, in the web UI | [The full demo](full-demo.md) |
 
 New to varTrack? Start with [Getting started](../getting-started.md), then
 [Configuration files](../configuration/index.md) for where each setting lives.

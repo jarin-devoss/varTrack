@@ -26,6 +26,7 @@ nav:
     - guides/index.md
     - Onboard a Config Repository: guides/onboard-a-repository.md
     - Add a Tenant: guides/add-a-tenant.md
+    - The Full Demo: guides/full-demo.md
     - CI/CD Integration: cli/cicd.md
   - Configuration:
     - configuration/index.md
@@ -60,6 +61,7 @@ nav:
   - Reference:
     - vt Commands: cli/index.md
     - Environment Variables: reference/environment-variables.md
+    - HTTP & gRPC API: reference/http-api.md
     - FAQ: faq.md
 
 theme:

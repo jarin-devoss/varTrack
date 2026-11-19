@@ -21,7 +21,7 @@ match platform    parse file          write to sinks
 
 When a webhook arrives at the gateway-service, varTrack resolves:
 
-- Which **platform** sent the event (GitHub, GitLab, ...)
+- Which **platform** sent the event (GitHub or Gitea)
 - Which **rule** applies: the one for the platform that sent the event and the datasource in the webhook URL (a rule is identified by that pair). Its `repositories` and `exclude_repositories` decide whether the pushed repository is synced, and `file_name` or `file_path_map` which files
 - Which **environment** to target (from branch name, PR number, tag, or explicit `branch_map`)
 

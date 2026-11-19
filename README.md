@@ -79,7 +79,7 @@ It works alongside whatever deploys your services: VarTrack only keeps their run
 ## Features
 
 ### Sync
-- **8 sink types** — MongoDB, Redis, ZooKeeper, S3, Kubernetes ConfigMap, Helm, Linux server (SSH)
+- **7 sink types** — MongoDB, Redis, ZooKeeper, S3, Kubernetes ConfigMap, Helm, Linux server (SSH)
 - **7 config formats** — YAML, JSON, TOML, .env, INI, HCL, XML — format auto-detected from file extension
 - **Multi-sink fan-out** — one push writes to multiple sinks in parallel from one rule set
 - **Sync strategies** — `AUTO` (by file size), `GIT_UPSERT_ALL` (write every key) and `GIT_SMART_REPAIR` (write only what differs from what the sink holds)
@@ -89,7 +89,7 @@ It works alongside whatever deploys your services: VarTrack only keeps their run
 - **`destination_template`** — control exactly where data lands per rule using `{tenant}` and `{env}` placeholders
 - **Environment resolution** — map branch names, PR numbers, tags, or file paths to environment names
 - **Layered rules** — `config.cue` → the tenant's `bundle.json` → a repository's `vartrack.json` → `force`; each layer overrides the one before, keys only `config.cue` sets stay out of the lower layers, and shared settings come in with `extends` presets
-- **Multi-platform** — GitHub webhooks fully supported; GitLab, Bitbucket driver interface ready to extend
+- **GitHub and Gitea** — webhooks, sign-in and repository permissions for both (GitHub Enterprise and self-hosted Gitea included); another platform is a gateway driver away
 
 ### Validation & safety
 - **CUE schema validation** — validate every payload against a per-tenant schema before any write
@@ -114,7 +114,7 @@ It works alongside whatever deploys your services: VarTrack only keeps their run
 
 ```mermaid
 flowchart LR
-    GIT["📁 Git repo\nGitHub / Gitea / GitLab"]
+    GIT["📁 Git repo\nGitHub / Gitea"]
     GW["gateway-service\nGo · :5657"]
     ORCH["orchestrator-service\nPython · :50051\n───────────\nETL pipeline"]
     WATCH["watcher-service\nGo · :9091"]
@@ -157,9 +157,9 @@ Which file may set which option is generated from `proto/vartrack/v1/models/rule
 
 ## Quick Start
 
-### Option A — Docker Compose (recommended)
+**To try it,** run the demo above: one command, nothing else to install.
 
-The fastest way to run varTrack against your own GitHub repos:
+**Against your own repositories, with Docker Compose:**
 
 ```bash
 git clone https://github.com/jarin-devoss/vartrack
@@ -169,382 +169,41 @@ cp .env.example .env          # fill in MONGO_ROOT_PASSWORD at minimum
 docker compose up -d
 ```
 
-Register a webhook in your GitHub repo pointing to `http://your-server:5657/webhooks/mongo` and push a config file — varTrack syncs it automatically.
+Register a webhook in your GitHub or Gitea repository pointing to `http://your-server:5657/webhooks/mongo` and push a config file: varTrack syncs it. The [Docker Compose guide](docs/deployment/docker-compose.md) has the full walkthrough, the `.env` reference and scaling.
 
-See the [Docker Compose guide](docs/deployment/docker-compose.md) for the full walkthrough, `.env` reference, and scaling options.
-
----
-
-### Option B — Build from source
-
-#### Prerequisites
-
-- Go 1.21+ · Python 3.11+ · a Celery broker (Redis or MongoDB) · at least one configured sink
-- `buf` CLI ([install](https://buf.build/docs/installation)) — only needed to build from source
-
-#### 1. Clone and generate proto code
-
-```bash
-git clone https://github.com/jarin-devoss/vartrack
-cd vartrack
-buf generate
-```
-
-`.gitattributes` keeps the `.proto` files LF on every OS, so `buf generate` gives the same Go code on Windows and Linux (a checkout made before that needs `rm -rf proto && git checkout -- proto`). `buf generate` writes the Go code once, to `libs/go/gen` (the gateway and the watcher both build against that module), and the Python stubs to `orchestrator-service/app/generated`.
-
-#### 2. Write your `config.cue`
-
-```cue
-bundle: {
-  platforms: [{
-    github: {
-      endpoint:        "https://github.com"
-      push_event_name: "push"
-      pr_event_name:   "pull_request"
-      secret:          "my-webhook-secret"
-    }
-  }]
-
-  datasources: [{
-    mongo: {
-      endpoint:   "mongodb://localhost:27017"
-      database:   "vartrack"
-      collection: "variables"
-    }
-  }]
-
-  rules: [{
-    platform:             "github"
-    datasource:           "mongo"
-    file_name:            "configs/app.yaml"    // which file in each repo to watch
-    repositories:         ["my-org/*"]          // glob pattern — which repos trigger this
-    destination_template: "{env}-config"        // collection name resolved at sync time
-    self_heal:            true                  // restore on drift automatically
-    branch_map: {
-      main:    "production"
-      develop: "staging"
-    }
-  }]
-}
-```
-
-#### 3. Start the services
-
-```bash
-# gateway-service
-APP_ENV=dev \
-ORCHESTRATOR_ADDR=localhost:50051 \
-CONFIG_PATH=config.cue \
-go run ./gateway-service/cmd
-
-# orchestrator-service (new terminal)
-cd orchestrator-service
-pip install -e .
-uvicorn main:app --host 0.0.0.0 --port 8000 &
-python -m app.worker
-
-# watcher-service (new terminal)
-ORCHESTRATOR_ADDR=localhost:50051 \
-CONFIG_PATH=config.cue \
-go run ./watcher-service/cmd
-```
-
-#### 4. Register a webhook in GitHub
-
-Point your repo webhook to `http://your-server:5657/webhooks/mongo`:
-- Content type: `application/json`
-- Secret: the value from `secret` in your `config.cue`
-- Events: **Pushes** and **Pull requests**
-
-Every push now triggers a sync automatically.
+**From source:** [Getting started, Option B](docs/getting-started.md#option-b--build-from-source). `.gitattributes` keeps the `.proto` files LF on every OS, so `buf generate` gives the same Go code on Windows and Linux; a checkout made before that needs `rm -rf proto && git checkout -- proto`.
 
 ---
 
-## `destination_template` — controlling where data lands
+## A look at the web UI
 
-This single field controls the storage path, collection name, or key prefix in every sink:
+Rules, environments, drift, sync history and dry runs, signed in with your Git account. It runs on port 8080 with Docker Compose, or `cd ui && npm install && npm run dev` for http://localhost:5173 ([UI README](ui/README.md)).
 
-```cue
-destination_template: "{env}-config"
-// push to "main"    → branch_map resolves "production" → writes to "production-config"
-// push to "develop" → branch_map resolves "staging"    → writes to "staging-config"
-// PR #42 with pr_as_env: true                          → writes to "pr-42-config"
-```
-
-| Sink | What it controls | Example template | Resolved value |
-|---|---|---|---|
-| MongoDB | Collection name | `"{env}-config"` | `production-config` |
-| ZooKeeper | znode root path | `"/{tenant}/{env}"` | `/acme/pr-42` |
-| Redis | Key prefix | `"{env}:cfg"` | `production:cfg` |
-| S3 | Key prefix | `"{tenant}/{env}/"` | `acme/production/` |
-| Linux server | Remote file path | `"/etc/app/{env}.env"` | `/etc/app/production.env` |
-| Helm | Release name | `"app-{env}"` | `app-production` |
-| ConfigMap | ConfigMap name | `"myapp-{env}"` | `myapp-production` |
-
----
-
-## Environment resolution
-
-When a webhook fires, VarTrack resolves the target environment in this order:
-
-1. `branch_map[branch]` — explicit mapping (e.g. `main` → `production`)
-2. `file_path_map` — the environment whose file (`{env: path}`) is the changed one
-3. `pr_as_env: true` → environment = `pr-{number}`
-4. `branch_as_env: true` → environment = branch name
-5. `tag_as_env: true` → environment = tag name
-
-There is no `default` fallback: a push none of these places is skipped. A rule that names no environments, or no file to read (`file_name` or `file_path_map`), or sets a `sync_mode` that is not one of the three, is refused when it is loaded.
-
----
-
-## Sync strategies
-
-| Mode | When to use |
+| | |
 |---|---|
-| `AUTO` | Recommended — VarTrack picks the strategy based on payload size |
-| `GIT_UPSERT_ALL` | Write all keys from Git; best for small configs |
-| `GIT_SMART_REPAIR` | Read what the sink holds and write only what differs, by content: the changed keys (Redis, ZooKeeper, MongoDB key-value), or the whole object only when it differs (a document, a file, a ConfigMap, an S3 object, Helm); best for large configs |
+| ![Home page: two environments out of sync, then the tenant's platforms, datasources and rules](docs/assets/screenshots/home.png) | ![Rules page: rules for Redis, S3, a ConfigMap, a Helm release and MongoDB, two of them out of sync](docs/assets/screenshots/rules.png) |
+| What needs attention first | Each rule, its desired state in Git and what its sink holds |
+| ![Diff of a drifted Redis environment: cache.ttl_seconds is 30 in Redis and 900 in Git](docs/assets/screenshots/environment-diff.png) | ![Tasks page: syncs triggered by Git pushes, self-heal and a manual dry run](docs/assets/screenshots/tasks.png) |
+| Drift, key by key | Every sync and what started it |
 
 ---
 
-## Multi-sink fan-out
+## Learn more
 
-Push once, write to multiple sinks in one go:
+The documentation is in [`docs/`](docs/index.md), published with MkDocs.
 
-```cue
-rules: [
-  { platform: "github", datasource: "mongo",        file_name: "config.yaml", branch_map: {main: "production"}, destination_template: "{env}-config" },
-  { platform: "github", datasource: "configmap",    file_name: "config.yaml", branch_map: {main: "production"}, destination_template: "myapp-{env}" },
-  { platform: "github", datasource: "linux_server", file_name: "config.yaml", branch_map: {main: "production"}, destination_template: "/etc/app/{env}.env" },
-]
-```
-
-Any combination works — mix and match MongoDB, Redis, S3, ConfigMap, Helm, ZooKeeper, and Linux servers. The web UI's Rules page shows each rule with its desired state in Git, its current state in the sink, and every environment's status:
-
-![Rules page: rules for Redis, S3, a ConfigMap, a Helm release and MongoDB, two of them out of sync](docs/assets/screenshots/rules.png)
-
----
-
-## Drift detection and self-heal
-
-The watcher-service polls every configured datasource at a set interval. When a value doesn't match the Git baseline:
-
-1. Logs the drift event and increments the `vartrack_watcher_drift_total` Prometheus counter
-2. If `self_heal: true` on the rule → calls the orchestrator to re-run the full ETL pipeline
-3. Correct state is restored — no manual intervention needed
-
-Drift on a rule without self-heal stays until someone syncs from Git, and the web UI shows it key by key — here a value someone changed directly in Redis:
-
-![Diff of a drifted Redis environment: cache.ttl_seconds is 30 in Redis and 900 in Git](docs/assets/screenshots/environment-diff.png)
-
-Running multiple watcher replicas? Enable leader election so only one replica runs the heal loop, by naming the datasource they elect a leader on:
-
-```cue
-bundle: {
-  watcher_leader_election_datasource: "redis"  // a Redis or ZooKeeper datasource of the bundle
-}
-```
-
----
-
-## Web UI
-
-A browser console for rules, environments, drift, sync history and dry runs, reading from your running varTrack services. With sign-in on, users sign in with their Git account and see every tenant's rules whose repositories that account can read; admins see everything. See [Web UI sign-in](docs/configuration/auth.md#web-ui-sign-in-with-your-git-platform):
-
-```bash
-cd ui && npm install && npm run dev   # http://localhost:5173
-```
-
-With Docker Compose it runs on port 8080. See the [UI README](ui/README.md) for the API it reads and a local stack with real sinks. The home page puts what needs attention first:
-
-![Home page: two environments out of sync, then the tenant's platforms, datasources and rules](docs/assets/screenshots/home.png)
-
----
-
-## CLI — `vt`
-
-Sync any local file directly without a Git push — runs the same ETL pipeline as a webhook:
-
-```bash
-# Install
-cd cli && go build -o vt ./cmd && mv vt /usr/local/bin/vt
-
-# Authenticate with your Git token (GitHub or Gitea personal access token)
-vt login --server https://gateway.example.com --token "$GIT_TOKEN"
-
-# Sync to a Kubernetes ConfigMap
-vt sync --file configs/app.yaml --datasource configmap --env production --wait
-
-# Sync to a Helm release
-vt sync --file configs/app.yaml --datasource helm --env staging --wait
-
-# Dry-run: see what would be written to S3 without touching anything
-vt sync --file configs/app.yaml --datasource s3 --env staging --dry-run
-
-# Validate against the CUE schema (great for PR checks)
-vt validate --file configs/app.yaml --datasource linux-server
-
-# Check a vartrack.json or bundle.json the way a sync will read it
-vt validate-config vartrack.json
-
-# A datasource written by rules on several platforms needs the platform
-vt sync --file configs/app.yaml --datasource mongo --platform gitea --env staging
-
-# Inspect tasks
-vt task list
-vt task get <task-id>
-```
-
-The same tasks are on the web UI's Tasks page, each with what triggered it — a Git push, self-heal, or a manual sync or dry run:
-
-![Tasks page: syncs triggered by Git pushes, self-heal and a manual dry run](docs/assets/screenshots/tasks.png)
-
-**In GitHub Actions:**
-
-```yaml
-- name: Sync config to production
-  env:
-    VARTRACK_SERVER: https://gateway.example.com
-    VARTRACK_TOKEN: ${{ secrets.VARTRACK_TOKEN }}
-  run: vt sync --file configs/app.yaml --datasource helm --env production --wait
-```
-
-See the full [CLI documentation](cli/README.md) for all commands, flags, and access control.
-
----
-
-## Supported config formats
-
-| Extension | Format |
+| To know | Read |
 |---|---|
-| `.yaml`, `.yml` | YAML |
-| `.json` | JSON |
-| `.toml` | TOML |
-| `.env` | dotenv / KEY=VALUE |
-| `.ini` | INI |
-| `.hcl` | HCL (Terraform-style) |
-| `.xml` | XML |
-
-Format is auto-detected from the file extension.
-
----
-
-## Full bundle example
-
-```cue
-bundle: {
-  platforms: [{
-    github: {
-      endpoint:        "https://github.com"
-      push_event_name: "push"
-      pr_event_name:   "pull_request"
-      secret:          "my-webhook-secret"
-    }
-  }]
-
-  datasources: [
-    {
-      mongo: {
-        endpoint:   "mongodb://mongo:27017"
-        database:   "vartrack"
-        collection: "variables"
-      }
-    },
-    {
-      s3: {
-        bucket: "my-config-bucket"
-        region: "us-east-1"
-        access_key_id:     "AKIA..."
-        secret_access_key: "..."
-      }
-    },
-    {
-      linux_server: {
-        host:     "app-server.example.com"
-        username: "deploy"
-        ssh_key:  {private_key: {file: "/run/secrets/deploy_key"}}   // a key file, not inline
-      }
-    }
-  ]
-
-  rules: [
-    {
-      platform:             "github"
-      datasource:           "mongo"
-      file_name:            "configs/app.yaml"
-      repositories:         ["my-org/*"]
-      sync_mode:            "AUTO"
-      destination_template: "{env}-config"
-      self_heal:            true
-      branch_map: {
-        main:    "production"
-        develop: "staging"
-      }
-    },
-    {
-      platform:             "github"
-      datasource:           "s3"
-      file_name:            "configs/app.yaml"
-      repositories:         ["my-org/*"]
-      destination_template: "configs/{env}/"
-      branch_map: { main: "production", develop: "staging" }
-    },
-    {
-      platform:             "github"
-      datasource:           "linux_server"
-      file_name:            "configs/app.yaml"
-      repositories:         ["my-org/*"]
-      destination_template: "/etc/app/{env}.env"
-      branch_map: { main: "production", develop: "staging" }
-    }
-  ]
-
-  schema_registry: {
-    platform: "github"
-    repo:     "my-org/schemas"
-    branch:   "main"
-  }
-
-  secret_managers: [{
-    vault: {
-      endpoint:    "https://vault.mycompany.com"
-      mount_point: "secret"
-      kv_version:  2
-      token_auth: { token: "hvs.xxxx" }
-    }
-  }]
-
-  // Optional gateway tuning
-  max_webhook_body_bytes: 10485760  // 10 MiB (default — omit to keep default)
-}
-```
-
----
-
-## API reference
-
-### gateway-service (port 5657)
-
-| Method | Path | Description |
-|---|---|---|
-| `POST` | `/webhooks/{datasource}` | Receive a platform webhook |
-| `POST` | `/webhooks/schema-registry` | Schema-registry push trigger |
-| `GET` | `/health/liveness` | Liveness probe |
-| `GET` | `/health/readiness` | Readiness probe |
-| `POST` | `/v1/cli/sync`, `/v1/cli/validate`, `/v1/cli/validate-config` | The CLI API, authorized by the caller's Git token |
-| `GET` | `/v1/cli/tasks`, `/v1/cli/tasks/{id}` | CLI task status |
-
-### orchestrator-service (port 8000 HTTP / 50051 gRPC)
-
-| Method | Path | Description |
-|---|---|---|
-| `POST` | `/v1/webhooks/{datasource}` | Direct HTTP ingestion |
-| `POST` | `/v1/webhooks/{datasource}/dry-run` | Simulate without writing |
-| `GET` | `/v1/ui/*` | The web UI's read API, every tenant the viewer may see (`?tenant=` narrows) |
-| `GET` | `/docs` | OpenAPI / Swagger UI |
-| gRPC | `ProcessWebhook` | Called by gateway-service |
-| gRPC | `CLIService` (`SyncFile`, `ValidateFile`, `ValidateConfig`, `GetTask`, `ListTasks`) | Called by gateway-service for the CLI API |
-| gRPC | `ListWatchTargets`, `CheckDatasource`, `SyncDatasource` | Called by watcher-service: which rules to watch, whether a datasource still matches Git, and self-heal |
+| Where data lands in each sink (`destination_template`) | [Destination template](docs/concepts/destination-template.md) |
+| How a branch, a pull request or a tag becomes an environment | [Environment resolution](docs/concepts/environment-resolution.md) |
+| `AUTO`, `GIT_UPSERT_ALL`, `GIT_SMART_REPAIR`, and prune | [Sync strategies](docs/concepts/sync-strategies.md) |
+| How drift is found and healed, and leader election for several watchers | [Drift detection](docs/concepts/drift-detection.md) |
+| One file into several sinks, PR environments, Vault, a whole `config.cue` | [Examples](docs/examples/index.md), [`examples/bundles/`](examples/bundles/) |
+| Every key of `config.cue` | [config.cue reference](docs/configuration/bundle.md) |
+| The file formats varTrack reads and writes | [File formats](docs/configuration/formats.md) |
+| `vt`, and syncing or validating from CI | [vt commands](docs/cli/index.md), [CI/CD integration](docs/cli/cicd.md) |
+| Every endpoint and the credential it needs | [HTTP and gRPC API](docs/reference/http-api.md) |
+| Running it in production | [Production checklist](docs/operations/production-checklist.md), [High availability](docs/operations/high-availability.md), [Monitoring](docs/operations/monitoring.md) |
 
 ---
 
@@ -616,9 +275,10 @@ docker pull jarin-devoss/watcher-service:latest
 
 ```
 varTrack/
-├── config.cue                    # Shared CUE bundle (all services read this)
 ├── proto/                        # Protobuf definitions
 ├── buf.gen.yaml                  # Buf code-generation config (one template)
+├── docs/                         # The documentation site (MkDocs)
+├── scripts/                      # check-before-push.sh: what CI checks, before a push
 ├── libs/go/                      # Go — generated code, bundle loader, secret files (shared)
 │
 ├── gateway-service/              # Go — HTTP ingress, webhook receiver, CLI API
@@ -628,14 +288,14 @@ varTrack/
 ├── ui/                           # React — web UI
 ├── examples/                     # Example bundles and config files
 ├── demo/                         # A stack to try varTrack in: services, a Git server, a seeded config repo, a tour
-└── e2e/                          # The regression suite, run on the demo's stack
+└── e2e/                          # The regression suite, on a stack of its own
 ```
 
 ---
 
 ## Security
 
-Webhook signatures (HMAC-SHA256), replay protection, rate limiting, and mTLS are enforced automatically in production (`APP_ENV=production`). See [SECURITY.md](SECURITY.md) for the full security model.
+Webhook signatures (HMAC-SHA256), replay protection, rate limiting, and mTLS are enforced automatically in production (`APP_ENV=production`). See the [Production checklist](docs/operations/production-checklist.md) and [Internal authentication](docs/operations/internal-auth.md) for what to set, and what each setting protects.
 
 ---
 
