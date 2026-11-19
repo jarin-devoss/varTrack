@@ -41,6 +41,7 @@ The orchestrator-service:
 
 Writes the validated flat map to every configured sink:
 
+- Takes a slot of the datasource's [sync limit](../configuration/bundle.md#sync_limits), if `config.cue` gives it one, and waits for one when none is free
 - Takes the lock of the place it writes: one sync at a time writes a place, whatever the number of workers
 - Leaves a file alone when a newer commit of it is already written there ([below](#an-older-commit-never-overwrites-a-newer-one))
 - Picks the sync strategy (`AUTO`, `GIT_UPSERT_ALL` or `GIT_SMART_REPAIR`)

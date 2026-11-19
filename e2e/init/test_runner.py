@@ -2,18 +2,19 @@
 """
 VarTrack E2E Test Runner
 ========================
-Runs 26 test suites across 8 sink configurations (MongoDB document,
+Runs 27 test suites across 8 sink configurations (MongoDB document,
 MongoDB file, ZooKeeper slash, Redis hash, Redis string, Linux server,
 S3/MinIO) plus CUE schema validation, HashiCorp Vault secret injection,
 dual-datasource @secret suites, self-heal drift correction, forged and unsigned
 calls refused, dry-run verification, branch_map, structured prune, task status
 polling, schema_map, a file that holds the settings of every environment, a rule that stops reading a file, and a
-file that keeps its format or takes another (every format, on S3 and over SSH).
+file that keeps its format or takes another (every format, on S3 and over SSH), and sync limits and the order commits are
+written in (one sync at a time on a limited datasource, and an older commit never over a newer one).
 
 Every suite waits for the task it started (GET /v1/tasks/{id}), never for the clock, and asserts what the
 task itself reports: its state, the files it synced, and the commit of the tenant's schema repository it
 validated against. A suite that cannot pass is a bug to fix, not to retry: the run exits 1 when any suite
-fails, and CI reads benchmark.json (26 suites, 0 failed, 0 skipped).
+fails, and CI reads benchmark.json (27 suites, 0 failed, 0 skipped).
 
 Outputs a benchmark JSON report to /results/benchmark.json.
 
@@ -30,9 +31,11 @@ import json
 import os
 import re
 import sys
+import threading
 import time
 import traceback
 import uuid
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -1185,7 +1188,7 @@ def verify_mongo_untouched(rule: dict, result: SuiteResult, what: str) -> None:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Suite definitions (26 total)
+# Suite definitions (27 total)
 # ─────────────────────────────────────────────────────────────────────────────
 
 def suite_01_mongo_doc_basic(orchestrator, gitea, gitea_url, rules):
@@ -2745,6 +2748,198 @@ def suite_26_file_formats(orchestrator, gitea, gitea_url, s3_rules, linux_rules)
 # Main
 # ─────────────────────────────────────────────────────────────────────────────
 
+# ── Suite 27: sync limits, and the order commits are written in ──────────────
+
+LIMIT_NAME = "e2e-mongo-kv"                       # config.cue's sync_limits: mongo-kv takes one sync at a time
+LIMIT_KEY = f"vt:sync-slots:{LIMIT_NAME}"         # the Redis sorted set that holds its slots (app/pipeline/sync_slots.py)
+ORDER_BRANCH = "e2e-order"
+ORDER_PATH = "e2e-order/settings.yaml"
+ORDER_FILES = {
+    "A": b"feature:\n  flag: one\n  count: 1\n",
+    "B": b"feature:\n  flag: two\n  count: 2\n  extra: added\n",
+    "C": b"feature:\n  flag: three\n  count: 3\n",
+}
+
+
+def _slot_holders(r) -> list[str]:
+    """Who holds a slot of the limit now: the members of its set whose lease has not run out, by Redis's own clock."""
+    now = r.time()
+    return r.zrangebyscore(LIMIT_KEY, now[0] + now[1] / 1e6, "+inf")
+
+
+def suite_27_limits_and_order(orchestrator, gitea, gitea_url, mongo_rules, document_rules):
+    """A datasource takes no more syncs at once than it is given, and an older commit never overwrites a newer one.
+
+    The limit (config.cue's sync_limits): mongo-kv takes one sync at a time. A sync with the slot free runs at once. With the
+    slot held (by this suite, standing in for a long sync) a sync does not run; after the few seconds it waits in its
+    process it goes back on the queue, and once the slot is let go it finishes and says it waited. Five syncs sent at once
+    all finish, and the slots held, sampled while they run, are never more than one.
+
+    The order: commit A, then B, are pushed. B's sync runs first, then A's (as when two pushes' syncs run in the
+    other order): A's file is left alone, saying why, and the store still holds B's values. C, newer than B, is written."""
+    result = SuiteResult(27, "Sync limits and write order: one at a time, and never an older commit over a newer one",
+                         "01_mongo_document.json", "mongo-kv")
+    banner("Suite 27: sync limits and write order")
+    if not (HAS_REDIS and HAS_MONGO):
+        result.add_check("redis-py and pymongo are available", False, f"redis={HAS_REDIS} mongo={HAS_MONGO}")
+        result.finish("fail")
+        return result
+
+    limit_rules = _variant(mongo_rules, datasource="mongo-kv", destination_template="e2e-limit-{env}")
+    order_rules = _variant(document_rules, file_name=ORDER_PATH, prune=True, branch_as_env=False,
+                           branch_map={ORDER_BRANCH: ORDER_BRANCH}, destination_template="e2e-order-docs")
+    tenant = limit_rules[0].get("tenant_id", DEMO_TENANT)
+    r = redis_lib.Redis(host="redis", port=6379, db=0, socket_timeout=5, decode_responses=True)
+    holder = "e2e-suite-27"
+    try:
+        for rule in (limit_rules[0], order_rules[0]):
+            reset_destination(rule, ("main", ORDER_BRANCH))
+        r.delete(LIMIT_KEY)
+        result.schema_commit = gitea.push_bundle(limit_rules + order_rules)
+        commit_sha = gitea.get_head_sha(CONFIG_REPO)
+        warmed = warm_schema(orchestrator, tenant)
+        result.add_check("Schema registry warmed at the pushed commit",
+                         warmed["schema_commit"] == result.schema_commit and warmed["rules_loaded"] > 0,
+                         f"rules={warmed['rules_loaded']} holds={warmed['schema_commit'][:12] or '(none)'} "
+                         f"pushed={result.schema_commit[:12]}")
+
+        # ── The limit ─────────────────────────────────────────────────────────
+        # a slot free: the sync runs at once and says nothing of waiting
+        free = sync_and_wait(result, orchestrator, "mongo-kv", tenant, commit_sha, gitea_url, label="free slot: ")
+        result.add_check("free slot: the task says nothing of waiting", bool(free) and free.message == "completed",
+                         (free.message if free else "")[:200])
+        result.add_check("free slot: the slot is given back", _slot_holders(r) == [], str(_slot_holders(r)))
+
+        # the slot held: the sync waits, goes back on the queue, and finishes once the slot is let go
+        now = r.time()
+        r.zadd(LIMIT_KEY, {holder: now[0] + now[1] / 1e6 + 120})
+        task_id = trigger_webhook(orchestrator, "mongo-kv", tenant, commit_sha, gitea_url)
+        result.add_check("held slot: push accepted", task_id is not None, str(task_id))
+        if task_id:
+            early = wait_for_task(orchestrator, task_id, timeout=3)
+            result.add_check("held slot: the sync does not run while the slot is held (not finished after 3 s)",
+                             early.state == "TIMEOUT", early.said())
+            time.sleep(5)           # longer than the 5 s a sync waits in its process: it is back on the queue by now
+            noted = r.get(f"vt:sync-slots:waiting:{task_id}")
+            result.add_check("held slot: the task noted when it first asked for the slot", noted is not None, str(noted))
+            still = wait_for_task(orchestrator, task_id, timeout=1)
+            result.add_check("held slot: still not finished after 8 s", still.state == "TIMEOUT", still.said())
+            result.add_check("held slot: the slot is still the suite's, nothing else took it",
+                             _slot_holders(r) == [holder], str(_slot_holders(r)))
+            r.zrem(LIMIT_KEY, holder)
+            done = wait_for_task(orchestrator, task_id)
+            check_synced(result, done, "held slot, then let go: ")
+            result.add_check("held slot, then let go: the task says how long it waited",
+                             bool(re.fullmatch(rf"completed \(waited \d+\.\d s for a slot of {LIMIT_NAME}\)", done.message or "")),
+                             (done.message or "")[:200])
+            result.add_check("held slot, then let go: the first-ask note is gone",
+                             r.get(f"vt:sync-slots:waiting:{task_id}") is None, "")
+            result.add_check("held slot, then let go: the slot is given back", _slot_holders(r) == [], str(_slot_holders(r)))
+        r.zrem(LIMIT_KEY, holder)
+
+        # five at once: all finish, and never more than one slot is held at any moment
+        peak = {"max": 0, "samples": 0}
+        stop = {"now": False}
+
+        def sample() -> None:
+            sampler = redis_lib.Redis(host="redis", port=6379, db=0, socket_timeout=5, decode_responses=True)
+            while not stop["now"]:
+                held = len(_slot_holders(sampler))
+                peak["max"] = max(peak["max"], held)
+                peak["samples"] += 1
+                time.sleep(0.005)
+            sampler.close()
+
+        sampler_thread = threading.Thread(target=sample, daemon=True)
+        sampler_thread.start()
+        try:
+            with ThreadPoolExecutor(max_workers=5) as pool:
+                ids = list(pool.map(lambda _: trigger_webhook(orchestrator, "mongo-kv", tenant, commit_sha, gitea_url), range(5)))
+            result.add_check("burst: five pushes accepted", all(ids), str(ids))
+            outcomes = [wait_for_task(orchestrator, t) for t in ids if t]
+        finally:
+            stop["now"] = True
+            sampler_thread.join(timeout=5)
+        result.add_check("burst: all five syncs finished SUCCEEDED",
+                         len(outcomes) == 5 and all(o.state == "SUCCEEDED" for o in outcomes),
+                         "; ".join(o.state for o in outcomes))
+        result.add_check("burst: every file was written", all(
+            o.files and all(f.get("status") == "ok" and f.get("written", 0) > 0 for f in o.files) for o in outcomes), "")
+        result.add_check("burst: never more than one slot was held at a time (sampled while they ran)",
+                         peak["max"] == 1, f"most held at once: {peak['max']} in {peak['samples']} samples")
+        result.add_check("burst: the slots are all given back", _slot_holders(r) == [], str(_slot_holders(r)))
+
+        # ── The order ─────────────────────────────────────────────────────────
+        gitea.ensure_branch(CONFIG_REPO, ORDER_BRANCH)
+        shas = {}
+        for label in ("A", "B"):
+            shas[label] = gitea.push_file_on(CONFIG_REPO, ORDER_PATH, ORDER_FILES[label], f"e2e: order {label}", ORDER_BRANCH)
+        order_rule = order_rules[0]
+
+        def push_and_wait(label: str) -> TaskOutcome | None:
+            tid = trigger_push(orchestrator, "mongo-document", ORDER_BRANCH, shas[label], gitea_url, [ORDER_PATH])
+            result.add_check(f"order {label}: push accepted", tid is not None, str(tid))
+            return wait_for_task(orchestrator, tid) if tid else None
+
+        def stored() -> dict:
+            return _env_documents(order_rule).get(ORDER_BRANCH, {}).get("feature", {})
+
+        b_first = push_and_wait("B")
+        if b_first:
+            check_synced(result, b_first, "order B first: ")
+        result.add_check("order B first: the store holds B's values", stored().get("flag") == "two" and stored().get("extra") == "added",
+                         str(stored()))
+
+        a_late = push_and_wait("A")
+        if a_late:
+            result.add_check("order A after B: the task finished SUCCEEDED", a_late.state == "SUCCEEDED", a_late.said())
+            files = a_late.files
+            note = (files[0].get("note") if files else "") or ""
+            result.add_check("order A after B: A's file was left alone, and the file says so",
+                             len(files) == 1 and files[0].get("status") == "skipped"
+                             and note == f"skipped: commit {shas['B'][:12]} is newer than {shas['A'][:12]} and is already written to {ORDER_BRANCH}",
+                             str(files)[:300])
+            result.add_check("order A after B: the task's message says the same",
+                             f"skipped: commit {shas['B'][:12]} is newer than {shas['A'][:12]}" in (a_late.message or ""),
+                             (a_late.message or "")[:300])
+            result.add_check("order A after B: nothing was written", all(f.get("written", 0) == 0 for f in files), str(files)[:200])
+        result.add_check("order A after B: the store still holds B's values, not A's",
+                         stored().get("flag") == "two" and stored().get("extra") == "added" and stored().get("count") == 2,
+                         str(stored()))
+
+        shas["C"] = gitea.push_file_on(CONFIG_REPO, ORDER_PATH, ORDER_FILES["C"], "e2e: order C", ORDER_BRANCH)
+        c_newer = push_and_wait("C")
+        if c_newer:
+            check_synced(result, c_newer, "order C after B: ")
+        result.add_check("order C after B: a newer commit is written over an older one",
+                         stored().get("flag") == "three" and "extra" not in stored(), str(stored()))
+
+        a_again = push_and_wait("A")
+        result.add_check("order A after C: A is still older, and is left alone",
+                         bool(a_again) and a_again.state == "SUCCEEDED" and bool(a_again.files)
+                         and a_again.files[0].get("status") == "skipped" and stored().get("flag") == "three",
+                         f"{a_again.files if a_again else None} {stored()}"[:300])
+
+        result.finish("pass" if all(c["passed"] for c in result.checks) else "fail")
+    except Exception as exc:
+        result.error = traceback.format_exc()
+        err(f"Suite 27 raised exception: {exc}")
+        result.finish("fail")
+    finally:
+        try:
+            r.zrem(LIMIT_KEY, holder)
+            r.close()
+            gitea.delete_file_on(CONFIG_REPO, ORDER_PATH, "e2e: order done", ORDER_BRANCH)
+            gitea.delete_branch(CONFIG_REPO, ORDER_BRANCH)
+        except Exception:
+            pass
+
+    colour_code = colour.GREEN if result.status == "pass" else colour.RED
+    print(f"\n  {colour_code}→ Suite 27 {result.status.upper()} ({result.duration_ms:.0f} ms){colour.NC}")
+    return result
+
+
+
 def load_settings(settings_dir: str) -> dict[str, list[dict]]:
     p = Path(settings_dir)
     result = {}
@@ -2775,7 +2970,7 @@ def main() -> None:
 
     gitea = GiteaClient(args.gitea, args.gitea_user, args.gitea_pass)
 
-    banner("VarTrack E2E Test Runner — 26 Suites / 8 Sinks + CUE + Vault")
+    banner("VarTrack E2E Test Runner — 27 Suites / 8 Sinks + CUE + Vault")
     run_started = datetime.now(timezone.utc).isoformat()
     global_t0 = time.monotonic()
 
@@ -2870,6 +3065,9 @@ def main() -> None:
 
     # ── A file keeps its format, or takes the one the rule names (26) ─────────────────────────────────────────
     results.append(suite_26_file_formats(args.orchestrator, gitea, args.gitea, s3_file, linux_file))
+
+    # ── Sync limits, and the order commits are written in (27) ────────────────────────────────────────────────
+    results.append(suite_27_limits_and_order(args.orchestrator, gitea, args.gitea, mongo_doc, mongo_docs))
 
     # ── Summary ───────────────────────────────────────────────────────────────
     total_ms   = (time.monotonic() - global_t0) * 1000

@@ -423,6 +423,14 @@ class _Settings:
     # them at most this long (seconds); 0 turns the warm start off (app/worker/warm.py).
     SCHEMA_WARM_TIMEOUT: float = float(os.getenv("SCHEMA_WARM_TIMEOUT", "10"))
 
+    # ── Sync limits (config.cue's sync_limits; app/pipeline/sync_slots.py) ────
+    # A slot is a lease this long, renewed while the sync runs: a worker that dies frees its slot after it.
+    SYNC_SLOT_LEASE_SECONDS: float = float(os.getenv("SYNC_SLOT_LEASE_SECONDS", "60"))
+    # A sync that finds no slot waits this long in its pool process, then goes back on the queue.
+    SYNC_SLOT_WAIT_SECONDS: float = float(os.getenv("SYNC_SLOT_WAIT_SECONDS", "5"))
+    # ... and fails once it has waited this long in all, counted from its first ask.
+    SYNC_SLOT_MAX_WAIT_SECONDS: float = float(os.getenv("SYNC_SLOT_MAX_WAIT_SECONDS", "600"))
+
     # ── Git clone cache (CUE bundle overrides via global_tags) ────────────────
     GIT_CACHE_DIR: str         = os.getenv("GIT_CACHE_DIR", "/tmp/vt_gitcache")
     GIT_CACHE_MAX_ENTRIES: int = int(os.getenv("GIT_CACHE_MAX_ENTRIES", "20"))

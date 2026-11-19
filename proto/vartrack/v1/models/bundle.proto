@@ -115,6 +115,22 @@ message Bundle {
   // How each orchestrator worker runs. Every value here is a default: the worker's environment
   // (VARTRACK_WORKER_*) and its command line override it. Only the orchestrator's worker reads it.
   optional WorkerConfig workers = 18 [(google.api.field_behavior) = OPTIONAL];
+
+  // Limits on how many syncs write at once to a group of datasources, across all workers. A datasource
+  // that no limit names has none. Only the orchestrator's worker reads it.
+  repeated SyncLimit sync_limits = 19 [(google.api.field_behavior) = OPTIONAL];
+}
+
+message SyncLimit {
+  // A name for the limit, shown in the UI, the logs and the metrics.
+  string name = 1 [(buf.validate.field).string.min_len = 1];
+
+  // Full datasource names ({type} or {type}-{tag}) that share these slots, such as several datasources
+  // that are one server. A datasource is in at most one limit.
+  repeated string datasources = 2 [(buf.validate.field).repeated.min_items = 1];
+
+  // Syncs that may write to them at once. At least 1.
+  uint32 max_at_once = 3 [(buf.validate.field).uint32.gte = 1];
 }
 
 message WorkerConfig {

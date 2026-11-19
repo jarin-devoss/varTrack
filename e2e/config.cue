@@ -353,6 +353,14 @@ bundle: {
 		max_tasks_per_child: 200
 	}
 
+	// A datasource takes no more syncs at once than it is given, across all workers. mongo-kv is no other suite's
+	// datasource: suite 27 holds its one slot to see a sync wait, and sends five at once to see them go one at a time.
+	sync_limits: [{
+		name:        "e2e-mongo-kv"
+		datasources: ["mongo-kv"]
+		max_at_once: 1
+	}]
+
 	// The demo's one tenant, declared by the operator. A push is its own when it comes from
 	// one of its repositories; a push to its schema repository refreshes it. A request can
 	// name a tenant but never makes one.

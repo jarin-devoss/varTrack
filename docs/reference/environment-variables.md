@@ -64,6 +64,9 @@ Set the same values on the API and on every Celery worker.
 | `SCHEMA_CACHE_DIR` | `/tmp/schema_registry` | Clones of the tenants' schema repositories; share it too |
 | `SCHEMA_TTL_SECONDS` | `300` | How often a schema repository is refreshed |
 | `SCHEMA_WARM_TIMEOUT` | `10` | Seconds a new worker pool process waits for the tenants' schemas to load before it takes its first sync; `0` turns the warm start off |
+| `SYNC_SLOT_LEASE_SECONDS` | `60` | Worker only. A slot of a [`sync_limits`](../configuration/bundle.md#sync_limits) entry is a lease this long, renewed while the sync runs: a worker that dies frees its slot after it |
+| `SYNC_SLOT_WAIT_SECONDS` | `5` | Worker only. A sync that finds no slot free waits this long in its worker process, then goes back on the queue |
+| `SYNC_SLOT_MAX_WAIT_SECONDS` | `600` | Worker only. A sync that has waited this long in all for a slot fails, saying which limit and how many slots were in use |
 | `VARTRACK_WORKER_CONCURRENCY` | — | Worker only. Syncs one worker container runs at once (1 to 64). Over `config.cue`'s `workers.concurrency`, under the `--concurrency` flag; the default is 4. [`workers`](../configuration/bundle.md#workers) |
 | `VARTRACK_WORKER_MAX_TASKS_PER_CHILD` | — | Worker only. A pool process is replaced after this many syncs, `0` for never. Over `config.cue`'s `workers.max_tasks_per_child`; the default is 200 |
 | `WORKER_CONCURRENCY` | — | **Deprecated**: the old name of `VARTRACK_WORKER_CONCURRENCY`, read for one release with a warning |

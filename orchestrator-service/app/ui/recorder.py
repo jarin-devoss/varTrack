@@ -39,9 +39,13 @@ def task_started(
     env: str | None = None,
     submitted_by: str | None = None,
     preview: bool = False,
+    resumed: bool = False,
 ) -> dict[str, Any] | None:
     """*preview*: a dry run started to learn what a sync would delete. It is recorded (its page answers) but not
-    listed, and it leaves no events: nobody asked for a sync, so nothing in the history says one ran."""
+    listed, and it leaves no events: nobody asked for a sync, so nothing in the history says one ran.
+
+    *resumed*: the task is coming back from the queue (it waited for a slot of a sync limit, or retried): the
+    sync it records was started before, so the history does not say it started again."""
     try:
         rule = f"{platform}/{datasource}"
         repo = ledger.repo_name(repo_url)
@@ -68,7 +72,7 @@ def task_started(
             **({"preview": True} if preview else {}),
         }
         ledger.record_task(task, tenant=tenant, new=not preview)
-        if preview:
+        if preview or resumed:
             return task
         if trigger == "webhook":
             ledger.record_event(
@@ -433,6 +437,17 @@ def _shape_changed(f: dict[str, Any]) -> str:
     else:
         what = f"replaced {n} per-key document{'s' if n != 1 else ''} of {f['file']} with one document"
     return f"{what} (update_strategy {strategy})" if strategy else what
+
+
+def task_waiting(task: dict[str, Any] | None, *, tenant: str, message: str) -> None:
+    """The sync is waiting for a slot of a sync limit: its page says so, in place of "running"."""
+    if not task:
+        return
+    try:
+        task.update({"state": "RUNNING", "message": message})
+        ledger.record_task(task, tenant=tenant)
+    except Exception:
+        logger.warning("ui recorder: task_waiting failed", exc_info=True)
 
 
 def task_errored(task: dict[str, Any] | None, *, tenant: str, error: str) -> None:

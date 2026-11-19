@@ -113,6 +113,33 @@ class OrchestratorMetrics:
             registry=self._registry,
         )
 
+        # ── Sync limits (config.cue's sync_limits) ─────────────────────────────
+        self._sync_slots_in_use = Gauge(
+            "vartrack_sync_slots_in_use",
+            "Slots of a sync limit held by a sync now.",
+            ["limit"],
+            registry=self._registry,
+        )
+        self._sync_slots_max = Gauge(
+            "vartrack_sync_slots_max",
+            "Slots a sync limit gives: its max_at_once.",
+            ["limit"],
+            registry=self._registry,
+        )
+        self._sync_slot_waits_total = Counter(
+            "vartrack_sync_slot_waits_total",
+            "Syncs that asked for a slot of a limit and found none free, by how it ended: "
+            "got (a slot came free in time), requeued (back on the queue), gave_up (waited as long as allowed).",
+            ["limit", "outcome"],
+            registry=self._registry,
+        )
+        self._sync_slot_wait_seconds = Histogram(
+            "vartrack_sync_slot_wait_seconds",
+            "How long a sync waited for a slot of a limit, from its first ask to the slot being granted.",
+            ["limit"],
+            buckets=(0.1, 0.5, 1, 2, 5, 10, 30, 60, 120, 300, 600),
+            registry=self._registry,
+        )
         self._older_commit_skipped_total = Counter(
             "vartrack_older_commit_skipped_total",
             "Files a sync did not write because a newer commit of them was already written.",
@@ -322,6 +349,18 @@ class OrchestratorMetrics:
 
     def set_dependency_up(self, dependency: str, up: bool) -> None:
         self._dependency_up.labels(dependency).set(1 if up else 0)
+
+    # ── Sync limit methods ────────────────────────────────────────────────────
+
+    def set_sync_slots(self, limit: str, in_use: int, maximum: int) -> None:
+        self._sync_slots_in_use.labels(limit).set(in_use)
+        self._sync_slots_max.labels(limit).set(maximum)
+
+    def inc_sync_slot_wait(self, limit: str, outcome: str) -> None:
+        self._sync_slot_waits_total.labels(limit, outcome).inc()
+
+    def observe_sync_slot_wait(self, limit: str, seconds: float) -> None:
+        self._sync_slot_wait_seconds.labels(limit).observe(seconds)
 
     def inc_older_commit_skipped(self, datasource: str) -> None:
         self._older_commit_skipped_total.labels(datasource).inc()

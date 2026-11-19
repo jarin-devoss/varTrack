@@ -19,6 +19,8 @@ import logging
 import time
 from typing import Any
 
+from celery.exceptions import Retry
+
 from app.worker.celery import celery
 from app.tasks.result import ok, fail
 from app.pipeline.schema_utils import rules_from_bundle_all
@@ -27,6 +29,7 @@ from app.pipeline.env_resolver import heal_branches
 from app.pipeline.repo_scope import RepositoryNotAllowed
 from app.pipeline.stage_payload import run_stage_payload
 from app.pipeline.stage_etl import run_stage_etl
+from app.pipeline import sync_slots
 from app.pipeline.stage_sync import run_stage_sync, sync_result_to_dict
 from app.pipeline.models import PayloadContext, ETLResult
 from app.ui import ledger
@@ -150,6 +153,67 @@ def _error_files(etl: Any) -> list[dict[str, Any]]:
     return [{"file": path, "status": "error", "error": etl.failure(path)} for path in etl.errors]
 
 
+# ── Sync limits ────────────────────────────────────────────────────────────────
+
+# A sync goes back on the queue this many times at most for want of a slot: more than any wait can need
+# (sync_slots.requeue_delay is at least a second, and SYNC_SLOT_MAX_WAIT_SECONDS ends the wait first).
+_SLOT_REQUEUES = 1000
+
+
+def _slot_metric(record: Any) -> None:
+    try:
+        from app.monitoring import get_metrics
+        m = get_metrics()
+        if m is not None:
+            record(m)
+    except Exception:
+        pass
+
+
+def _take_slot(task: Any, limit: sync_slots.Limit, *, task_id: str, tenant_id: str,
+               ui_task: Any) -> tuple[sync_slots.Slot, float]:
+    """Hold a slot of *limit* for this sync. Returns (the slot, seconds waited for it, from the first ask).
+
+    With none free it waits a few seconds in this process, then raises celery's Retry: the task goes back on
+    the queue and comes back, so it does not hold a pool process while it waits. After
+    SYNC_SLOT_MAX_WAIT_SECONDS in all it raises SlotWaitExpired. A write is never made without a slot:
+    Redis that cannot be asked is a LockUnavailable, like the target lock."""
+    from app.config import settings
+
+    told: dict[str, float | None] = {"first": None}
+
+    def waiting(held: int) -> None:
+        told["first"] = sync_slots.first_wait_at(task_id)
+        message = f"waiting for a slot of {limit.name} ({held} of {limit.max_at_once} in use)"
+        logger.info("task=%s %s", task_id, message)
+        ui_recorder.task_waiting(ui_task, tenant=tenant_id, message=message)
+
+    slot, held = sync_slots.wait_for_slot(limit, task_id, settings.SYNC_SLOT_WAIT_SECONDS, on_wait=waiting)
+    if told["first"] is None and task.request.retries:
+        told["first"] = sync_slots.first_wait_at(task_id)       # back from the queue: the first ask was earlier
+    first = told["first"]
+    waited = max(0.0, time.time() - first) if first is not None else 0.0
+    _slot_metric(lambda m: m.set_sync_slots(limit.name, held, limit.max_at_once))
+
+    if slot is not None:
+        if first is not None:
+            sync_slots.forget_wait(task_id)
+            logger.info("task=%s got a slot of %s after %.1f s", task_id, limit.name, waited)
+            _slot_metric(lambda m: (m.inc_sync_slot_wait(limit.name, "got"),
+                                    m.observe_sync_slot_wait(limit.name, waited)))
+        return slot, waited
+
+    if waited >= settings.SYNC_SLOT_MAX_WAIT_SECONDS:
+        sync_slots.forget_wait(task_id)
+        _slot_metric(lambda m: m.inc_sync_slot_wait(limit.name, "gave_up"))
+        raise sync_slots.SlotWaitExpired(limit, held, waited)
+    _slot_metric(lambda m: m.inc_sync_slot_wait(limit.name, "requeued"))
+    delay = sync_slots.requeue_delay(held)
+    logger.info("task=%s: no slot of %s free (%d of %d in use); back on the queue for %.1f s",
+                task_id, limit.name, held, limit.max_at_once, delay)
+    raise task.retry(countdown=delay, max_retries=_SLOT_REQUEUES)
+
+
 # ── Tasks ──────────────────────────────────────────────────────────────────────
 
 @celery.task(
@@ -262,6 +326,7 @@ def process_webhook_task(
             dry_run=dry_run,
             parsed_payload=ctx.parsed_payload,
             preview=dry_run and ledger.is_preview(headers),
+            resumed=bool(self.request.retries),
         )
 
         # ── Stage 2 · ETL ─────────────────────────────────────────────────────
@@ -320,6 +385,16 @@ def process_webhook_task(
             state="PROGRESS",
             meta={"stage": "sync", "progress": 0.60, "files": len(etl.files)},
         )
+        slot, slot_waited = None, 0.0
+        limit = sync_slots.limit_for(datasource)
+        if limit is not None:
+            try:
+                slot, slot_waited = _take_slot(self, limit, task_id=task_id, tenant_id=tenant_id, ui_task=ui_task)
+            except sync_slots.SlotWaitExpired as exc:
+                message = f"datasource {datasource}: {exc}"
+                logger.error("task=%s failed: %s", task_id, message)
+                ui_recorder.task_errored(ui_task, tenant=tenant_id, error=message)
+                return fail(task_id, message)
         _t_sync = time.perf_counter()
         sync_span = start_etl_span(task_id=task_id, stage="sync")
         try:
@@ -335,6 +410,9 @@ def process_webhook_task(
             raise
         else:
             sync_span.end()
+        finally:
+            if slot is not None:
+                slot.release()
 
         _observe("sync", time.perf_counter() - _t_sync)
 
@@ -352,6 +430,8 @@ def process_webhook_task(
                                    if r.status == "skipped" and r.sync_note.startswith("skipped:")))
         if older and not failed:
             overall = "; ".join([overall, *older])
+        if slot_waited >= 1.0 and not failed and limit is not None:
+            overall = f"{overall} (waited {slot_waited:.1f} s for a slot of {limit.name})"
 
         logger.info(
             "stage=sync written=%d errors=%d duration_ms=%.0f",
@@ -367,6 +447,11 @@ def process_webhook_task(
             "errors": len(failed),
             "schema_commit": etl.schema_commit,
         })
+
+    except Retry:
+        # Back on the queue for a slot of a sync limit: not a failure, and nothing to record.
+        span.end()
+        raise
 
     except DependencyError as exc:
         # Something the sync needs could not be read: the task failed, and says what and why.
@@ -673,6 +758,7 @@ def process_cli_sync_task(
             dry_run=dry_run,
             env=env,
             submitted_by=submitted_by,
+            resumed=bool(self.request.retries),
         )
 
         # Synthetic context — the rule's platform, but no Git push: no commit SHA.
@@ -739,17 +825,32 @@ def process_cli_sync_task(
 
         # Stage 3 — Sync.
         self.update_state(state="PROGRESS", meta={"stage": "sync", "file": file_path})
+
+        # A CLI sync writes to the same stores a push does: it takes a slot of the datasource's limit too.
+        slot = None
+        limit = sync_slots.limit_for(datasource)
+        if limit is not None:
+            try:
+                slot, _ = _take_slot(self, limit, task_id=task_id, tenant_id=tenant_id, ui_task=ui_task)
+            except sync_slots.SlotWaitExpired as exc:
+                message = f"datasource {datasource}: {exc}"
+                ui_recorder.task_errored(ui_task, tenant=tenant_id, error=message)
+                return fail(task_id, message, tenant_id=tenant_id)
         _t_sync = time.perf_counter()
 
         from app.pipeline.stage_sync import run_stage_sync, sync_result_to_dict
-        sync_results = run_stage_sync(
-            ctx=ctx,
-            etl=etl,
-            datasource=datasource,
-            tenant_id=tenant_id,
-            total_sources=1,
-            repo_url=task_repo_url,  # the ledger records the files under the task's
-        )
+        try:
+            sync_results = run_stage_sync(
+                ctx=ctx,
+                etl=etl,
+                datasource=datasource,
+                tenant_id=tenant_id,
+                total_sources=1,
+                repo_url=task_repo_url,  # the ledger records the files under the task's
+            )
+        finally:
+            if slot is not None:
+                slot.release()
         _observe("sync", time.perf_counter() - _t_sync)
 
         ui_recorder.task_finished(ui_task, tenant=tenant_id, etl=etl, results=sync_results)
@@ -772,6 +873,9 @@ def process_cli_sync_task(
             result["status"] = "partial_error"
         return result
 
+    except Retry:
+        # Back on the queue for a slot of a sync limit: not a failure.
+        raise
     except SoftTimeLimitExceeded:
         logger.error("cli_sync soft time limit exceeded task=%s", task_id)
         ui_recorder.task_errored(ui_task, tenant=tenant_id, error="task exceeded time limit")

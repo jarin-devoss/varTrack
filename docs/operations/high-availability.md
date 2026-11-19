@@ -103,6 +103,8 @@ The syncs that can run at once are **the containers times the processes in each*
 
   On Kubernetes it is the worker Deployment's `replicas`, which you write: varTrack ships no chart.
 
+**A limit per store.** `workers.concurrency` and the number of containers say how many syncs run at once in all; [`sync_limits`](../configuration/bundle.md#sync_limits) say how many of them may write to one store (or one server behind several datasources) at once, however many workers there are. The two apply together: a sync that finds its store's slots taken waits a few seconds and then goes back on the queue, so it does not hold a worker process while it waits.
+
 Replicas share Redis, so a task goes to whichever worker is free. Each pool process keeps its own clone of the tenants' schemas and loads them when it starts, so a worker is ready for its first sync as soon as its processes are up.
 
 **What one machine did.** Measured on the e2e stack in Docker Desktop (4 CPUs, 5.8 GiB), with 400 push webhooks sent at once to a Mongo, a Redis and an S3 rule. The median of 3 runs:
