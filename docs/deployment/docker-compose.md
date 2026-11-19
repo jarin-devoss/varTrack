@@ -38,7 +38,9 @@ Full `.env` reference:
 | `MONGO_ROOT_PASSWORD` | *(required)* | MongoDB root password |
 | `GATEWAY_PORT` | `5657` | Host port for the webhook receiver |
 | `ORCHESTRATOR_PORT` | `8000` | Host port for the orchestrator HTTP API |
-| `WORKER_CONCURRENCY` | `4` | Celery worker concurrency |
+| `VARTRACK_WORKER_CONCURRENCY` | *(unset)* | Syncs one worker container runs at once on this machine. Unset, the worker reads `workers.concurrency` in `config.cue`, then 4. More containers: `docker compose up -d --scale orchestrator-worker=3` |
+| `VARTRACK_WORKER_MAX_TASKS_PER_CHILD` | *(unset)* | Syncs a worker process does before it is replaced, `0` for never. Unset: `workers.max_tasks_per_child`, then 200 |
+| `WORKER_CONCURRENCY` | *(unset)* | The old name of `VARTRACK_WORKER_CONCURRENCY`, read for one release with a warning |
 | `WATCHER_POLL_INTERVAL` | `60s` | How often the watcher checks for drift |
 | `CORS_ORIGINS` | *(empty)* | Browser origin for CORS headers (optional) |
 

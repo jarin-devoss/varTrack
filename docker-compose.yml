@@ -124,9 +124,10 @@ services:
   orchestrator-worker:
     image: jarin-devoss/orchestrator-service:latest
     networks: [vartrack]
-    command: ["celery", "-A", "app.worker.celery", "worker",
-              "--loglevel=info", "-Q", "webhooks,sync,schema",
-              "--concurrency=${WORKER_CONCURRENCY:-4}"]
+    # How many syncs this container runs at once is config.cue's `workers: concurrency`; set
+    # VARTRACK_WORKER_CONCURRENCY in .env to give this machine another number. More containers:
+    # docker compose up -d --scale orchestrator-worker=N
+    command: ["python", "-m", "app.worker"]
     environment:
       APP_ENV: ${APP_ENV:-production}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
@@ -135,6 +136,11 @@ services:
       CELERY_RESULT_BACKEND: "redis://redis:6379/0"
       SCHEMA_CACHE_DIR: /app/schema_registry
       GIT_CACHE_DIR: /app/git_cache
+      # Empty means "not set here": the worker then reads config.cue, then its default of 4.
+      VARTRACK_WORKER_CONCURRENCY: ${VARTRACK_WORKER_CONCURRENCY:-}
+      VARTRACK_WORKER_MAX_TASKS_PER_CHILD: ${VARTRACK_WORKER_MAX_TASKS_PER_CHILD:-}
+      # What an .env wrote before the two above: still read for this release, with a warning.
+      WORKER_CONCURRENCY: ${WORKER_CONCURRENCY:-}
     volumes:
       - ${CONFIG_PATH:-./config.cue}:/app/config.cue:ro
       - schema-cache:/app/schema_registry

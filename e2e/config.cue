@@ -346,6 +346,13 @@ bundle: {
 		environment: "demo"
 	}
 
+	// How each orchestrator worker runs: syncs it runs at once, and when a pool process is replaced.
+	// Defaults: the worker's environment (VARTRACK_WORKER_*) and its command line override them.
+	workers: {
+		concurrency:         4
+		max_tasks_per_child: 200
+	}
+
 	// The demo's one tenant, declared by the operator. A push is its own when it comes from
 	// one of its repositories; a push to its schema repository refreshes it. A request can
 	// name a tenant but never makes one.

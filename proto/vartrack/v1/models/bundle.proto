@@ -111,4 +111,17 @@ message Bundle {
   // repository, so a single-tenant install is unchanged; with any, every tenant of a rule's
   // `tenants` and every push must belong to one of them.
   repeated Tenant tenants = 17 [(google.api.field_behavior) = OPTIONAL];
+
+  // How each orchestrator worker runs. Every value here is a default: the worker's environment
+  // (VARTRACK_WORKER_*) and its command line override it. Only the orchestrator's worker reads it.
+  optional WorkerConfig workers = 18 [(google.api.field_behavior) = OPTIONAL];
+}
+
+message WorkerConfig {
+  // Syncs one worker container runs at once (Celery pool processes), 1 to 64. Default 4.
+  optional uint32 concurrency = 1 [(buf.validate.field).uint32 = {gte: 1, lte: 64}];
+
+  // A pool process is replaced after this many syncs, to bound memory growth. 0 means never.
+  // Default 200.
+  optional uint32 max_tasks_per_child = 2;
 }

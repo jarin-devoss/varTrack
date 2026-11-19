@@ -95,12 +95,8 @@ dev: ## Start the FastAPI + gRPC server with auto-reload
 	uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 
 .PHONY: worker
-worker: ## Start a Celery worker (webhooks + sync queues)
-	celery -A $(CELERY_APP) worker \
-	  --queues=webhooks,sync \
-	  --loglevel=info \
-	  --concurrency=4 \
-	  --max-tasks-per-child=200
+worker: ## Start a Celery worker (webhooks, sync and schema queues); syncs at once: config.cue, VARTRACK_WORKER_CONCURRENCY
+	python -m app.worker
 
 .PHONY: beat
 beat: ## Start Celery beat for periodic self-heal

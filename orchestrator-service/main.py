@@ -11,7 +11,7 @@ Production (gunicorn + uvicorn workers):
     gunicorn main:app -k uvicorn.workers.UvicornWorker -w 4 -b 0.0.0.0:8000
 
 Celery worker:
-    celery -A app.worker.celery worker --queues=webhooks,sync -l info
+    python -m app.worker
 
 Celery beat (periodic self-heal):
     celery -A app.worker.celery beat -l info

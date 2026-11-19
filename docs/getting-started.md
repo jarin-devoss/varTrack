@@ -134,7 +134,7 @@ pip install -e .
 uvicorn main:app --host 0.0.0.0 --port 8000 &
 
 # Celery worker (separate terminal)
-celery -A app.worker.celery worker --queues=webhooks,sync -l info
+python -m app.worker
 ```
 
 ### 5. Start the watcher-service

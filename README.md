@@ -241,7 +241,7 @@ go run ./gateway-service/cmd
 cd orchestrator-service
 pip install -e .
 uvicorn main:app --host 0.0.0.0 --port 8000 &
-celery -A app.worker.celery worker --queues=webhooks,sync -l info
+python -m app.worker
 
 # watcher-service (new terminal)
 ORCHESTRATOR_ADDR=localhost:50051 \

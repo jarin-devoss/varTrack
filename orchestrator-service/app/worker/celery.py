@@ -3,8 +3,8 @@ app/worker/celery.py
 ─────────────────────
 Celery application.
 
-Start worker:
-    celery -A app.worker.celery worker --queues=webhooks,sync -l info
+Start worker (how many syncs it runs at once comes from config.cue, the environment or a flag):
+    python -m app.worker
 
 Start beat (periodic tasks):
     celery -A app.worker.celery beat -l info
@@ -19,6 +19,7 @@ from celery.signals import task_failure
 from kombu import Queue
 
 from app.config import settings
+from app.worker.options import DEFAULT_MAX_TASKS_PER_CHILD
 
 _dlq_logger = logging.getLogger(__name__)
 
@@ -71,8 +72,10 @@ celery.conf.update(
     worker_send_task_events=True,
     task_send_sent_event=True,
 
-    # worker hygiene — restart after N tasks to prevent memory growth
-    worker_max_tasks_per_child=200,
+    # worker hygiene — restart after N tasks to prevent memory growth. `python -m app.worker` sets the
+    # operator's own value (workers.max_tasks_per_child, VARTRACK_WORKER_MAX_TASKS_PER_CHILD); this is
+    # what a worker started by `celery ... worker` itself runs with.
+    worker_max_tasks_per_child=DEFAULT_MAX_TASKS_PER_CHILD,
     # prefetch=1 ensures fair distribution; no worker hogs the queue
     worker_prefetch_multiplier=1,
 
@@ -98,6 +101,13 @@ try:
     )
 except Exception:
     _dlq_logger.warning("monitoring: init failed in celery worker — metrics unavailable", exc_info=True)
+
+
+# A new pool process loads the tenants' schemas before it takes its first sync (app/worker/warm.py).
+# Only a worker's pool processes send this signal: the API and beat never run it.
+from app.worker import warm as _warm  # noqa: E402
+
+_warm.connect()
 
 
 @task_failure.connect

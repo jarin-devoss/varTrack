@@ -7,7 +7,7 @@ what has to be shared for replicas to work together, and what one replica does a
 |---|---|---|---|
 | gateway | any number, behind a load balancer | the webhook replay store | `gateway_nonce_datasource` in `config.cue` |
 | orchestrator API | any number | Redis (broker, sync ledger), the Git and schema caches | `CELERY_BROKER_URL`, shared `GIT_CACHE_DIR` and `SCHEMA_CACHE_DIR` volumes |
-| orchestrator workers | any number; more workers sync more targets at once | the same | the same, and `--concurrency` per worker |
+| orchestrator workers | any number; more workers sync more targets at once | the same | the same, `workers.concurrency` in `config.cue` per worker, and how many containers (below) |
 | watcher | any number; one leads, the others wait | a lock | `watcher_leader_election_datasource` in `config.cue` |
 
 ---
@@ -90,11 +90,44 @@ The watcher keeps no state of its own, so a new leader starts where the last one
 
 ---
 
+## Workers: how many syncs at once
+
+The syncs that can run at once are **the containers times the processes in each**:
+
+- **Processes in a container:** `workers.concurrency` in `config.cue` (default 4, 1 to 64). A machine that needs another number sets `VARTRACK_WORKER_CONCURRENCY` in its environment, which is over `config.cue`. The worker logs where its number came from when it starts. See [`workers`](../configuration/bundle.md#workers).
+- **Containers:** this is not set in `config.cue`, because varTrack does not start its own containers. With Docker Compose:
+
+  ```bash
+  docker compose up -d --scale orchestrator-worker=3    # three containers, 12 syncs at once with the default 4
+  ```
+
+  On Kubernetes it is the worker Deployment's `replicas`, which you write: varTrack ships no chart.
+
+Replicas share Redis, so a task goes to whichever worker is free. Each pool process keeps its own clone of the tenants' schemas and loads them when it starts, so a worker is ready for its first sync as soon as its processes are up.
+
+**What one machine did.** Measured on the e2e stack in Docker Desktop (4 CPUs, 5.8 GiB), with 400 push webhooks sent at once to a Mongo, a Redis and an S3 rule. The median of 3 runs:
+
+| Pool processes | Syncs per second | One sync, in the worker | Waiting in the queue | Worker memory |
+|---|---|---|---|---|
+| 1 | 11.7 | 59 ms | 1.7 s | 172 MiB |
+| 2 | 22.1 | 67 ms | 0.76 s | 268 MiB |
+| 4 (the default) | 24.6 | 94 ms | 0.54 s | 466 MiB |
+| 8 | 31.1 | 147 ms | 0.36 s | 819 MiB |
+| 16 | 32.5 | 294 ms | 0.17 s | 1526 MiB |
+
+- A second process doubled the throughput. After that the gains were small and uneven (4 and 8 processes added 11% and 40% over 2), because the processes share the CPUs and each sync gets slower. 16 processes did no more than 8, with twice the memory.
+- A pool process that took 1000 syncs without being replaced stayed at 134 MiB, so `workers.max_tasks_per_child` is a safeguard for stores whose client libraries leak, not something this workload needs.
+- Every sync finished in every run.
+
+These are one laptop's numbers and say how the settings compare, not what your hosts will do. To find yours: start at the default, raise `workers.concurrency` while syncs wait in the queue and the machine has CPU and memory to spare, and stop when a single sync's own time starts to rise. `e2e/load/sweep.py` repeats this measurement on the e2e stack.
+
 ## Sizing notes
 
 | Knob | Effect |
 |---|---|
-| Worker `--concurrency` (`WORKER_CONCURRENCY` in the compose file, 4) | Syncs one worker runs at once |
+| `workers.concurrency` (config.cue; `VARTRACK_WORKER_CONCURRENCY`; default 4) | Syncs one worker container runs at once |
+| `workers.max_tasks_per_child` (config.cue; `VARTRACK_WORKER_MAX_TASKS_PER_CHILD`; default 200) | Syncs a pool process does before it is replaced; `0` never replaces one |
+| `SCHEMA_WARM_TIMEOUT` (10) | Seconds a new pool process waits for the tenants' schemas before it takes work; `0` turns the warm start off |
 | `POLL_INTERVAL` (watcher, 60 s) | How often drift is checked; each poll makes the orchestrator read every `self_heal` datasource |
 | `sync_mode` | `GIT_SMART_REPAIR` reads the sink before writing and writes only what differs (nothing, when the sink already holds the file); `AUTO` uses it above 500 keys |
 | `GIT_CACHE_MAX_ENTRIES` (20) | Mirrors kept on disk per cache directory |
