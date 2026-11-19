@@ -347,6 +347,11 @@ def process_webhook_task(
         if let_go and not failed:
             # A file the rule no longer reads was let go: the task's result says so, as its page in the UI does.
             overall = "; ".join([overall, *let_go])
+        # A file an older commit would have written over a newer one is left alone, and said (write_order).
+        older = list(dict.fromkeys(r.sync_note for r in sync_results
+                                   if r.status == "skipped" and r.sync_note.startswith("skipped:")))
+        if older and not failed:
+            overall = "; ".join([overall, *older])
 
         logger.info(
             "stage=sync written=%d errors=%d duration_ms=%.0f",

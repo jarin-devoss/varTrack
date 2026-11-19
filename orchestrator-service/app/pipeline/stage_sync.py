@@ -7,6 +7,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass, field
 from typing import Any, Iterable, Iterator
 
+from app.pipeline import write_order
 from app.pipeline.models import PayloadContext, ETLResult, SyncResult
 from app.pipeline.change_logger import emit_field_changes
 from app.tasks.payload import extract_prune_config
@@ -33,21 +34,28 @@ class TargetBusy(RuntimeError):
     """Another sync of the same datasource and environment is still writing."""
 
 
+def place_of(datasource: str, rule_config: dict | None, tenant_id: str, env: str) -> str:
+    """Where a sync of *env* writes, as one string: what the target lock is keyed by, and what the commit
+    written to it is remembered under (write_order)."""
+    from app.pipeline.destinations import destination_of
+
+    destination = destination_of(datasource, rule_config, tenant_id, env) if rule_config is not None else ""
+    return destination or f"{tenant_id}:{env}"
+
+
 @contextmanager
 def target_locks(tenant_id: str, datasource: str, envs: Iterable[str],
                  rule_config: dict | None = None) -> Iterator[None]:
     """Hold the lock of every place written, taken in a fixed order so two syncs
     cannot wait on each other. The lock is keyed by the destination, not the tenant:
     two writers of one place meet whoever they act for. Without Redis there is no lock."""
-    from app.pipeline.destinations import destination_of
     from app.ui import ledger
 
     # One lock per place, not per environment: environments that share a place (a destination_template
     # without {env}, several files of one push) would otherwise take the same lock twice and wait on themselves.
     by_place: dict[str, str] = {}
     for env in sorted(set(envs)):
-        place = (destination_of(datasource, rule_config, tenant_id, env) if rule_config is not None else "")             or f"{tenant_id}:{env}"
-        by_place.setdefault(place, env)
+        by_place.setdefault(place_of(datasource, rule_config, tenant_id, env), env)
     held = []
     try:
         for place, env in sorted(by_place.items()):
@@ -620,6 +628,20 @@ def run_stage_sync(
                     continue
 
                 try:
+                    # ── An older commit never overwrites a newer one ──────────────
+                    # (inside the target lock: what is checked is what is written next)
+                    newer = write_order.newer_commit_written(
+                        datasource=datasource, place=place_of(datasource, rule_config, tenant_id, etl_file.env),
+                        repo_url=repo, file_path=etl_file.file_path, commit_sha=ctx.commit_sha, rule_config=rule_config)
+                    if newer:
+                        sync_result.status = "skipped"
+                        sync_result.sync_note = (f"skipped: commit {newer[:12]} is newer than {ctx.commit_sha[:12]} "
+                                                 f"and is already written to {etl_file.env}")
+                        logger.info("%s of %s: %s", etl_file.file_path, datasource, sync_result.sync_note)
+                        _count(lambda m: m.inc_older_commit_skipped(datasource))
+                        results.append(sync_result)
+                        continue
+
                     # ── Strategy decision ─────────────────────────────────────────
                     sync_mode = _decide_sync_mode(len(etl_file.flat_data), configured_mode)
 
@@ -713,7 +735,15 @@ def run_stage_sync(
 
                 results.append(sync_result)
             else:
-                # Every file was written (no break): now prune, once per environment. Not when
+                # Every file was written (no break): remember the commit each one now holds, so an older commit
+                # that arrives later does not overwrite it. Only now: a sync that failed and rolled back leaves
+                # the earlier record as it was.
+                for _ds, written_env, written_path, _snap, _res in written_files:
+                    write_order.record_written(
+                        datasource=datasource, place=place_of(datasource, rule_config, tenant_id, written_env),
+                        repo_url=repo, file_path=written_path, commit_sha=ctx.commit_sha)
+
+                # Now prune, once per environment. Not when
                 # a file of this push could not even be read or parsed: what is missing from
                 # an incomplete read is not what was removed.
                 if etl.errors:

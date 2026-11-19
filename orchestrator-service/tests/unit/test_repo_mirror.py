@@ -310,3 +310,60 @@ def test_another_process_on_the_same_root_reuses_the_mirror(remote, tmp_path):
         other.ensure(url, None)
     assert other.has_commit(url, sha)
     assert other.read(url, sha, "a.txt") == b"a"
+
+
+# ── is_ancestor: which of two commits is older (write_order) ──────────────────
+
+def test_an_older_commit_is_an_ancestor_of_a_newer_one_and_not_the_other_way(remote, mirrors):
+    first = _commit(remote, {"a.txt": "1"})
+    second = _commit(remote, {"a.txt": "2"})
+    third = _commit(remote, {"a.txt": "3"})
+    url = str(remote)
+    mirrors.ensure(url, None)
+
+    assert mirrors.is_ancestor(url, first, third) is True
+    assert mirrors.is_ancestor(url, second, third) is True
+    assert mirrors.is_ancestor(url, third, first) is False
+    assert mirrors.is_ancestor(url, third, second) is False
+
+
+def test_a_commit_is_its_own_ancestor(remote, mirrors):
+    sha = _commit(remote, {"a.txt": "1"})
+    url = str(remote)
+    mirrors.ensure(url, None)
+    assert mirrors.is_ancestor(url, sha, sha) is True
+
+
+def test_commits_of_two_branches_are_not_ancestors_of_each_other(remote, mirrors):
+    base = _commit(remote, {"a.txt": "base"})
+    _git(remote, "checkout", "-q", "-b", "feature")
+    feature = _commit(remote, {"a.txt": "feature"})
+    _git(remote, "checkout", "-q", "main")
+    main = _commit(remote, {"a.txt": "main"})
+    url = str(remote)
+    mirrors.ensure(url, None)
+
+    assert mirrors.is_ancestor(url, feature, main) is False
+    assert mirrors.is_ancestor(url, main, feature) is False
+    assert mirrors.is_ancestor(url, base, feature) is True and mirrors.is_ancestor(url, base, main) is True
+
+
+def test_a_commit_after_a_force_push_is_not_an_ancestor_of_the_one_it_replaced(remote, mirrors):
+    first = _commit(remote, {"a.txt": "1"})
+    replaced = _commit(remote, {"a.txt": "2"})
+    url = str(remote)
+    mirrors.ensure(url, None)
+    _git(remote, "reset", "-q", "--hard", first)
+    rewritten = _commit(remote, {"a.txt": "2, otherwise"})
+    mirrors.fetch(url, None)
+
+    assert mirrors.is_ancestor(url, replaced, rewritten) is False
+    assert mirrors.is_ancestor(url, rewritten, replaced) is False
+
+
+def test_a_commit_the_mirror_does_not_hold_cannot_be_compared(remote, mirrors):
+    sha = _commit(remote, {"a.txt": "1"})
+    url = str(remote)
+    mirrors.ensure(url, None)
+    with pytest.raises(MirrorError, match="could not compare"):
+        mirrors.is_ancestor(url, sha, "f" * 40)

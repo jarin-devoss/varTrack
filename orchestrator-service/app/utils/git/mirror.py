@@ -177,6 +177,16 @@ class RepoMirrors:
         proc = self._run(["--git-dir", str(path), "cat-file", "-t", sha], check=False)
         return proc.returncode == 0 and proc.stdout.strip() == b"commit"
 
+    def is_ancestor(self, url: str, ancestor: str, descendant: str) -> bool:
+        """Whether commit *ancestor* is reachable from commit *descendant* (a commit is its own ancestor).
+        Both have to be in the mirror: MirrorError when git cannot answer, as it cannot for a commit it does not have."""
+        path = self.path(url)
+        proc = self._run(["--git-dir", str(path), "merge-base", "--is-ancestor", ancestor, descendant], check=False)
+        if proc.returncode in (0, 1):                   # git's own answer: yes, or no
+            return proc.returncode == 0
+        raise MirrorError(f"git merge-base could not compare {ancestor[:12]} and {descendant[:12]} in "
+                          f"{strip_userinfo(url)}: {proc.stderr.decode(errors='replace').strip()}")
+
     def fetch(self, url: str, token: Optional[str], sha: Optional[str] = None, ref: Optional[str] = None) -> None:
         """Bring the mirror's heads and tags up to date. With *sha*, the commit
         has to be there afterwards: when the general fetch does not bring it
