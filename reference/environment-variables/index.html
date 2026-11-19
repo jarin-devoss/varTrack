@@ -2207,6 +2207,21 @@ not in the environment — see <a href="../../operations/high-availability/#gate
 <td>Seconds a new worker pool process waits for the tenants' schemas to load before it takes its first sync; <code>0</code> turns the warm start off</td>
 </tr>
 <tr>
+<td><code>SYNC_SLOT_LEASE_SECONDS</code></td>
+<td><code>60</code></td>
+<td>Worker only. A slot of a <a href="../../configuration/bundle/#sync_limits"><code>sync_limits</code></a> entry is a lease this long, renewed while the sync runs: a worker that dies frees its slot after it</td>
+</tr>
+<tr>
+<td><code>SYNC_SLOT_WAIT_SECONDS</code></td>
+<td><code>5</code></td>
+<td>Worker only. A sync that finds no slot free waits this long in its worker process, then goes back on the queue</td>
+</tr>
+<tr>
+<td><code>SYNC_SLOT_MAX_WAIT_SECONDS</code></td>
+<td><code>600</code></td>
+<td>Worker only. A sync that has waited this long in all for a slot fails, saying which limit and how many slots were in use</td>
+</tr>
+<tr>
 <td><code>VARTRACK_WORKER_CONCURRENCY</code></td>
 <td>—</td>
 <td>Worker only. Syncs one worker container runs at once (1 to 64). Over <code>config.cue</code>'s <code>workers.concurrency</code>, under the <code>--concurrency</code> flag; the default is 4. <a href="../../configuration/bundle/#workers"><code>workers</code></a></td>

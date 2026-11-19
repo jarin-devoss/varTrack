@@ -2199,6 +2199,16 @@ There is no <code>default</code> environment. See <a href="../../concepts/enviro
 <td>Usually a sync stuck on a slow datasource; the lock is a lease of 600 s, so it frees itself</td>
 </tr>
 <tr>
+<td><code>datasource &lt;d&gt;: no slot of sync limit &lt;name&gt; for N s (X of X in use)</code></td>
+<td>The sync waited for a slot of its datasource's <a href="../../configuration/bundle/#sync_limits"><code>sync_limits</code></a> entry for as long as <code>SYNC_SLOT_MAX_WAIT_SECONDS</code> (600 s) and none came free: the syncs holding them took longer than that, or too many were queued</td>
+<td>Look at what holds the slots (the Tasks page shows who is waiting); raise <code>max_at_once</code> if the store can take more. A slot of a worker that died frees itself after <code>SYNC_SLOT_LEASE_SECONDS</code> (60 s)</td>
+</tr>
+<tr>
+<td><code>redis unavailable: sync limit &lt;name&gt; cannot be checked: …</code></td>
+<td>Redis does not answer, so the slots of the limit cannot be taken. The sync stops rather than write without the check</td>
+<td>Restore Redis</td>
+</tr>
+<tr>
 <td>a file's note <code>skipped: commit &lt;new&gt; is newer than &lt;old&gt; and is already written to &lt;env&gt;</code></td>
 <td>Not an error. The syncs of two pushes ran in the other order, and the older commit's was not allowed to overwrite the newer one's. The task is a success and the store holds the newer commit's values</td>
 <td>Nothing: push again only if the newer commit is not the one you want</td>

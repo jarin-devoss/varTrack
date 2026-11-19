@@ -1960,6 +1960,7 @@
 <h3 id="stage-3-sync">Stage 3 — Sync<a class="headerlink" href="#stage-3-sync" title="Permanent link">&para;</a></h3>
 <p>Writes the validated flat map to every configured sink:</p>
 <ul>
+<li>Takes a slot of the datasource's <a href="../configuration/bundle/#sync_limits">sync limit</a>, if <code>config.cue</code> gives it one, and waits for one when none is free</li>
 <li>Takes the lock of the place it writes: one sync at a time writes a place, whatever the number of workers</li>
 <li>Leaves a file alone when a newer commit of it is already written there (<a href="#an-older-commit-never-overwrites-a-newer-one">below</a>)</li>
 <li>Picks the sync strategy (<code>AUTO</code>, <code>GIT_UPSERT_ALL</code> or <code>GIT_SMART_REPAIR</code>)</li>
