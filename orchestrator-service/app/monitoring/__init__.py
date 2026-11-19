@@ -43,7 +43,9 @@ if TYPE_CHECKING:
     from app.monitoring.config import MonitoringConfig
     from app.monitoring.backends import Backend
 
-logger = logging.getLogger(__name__)
+# Not "logger": importing the logger.py submodule makes the package attribute `logger` that module, which would
+# replace this one, and every `logger.info` below would fail (the worker's metrics never started).
+log = logging.getLogger(__name__)
 
 _metrics:  OrchestratorMetrics | None = None
 _backends: list[Backend]              = []
@@ -107,16 +109,16 @@ def init(
             cfg = monitoring_config or _MonCfg.from_env()
             _backends = build_backends(cfg, version, commit, _metrics._registry)
         except Exception:
-            logger.warning("monitoring: backend startup failed", exc_info=True)
+            log.warning("monitoring: backend startup failed", exc_info=True)
 
         # 4. Celery task signal hooks.
         try:
             from app.monitoring.celery_signals import connect_signals
             connect_signals()
         except Exception:
-            logger.warning("monitoring: failed to connect Celery signals", exc_info=True)
+            log.warning("monitoring: failed to connect Celery signals", exc_info=True)
 
-        logger.info(
+        log.info(
             "monitoring: initialised version=%s commit=%s python=%s backends=%s",
             version, commit, python_version,
             [b.name() for b in _backends],
@@ -139,7 +141,7 @@ def shutdown() -> None:
         try:
             backend.shutdown()
         except Exception:
-            logger.warning("monitoring: shutdown error for %s", backend.name(), exc_info=True)
+            log.warning("monitoring: shutdown error for %s", backend.name(), exc_info=True)
 
 
 __all__ = [
