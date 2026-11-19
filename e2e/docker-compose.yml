@@ -197,9 +197,8 @@ services:
       context: ..
       dockerfile: orchestrator-service/docker/Dockerfile
     networks: [vartrack]
-    command: ["celery", "-A", "app.worker.celery", "worker",
-              "--loglevel=info", "-Q", "webhooks,sync,schema",
-              "--concurrency=4"]
+    # The number of syncs at once is config.cue's `workers: concurrency` (e2e/config.cue).
+    command: ["python", "-m", "app.worker"]
     environment:
       APP_ENV: demo
       # Internal authentication is on: the orchestrator accepts a call only with a signed grant, and the
@@ -221,6 +220,10 @@ services:
       OTEL_ENABLED: "false"
       JAEGER_ENABLED: "false"
       ELK_ENABLED: "false"
+      # Empty means "not set here": the worker reads config.cue's workers block. e2e/load/sweep.py sets these
+      # to try other numbers on this machine, as an operator would.
+      VARTRACK_WORKER_CONCURRENCY: "${VARTRACK_WORKER_CONCURRENCY:-}"
+      VARTRACK_WORKER_MAX_TASKS_PER_CHILD: "${VARTRACK_WORKER_MAX_TASKS_PER_CHILD:-}"
     volumes:
       - ./config.cue:/app/config.cue:ro,z
       - demo-state:/demo-state:ro

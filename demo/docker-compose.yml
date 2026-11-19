@@ -202,9 +202,8 @@ services:
       context: ..
       dockerfile: orchestrator-service/docker/Dockerfile
     networks: [vartrack]
-    command: ["celery", "-A", "app.worker.celery", "worker",
-              "--loglevel=info", "-Q", "webhooks,sync,schema",
-              "--concurrency=4"]
+    # The number of syncs at once is config.cue's `workers: concurrency` (demo/config.cue).
+    command: ["python", "-m", "app.worker"]
     environment:
       APP_ENV: demo
       # Internal authentication is on: the orchestrator accepts a call only with a signed grant, and the

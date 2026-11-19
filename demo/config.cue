@@ -210,6 +210,13 @@ bundle: {
 		environment: "demo"
 	}
 
+	// How each orchestrator worker runs: syncs it runs at once, and when a pool process is replaced.
+	// Defaults: the worker's environment (VARTRACK_WORKER_*) and its command line override them.
+	workers: {
+		concurrency:         4
+		max_tasks_per_child: 200
+	}
+
 	// The schema repository the gateway's schema-registry webhook (POST /webhooks/schema-registry) answers for: a push to it makes
 	// the orchestrator read the tenant's bundle.json again at once, instead of after SCHEMA_TTL_SECONDS (step 7 of the tour).
 	schema_registry: {

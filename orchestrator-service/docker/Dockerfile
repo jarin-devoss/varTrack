@@ -143,10 +143,8 @@ ENV APP_VERSION="${VERSION}" \
 # API + gRPC server (default):
 #   docker run vartrack/orchestrator-service
 #
-# Celery webhook/sync worker:
-#   command: ["celery", "-A", "app.worker.celery", "worker",
-#             "--queues=webhooks,sync", "--loglevel=info",
-#             "--concurrency=4", "--max-tasks-per-child=200"]
+# Celery webhook/sync worker (syncs at once: config.cue's workers block, VARTRACK_WORKER_CONCURRENCY, --concurrency):
+#   command: ["python", "-m", "app.worker"]
 #
 # Celery beat (periodic self-heal):
 #   command: ["celery", "-A", "app.worker.celery", "beat", "--loglevel=info"]
