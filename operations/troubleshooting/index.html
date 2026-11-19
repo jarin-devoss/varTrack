@@ -2199,6 +2199,11 @@ There is no <code>default</code> environment. See <a href="../../concepts/enviro
 <td>Usually a sync stuck on a slow datasource; the lock is a lease of 600 s, so it frees itself</td>
 </tr>
 <tr>
+<td>a file's note <code>skipped: commit &lt;new&gt; is newer than &lt;old&gt; and is already written to &lt;env&gt;</code></td>
+<td>Not an error. The syncs of two pushes ran in the other order, and the older commit's was not allowed to overwrite the newer one's. The task is a success and the store holds the newer commit's values</td>
+<td>Nothing: push again only if the newer commit is not the one you want</td>
+</tr>
+<tr>
 <td><code>git unavailable: cannot read &lt;repo&gt; at &lt;ref&gt;: …</code></td>
 <td>The orchestrator cannot clone or fetch the repository, or its token is refused. The task is <code>FAILED</code>, not "no files": nothing was written and nothing was pruned</td>
 <td>Check the rule's platform <code>token</code> in <code>config.cue</code> (a rule reads its own repositories with it, and only from the server that platform names) and that the orchestrator can reach the Git server</td>

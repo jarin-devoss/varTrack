@@ -2065,8 +2065,9 @@
 </span><span id="__span-1-5"><a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>uvicorn<span class="w"> </span>main:app<span class="w"> </span>--host<span class="w"> </span><span class="m">0</span>.0.0.0<span class="w"> </span>--port<span class="w"> </span><span class="m">8000</span>
 </span><span id="__span-1-6"><a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a>
 </span><span id="__span-1-7"><a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a><span class="c1"># Celery worker (separate terminal)</span>
-</span><span id="__span-1-8"><a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a>celery<span class="w"> </span>-A<span class="w"> </span>app.worker.celery<span class="w"> </span>worker<span class="w"> </span>--queues<span class="o">=</span>webhooks,sync<span class="w"> </span>-l<span class="w"> </span>info
+</span><span id="__span-1-8"><a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a>python<span class="w"> </span>-m<span class="w"> </span>app.worker
 </span></code></pre></div>
+<p><code>python -m app.worker</code> serves the <code>webhooks</code>, <code>sync</code> and <code>schema</code> queues. How many syncs it runs at once is <code>workers.concurrency</code> in <code>config.cue</code> (default 4); <code>VARTRACK_WORKER_CONCURRENCY</code> or <code>--concurrency 8</code> gives this machine another number. See <a href="../../configuration/bundle/#workers"><code>workers</code></a>.</p>
 <h3 id="with-docker">With Docker<a class="headerlink" href="#with-docker" title="Permanent link">&para;</a></h3>
 <div class="language-bash highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="c1"># API server</span>
 </span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>docker<span class="w"> </span>run<span class="w"> </span><span class="se">\</span>
@@ -2081,7 +2082,7 @@
 </span><span id="__span-2-11"><a id="__codelineno-2-11" name="__codelineno-2-11" href="#__codelineno-2-11"></a><span class="w">  </span>-e<span class="w"> </span><span class="nv">CONFIG_PATH</span><span class="o">=</span>/config.cue<span class="w"> </span><span class="se">\</span>
 </span><span id="__span-2-12"><a id="__codelineno-2-12" name="__codelineno-2-12" href="#__codelineno-2-12"></a><span class="w">  </span>-v<span class="w"> </span>./config.cue:/config.cue:ro<span class="w"> </span><span class="se">\</span>
 </span><span id="__span-2-13"><a id="__codelineno-2-13" name="__codelineno-2-13" href="#__codelineno-2-13"></a><span class="w">  </span>jarin-devoss/orchestrator-service:latest<span class="w"> </span><span class="se">\</span>
-</span><span id="__span-2-14"><a id="__codelineno-2-14" name="__codelineno-2-14" href="#__codelineno-2-14"></a><span class="w">  </span>celery<span class="w"> </span>-A<span class="w"> </span>app.worker.celery<span class="w"> </span>worker<span class="w"> </span>--queues<span class="o">=</span>webhooks,sync<span class="w"> </span>-l<span class="w"> </span>info
+</span><span id="__span-2-14"><a id="__codelineno-2-14" name="__codelineno-2-14" href="#__codelineno-2-14"></a><span class="w">  </span>python<span class="w"> </span>-m<span class="w"> </span>app.worker
 </span></code></pre></div>
 <hr />
 <h2 id="environment-variables">Environment variables<a class="headerlink" href="#environment-variables" title="Permanent link">&para;</a></h2>

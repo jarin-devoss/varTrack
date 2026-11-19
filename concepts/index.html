@@ -1850,6 +1850,15 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#an-older-commit-never-overwrites-a-newer-one" class="md-nav__link">
+    <span class="md-ellipsis">
+      An older commit never overwrites a newer one
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -1951,11 +1960,19 @@
 <h3 id="stage-3-sync">Stage 3 — Sync<a class="headerlink" href="#stage-3-sync" title="Permanent link">&para;</a></h3>
 <p>Writes the validated flat map to every configured sink:</p>
 <ul>
+<li>Takes the lock of the place it writes: one sync at a time writes a place, whatever the number of workers</li>
+<li>Leaves a file alone when a newer commit of it is already written there (<a href="#an-older-commit-never-overwrites-a-newer-one">below</a>)</li>
 <li>Picks the sync strategy (<code>AUTO</code>, <code>GIT_UPSERT_ALL</code> or <code>GIT_SMART_REPAIR</code>)</li>
 <li>Runs writes to all matching sinks in parallel</li>
 <li>Prunes stale keys once per environment, after all its files are written, if <code>prune</code> is enabled on the rule</li>
 <li>Rolls back (deletes written data) if a write fails partway through</li>
 </ul>
+<h3 id="an-older-commit-never-overwrites-a-newer-one">An older commit never overwrites a newer one<a class="headerlink" href="#an-older-commit-never-overwrites-a-newer-one" title="Permanent link">&para;</a></h3>
+<p>Two pushes to one branch make two syncs, and the workers may run them in either order. Each file written to a place has its commit remembered, and a sync that is about to write a file asks Git whether the commit already written is a descendant of its own. If it is, its own is the older one: the file is left alone, the sync is still a success, and the file says why:</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>skipped: commit 3f9a1c0d2b4e is newer than 91be7d02c5aa and is already written to production
+</span></code></pre></div>
+<p>It writes when the commits are the same, when its own is the newer one, when the history is unrelated (a force push), and whenever nothing can say (no record, Redis or the commit cannot be reached). Skipping is only ever for a commit Git itself says is older. The record is per file and per place: a newer commit that did not write a file is no reason to skip an older one that did.</p>
+<p>A push from the CLI (<code>vt sync</code>) carries a label rather than a commit, so it is not ordered.</p>
 <hr />
 <h2 id="services">Services<a class="headerlink" href="#services" title="Permanent link">&para;</a></h2>
 <table>
@@ -1996,32 +2013,32 @@
 </table>
 <hr />
 <h2 id="data-flow-diagram">Data flow diagram<a class="headerlink" href="#data-flow-diagram" title="Permanent link">&para;</a></h2>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>                    ┌──────────────────────────────────────┐
-</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>  GitHub push  ───► │          gateway-service             │
-</span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>                    │  ┌────────────────────────────────┐  │
-</span><span id="__span-1-4"><a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>                    │  │  verify signature               │  │
-</span><span id="__span-1-5"><a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>                    │  │  match rule                     │  │
-</span><span id="__span-1-6"><a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a>                    │  │  rate limit                     │  │
-</span><span id="__span-1-7"><a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a>                    │  └─────────────┬──────────────────┘  │
-</span><span id="__span-1-8"><a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a>                    └────────────────┼─────────────────────┘
-</span><span id="__span-1-9"><a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a>                                     │ gRPC
-</span><span id="__span-1-10"><a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a>                    ┌────────────────▼─────────────────────┐
-</span><span id="__span-1-11"><a id="__codelineno-1-11" name="__codelineno-1-11" href="#__codelineno-1-11"></a>                    │        orchestrator-service           │
-</span><span id="__span-1-12"><a id="__codelineno-1-12" name="__codelineno-1-12" href="#__codelineno-1-12"></a>                    │  ┌────────────────────────────────┐  │
-</span><span id="__span-1-13"><a id="__codelineno-1-13" name="__codelineno-1-13" href="#__codelineno-1-13"></a>                    │  │  read files at pushed commit    │  │
-</span><span id="__span-1-14"><a id="__codelineno-1-14" name="__codelineno-1-14" href="#__codelineno-1-14"></a>                    │  │  parse + flatten                │  │
-</span><span id="__span-1-15"><a id="__codelineno-1-15" name="__codelineno-1-15" href="#__codelineno-1-15"></a>                    │  │  validate CUE schema            │  │
-</span><span id="__span-1-16"><a id="__codelineno-1-16" name="__codelineno-1-16" href="#__codelineno-1-16"></a>                    │  │  write to sinks                 │──┼──► MongoDB
-</span><span id="__span-1-17"><a id="__codelineno-1-17" name="__codelineno-1-17" href="#__codelineno-1-17"></a>                    │  └────────────────────────────────┘  │──► Redis
-</span><span id="__span-1-18"><a id="__codelineno-1-18" name="__codelineno-1-18" href="#__codelineno-1-18"></a>                    └──────────────────────────────────────┘──► ZooKeeper
-</span><span id="__span-1-19"><a id="__codelineno-1-19" name="__codelineno-1-19" href="#__codelineno-1-19"></a>                                                               ──► S3 / ...
-</span><span id="__span-1-20"><a id="__codelineno-1-20" name="__codelineno-1-20" href="#__codelineno-1-20"></a>                    ┌──────────────────────────────────────┐
-</span><span id="__span-1-21"><a id="__codelineno-1-21" name="__codelineno-1-21" href="#__codelineno-1-21"></a>                    │          watcher-service              │
-</span><span id="__span-1-22"><a id="__codelineno-1-22" name="__codelineno-1-22" href="#__codelineno-1-22"></a>                    │  every 60 s, per self_heal rule:     │
-</span><span id="__span-1-23"><a id="__codelineno-1-23" name="__codelineno-1-23" href="#__codelineno-1-23"></a>                    │  CheckDatasource (gRPC) — the        │
-</span><span id="__span-1-24"><a id="__codelineno-1-24" name="__codelineno-1-24" href="#__codelineno-1-24"></a>                    │  orchestrator compares sink vs Git   │
-</span><span id="__span-1-25"><a id="__codelineno-1-25" name="__codelineno-1-25" href="#__codelineno-1-25"></a>                    │  drifted → SyncDatasource (gRPC)     │
-</span><span id="__span-1-26"><a id="__codelineno-1-26" name="__codelineno-1-26" href="#__codelineno-1-26"></a>                    └──────────────────────────────────────┘
+<div class="language-text highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>                    ┌──────────────────────────────────────┐
+</span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>  GitHub push  ───► │          gateway-service             │
+</span><span id="__span-2-3"><a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>                    │  ┌────────────────────────────────┐  │
+</span><span id="__span-2-4"><a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a>                    │  │  verify signature               │  │
+</span><span id="__span-2-5"><a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a>                    │  │  match rule                     │  │
+</span><span id="__span-2-6"><a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a>                    │  │  rate limit                     │  │
+</span><span id="__span-2-7"><a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a>                    │  └─────────────┬──────────────────┘  │
+</span><span id="__span-2-8"><a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a>                    └────────────────┼─────────────────────┘
+</span><span id="__span-2-9"><a id="__codelineno-2-9" name="__codelineno-2-9" href="#__codelineno-2-9"></a>                                     │ gRPC
+</span><span id="__span-2-10"><a id="__codelineno-2-10" name="__codelineno-2-10" href="#__codelineno-2-10"></a>                    ┌────────────────▼─────────────────────┐
+</span><span id="__span-2-11"><a id="__codelineno-2-11" name="__codelineno-2-11" href="#__codelineno-2-11"></a>                    │        orchestrator-service           │
+</span><span id="__span-2-12"><a id="__codelineno-2-12" name="__codelineno-2-12" href="#__codelineno-2-12"></a>                    │  ┌────────────────────────────────┐  │
+</span><span id="__span-2-13"><a id="__codelineno-2-13" name="__codelineno-2-13" href="#__codelineno-2-13"></a>                    │  │  read files at pushed commit    │  │
+</span><span id="__span-2-14"><a id="__codelineno-2-14" name="__codelineno-2-14" href="#__codelineno-2-14"></a>                    │  │  parse + flatten                │  │
+</span><span id="__span-2-15"><a id="__codelineno-2-15" name="__codelineno-2-15" href="#__codelineno-2-15"></a>                    │  │  validate CUE schema            │  │
+</span><span id="__span-2-16"><a id="__codelineno-2-16" name="__codelineno-2-16" href="#__codelineno-2-16"></a>                    │  │  write to sinks                 │──┼──► MongoDB
+</span><span id="__span-2-17"><a id="__codelineno-2-17" name="__codelineno-2-17" href="#__codelineno-2-17"></a>                    │  └────────────────────────────────┘  │──► Redis
+</span><span id="__span-2-18"><a id="__codelineno-2-18" name="__codelineno-2-18" href="#__codelineno-2-18"></a>                    └──────────────────────────────────────┘──► ZooKeeper
+</span><span id="__span-2-19"><a id="__codelineno-2-19" name="__codelineno-2-19" href="#__codelineno-2-19"></a>                                                               ──► S3 / ...
+</span><span id="__span-2-20"><a id="__codelineno-2-20" name="__codelineno-2-20" href="#__codelineno-2-20"></a>                    ┌──────────────────────────────────────┐
+</span><span id="__span-2-21"><a id="__codelineno-2-21" name="__codelineno-2-21" href="#__codelineno-2-21"></a>                    │          watcher-service              │
+</span><span id="__span-2-22"><a id="__codelineno-2-22" name="__codelineno-2-22" href="#__codelineno-2-22"></a>                    │  every 60 s, per self_heal rule:     │
+</span><span id="__span-2-23"><a id="__codelineno-2-23" name="__codelineno-2-23" href="#__codelineno-2-23"></a>                    │  CheckDatasource (gRPC) — the        │
+</span><span id="__span-2-24"><a id="__codelineno-2-24" name="__codelineno-2-24" href="#__codelineno-2-24"></a>                    │  orchestrator compares sink vs Git   │
+</span><span id="__span-2-25"><a id="__codelineno-2-25" name="__codelineno-2-25" href="#__codelineno-2-25"></a>                    │  drifted → SyncDatasource (gRPC)     │
+</span><span id="__span-2-26"><a id="__codelineno-2-26" name="__codelineno-2-26" href="#__codelineno-2-26"></a>                    └──────────────────────────────────────┘
 </span></code></pre></div>
 <hr />
 <h2 id="the-etl-core">The ETL core<a class="headerlink" href="#the-etl-core" title="Permanent link">&para;</a></h2>

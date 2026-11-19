@@ -2287,7 +2287,7 @@
 </span><span id="__span-5-5"><a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a>uvicorn<span class="w"> </span>main:app<span class="w"> </span>--host<span class="w"> </span><span class="m">0</span>.0.0.0<span class="w"> </span>--port<span class="w"> </span><span class="m">8000</span><span class="w"> </span><span class="p">&amp;</span>
 </span><span id="__span-5-6"><a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a>
 </span><span id="__span-5-7"><a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a><span class="c1"># Celery worker (separate terminal)</span>
-</span><span id="__span-5-8"><a id="__codelineno-5-8" name="__codelineno-5-8" href="#__codelineno-5-8"></a>celery<span class="w"> </span>-A<span class="w"> </span>app.worker.celery<span class="w"> </span>worker<span class="w"> </span>--queues<span class="o">=</span>webhooks,sync<span class="w"> </span>-l<span class="w"> </span>info
+</span><span id="__span-5-8"><a id="__codelineno-5-8" name="__codelineno-5-8" href="#__codelineno-5-8"></a>python<span class="w"> </span>-m<span class="w"> </span>app.worker
 </span></code></pre></div>
 <h3 id="5-start-the-watcher-service">5. Start the watcher-service<a class="headerlink" href="#5-start-the-watcher-service" title="Permanent link">&para;</a></h3>
 <div class="language-bash highlight"><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="nv">ORCHESTRATOR_ADDR</span><span class="o">=</span>localhost:50051<span class="w"> </span><span class="se">\</span>

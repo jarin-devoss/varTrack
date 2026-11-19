@@ -2166,9 +2166,19 @@
 <td>Host port for the orchestrator HTTP API</td>
 </tr>
 <tr>
+<td><code>VARTRACK_WORKER_CONCURRENCY</code></td>
+<td><em>(unset)</em></td>
+<td>Syncs one worker container runs at once on this machine. Unset, the worker reads <code>workers.concurrency</code> in <code>config.cue</code>, then 4. More containers: <code>docker compose up -d --scale orchestrator-worker=3</code></td>
+</tr>
+<tr>
+<td><code>VARTRACK_WORKER_MAX_TASKS_PER_CHILD</code></td>
+<td><em>(unset)</em></td>
+<td>Syncs a worker process does before it is replaced, <code>0</code> for never. Unset: <code>workers.max_tasks_per_child</code>, then 200</td>
+</tr>
+<tr>
 <td><code>WORKER_CONCURRENCY</code></td>
-<td><code>4</code></td>
-<td>Celery worker concurrency</td>
+<td><em>(unset)</em></td>
+<td>The old name of <code>VARTRACK_WORKER_CONCURRENCY</code>, read for one release with a warning</td>
 </tr>
 <tr>
 <td><code>WATCHER_POLL_INTERVAL</code></td>

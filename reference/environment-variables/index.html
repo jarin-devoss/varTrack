@@ -2202,6 +2202,26 @@ not in the environment — see <a href="../../operations/high-availability/#gate
 <td>How often a schema repository is refreshed</td>
 </tr>
 <tr>
+<td><code>SCHEMA_WARM_TIMEOUT</code></td>
+<td><code>10</code></td>
+<td>Seconds a new worker pool process waits for the tenants' schemas to load before it takes its first sync; <code>0</code> turns the warm start off</td>
+</tr>
+<tr>
+<td><code>VARTRACK_WORKER_CONCURRENCY</code></td>
+<td>—</td>
+<td>Worker only. Syncs one worker container runs at once (1 to 64). Over <code>config.cue</code>'s <code>workers.concurrency</code>, under the <code>--concurrency</code> flag; the default is 4. <a href="../../configuration/bundle/#workers"><code>workers</code></a></td>
+</tr>
+<tr>
+<td><code>VARTRACK_WORKER_MAX_TASKS_PER_CHILD</code></td>
+<td>—</td>
+<td>Worker only. A pool process is replaced after this many syncs, <code>0</code> for never. Over <code>config.cue</code>'s <code>workers.max_tasks_per_child</code>; the default is 200</td>
+</tr>
+<tr>
+<td><code>WORKER_CONCURRENCY</code></td>
+<td>—</td>
+<td><strong>Deprecated</strong>: the old name of <code>VARTRACK_WORKER_CONCURRENCY</code>, read for one release with a warning</td>
+</tr>
+<tr>
 <td><code>SCHEMA_TENANT_&lt;ID&gt;_REPO</code>, <code>_BRANCH</code> (<code>main</code>), <code>_TOKEN</code></td>
 <td>—</td>
 <td><strong>Deprecated</strong>: registers tenant <code>&lt;id&gt;</code> and its schema repository, with a warning. Declare the tenant in <code>config.cue</code>'s <a href="../../configuration/bundle/#tenants"><code>tenants</code></a> instead — see <a href="../../guides/add-a-tenant/">Add a tenant</a></td>
