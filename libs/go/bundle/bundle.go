@@ -135,6 +135,9 @@ func fromJSON(jsonBytes []byte, opts Options) (*pb.Bundle, error) {
 	if err := checkSchemaMaps(bundle); err != nil {
 		return nil, err
 	}
+	if err := checkSyncLimits(bundle, opts.Fragment); err != nil {
+		return nil, err
+	}
 	if err := checkRules(bundle, opts.Fragment); err != nil {
 		return nil, err
 	}
