@@ -8,7 +8,7 @@ The fastest way to run varTrack in production is with the provided `docker-compo
 
 - Docker 24+ and Docker Compose v2
 - A `config.cue` bundle (see [Bundle Reference](../configuration/bundle.md))
-- A GitHub (or GitLab / Gitea) repository with a webhook pointing at your server
+- A GitHub or Gitea repository with a webhook pointing at your server
 
 ---
 

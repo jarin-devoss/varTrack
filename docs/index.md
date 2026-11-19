@@ -54,7 +54,7 @@ It works alongside whatever deploys your services: varTrack only keeps their run
 
 <div class="grid cards" markdown>
 
--   :material-database-sync:{ .lg .middle } **8 sink types**
+-   :material-database-sync:{ .lg .middle } **7 sink types**
 
     ---
 
@@ -139,7 +139,7 @@ Open http://localhost:8080 and sign in with Gitea as `demo-admin` / `VarTrack123
 
 ```mermaid
 flowchart LR
-    GIT["📁 Git repo\n(GitHub / Gitea / GitLab)"]
+    GIT["📁 Git repo\n(GitHub / Gitea)"]
     GW["gateway-service\nGo · :5657"]
     ORCH["orchestrator-service\nPython · :50051\n─────────────\nETL pipeline"]
     WATCH["watcher-service\nGo · :9091"]

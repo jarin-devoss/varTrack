@@ -79,7 +79,7 @@ It works alongside whatever deploys your services: VarTrack only keeps their run
 ## Features
 
 ### Sync
-- **8 sink types** — MongoDB, Redis, ZooKeeper, S3, Kubernetes ConfigMap, Helm, Linux server (SSH)
+- **7 sink types** — MongoDB, Redis, ZooKeeper, S3, Kubernetes ConfigMap, Helm, Linux server (SSH)
 - **7 config formats** — YAML, JSON, TOML, .env, INI, HCL, XML — format auto-detected from file extension
 - **Multi-sink fan-out** — one push writes to multiple sinks in parallel from one rule set
 - **Sync strategies** — `AUTO` (by file size), `GIT_UPSERT_ALL` (write every key) and `GIT_SMART_REPAIR` (write only what differs from what the sink holds)
@@ -89,7 +89,7 @@ It works alongside whatever deploys your services: VarTrack only keeps their run
 - **`destination_template`** — control exactly where data lands per rule using `{tenant}` and `{env}` placeholders
 - **Environment resolution** — map branch names, PR numbers, tags, or file paths to environment names
 - **Layered rules** — `config.cue` → the tenant's `bundle.json` → a repository's `vartrack.json` → `force`; each layer overrides the one before, keys only `config.cue` sets stay out of the lower layers, and shared settings come in with `extends` presets
-- **Multi-platform** — GitHub webhooks fully supported; GitLab, Bitbucket driver interface ready to extend
+- **GitHub and Gitea** — webhooks, sign-in and repository permissions for both (GitHub Enterprise and self-hosted Gitea included); another platform is a gateway driver away
 
 ### Validation & safety
 - **CUE schema validation** — validate every payload against a per-tenant schema before any write
@@ -114,7 +114,7 @@ It works alongside whatever deploys your services: VarTrack only keeps their run
 
 ```mermaid
 flowchart LR
-    GIT["📁 Git repo\nGitHub / Gitea / GitLab"]
+    GIT["📁 Git repo\nGitHub / Gitea"]
     GW["gateway-service\nGo · :5657"]
     ORCH["orchestrator-service\nPython · :50051\n───────────\nETL pipeline"]
     WATCH["watcher-service\nGo · :9091"]
