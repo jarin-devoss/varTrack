@@ -103,6 +103,13 @@ except Exception:
     _dlq_logger.warning("monitoring: init failed in celery worker — metrics unavailable", exc_info=True)
 
 
+# A new pool process loads the tenants' schemas before it takes its first sync (app/worker/warm.py).
+# Only a worker's pool processes send this signal: the API and beat never run it.
+from app.worker import warm as _warm  # noqa: E402
+
+_warm.connect()
+
+
 @task_failure.connect
 def _route_to_dlq(
     sender=None, task_id=None, exception=None,

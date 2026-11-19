@@ -419,6 +419,9 @@ class _Settings:
     # ── Schema registry ───────────────────────────────────────────────────────
     SCHEMA_CACHE_DIR: Path    = Path(os.getenv("SCHEMA_CACHE_DIR", "/tmp/schema_registry"))
     SCHEMA_TTL_SECONDS: int   = int(os.getenv("SCHEMA_TTL_SECONDS", "300"))
+    # A new worker pool process clones the tenants' schemas before it takes its first sync, and waits for
+    # them at most this long (seconds); 0 turns the warm start off (app/worker/warm.py).
+    SCHEMA_WARM_TIMEOUT: float = float(os.getenv("SCHEMA_WARM_TIMEOUT", "10"))
 
     # ── Git clone cache (CUE bundle overrides via global_tags) ────────────────
     GIT_CACHE_DIR: str         = os.getenv("GIT_CACHE_DIR", "/tmp/vt_gitcache")
