@@ -204,9 +204,9 @@ docker compose down -v
 
 ## More
 
-- **More sinks, two Git servers, Kubernetes.** `docker-compose.live.yml` adds S3 on MinIO, ConfigMaps and Helm releases on k3s, a
+- **More sinks, two Git servers, Kubernetes.** `docker-compose.live.yml` adds ConfigMaps and Helm releases on k3s, a
   second Gitea with a payments team, and a seeder that fills every sink. See
-  [Getting started](../docs/getting-started.md#with-more-sinks-and-the-web-ui).
+  [The full demo](../docs/guides/full-demo.md).
 - **Traces, metrics, logs.** `docker compose -f docker-compose.yml -f docker-compose.observability.yml up` adds Jaeger,
   Prometheus, Grafana, Elasticsearch and Kibana.
 - **The tests.** `../e2e` has its own stack, with the regression's runner; `../ui/e2e` is the browser suite, which runs on that
