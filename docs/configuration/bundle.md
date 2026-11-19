@@ -536,6 +536,40 @@ worker: concurrency=8 (config.cue workers.concurrency), max_tasks_per_child=200 
 
 ---
 
+## `sync_limits`
+
+How many syncs may write to a store at once, **across all workers**. `workers.concurrency` is how many a worker container runs; a limit is how many a store takes, however many workers there are. Without `sync_limits` a datasource has no limit.
+
+```cue
+sync_limits: [
+  {name: "prod-mongo", datasources: ["mongo-primary", "mongo-dr"], max_at_once: 2},
+  {name: "minio",      datasources: ["s3", "s3-file"],             max_at_once: 4},
+]
+```
+
+| Key | Meaning |
+|---|---|
+| `name` | What the UI, the logs and the metrics call the limit. Unique |
+| `datasources` | The datasources that share these slots, by their full name (`{type}` or `{type}-{tag}`, as a rule names it). Several datasources that are one server belong in one limit: a limit on each would not protect the server |
+| `max_at_once` | Syncs that may write to them at once. At least 1 |
+
+**What the loader checks**, with the key named: `max_at_once` is at least 1; a name and at least one datasource are given; names are unique; every datasource is declared by the bundle; and a datasource is in at most one limit (a sync would need a slot of each, and two syncs taking them in opposite orders would wait on each other).
+
+**What a sync does:**
+
+1. Only writes take a slot. The ETL, a dry run and every read are not limited. A sync started from the CLI and a self-heal take slots like a push.
+2. With a slot free it writes at once. With none free it waits a few seconds in its worker process (`SYNC_SLOT_WAIT_SECONDS`, 5, asking again with a growing pause), then goes back on the queue after a random pause of one to thirty seconds, so it does not hold a worker process and the syncs refused together do not come back together.
+3. After `SYNC_SLOT_MAX_WAIT_SECONDS` (600) in all it fails, saying which limit and how many slots were in use: `datasource mongo-primary: no slot of sync limit prod-mongo for 600 s (2 of 2 in use)`.
+4. While it waits, its page in the UI says `waiting for a slot of prod-mongo (2 of 2 in use)`. When it finishes, the task's message says how long it waited if it was a second or more.
+
+**A slot is a lease** in Redis, timed by Redis's own clock and renewed while the sync runs, so a long sync keeps its slot. A worker that dies stops renewing it, and the slot is free again after `SYNC_SLOT_LEASE_SECONDS` (60): nothing has to sweep it. If Redis cannot be asked, the sync fails (`redis unavailable: sync limit prod-mongo cannot be checked`) rather than write without the check.
+
+**Metrics:** `vartrack_sync_slots_in_use{limit}` and `vartrack_sync_slots_max{limit}`; `vartrack_sync_slot_waits_total{limit,outcome}` with the outcome `got`, `requeued` or `gave_up`; and `vartrack_sync_slot_wait_seconds{limit}`.
+
+Within a limit, the syncs of one place (an environment of a datasource) are still written one at a time, and an older commit never overwrites a newer one: see [how a sync works](../concepts/index.md#an-older-commit-never-overwrites-a-newer-one).
+
+---
+
 ## `ui`
 
 The web UI: where users open it, and sign-in with your Git platforms. Each user sees the rules whose repositories their own account on the rule's platform can read, and syncs the ones it can write to. Without `ui.auth` the UI is open.
