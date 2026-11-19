@@ -16,7 +16,7 @@ RUN buf generate
 # ─── Stage 0b: Build CUE from source ─────────────────────────────────────────
 # Build the CUE binary with a current Go toolchain so the embedded stdlib
 # is up to date. Avoids shipping a pre-built binary whose Go version may lag.
-FROM golang:1.27-alpine@sha256:f92b6ef800e499660581efdabdf25d9d817a9d124eaf900924f0504e7e27e12d AS cue-builder
+FROM golang:1.27-alpine@sha256:70bd7ddea8b6cbe5d6943cde279d6b67feb10cc924fb9100d1d8757c1575b280 AS cue-builder
 ARG CUE_VERSION=v0.16.0
 RUN go install cuelang.org/go/cmd/cue@${CUE_VERSION}
 
@@ -25,7 +25,7 @@ RUN go install cuelang.org/go/cmd/cue@${CUE_VERSION}
 # the watcher do (libs/go/bundle): one CUE evaluation, one set of shorthands and renamed
 # options, one strict parse against the protos. The orchestrator is handed its output
 # and does not read config.cue with rules of its own.
-FROM golang:1.27-alpine@sha256:f92b6ef800e499660581efdabdf25d9d817a9d124eaf900924f0504e7e27e12d AS bundle-builder
+FROM golang:1.27-alpine@sha256:70bd7ddea8b6cbe5d6943cde279d6b67feb10cc924fb9100d1d8757c1575b280 AS bundle-builder
 WORKDIR /src/libs/go
 COPY libs/go/go.mod libs/go/go.sum ./
 RUN go mod download
