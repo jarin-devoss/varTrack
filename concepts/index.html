@@ -783,6 +783,8 @@
       
         
       
+        
+      
     
     
       
@@ -859,6 +861,27 @@
   
   <span class="md-ellipsis">
     Add a Tenant
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/full-demo/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    The Full Demo
   </span>
   
 
@@ -1695,6 +1718,8 @@
       
         
       
+        
+      
     
     
       
@@ -1750,6 +1775,27 @@
   
   <span class="md-ellipsis">
     Environment Variables
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../reference/http-api/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    HTTP & gRPC API
   </span>
   
 
@@ -1942,7 +1988,7 @@
 <h3 id="stage-1-payload">Stage 1 — Payload<a class="headerlink" href="#stage-1-payload" title="Permanent link">&para;</a></h3>
 <p>When a webhook arrives at the gateway-service, varTrack resolves:</p>
 <ul>
-<li>Which <strong>platform</strong> sent the event (GitHub, GitLab, ...)</li>
+<li>Which <strong>platform</strong> sent the event (GitHub or Gitea)</li>
 <li>Which <strong>rule</strong> applies: the one for the platform that sent the event and the datasource in the webhook URL (a rule is identified by that pair). Its <code>repositories</code> and <code>exclude_repositories</code> decide whether the pushed repository is synced, and <code>file_name</code> or <code>file_path_map</code> which files</li>
 <li>Which <strong>environment</strong> to target (from branch name, PR number, tag, or explicit <code>branch_map</code>)</li>
 </ul>

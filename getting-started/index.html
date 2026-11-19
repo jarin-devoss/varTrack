@@ -518,21 +518,6 @@
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="Option A — the demo (fastest)">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#with-more-sinks-and-the-web-ui" class="md-nav__link">
-    <span class="md-ellipsis">
-      With more sinks and the web UI
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
 </li>
       
         <li class="md-nav__item">
@@ -546,9 +531,9 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#1-clone-and-generate-proto-code" class="md-nav__link">
+  <a href="#1-clone-generate-proto-code-and-build-the-config-loader" class="md-nav__link">
     <span class="md-ellipsis">
-      1. Clone and generate proto code
+      1. Clone, generate proto code, and build the config loader
     </span>
   </a>
   
@@ -624,15 +609,6 @@
       
         <li class="md-nav__item">
   <a href="#next-steps" class="md-nav__link">
-    <span class="md-ellipsis">
-      Next steps
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#next-steps_1" class="md-nav__link">
     <span class="md-ellipsis">
       Next steps
     </span>
@@ -964,6 +940,8 @@
       
         
       
+        
+      
     
     
       
@@ -1040,6 +1018,27 @@
   
   <span class="md-ellipsis">
     Add a Tenant
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/full-demo/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    The Full Demo
   </span>
   
 
@@ -1876,6 +1875,8 @@
       
         
       
+        
+      
     
     
       
@@ -1931,6 +1932,27 @@
   
   <span class="md-ellipsis">
     Environment Variables
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../reference/http-api/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    HTTP & gRPC API
   </span>
   
 
@@ -2010,21 +2032,6 @@
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="Option A — the demo (fastest)">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#with-more-sinks-and-the-web-ui" class="md-nav__link">
-    <span class="md-ellipsis">
-      With more sinks and the web UI
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
 </li>
       
         <li class="md-nav__item">
@@ -2038,9 +2045,9 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#1-clone-and-generate-proto-code" class="md-nav__link">
+  <a href="#1-clone-generate-proto-code-and-build-the-config-loader" class="md-nav__link">
     <span class="md-ellipsis">
-      1. Clone and generate proto code
+      1. Clone, generate proto code, and build the config loader
     </span>
   </a>
   
@@ -2123,15 +2130,6 @@
   
 </li>
       
-        <li class="md-nav__item">
-  <a href="#next-steps_1" class="md-nav__link">
-    <span class="md-ellipsis">
-      Next steps
-    </span>
-  </a>
-  
-</li>
-      
     </ul>
   
 </nav>
@@ -2154,145 +2152,102 @@
 <p>Get varTrack running locally in under 10 minutes.</p>
 <hr />
 <h2 id="prerequisites">Prerequisites<a class="headerlink" href="#prerequisites" title="Permanent link">&para;</a></h2>
+<p>For the demo (Option A), only Docker with Compose 2.20.0 or newer. To build from source (Option B):</p>
 <ul>
-<li>Go 1.21+</li>
+<li>Go 1.26+</li>
 <li>Python 3.11+</li>
-<li>A Celery broker — Redis or MongoDB (configured via <code>celery_broker_datasource</code> in the bundle)</li>
+<li>Git</li>
+<li>Redis: the Celery broker, which also holds the sync ledger and the locks (<code>CELERY_BROKER_URL</code>, or a Redis datasource named by <code>celery_broker_datasource</code> in the bundle)</li>
 <li>At least one configured sink</li>
 <li><a href="https://buf.build/docs/installation"><code>buf</code> CLI</a> — for proto code generation</li>
+<li>The <a href="https://cuelang.org/docs/introduction/installation/"><code>cue</code> CLI</a>, v0.6.0 or newer — the orchestrator validates files with it</li>
 </ul>
 <hr />
 <h2 id="option-a-the-demo-fastest">Option A — the demo (fastest)<a class="headerlink" href="#option-a-the-demo-fastest" title="Permanent link">&para;</a></h2>
-<p>No manual setup needed. Starts everything in Docker:</p>
+<p>Everything runs in Docker; nothing else is installed:</p>
 <div class="language-bash highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>git<span class="w"> </span>clone<span class="w"> </span>https://github.com/jarin-devoss/varTrack
 </span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="nb">cd</span><span class="w"> </span>varTrack/demo
 </span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>docker<span class="w"> </span>compose<span class="w"> </span>up
 </span></code></pre></div>
-<p>This starts a local Git server, MongoDB, ZooKeeper, Redis, and all three varTrack services with a pre-configured bundle. It seeds a config repository once and syncs it, so the UI opens on rules with environments already written. Push any config change to the local repo and watch it sync; restarting the demo keeps what you pushed (<code>docker compose down -v</code>, or <code>./run.sh reset</code>, starts again from nothing). <a href="https://github.com/jarin-devoss/varTrack/blob/main/demo/README.md">demo/README.md</a> has a short tour. It needs Docker with Compose 2.20.0 or newer and about 2 GiB of memory; on Linux install Docker's own packages, not a distribution's <code>docker-compose</code> (Compose V1), which does not run it. The <a href="https://github.com/jarin-devoss/varTrack/blob/main/demo/README.md#requirements">Requirements</a> there also say which ports it uses and how to open a demo that runs on a server. It also serves the web UI at http://localhost:8080 (sign in with Gitea as <code>demo-admin</code>, password <code>VarTrack123</code>).</p>
-<p><code>docker compose up</code> reuses an image that already exists, however old. After you pull new code, add <code>--build</code>, or the UI can be newer than the orchestrator behind it and show a blank page. <code>node e2e/stale-images.mjs</code> (from the repository root) names every image of a running stack that is older than its sources.</p>
-<p>Image builds download dependencies over TLS (<code>buf</code> plugins, Go modules, pip and npm packages). On a machine where an antivirus or proxy re-signs HTTPS, the build stops with <code>x509: certificate signed by unknown authority</code>: exclude the build hosts from the scan, or see <a href="https://github.com/jarin-devoss/varTrack/blob/main/ui/e2e/README.md#run-the-stack-on-a-machine-that-cannot-build-the-images">Run the stack on a machine that cannot build the images</a>.</p>
-<h3 id="with-more-sinks-and-the-web-ui">With more sinks and the web UI<a class="headerlink" href="#with-more-sinks-and-the-web-ui" title="Permanent link">&para;</a></h3>
-<p><code>demo/docker-compose.live.yml</code> adds S3 on MinIO and Kubernetes ConfigMaps and Helm releases on k3s, and seeds every sink through real Gitea pushes and webhooks:</p>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="nb">cd</span><span class="w"> </span>demo
-</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>docker<span class="w"> </span>compose<span class="w"> </span>-f<span class="w"> </span>docker-compose.yml<span class="w"> </span>-f<span class="w"> </span>docker-compose.live.yml<span class="w"> </span>up<span class="w"> </span>-d<span class="w"> </span>--build<span class="w"> </span><span class="se">\</span>
-</span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="w">  </span>gitea<span class="w"> </span>redis<span class="w"> </span>mongo<span class="w"> </span>zookeeper<span class="w"> </span>minio<span class="w"> </span>minio-init<span class="w"> </span>vault<span class="w"> </span>vault-init<span class="w"> </span><span class="se">\</span>
-</span><span id="__span-1-4"><a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="w">  </span>k3s<span class="w"> </span>k3s-kubeconfig<span class="w"> </span>orchestrator-api<span class="w"> </span>orchestrator-worker<span class="w"> </span>gateway<span class="w"> </span>watcher<span class="w"> </span>live-seed
-</span><span id="__span-1-5"><a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>
-</span><span id="__span-1-6"><a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a><span class="nb">cd</span><span class="w"> </span>../ui<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>npm<span class="w"> </span>install<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>npm<span class="w"> </span>run<span class="w"> </span>dev
-</span></code></pre></div>
-<p>The images generate their own Python and Go protobuf stubs, so <code>buf generate</code> on the host is not needed to run the stack. Open the UI at http://localhost:5173 (this stack's sign-in redirects there, so the dev server must be running; the plain demo's is http://localhost:8080). Two Git servers feed the demo, so sign-in covers two platforms: <strong>gitea</strong> (http://localhost:3000, the demo configs) and <strong>gitea-team</strong> (http://127.0.0.1:3001, a payments team with a private repository). Sign in with one and connect the other — every password is <code>VarTrack123</code>:</p>
-<table>
-<thead>
-<tr>
-<th>Sign in to gitea as…</th>
-<th>then connect gitea-team as…</th>
-<th>you see</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>demo-admin</code></td>
-<td><code>team-admin</code></td>
-<td>all 7 rules on one page, and can sync them: the 6 demo rules of tenant <code>default</code> and the payments rule of tenant <code>payments</code>, with no tenant to switch to</td>
-</tr>
-<tr>
-<td><code>demo-viewer</code></td>
-<td><code>demo-viewer</code></td>
-<td>the 6 demo rules, dry runs only (Sync is disabled and says why; a dry run's log shows in the panel); the payments rule stays hidden — not in that team</td>
-</tr>
-</tbody>
-</table>
-<p>The demo's rule settings come in layers (<a href="../configuration/schema-registry/#how-a-rule-is-built">how a rule is built</a>):</p>
-<table>
-<thead>
-<tr>
-<th>Layer</th>
-<th>In the demo</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>config.cue</code></td>
-<td><code>demo/live/config.cue</code>: every rule, the datasources' connections, Vault</td>
-</tr>
-<tr>
-<td>a tenant's <code>bundle.json</code></td>
-<td>tenant <code>default</code>: <code>vartrack-demo/schemas</code> on gitea, <code>extends</code> the <code>production</code> preset · tenant <code>payments</code>: <code>payments/schemas</code> on gitea-team, <code>extends</code> the <code>team</code> preset on gitea</td>
-</tr>
-<tr>
-<td>a repo's <code>vartrack.json</code></td>
-<td><code>demo-configs</code> has one on <code>main</code> and a different one on <code>develop</code>; <code>payments-config</code> has <code>.gitea/vartrack.json</code>, extending a preset in the payments team's own schema repo</td>
-</tr>
-<tr>
-<td>presets</td>
-<td><code>vartrack-demo/presets</code> (<code>demo/live/presets</code>): each layer adds <code>prune.protection</code> patterns</td>
-</tr>
-</tbody>
-</table>
-<p>Every environment shows its desired state in Git next to the current state in its sink. See <a href="../configuration/auth/#web-ui-sign-in-with-your-git-platform">Web UI sign-in</a> to turn sign-in off or set it up for your own platforms.</p>
-<p><img alt="A rule's environments: staging differs from Git in S3, production matches" src="../assets/screenshots/rule-environments.png" /></p>
+<ul>
+<li>It starts a local Git server (Gitea), MongoDB, Redis, ZooKeeper, S3 on MinIO, a Linux server over SSH, Vault and the three varTrack services, seeds a config repository and syncs it.</li>
+<li>Open the web UI at http://localhost:8080 and sign in with Gitea as <code>demo-admin</code>, password <code>VarTrack123</code>. Push a change to the local repository and watch it sync.</li>
+<li>It needs Docker with Compose 2.20.0 or newer and about 2 GiB of memory. <a href="https://github.com/jarin-devoss/varTrack/blob/main/demo/README.md">demo/README.md</a> has the ports, a short tour, and how to reset it.</li>
+<li>After you pull new code, run <code>docker compose up --build</code>: an older image keeps running otherwise.</li>
+<li>If the build stops with <code>x509: certificate signed by unknown authority</code>, an antivirus or proxy re-signs HTTPS on this machine: see <a href="https://github.com/jarin-devoss/varTrack/blob/main/ui/e2e/README.md#run-the-stack-on-a-machine-that-cannot-build-the-images">Run the stack on a machine that cannot build the images</a>.</li>
+</ul>
+<p>To also see Kubernetes ConfigMaps and Helm releases, a second Git server and rules built in layers, run <a href="../guides/full-demo/">the full demo</a>.</p>
 <hr />
 <h2 id="option-b-build-from-source">Option B — Build from source<a class="headerlink" href="#option-b-build-from-source" title="Permanent link">&para;</a></h2>
-<h3 id="1-clone-and-generate-proto-code">1. Clone and generate proto code<a class="headerlink" href="#1-clone-and-generate-proto-code" title="Permanent link">&para;</a></h3>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>git<span class="w"> </span>clone<span class="w"> </span>https://github.com/jarin-devoss/varTrack
-</span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="nb">cd</span><span class="w"> </span>varTrack
-</span><span id="__span-2-3"><a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>buf<span class="w"> </span>generate
+<h3 id="1-clone-generate-proto-code-and-build-the-config-loader">1. Clone, generate proto code, and build the config loader<a class="headerlink" href="#1-clone-generate-proto-code-and-build-the-config-loader" title="Permanent link">&para;</a></h3>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>git<span class="w"> </span>clone<span class="w"> </span>https://github.com/jarin-devoss/varTrack
+</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="nb">cd</span><span class="w"> </span>varTrack
+</span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>buf<span class="w"> </span>generate
+</span><span id="__span-1-4"><a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>
+</span><span id="__span-1-5"><a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="c1"># vartrack-bundle reads config.cue for the orchestrator, exactly as the gateway and the watcher read it</span>
+</span><span id="__span-1-6"><a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a><span class="o">(</span><span class="nb">cd</span><span class="w"> </span>libs/go<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>go<span class="w"> </span>install<span class="w"> </span>./cmd/vartrack-bundle<span class="o">)</span>
+</span><span id="__span-1-7"><a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a><span class="nb">export</span><span class="w"> </span><span class="nv">PATH</span><span class="o">=</span><span class="s2">&quot;</span><span class="k">$(</span>go<span class="w"> </span>env<span class="w"> </span>GOPATH<span class="k">)</span><span class="s2">/bin:</span><span class="nv">$PATH</span><span class="s2">&quot;</span><span class="w">     </span><span class="c1"># or set VARTRACK_BUNDLE_BINARY to the file</span>
 </span></code></pre></div>
+<p>Without <code>vartrack-bundle</code> the orchestrator refuses to start: it never runs on a <code>config.cue</code> the gateway would not accept.</p>
 <h3 id="2-write-configcue">2. Write <code>config.cue</code><a class="headerlink" href="#2-write-configcue" title="Permanent link">&para;</a></h3>
 <p>All three services share one CUE bundle that declares your platforms, datasources, and rules.</p>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>bundle: {
-</span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>  platforms: [{
-</span><span id="__span-3-3"><a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>    github: {
-</span><span id="__span-3-4"><a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a>      endpoint:        &quot;https://github.com&quot;
-</span><span id="__span-3-5"><a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a>      push_event_name: &quot;push&quot;
-</span><span id="__span-3-6"><a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a>      pr_event_name:   &quot;pull_request&quot;
-</span><span id="__span-3-7"><a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a>      secret:          &quot;my-webhook-secret&quot;
-</span><span id="__span-3-8"><a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a>    }
-</span><span id="__span-3-9"><a id="__codelineno-3-9" name="__codelineno-3-9" href="#__codelineno-3-9"></a>  }]
-</span><span id="__span-3-10"><a id="__codelineno-3-10" name="__codelineno-3-10" href="#__codelineno-3-10"></a>
-</span><span id="__span-3-11"><a id="__codelineno-3-11" name="__codelineno-3-11" href="#__codelineno-3-11"></a>  datasources: [{
-</span><span id="__span-3-12"><a id="__codelineno-3-12" name="__codelineno-3-12" href="#__codelineno-3-12"></a>    mongo: {
-</span><span id="__span-3-13"><a id="__codelineno-3-13" name="__codelineno-3-13" href="#__codelineno-3-13"></a>      endpoint:   &quot;mongodb://localhost:27017&quot;
-</span><span id="__span-3-14"><a id="__codelineno-3-14" name="__codelineno-3-14" href="#__codelineno-3-14"></a>      database:   &quot;vartrack&quot;
-</span><span id="__span-3-15"><a id="__codelineno-3-15" name="__codelineno-3-15" href="#__codelineno-3-15"></a>      collection: &quot;variables&quot;
-</span><span id="__span-3-16"><a id="__codelineno-3-16" name="__codelineno-3-16" href="#__codelineno-3-16"></a>    }
-</span><span id="__span-3-17"><a id="__codelineno-3-17" name="__codelineno-3-17" href="#__codelineno-3-17"></a>  }]
-</span><span id="__span-3-18"><a id="__codelineno-3-18" name="__codelineno-3-18" href="#__codelineno-3-18"></a>
-</span><span id="__span-3-19"><a id="__codelineno-3-19" name="__codelineno-3-19" href="#__codelineno-3-19"></a>  rules: [{
-</span><span id="__span-3-20"><a id="__codelineno-3-20" name="__codelineno-3-20" href="#__codelineno-3-20"></a>    platform:             &quot;github&quot;
-</span><span id="__span-3-21"><a id="__codelineno-3-21" name="__codelineno-3-21" href="#__codelineno-3-21"></a>    datasource:           &quot;mongo&quot;
-</span><span id="__span-3-22"><a id="__codelineno-3-22" name="__codelineno-3-22" href="#__codelineno-3-22"></a>    file_name:            &quot;configs/app.yaml&quot;   // file to watch in each repo
-</span><span id="__span-3-23"><a id="__codelineno-3-23" name="__codelineno-3-23" href="#__codelineno-3-23"></a>    repositories:         [&quot;my-org/*&quot;]         // glob — which repos trigger this rule
-</span><span id="__span-3-24"><a id="__codelineno-3-24" name="__codelineno-3-24" href="#__codelineno-3-24"></a>    destination_template: &quot;{env}-config&quot;       // collection name resolved at sync time
-</span><span id="__span-3-25"><a id="__codelineno-3-25" name="__codelineno-3-25" href="#__codelineno-3-25"></a>    self_heal:            true
-</span><span id="__span-3-26"><a id="__codelineno-3-26" name="__codelineno-3-26" href="#__codelineno-3-26"></a>    branch_map: {
-</span><span id="__span-3-27"><a id="__codelineno-3-27" name="__codelineno-3-27" href="#__codelineno-3-27"></a>      main:    &quot;production&quot;
-</span><span id="__span-3-28"><a id="__codelineno-3-28" name="__codelineno-3-28" href="#__codelineno-3-28"></a>      develop: &quot;staging&quot;
-</span><span id="__span-3-29"><a id="__codelineno-3-29" name="__codelineno-3-29" href="#__codelineno-3-29"></a>    }
-</span><span id="__span-3-30"><a id="__codelineno-3-30" name="__codelineno-3-30" href="#__codelineno-3-30"></a>  }]
-</span><span id="__span-3-31"><a id="__codelineno-3-31" name="__codelineno-3-31" href="#__codelineno-3-31"></a>}
+<div class="language-text highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>bundle: {
+</span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>  platforms: [{
+</span><span id="__span-2-3"><a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>    github: {
+</span><span id="__span-2-4"><a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a>      endpoint:        &quot;https://github.com&quot;
+</span><span id="__span-2-5"><a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a>      push_event_name: &quot;push&quot;
+</span><span id="__span-2-6"><a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a>      pr_event_name:   &quot;pull_request&quot;
+</span><span id="__span-2-7"><a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a>      secret:          &quot;my-webhook-secret&quot;
+</span><span id="__span-2-8"><a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a>    }
+</span><span id="__span-2-9"><a id="__codelineno-2-9" name="__codelineno-2-9" href="#__codelineno-2-9"></a>  }]
+</span><span id="__span-2-10"><a id="__codelineno-2-10" name="__codelineno-2-10" href="#__codelineno-2-10"></a>
+</span><span id="__span-2-11"><a id="__codelineno-2-11" name="__codelineno-2-11" href="#__codelineno-2-11"></a>  datasources: [{
+</span><span id="__span-2-12"><a id="__codelineno-2-12" name="__codelineno-2-12" href="#__codelineno-2-12"></a>    mongo: {
+</span><span id="__span-2-13"><a id="__codelineno-2-13" name="__codelineno-2-13" href="#__codelineno-2-13"></a>      endpoint:   &quot;mongodb://localhost:27017&quot;
+</span><span id="__span-2-14"><a id="__codelineno-2-14" name="__codelineno-2-14" href="#__codelineno-2-14"></a>      database:   &quot;vartrack&quot;
+</span><span id="__span-2-15"><a id="__codelineno-2-15" name="__codelineno-2-15" href="#__codelineno-2-15"></a>      collection: &quot;variables&quot;
+</span><span id="__span-2-16"><a id="__codelineno-2-16" name="__codelineno-2-16" href="#__codelineno-2-16"></a>    }
+</span><span id="__span-2-17"><a id="__codelineno-2-17" name="__codelineno-2-17" href="#__codelineno-2-17"></a>  }]
+</span><span id="__span-2-18"><a id="__codelineno-2-18" name="__codelineno-2-18" href="#__codelineno-2-18"></a>
+</span><span id="__span-2-19"><a id="__codelineno-2-19" name="__codelineno-2-19" href="#__codelineno-2-19"></a>  rules: [{
+</span><span id="__span-2-20"><a id="__codelineno-2-20" name="__codelineno-2-20" href="#__codelineno-2-20"></a>    platform:             &quot;github&quot;
+</span><span id="__span-2-21"><a id="__codelineno-2-21" name="__codelineno-2-21" href="#__codelineno-2-21"></a>    datasource:           &quot;mongo&quot;
+</span><span id="__span-2-22"><a id="__codelineno-2-22" name="__codelineno-2-22" href="#__codelineno-2-22"></a>    file_name:            &quot;configs/app.yaml&quot;   // file to watch in each repo
+</span><span id="__span-2-23"><a id="__codelineno-2-23" name="__codelineno-2-23" href="#__codelineno-2-23"></a>    repositories:         [&quot;my-org/*&quot;]         // glob — which repos trigger this rule
+</span><span id="__span-2-24"><a id="__codelineno-2-24" name="__codelineno-2-24" href="#__codelineno-2-24"></a>    destination_template: &quot;{env}-config&quot;       // collection name resolved at sync time
+</span><span id="__span-2-25"><a id="__codelineno-2-25" name="__codelineno-2-25" href="#__codelineno-2-25"></a>    self_heal:            true
+</span><span id="__span-2-26"><a id="__codelineno-2-26" name="__codelineno-2-26" href="#__codelineno-2-26"></a>    branch_map: {
+</span><span id="__span-2-27"><a id="__codelineno-2-27" name="__codelineno-2-27" href="#__codelineno-2-27"></a>      main:    &quot;production&quot;
+</span><span id="__span-2-28"><a id="__codelineno-2-28" name="__codelineno-2-28" href="#__codelineno-2-28"></a>      develop: &quot;staging&quot;
+</span><span id="__span-2-29"><a id="__codelineno-2-29" name="__codelineno-2-29" href="#__codelineno-2-29"></a>    }
+</span><span id="__span-2-30"><a id="__codelineno-2-30" name="__codelineno-2-30" href="#__codelineno-2-30"></a>  }]
+</span><span id="__span-2-31"><a id="__codelineno-2-31" name="__codelineno-2-31" href="#__codelineno-2-31"></a>}
 </span></code></pre></div>
 <h3 id="3-start-the-gateway-service">3. Start the gateway-service<a class="headerlink" href="#3-start-the-gateway-service" title="Permanent link">&para;</a></h3>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="nv">APP_ENV</span><span class="o">=</span>dev<span class="w"> </span><span class="se">\</span>
-</span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="nv">ORCHESTRATOR_ADDR</span><span class="o">=</span>localhost:50051<span class="w"> </span><span class="se">\</span>
-</span><span id="__span-4-3"><a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="nv">CONFIG_PATH</span><span class="o">=</span>config.cue<span class="w"> </span><span class="se">\</span>
-</span><span id="__span-4-4"><a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a>go<span class="w"> </span>run<span class="w"> </span>./gateway-service/cmd
+<p>Each Go service is a module of its own, so it is run from its own folder:</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="nb">cd</span><span class="w"> </span>gateway-service
+</span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="nv">APP_ENV</span><span class="o">=</span>dev<span class="w"> </span><span class="se">\</span>
+</span><span id="__span-3-3"><a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="nv">ORCHESTRATOR_ADDR</span><span class="o">=</span>localhost:50051<span class="w"> </span><span class="se">\</span>
+</span><span id="__span-3-4"><a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="nv">CONFIG_PATH</span><span class="o">=</span>../config.cue<span class="w"> </span><span class="se">\</span>
+</span><span id="__span-3-5"><a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a>go<span class="w"> </span>run<span class="w"> </span>./cmd
 </span></code></pre></div>
 <p>Listens on <code>:5657</code> (webhooks) and <code>:9090</code> (metrics/health).</p>
 <h3 id="4-start-the-orchestrator-service">4. Start the orchestrator-service<a class="headerlink" href="#4-start-the-orchestrator-service" title="Permanent link">&para;</a></h3>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="nb">cd</span><span class="w"> </span>orchestrator-service
-</span><span id="__span-5-2"><a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>pip<span class="w"> </span>install<span class="w"> </span>-e<span class="w"> </span>.
-</span><span id="__span-5-3"><a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>
-</span><span id="__span-5-4"><a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="c1"># API + gRPC server</span>
-</span><span id="__span-5-5"><a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a>uvicorn<span class="w"> </span>main:app<span class="w"> </span>--host<span class="w"> </span><span class="m">0</span>.0.0.0<span class="w"> </span>--port<span class="w"> </span><span class="m">8000</span><span class="w"> </span><span class="p">&amp;</span>
-</span><span id="__span-5-6"><a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a>
-</span><span id="__span-5-7"><a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a><span class="c1"># Celery worker (separate terminal)</span>
-</span><span id="__span-5-8"><a id="__codelineno-5-8" name="__codelineno-5-8" href="#__codelineno-5-8"></a>python<span class="w"> </span>-m<span class="w"> </span>app.worker
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="nb">cd</span><span class="w"> </span>orchestrator-service
+</span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>pip<span class="w"> </span>install<span class="w"> </span>-e<span class="w"> </span>.
+</span><span id="__span-4-3"><a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="nb">export</span><span class="w"> </span><span class="nv">CONFIG_PATH</span><span class="o">=</span>../config.cue<span class="w"> </span><span class="nv">PYTHONPATH</span><span class="o">=</span>app/generated/proto/python<span class="w">   </span><span class="c1"># the stubs buf generate wrote</span>
+</span><span id="__span-4-4"><a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a>
+</span><span id="__span-4-5"><a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a><span class="c1"># API + gRPC server</span>
+</span><span id="__span-4-6"><a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a>uvicorn<span class="w"> </span>main:app<span class="w"> </span>--host<span class="w"> </span><span class="m">0</span>.0.0.0<span class="w"> </span>--port<span class="w"> </span><span class="m">8000</span><span class="w"> </span><span class="p">&amp;</span>
+</span><span id="__span-4-7"><a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a>
+</span><span id="__span-4-8"><a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a><span class="c1"># Celery worker (separate terminal)</span>
+</span><span id="__span-4-9"><a id="__codelineno-4-9" name="__codelineno-4-9" href="#__codelineno-4-9"></a>python<span class="w"> </span>-m<span class="w"> </span>app.worker
 </span></code></pre></div>
 <h3 id="5-start-the-watcher-service">5. Start the watcher-service<a class="headerlink" href="#5-start-the-watcher-service" title="Permanent link">&para;</a></h3>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="nv">ORCHESTRATOR_ADDR</span><span class="o">=</span>localhost:50051<span class="w"> </span><span class="se">\</span>
-</span><span id="__span-6-2"><a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="nv">CONFIG_PATH</span><span class="o">=</span>config.cue<span class="w"> </span><span class="se">\</span>
-</span><span id="__span-6-3"><a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a>go<span class="w"> </span>run<span class="w"> </span>./watcher-service/cmd
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="nb">cd</span><span class="w"> </span>watcher-service
+</span><span id="__span-5-2"><a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="nv">ORCHESTRATOR_ADDR</span><span class="o">=</span>localhost:50051<span class="w"> </span><span class="se">\</span>
+</span><span id="__span-5-3"><a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="nv">CONFIG_PATH</span><span class="o">=</span>../config.cue<span class="w"> </span><span class="se">\</span>
+</span><span id="__span-5-4"><a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a>go<span class="w"> </span>run<span class="w"> </span>./cmd
 </span></code></pre></div>
 <p>Every 60 seconds by default, asks the orchestrator whether each <code>self_heal</code> rule's datasource still matches Git.</p>
 <h3 id="6-register-a-webhook-in-github">6. Register a webhook in GitHub<a class="headerlink" href="#6-register-a-webhook-in-github" title="Permanent link">&para;</a></h3>
@@ -2327,30 +2282,23 @@
 <hr />
 <h2 id="verify-it-works">Verify it works<a class="headerlink" href="#verify-it-works" title="Permanent link">&para;</a></h2>
 <p>Push a change to a tracked repository, then check MongoDB:</p>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-7-1"><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>mongosh<span class="w"> </span>vartrack<span class="w"> </span>--eval<span class="w"> </span><span class="s1">&#39;db[&quot;production-config&quot;].find().pretty()&#39;</span>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>mongosh<span class="w"> </span>vartrack<span class="w"> </span>--eval<span class="w"> </span><span class="s1">&#39;db[&quot;production-config&quot;].find().pretty()&#39;</span>
 </span></code></pre></div>
 <p>You should see one document for the file, with your config values nested under <code>data</code> (the default <code>STRATEGY_DOCUMENT</code>; set <code>update_strategy: "STRATEGY_KEY_VALUE"</code> for one document per key instead).</p>
 <hr />
 <h2 id="install-the-cli">Install the CLI<a class="headerlink" href="#install-the-cli" title="Permanent link">&para;</a></h2>
 <p>The <code>vt</code> CLI lets you sync files directly without a Git push:</p>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-8-1"><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="nb">cd</span><span class="w"> </span>cli
-</span><span id="__span-8-2"><a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>go<span class="w"> </span>build<span class="w"> </span>-o<span class="w"> </span>vt<span class="w"> </span>./cmd
-</span><span id="__span-8-3"><a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a>mv<span class="w"> </span>vt<span class="w"> </span>/usr/local/bin/vt
-</span><span id="__span-8-4"><a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a>
-</span><span id="__span-8-5"><a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a><span class="c1"># Authenticate with your Git token (GitHub or Gitea)</span>
-</span><span id="__span-8-6"><a id="__codelineno-8-6" name="__codelineno-8-6" href="#__codelineno-8-6"></a>vt<span class="w"> </span>login<span class="w"> </span>--server<span class="w"> </span>http://localhost:5657<span class="w"> </span>--token<span class="w"> </span>&lt;your<span class="w"> </span>Git<span class="w"> </span>token&gt;
-</span><span id="__span-8-7"><a id="__codelineno-8-7" name="__codelineno-8-7" href="#__codelineno-8-7"></a>
-</span><span id="__span-8-8"><a id="__codelineno-8-8" name="__codelineno-8-8" href="#__codelineno-8-8"></a><span class="c1"># Push a file manually</span>
-</span><span id="__span-8-9"><a id="__codelineno-8-9" name="__codelineno-8-9" href="#__codelineno-8-9"></a>vt<span class="w"> </span>sync<span class="w"> </span>--file<span class="w"> </span>configs/app.yaml<span class="w"> </span>--datasource<span class="w"> </span>mongo<span class="w"> </span>--env<span class="w"> </span>staging<span class="w"> </span>--wait
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-7-1"><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="nb">cd</span><span class="w"> </span>cli
+</span><span id="__span-7-2"><a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>go<span class="w"> </span>build<span class="w"> </span>-o<span class="w"> </span>vt<span class="w"> </span>./cmd
+</span><span id="__span-7-3"><a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a>mv<span class="w"> </span>vt<span class="w"> </span>/usr/local/bin/vt
+</span><span id="__span-7-4"><a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a>
+</span><span id="__span-7-5"><a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a><span class="c1"># Authenticate with your Git token (GitHub or Gitea)</span>
+</span><span id="__span-7-6"><a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a>vt<span class="w"> </span>login<span class="w"> </span>--server<span class="w"> </span>http://localhost:5657<span class="w"> </span>--token<span class="w"> </span>&lt;your<span class="w"> </span>Git<span class="w"> </span>token&gt;
+</span><span id="__span-7-7"><a id="__codelineno-7-7" name="__codelineno-7-7" href="#__codelineno-7-7"></a>
+</span><span id="__span-7-8"><a id="__codelineno-7-8" name="__codelineno-7-8" href="#__codelineno-7-8"></a><span class="c1"># Push a file manually</span>
+</span><span id="__span-7-9"><a id="__codelineno-7-9" name="__codelineno-7-9" href="#__codelineno-7-9"></a>vt<span class="w"> </span>sync<span class="w"> </span>--file<span class="w"> </span>configs/app.yaml<span class="w"> </span>--datasource<span class="w"> </span>mongo<span class="w"> </span>--env<span class="w"> </span>staging<span class="w"> </span>--wait
 </span></code></pre></div>
-<p>What <code>vt</code> may do is what your Git token may do in the rule's repositories: push access syncs, read access validates and dry-runs — see <a href="../configuration/auth/">Authentication &amp; Authorization</a>. In the live demo, make a Gitea token and use it:</p>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-9-1"><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="nv">TOKEN</span><span class="o">=</span><span class="k">$(</span>curl<span class="w"> </span>-s<span class="w"> </span>-u<span class="w"> </span>demo-admin:VarTrack123<span class="w"> </span>-X<span class="w"> </span>POST<span class="w"> </span>-H<span class="w"> </span><span class="s2">&quot;Content-Type: application/json&quot;</span><span class="w"> </span><span class="se">\</span>
-</span><span id="__span-9-2"><a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a><span class="w">  </span>-d<span class="w"> </span><span class="s1">&#39;{&quot;name&quot;:&quot;vt&quot;,&quot;scopes&quot;:[&quot;read:user&quot;,&quot;read:repository&quot;]}&#39;</span><span class="w"> </span><span class="se">\</span>
-</span><span id="__span-9-3"><a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a><span class="w">  </span>http://localhost:3000/api/v1/users/demo-admin/tokens<span class="w"> </span><span class="p">|</span><span class="w"> </span>python3<span class="w"> </span>-c<span class="w"> </span><span class="s2">&quot;import sys,json;print(json.load(sys.stdin)[&#39;sha1&#39;])&quot;</span><span class="k">)</span>
-</span><span id="__span-9-4"><a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a>vt<span class="w"> </span>login<span class="w"> </span>--server<span class="w"> </span>http://localhost:5657<span class="w"> </span>--token<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$TOKEN</span><span class="s2">&quot;</span>
-</span><span id="__span-9-5"><a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a>vt<span class="w"> </span>sync<span class="w"> </span>--file<span class="w"> </span>app-settings.yaml<span class="w"> </span>--datasource<span class="w"> </span>mongo-primary<span class="w"> </span>--env<span class="w"> </span>staging<span class="w"> </span>--wait<span class="w">   </span><span class="c1"># the live demo&#39;s rule tracks app-settings.yaml</span>
-</span></code></pre></div>
-<p><code>demo-admin</code> administers the demo repositories, so it can sync anywhere; <code>demo-viewer</code> can only read them, so it can validate and dry-run but not sync (<a href="https://github.com/jarin-devoss/varTrack/blob/main/examples/policies/vartrack_authz.rego">the example OPA policy</a> adds: writers never sync production or <code>configs/secrets/*</code>). The same token, pasted into the <em>Git token</em> card on the UI's Playground page, drives the Playground.</p>
+<p>What <code>vt</code> may do is what your Git token may do in the rule's repositories: push access syncs, read access validates and dry-runs — see <a href="../configuration/auth/">Authentication &amp; Authorization</a>. The <a href="../guides/full-demo/#the-cli-in-the-full-demo">full demo</a> shows how to make a token for its Gitea and what each demo user may do.</p>
 <p><a href="../cli/"><span class="twemoji"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13.22 19.03a.75.75 0 0 1 0-1.06L18.19 13H3.75a.75.75 0 0 1 0-1.5h14.44l-4.97-4.97a.749.749 0 0 1 .326-1.275.75.75 0 0 1 .734.215l6.25 6.25a.75.75 0 0 1 0 1.06l-6.25 6.25a.75.75 0 0 1-1.06 0"/></svg></span> Full CLI reference</a></p>
 <hr />
 <h2 id="next-steps">Next steps<a class="headerlink" href="#next-steps" title="Permanent link">&para;</a></h2>
@@ -2374,8 +2322,6 @@
 </li>
 </ul>
 </div>
-<hr />
-<h2 id="next-steps_1">Next steps<a class="headerlink" href="#next-steps_1" title="Permanent link">&para;</a></h2>
 <ul>
 <li><a href="../configuration/">Configuration files</a> — where <code>config.cue</code>, <code>bundle.json</code> and <code>vartrack.json</code> live, and how they make a rule</li>
 <li><a href="../guides/onboard-a-repository/">Onboard a config repository</a> — your own repository, end to end</li>
