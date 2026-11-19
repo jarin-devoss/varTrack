@@ -28,8 +28,10 @@ pip install -e .
 uvicorn main:app --host 0.0.0.0 --port 8000
 
 # Celery worker (separate terminal)
-celery -A app.worker.celery worker --queues=webhooks,sync -l info
+python -m app.worker
 ```
+
+`python -m app.worker` serves the `webhooks`, `sync` and `schema` queues. How many syncs it runs at once is `workers.concurrency` in `config.cue` (default 4); `VARTRACK_WORKER_CONCURRENCY` or `--concurrency 8` gives this machine another number. See [`workers`](../configuration/bundle.md#workers).
 
 ### With Docker
 
@@ -47,7 +49,7 @@ docker run \
   -e CONFIG_PATH=/config.cue \
   -v ./config.cue:/config.cue:ro \
   jarin-devoss/orchestrator-service:latest \
-  celery -A app.worker.celery worker --queues=webhooks,sync -l info
+  python -m app.worker
 ```
 
 ---

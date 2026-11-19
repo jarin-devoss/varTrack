@@ -460,14 +460,23 @@ If the file cannot be read at startup, the service exits with a descriptive erro
 
 ## `global_tags`
 
-Arbitrary key-value metadata applied to every write across all sinks:
+A map of text settings the orchestrator reads when it starts. The keys it reads are these, and each one is over the environment variable of the same meaning:
+
+| Key | Sets | Environment variable |
+|---|---|---|
+| `git_cache_dir` | Where the bare mirrors of the config repositories are kept | `GIT_CACHE_DIR` |
+| `git_cache_max_entries` | How many mirrors are kept | `GIT_CACHE_MAX_ENTRIES` |
+| `schema_cache_dir` | Where the tenants' schema clones are kept | `SCHEMA_CACHE_DIR` |
+| `schema_ttl` | Seconds between refreshes of a schema repository | `SCHEMA_TTL_SECONDS` |
 
 ```cue
 global_tags: {
-  team:        "platform"
-  environment: "production"
+  schema_ttl:    "600"
+  git_cache_dir: "/var/cache/vartrack/git"
 }
 ```
+
+Every value is text, so a number is written `"600"`. Any other key is accepted and read by nothing: it is not written to a store and not added to a datasource.
 
 ---
 

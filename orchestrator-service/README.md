@@ -236,7 +236,7 @@ make docker-worker
 | Container role | Command |
 |---|---|
 | API + gRPC (default) | `python main.py` |
-| Celery worker | `celery -A app.worker.celery worker --queues=webhooks,sync -l info` |
+| Celery worker | `python -m app.worker` (syncs at once: `workers.concurrency` in `config.cue`, `VARTRACK_WORKER_CONCURRENCY`, or `--concurrency`) |
 | Celery beat | `celery -A app.worker.celery beat -l info` |
 | Flower | `celery -A app.worker.celery flower --port=5555` |
 
