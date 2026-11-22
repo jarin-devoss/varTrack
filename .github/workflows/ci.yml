@@ -168,11 +168,13 @@ jobs:
 
       # The program that checks every file against its schema. The tests that show what a schema can say
       # (test_readings.py, test_docs_schemas.py) run it for real, and fail here when it is missing.
-      - name: Install cue
-        working-directory: libs/go
-        env:
-          GOBIN: ${{ runner.temp }}/bin
-        run: go install cuelang.org/go/cmd/cue@v0.16.0
+      # Built from tools/cue, as the orchestrator image builds it (its go.mod names the CUE version and the
+      # patched libraries it uses), so the tests check files with the cue the image ships.
+      - name: Build cue
+        working-directory: tools/cue
+        run: |
+          go mod tidy && git diff --exit-code go.mod go.sum
+          go build -trimpath -o "$RUNNER_TEMP/bin/cue" cuelang.org/go/cmd/cue
 
       - name: Install dependencies
         run: uv pip install --system --require-hashes -r requirements-dev.txt
@@ -502,91 +504,15 @@ jobs:
             | tar xz actionlint
           ./actionlint -color
 
-  # ── Trivy — scan Docker images for CVEs ─────────────────────────────────────
-  # Runs after docker-build succeeds.  Uploads findings as SARIF so they appear
-  # in the GitHub Security tab alongside CodeQL results.  Free, no signup.
-  trivy:
-    name: trivy (${{ matrix.service }})
-    runs-on: ubuntu-latest
+  # ── Security scan: Trivy on every image, govulncheck on the Go modules ──────
+  # security-scan.yml, which also runs on its own every week. Runs after docker-build succeeds.
+  # Trivy's findings are uploaded as SARIF, so they appear in the GitHub Security tab alongside
+  # CodeQL results, and a fixable CRITICAL or HIGH fails the run.
+  # (OpenSSF Scorecard is scorecard.yml.)
+  security-scan:
+    name: security
     needs: [docker-build]
     permissions:
       security-events: write
       contents: read
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          # The Go services build against the shared libs/go, so their context
-          # is the repository root.
-          - service: gateway-service
-            context: .
-            dockerfile: gateway-service/Dockerfile
-          - service: watcher-service
-            context: .
-            dockerfile: watcher-service/Dockerfile
-          # The orchestrator generates its Python stubs from proto/, at the root.
-          - service: orchestrator-service
-            context: .
-            dockerfile: orchestrator-service/docker/Dockerfile
-    steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-
-      - uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5 # v4.1.0
-
-      - name: Build image for scanning
-        uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf # v7.2.0
-        with:
-          context: ${{ matrix.context }}
-          file: ${{ matrix.dockerfile }}
-          push: false
-          load: true
-          tags: ${{ matrix.service }}:scan
-          cache-from: type=gha,scope=${{ matrix.service }}
-
-      - name: Run Trivy vulnerability scan
-        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
-        with:
-          image-ref: ${{ matrix.service }}:scan
-          format: sarif
-          output: trivy-${{ matrix.service }}.sarif
-          severity: CRITICAL,HIGH
-          ignore-unfixed: true
-
-      - name: Upload Trivy results to Security tab
-        uses: github/codeql-action/upload-sarif@8aad20d150bbac5944a9f9d289da16a4b0d87c1e # v3
-        if: always()
-        with:
-          sarif_file: trivy-${{ matrix.service }}.sarif
-          category: trivy-${{ matrix.service }}
-
-  # ── OpenSSF Scorecard (main branch only) ────────────────────────────────────
-  scorecard:
-    name: OpenSSF Scorecard
-    runs-on: ubuntu-latest
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    permissions:
-      security-events: write
-      id-token: write
-      contents: read
-      actions: read
-    steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-        with:
-          persist-credentials: false
-
-      - uses: ossf/scorecard-action@4eaacf0543bb3f2c246792bd56e8cdeffafb205a # v2.4.3
-        with:
-          results_file: results.sarif
-          results_format: sarif
-          publish_results: true
-
-      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: scorecard-results
-          path: results.sarif
-          retention-days: 5
-
-      - uses: github/codeql-action/upload-sarif@8aad20d150bbac5944a9f9d289da16a4b0d87c1e # v3
-        with:
-          sarif_file: results.sarif
-
+    uses: ./.github/workflows/security-scan.yml

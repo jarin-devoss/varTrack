@@ -16,7 +16,7 @@ Celery worker:
 Celery beat (periodic self-heal):
     celery -A app.worker.celery beat -l info
 
-Flower (monitoring):
+Flower (monitoring; an optional extra, pip install -e ".[monitoring]"):
     celery -A app.worker.celery flower --port=5555
 
 gRPC server note

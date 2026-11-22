@@ -198,7 +198,7 @@ make worker        # queues: webhooks, sync
 # Start Celery beat for periodic re-sync (separate terminal)
 make beat
 
-# Monitor tasks with Flower (separate terminal)
+# Monitor tasks with Flower (separate terminal; it is an optional extra: pip install -e ".[monitoring]")
 make flower        # http://localhost:5555
 ```
 
@@ -238,7 +238,7 @@ make docker-worker
 | API + gRPC (default) | `python main.py` |
 | Celery worker | `python -m app.worker` (syncs at once: `workers.concurrency` in `config.cue`, `VARTRACK_WORKER_CONCURRENCY`, or `--concurrency`) |
 | Celery beat | `celery -A app.worker.celery beat -l info` |
-| Flower | `celery -A app.worker.celery flower --port=5555` |
+| Flower (needs `pip install -e ".[monitoring]"`) | `celery -A app.worker.celery flower --port=5555` |
 
 ---
 

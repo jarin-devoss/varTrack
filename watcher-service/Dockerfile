@@ -1,5 +1,5 @@
 # ── Build stage ────────────────────────────────────────────────────────────────
-FROM golang:1.27-alpine@sha256:f92b6ef800e499660581efdabdf25d9d817a9d124eaf900924f0504e7e27e12d AS builder
+FROM golang:1.27-alpine@sha256:70bd7ddea8b6cbe5d6943cde279d6b67feb10cc924fb9100d1d8757c1575b280 AS builder
 
 # The build context is the repository root: the watcher builds against the
 # shared module in libs/go (its go.mod replaces vartrack/libs with ../libs/go).
@@ -24,7 +24,7 @@ RUN CGO_ENABLED=0 GOOS=linux go build \
     ./cmd/
 
 # ── Runtime stage ──────────────────────────────────────────────────────────────
-FROM alpine:3.24@sha256:be2656061b536c1883c4034790e21d0a09c5aaaf51968b89368a3c0371ea2c9a
+FROM alpine:3.24@sha256:f59abe656b692d901e184be3445e084786602108599d2a51d229c0f5a48c71bf AS runtime
 
 ARG VERSION=dev
 ARG COMMIT=unknown
@@ -38,7 +38,10 @@ LABEL org.opencontainers.image.title="vartrack-watcher-service" \
       org.opencontainers.image.source="https://github.com/your-org/vartrack" \
       org.opencontainers.image.licenses="Apache-2.0"
 
-RUN apk add --no-cache ca-certificates tzdata wget && \
+# apk upgrade takes the distro's current packages: the base image is pinned by digest and
+# can be behind its repository (openssl, zlib).
+RUN apk upgrade --no-cache && \
+    apk add --no-cache ca-certificates tzdata wget && \
     addgroup -S nonroot && adduser -S -G nonroot nonroot
 
 COPY --from=builder /bin/watcher-service /watcher-service

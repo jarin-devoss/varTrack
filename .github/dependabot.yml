@@ -1,55 +1,87 @@
 version: 2
+
+# One pull request per ecosystem each week, merged when CI is green. An update is offered
+# only after it has been out for four days, so a release that is pulled the next day is
+# never proposed (security updates are not delayed). Every directory that builds something
+# that ships, or the tools that check it, is listed.
 updates:
   # GitHub Actions
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
       interval: "weekly"
+    cooldown:
+      default-days: 4
+    groups:
+      actions:
+        patterns: ["*"]
 
-  # Go — gateway-service
+  # Go. The gateway builds against libs/go through a replace, and libs/go is built into
+  # vartrack-bundle, so the modules move together; tools/cue pins the cue binary the
+  # orchestrator image and CI build.
   - package-ecosystem: "gomod"
-    directory: "/gateway-service"
+    directories:
+      - "/libs/go"
+      - "/gateway-service"
+      - "/watcher-service"
+      - "/cli"
+      - "/tools/cue"
     schedule:
       interval: "weekly"
+    cooldown:
+      default-days: 4
+    groups:
+      go:
+        patterns: ["*"]
 
-  # Go — watcher-service
-  - package-ecosystem: "gomod"
-    directory: "/watcher-service"
-    schedule:
-      interval: "weekly"
-
-  # Go — cli
-  - package-ecosystem: "gomod"
-    directory: "/cli"
-    schedule:
-      interval: "weekly"
-
-  # Python — orchestrator-service
+  # Python. Both locks of the orchestrator (requirements.txt for the image, requirements-dev.txt
+  # for CI) are updated in the same pull request.
   - package-ecosystem: "pip"
-    directory: "/orchestrator-service"
+    directories:
+      - "/orchestrator-service"
+      - "/e2e/init"
+      - "/demo/seed"
+      - "/docs"
     schedule:
       interval: "weekly"
+    cooldown:
+      default-days: 4
+    groups:
+      python:
+        patterns: ["*"]
 
-  # Docker — gateway-service
-  - package-ecosystem: "docker"
-    directory: "/gateway-service"
+  # The web UI
+  - package-ecosystem: "npm"
+    directory: "/ui"
     schedule:
       interval: "weekly"
+    cooldown:
+      default-days: 4
+    groups:
+      ui:
+        patterns: ["*"]
 
-  # Docker — watcher-service
+  # Base images, by digest. A new Python or Node line is a decision of its own, so only
+  # its digests and patch releases are proposed.
   - package-ecosystem: "docker"
-    directory: "/watcher-service"
+    directories:
+      - "/gateway-service"
+      - "/watcher-service"
+      - "/orchestrator-service/docker"
+      - "/ui"
+      - "/e2e/init"
+      - "/e2e/gitea"
+      - "/demo/seed"
+      - "/demo/gitea"
     schedule:
       interval: "weekly"
-
-  # Docker — orchestrator-service
-  - package-ecosystem: "docker"
-    directory: "/orchestrator-service/docker"
-    schedule:
-      interval: "weekly"
-
-  # Docker — e2e
-  - package-ecosystem: "docker"
-    directory: "/e2e/init"
-    schedule:
-      interval: "weekly"
+    cooldown:
+      default-days: 4
+    ignore:
+      - dependency-name: "python"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
+      - dependency-name: "node"
+        update-types: ["version-update:semver-major"]
+    groups:
+      images:
+        patterns: ["*"]
