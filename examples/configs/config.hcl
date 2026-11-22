@@ -1,5 +1,4 @@
-# Example config file — HCL (Terraform/HashiCorp) format.
-# VarTrack parses .hcl and .tf files using python-hcl2.
+# A config file in HCL (.hcl, .tf). Blocks become key prefixes: database { host } is database.host.
 
 app_name    = "my-service"
 app_version = "1.0.0"
@@ -18,7 +17,8 @@ database {
   port     = 5432
   name     = "myapp"
   user     = "app-user"
-  # Vault @secret annotation — resolved at ETL time.
+  # Vault's value replaces the reference, inside the quotes, when the schema marks
+  # database.password @secret().
   password = "@secret(secret/myapp/db#password)"
   pool_max = 20
   ssl      = true

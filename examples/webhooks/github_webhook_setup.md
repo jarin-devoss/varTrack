@@ -1,50 +1,58 @@
-# GitHub Webhook Setup
+# GitHub webhook setup
 
-## Configure a webhook in your GitHub repo
+## Add the webhook
 
-1. Go to **Settings → Webhooks → Add webhook**
-2. Set **Payload URL** to one of:
-   - `https://your-gateway.example.com/v1/webhooks/mongo`
-   - `https://your-gateway.example.com/v1/webhooks/zookeeper`
-   - `https://your-gateway.example.com/v1/webhooks/mongo-primary`
-   - (one webhook per datasource you want to sync on push)
-3. Set **Content type** to `application/json`
-4. Set **Secret** — copy the value to your gateway env: `WEBHOOK_SECRET=<value>`
-5. Select **Just the push event**
-6. Click **Add webhook**
+In the repository (or the organisation, to cover every repository at once): **Settings → Webhooks → Add webhook**.
 
-## Multiple datasources = multiple webhooks
+| Field | Value |
+|---|---|
+| Payload URL | `https://<gateway>/webhooks/<datasource>`, e.g. `https://vartrack.example.com/webhooks/mongo` |
+| Content type | `application/json` |
+| Secret | the GitHub platform's `secret` in `config.cue` |
+| Events | **Pushes**, and **Pull requests** when the rule sets `pr_as_env` |
 
-If you want a single push to write to both MongoDB primary and DR:
+The datasource in the URL is the rule's `datasource`: its type (`mongo`), or its type and tag (`mongo-primary`).
 
-- Add two webhooks pointing to:
-  - `https://your-gateway/v1/webhooks/mongo-primary`
-  - `https://your-gateway/v1/webhooks/mongo-dr`
+## One webhook per datasource
 
-Both webhooks fire in parallel on each push. VarTrack processes them independently.
+A rule is named by its platform and its datasource, so a push that should reach two datasources needs two webhooks:
 
-## HMAC signature verification
+- `https://<gateway>/webhooks/mongo-primary`
+- `https://<gateway>/webhooks/mongo-dr`
 
-The gateway verifies the `X-Hub-Signature-256` header on every request.
-Set the same secret in both GitHub and the gateway:
+GitHub sends both deliveries on each push, and each is synced on its own.
 
-```bash
-# In your gateway .env or container environment:
-WEBHOOK_SECRET=your-shared-secret-here
+## The secret
+
+The secret is set in two places, and nowhere else: in the webhook, and as the platform's `secret` in `config.cue`
+(a string, or better a mounted file):
+
+```cue
+platforms: [{github: {endpoint: "https://github.com", secret: {file: "/run/secrets/github-webhook-secret"}}}]
 ```
 
-## Branch filtering
+With `APP_ENV=production` the gateway checks the `X-Hub-Signature-256` header of every delivery against it and
+answers `401` when it does not match; a delivery id (`X-GitHub-Delivery`) it has seen before is refused too. Outside
+production it checks neither, so run production with `APP_ENV=production`. Two GitHub platforms in one bundle each
+need their own secret: the one that signed a delivery says which platform sent it.
 
-Rules can be scoped to specific branches using `branch_env_map` in settings:
+## Which pushes are synced
 
-```json
-{
-  "branch_env_map": {
-    "main":    "production",
-    "staging": "staging",
-    "dev":     "development"
-  }
-}
+The rule decides, in `config.cue`:
+
+- `repositories` (and `exclude_repositories`) say which repositories' pushes it syncs.
+- `file_name` or `file_path_map` say which files it reads, at the pushed commit.
+- `branch_map` (or `branch_as_env`, `pr_as_env`, `tag_as_env`) says which environment a push feeds:
+
+```cue
+branch_map: {main: "production", develop: "staging"}
 ```
 
-Pushes to branches not in the map are silently ignored.
+A push to a branch nothing maps is skipped, and its task says so (`branch feature/x feeds no environment of …`).
+
+## Check a delivery
+
+GitHub's **Recent Deliveries** shows the gateway's answer: `202` (queued; the body has the `task_id`), `200 event
+ignored` (not a push, e.g. the first `ping`), `401` (signature), `404` (no rule for that datasource). The web UI's
+rule page, or `vt task get <task_id>`, shows what the sync did. [`curl_examples.sh`](curl_examples.sh) sends signed
+deliveries by hand. For Gitea, see the [Gitea example](../../docs/examples/gitea.md).

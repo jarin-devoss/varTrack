@@ -17,6 +17,7 @@ bundle: {
 			github: {
 				endpoint: "https://github.com"
 				protocol: "https"
+				secret:   {file: "/run/secrets/github-webhook-secret"}
 				token:    {file: "/run/secrets/github-token"}
 			}
 		},
@@ -25,6 +26,7 @@ bundle: {
 				tag:      "internal"                 // → platform name "gitea-internal"
 				endpoint: "http://gitea:3000"         // as varTrack reaches it
 				protocol: "http"
+				secret:   {file: "/run/secrets/gitea-webhook-secret"}
 				token:    {file: "/run/secrets/gitea-token"}
 			}
 		},
@@ -115,5 +117,7 @@ bundle: {
 		}
 	}
 
-	celery_broker_datasource: "redis-broker"
+	celery_broker_datasource:  "redis-broker"
+	celery_backend_datasource: "redis-broker"
+	gateway_nonce_datasource:  "redis-broker"
 }

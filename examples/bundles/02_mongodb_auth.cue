@@ -1,14 +1,17 @@
-// Example: MongoDB with authentication, TLS, and replica set.
+// Example 02: MongoDB with a user, a password from a mounted secret, and TLS.
+//
+// The sink builds the connection string from host, port, username and password
+// only when `endpoint` is left out. With `endpoint` set, that string is used as
+// it is, and username and password are not read: a replica set, for example, is
+//   endpoint: "mongodb://app-user:<password>@mongo-1:27017,mongo-2:27017/?replicaSet=rs0&authSource=admin"
+// (then keep the whole config.cue in a secret mount).
 bundle: {
 	platforms: [
 		{
 			github: {
-				endpoint:    "https://github.com"
-				protocol:    "https"
-				token:       "ghp_xxxxxxxxxxxxxxxxxxxx"
-				org_name:    "my-org"
-				timeout:     "30s"
-				max_retries: 3
+				endpoint: "https://github.com"
+				secret:   {file: "/run/secrets/github-webhook-secret"}
+				token:    {file: "/run/secrets/github-token"}
 			}
 		},
 	]
@@ -16,67 +19,47 @@ bundle: {
 	datasources: [
 		{
 			mongo: {
-				tag:      ""
-				endpoint: "mongodb://app-user:app-pass@mongo-host:27017/vartrack?authSource=admin&replicaSet=rs0"
-				host:     "mongo-host"
+				host:     "mongo.internal"
 				port:     27017
-
-				// Credentials for MongoDB auth.
 				username: "app-user"
-				password: "app-pass"
+				// Read on the orchestrator's machine; a username needs its password.
+				password: {file: "/run/secrets/mongo-password"}
 
 				database:        "vartrack"
-				collection:      "app_vars"
-				auth_source:     "admin"
-				update_strategy: "STRATEGY_KEY_VALUE"
+				collection:      "variables"
+				update_strategy: "STRATEGY_DOCUMENT"
 
-				// TLS — provide your CA cert file path in the container.
-				ssl:                            true
-				ssl_allow_invalid_certificates: false
+				// TLS: the server's certificate is checked against this CA.
+				ssl:         true
+				ssl_ca_path: "/etc/ssl/mongo-ca.pem"
 
-				// Tuning knobs.
-				buffer_size:        200
-				max_pool_size:      10
-				connect_timeout_ms: 10000
+				// Fail a write after 5 s when the server is down, instead of the driver's
+				// own waits (20 s to connect, 30 s to find a server).
+				connect_timeout_ms: 5000
 			}
 		},
 		{
 			redis: {
-				tag: "redis"
-				hosts: ["redis-host:6379"]
-				password: "redis-pass"
+				tag:      "broker"
+				hosts:    ["redis:6379"]
+				password: {file: "/run/secrets/redis-password"}
 				database: 0
-			}
-		},
-		{
-			redis: {
-				tag: "redis-results"
-				hosts: ["redis-host:6379"]
-				password: "redis-pass"
-				database: 1
 			}
 		},
 	]
 
 	rules: [
 		{
-			platform:   "github"
-			datasource: "mongo"
-			file_name:  "app.yaml"
+			platform:     "github"
+			datasource:   "mongo"
 			repositories: ["acme-corp/configs"]
-			// Where the environments come from: a rule that names none is refused.
+			file_name:    "configs/app.yaml"
 			branch_map: {main: "production"}
 			self_heal: true
 		},
 	]
 
-	global_tags: {
-		team:        "platform"
-		environment: "production"
-
-		celery_broker:       "redis"
-		celery_backend:      "redis-results"
-		gateway_nonce_redis: "redis"
-		watcher_state_redis: "redis"
-	}
+	celery_broker_datasource:  "redis-broker"
+	celery_backend_datasource: "redis-broker"
+	gateway_nonce_datasource:  "redis-broker"
 }

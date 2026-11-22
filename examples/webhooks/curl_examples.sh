@@ -1,117 +1,72 @@
 #!/usr/bin/env bash
-# VarTrack webhook examples — trigger ETL from the command line.
+# Send the webhooks a Git platform would send, by hand: to try a rule, or a gateway.
 #
-# The {datasource} path segment routes the push to the matching rule in the bundle.
-# Each datasource configured in bundle.datasources gets its own webhook URL.
+# The gateway serves POST /webhooks/{datasource}: the datasource names the rule, with
+# the platform the event headers say sent it. With APP_ENV=production it checks
+# each delivery's signature against the platform's `secret` in config.cue (401 when
+# it does not match) and refuses a delivery id it has seen before (401). Outside
+# production it checks neither.
 #
-# Replace:
-#   GATEWAY_URL — your gateway service address
-#   HMAC_SECRET — the webhook secret configured in your GitHub/GitLab settings
-#   PAYLOAD     — a real GitHub/GitLab push event body (or use the minimal example below)
+# To sync a file without a push, use the CLI instead:
+#   vt sync --file configs/app.yaml --datasource mongo --env staging --dry-run
+#
+#   GATEWAY_URL=https://vartrack.example.com SECRET=my-webhook-secret ./curl_examples.sh
+set -euo pipefail
 
-GATEWAY_URL="http://localhost:5657"
+GATEWAY_URL="${GATEWAY_URL:-http://localhost:5657}"
+SECRET="${SECRET:-my-webhook-secret}"   # the platform's `secret` in config.cue
 
-# ── Minimal GitHub push event payload ─────────────────────────────────────────
-PAYLOAD='{
-  "ref": "refs/heads/main",
-  "repository": {
-    "name": "my-config-repo",
-    "full_name": "my-org/my-config-repo",
-    "clone_url": "https://github.com/my-org/my-config-repo.git"
-  },
-  "commits": [
-    {
-      "id": "abc1234567890",
-      "message": "chore: update app config",
-      "added":    ["configs/app.yaml"],
-      "modified": ["configs/database.toml"],
-      "removed":  []
-    }
-  ],
-  "head_commit": {
-    "id": "abc1234567890"
-  }
-}'
+# A push to main of acme-corp/configs. The orchestrator reads the files the rule
+# names at commit `after`, from the repository at clone_url.
+PAYLOAD='{"ref":"refs/heads/main","after":"0123456789abcdef0123456789abcdef01234567","repository":{"full_name":"acme-corp/configs","clone_url":"https://github.com/acme-corp/configs.git"},"head_commit":{"id":"0123456789abcdef0123456789abcdef01234567","message":"update app config"}}'
 
-# ── 1. Trigger sync to the default "mongo" datasource ─────────────────────────
-echo "--- Push to mongo ---"
-curl -s -X POST "${GATEWAY_URL}/v1/webhooks/mongo" \
+# HMAC-SHA256 of the exact bytes sent, in hex.
+sign() { printf '%s' "$1" | openssl dgst -sha256 -hmac "$SECRET" | sed 's/^.* //'; }
+delivery() { od -An -N16 -tx1 /dev/urandom | tr -d ' \n'; }   # a fresh id per delivery
+
+# ── 1. GitHub: a push to the rule for the "mongo" datasource ──────────────────
+# X-Hub-Signature-256 is "sha256=" and the hex digest.
+echo "--- GitHub push → /webhooks/mongo"
+curl -sS -X POST "${GATEWAY_URL}/webhooks/mongo" \
   -H "Content-Type: application/json" \
   -H "X-GitHub-Event: push" \
-  -d "${PAYLOAD}"
+  -H "X-GitHub-Delivery: $(delivery)" \
+  -H "X-Hub-Signature-256: sha256=$(sign "$PAYLOAD")" \
+  --data-binary "$PAYLOAD"
+echo   # 202 {"task_id": "…", "message": "…"}
 
-# ── 2. Trigger sync to "mongo-primary" (tagged datasource) ────────────────────
-echo "--- Push to mongo-primary ---"
-curl -s -X POST "${GATEWAY_URL}/v1/webhooks/mongo-primary" \
+# ── 2. GitHub: a tagged datasource ("mongo-primary") ──────────────────────────
+echo "--- GitHub push → /webhooks/mongo-primary"
+curl -sS -X POST "${GATEWAY_URL}/webhooks/mongo-primary" \
   -H "Content-Type: application/json" \
   -H "X-GitHub-Event: push" \
-  -d "${PAYLOAD}"
+  -H "X-GitHub-Delivery: $(delivery)" \
+  -H "X-Hub-Signature-256: sha256=$(sign "$PAYLOAD")" \
+  --data-binary "$PAYLOAD"
+echo
 
-# ── 3. Trigger sync to "mongo-dr" ─────────────────────────────────────────────
-echo "--- Push to mongo-dr ---"
-curl -s -X POST "${GATEWAY_URL}/v1/webhooks/mongo-dr" \
+# ── 3. Gitea: the same push; the signature is the hex digest with no prefix ───
+echo "--- Gitea push → /webhooks/redis-config"
+curl -sS -X POST "${GATEWAY_URL}/webhooks/redis-config" \
   -H "Content-Type: application/json" \
-  -H "X-GitHub-Event: push" \
-  -d "${PAYLOAD}"
+  -H "X-Gitea-Event: push" \
+  -H "X-Gitea-Delivery: $(delivery)" \
+  -H "X-Gitea-Signature: $(sign "$PAYLOAD")" \
+  --data-binary "$PAYLOAD"
+echo
 
-# ── 4. Trigger sync to ZooKeeper ──────────────────────────────────────────────
-echo "--- Push to zookeeper ---"
-curl -s -X POST "${GATEWAY_URL}/v1/webhooks/zookeeper" \
+# ── 4. An event that is not a push or a pull request is ignored ───────────────
+PING='{"zen":"Keep it logically awesome.","hook_id":1}'
+echo "--- GitHub ping → 200 event ignored"
+curl -sS -X POST "${GATEWAY_URL}/webhooks/mongo" \
   -H "Content-Type: application/json" \
-  -H "X-GitHub-Event: push" \
-  -d "${PAYLOAD}"
+  -H "X-GitHub-Event: ping" \
+  -H "X-GitHub-Delivery: $(delivery)" \
+  -H "X-Hub-Signature-256: sha256=$(sign "$PING")" \
+  --data-binary "$PING"
+echo
 
-# ── 5. Trigger sync to Redis config store ─────────────────────────────────────
-echo "--- Push to redis-cfg ---"
-curl -s -X POST "${GATEWAY_URL}/v1/webhooks/redis-cfg" \
-  -H "Content-Type: application/json" \
-  -H "X-GitHub-Event: push" \
-  -d "${PAYLOAD}"
-
-# ── 6. Trigger sync to S3 ─────────────────────────────────────────────────────
-echo "--- Push to s3 ---"
-curl -s -X POST "${GATEWAY_URL}/v1/webhooks/s3" \
-  -H "Content-Type: application/json" \
-  -H "X-GitHub-Event: push" \
-  -d "${PAYLOAD}"
-
-# ── 7. Trigger sync to Linux server ───────────────────────────────────────────
-echo "--- Push to linux_server ---"
-curl -s -X POST "${GATEWAY_URL}/v1/webhooks/linux_server" \
-  -H "Content-Type: application/json" \
-  -H "X-GitHub-Event: push" \
-  -d "${PAYLOAD}"
-
-# ── 8. Push bundle config to orchestrator directly ────────────────────────────
-echo "--- Push bundle ---"
-curl -s -X POST "${GATEWAY_URL}/v1/bundles" \
-  -H "Content-Type: application/json" \
-  -d @../bundles/01_mongodb_basic.cue
-
-# ── 9. Health check ───────────────────────────────────────────────────────────
-echo "--- Gateway health ---"
-curl -s "${GATEWAY_URL}/healthz"
-
-# ── 10. GitLab push event (different event header) ────────────────────────────
-GITLAB_PAYLOAD='{
-  "ref": "refs/heads/main",
-  "project": {
-    "name": "my-config-repo",
-    "http_url": "https://gitlab.acme.internal/platform/my-config-repo.git"
-  },
-  "commits": [
-    {
-      "id": "abc1234567890",
-      "message": "chore: update config",
-      "added":    ["configs/app.yaml"],
-      "modified": [],
-      "removed":  []
-    }
-  ]
-}'
-
-echo "--- GitLab push to redis-cfg ---"
-curl -s -X POST "${GATEWAY_URL}/v1/webhooks/redis-cfg" \
-  -H "Content-Type: application/json" \
-  -H "X-Gitlab-Event: Push Hook" \
-  -d "${GITLAB_PAYLOAD}"
+# ── 5. Health ─────────────────────────────────────────────────────────────────
+echo "--- gateway health"
+curl -sS "${GATEWAY_URL}/health/liveness"; echo
+curl -sS "${GATEWAY_URL}/health/readiness"; echo   # 200 once the orchestrator answers

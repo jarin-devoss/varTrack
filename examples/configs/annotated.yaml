@@ -1,4 +1,4 @@
-# A file that passes examples/schemas/annotated_schema.cue.
+# A file that passes examples/schemas/annotated_schema.cue (examples/bundles/09_vault_secrets.cue syncs it).
 # Numbers and booleans are written as such; "8080" in quotes would pass the same `int`.
 
 app_port: 8080

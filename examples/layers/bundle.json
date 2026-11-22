@@ -1,0 +1,16 @@
+{
+  "extends": ["local>payments/schemas//presets/team"],
+  "rules": [
+    {
+      "platform": "github",
+      "datasource": "redis-config",
+      "branch_map": {"develop": "staging"},
+      "strict_validation": true,
+      "schema_map": [
+        {"match": "configs/app.yaml", "schema": "app.yaml.cue"}
+      ],
+      "sync_mode": "GIT_SMART_REPAIR",
+      "prune": {"enabled": true, "protection": ["payments.runtime.*"]}
+    }
+  ]
+}
