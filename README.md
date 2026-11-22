@@ -279,6 +279,7 @@ varTrack/
 ├── buf.gen.yaml                  # Buf code-generation config (one template)
 ├── docs/                         # The documentation site (MkDocs)
 ├── scripts/                      # check-before-push.sh: what CI checks, before a push
+├── tools/                        # gen_config_docs.py, and tools/cue: the cue binary the image and CI build
 ├── libs/go/                      # Go — generated code, bundle loader, secret files (shared)
 │
 ├── gateway-service/              # Go — HTTP ingress, webhook receiver, CLI API
@@ -296,6 +297,8 @@ varTrack/
 ## Security
 
 Webhook signatures (HMAC-SHA256), replay protection, rate limiting, and mTLS are enforced automatically in production (`APP_ENV=production`). See the [Production checklist](docs/operations/production-checklist.md) and [Internal authentication](docs/operations/internal-auth.md) for what to set, and what each setting protects.
+
+Report a vulnerability privately: see [SECURITY.md](SECURITY.md). Dependencies are updated by Dependabot, one grouped pull request per ecosystem each week, merged when CI is green. CI scans the images and the Go code on every pull request and fails on a fixable critical or high vulnerability; the same scans run every week on `main`.
 
 ---
 
