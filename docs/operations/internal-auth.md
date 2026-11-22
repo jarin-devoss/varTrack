@@ -157,8 +157,7 @@ when `GRPC_TLS_CA` is set, requires a client certificate that CA signed (mTLS); 
 presents `TLS_CERT_FILE`/`TLS_KEY_FILE` and verifies the gateway with `GATEWAY_AUTHZ_CA_FILE` (else
 `TLS_CA_FILE`). The gateway refuses to serve `AUTHZ_ADDR` in production without a signing secret.
 Without a secret (development) it serves open and says so at startup. Only the orchestrator's API
-needs to reach it: the NetworkPolicy in [`deploy/networkpolicy/gateway.yaml`](https://github.com/jarin-devoss/varTrack/tree/main/deploy/networkpolicy)
-opens `5658` to it alone.
+needs to reach it: open `5658` to it alone ([below](#keep-the-network-closed-as-well)).
 
 What the engine learns from the Git platforms is remembered for `AUTHZ_CACHE_TTL` (default 60 s) per
 token, platform and question, keyed by a hash of the token. Signing out drops what it knows of the
@@ -170,8 +169,8 @@ When `PROM_ENABLED=true` the orchestrator starts a second metrics server on `PRO
 a separate listener from the admin port, listens on every interface, and is **not** covered by
 grants: its only protection is its own basic auth (`PROM_BASIC_AUTH_USER` /
 `PROM_BASIC_AUTH_PASS`, optionally with `PROM_ENABLE_TLS`). If you turn it on, set those, or
-keep the port off the network (the [NetworkPolicy](#keep-the-network-closed-as-well) manifests
-do not open it); the admin port's `/metrics` is the one that takes a grant.
+keep the port off the network (it is not in the [list below](#keep-the-network-closed-as-well));
+the admin port's `/metrics` is the one that takes a grant.
 
 ## CORS
 
@@ -181,11 +180,23 @@ web UI's origin instead.
 
 ## Keep the network closed as well
 
-Authentication is the control; the network is the second one. Only the gateway, the watcher
-and the web UI's proxy need to reach the orchestrator, and only Prometheus needs the admin
-port. [`deploy/networkpolicy/`](https://github.com/jarin-devoss/varTrack/tree/main/deploy/networkpolicy)
-has Kubernetes `NetworkPolicy` manifests that say exactly that: label your pods as the
-manifests expect, apply them, and everything else is denied by default.
+Authentication is the control; the network is the second one. varTrack ships no firewall rules or
+Kubernetes manifests: these are the only connections its services make to each other, so a
+deny-by-default network (Kubernetes `NetworkPolicy`, security groups) can allow these and nothing else.
+
+| To | Port | From |
+|---|---|---|
+| gateway | `5657` (webhooks, CLI API) | your Git platforms, `vt` users, the web UI's proxy |
+| gateway | `5658` (`AUTHZ_ADDR`, the permission engine) | the orchestrator API |
+| orchestrator API | `8000` (HTTP) | the web UI's proxy |
+| orchestrator API | `50051` (gRPC) | the gateway, the watcher |
+| watcher | `9091` (`ADMIN_ADDR`) | the web UI's proxy (its health check), Prometheus |
+| gateway, orchestrator | their admin ports (`ADMIN_ADDR`; `ADMIN_HOST`:`ADMIN_PORT`) | Prometheus |
+| web UI | `8080` | your users |
+
+The orchestrator's workers take no inbound connection. The admin ports default to `9090`; the compose
+files set the gateway's to `9092` and the orchestrator's to `9093` (and `ADMIN_HOST=0.0.0.0`, without
+which the orchestrator's is on loopback only).
 
 ## Troubleshooting
 
