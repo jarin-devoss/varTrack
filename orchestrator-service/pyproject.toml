@@ -16,11 +16,10 @@ dependencies = [
 
     # Celery
     "celery[redis]>=5.3",
-    "flower>=2.0",
     "kombu>=5.3",
 
     # MongoDB
-    "pymongo>=4.6",
+    "pymongo>=4.18.3",
 
     # ZooKeeper
     "kazoo>=2.9",
@@ -35,7 +34,7 @@ dependencies = [
     "hvac>=2.0",
 
     # Git
-    "gitpython>=3.1",
+    "gitpython>=3.2.1",
 
     # Parsing
     "PyYAML>=6",
@@ -65,10 +64,15 @@ dependencies = [
     # Utils
     "python-dateutil>=2.9",
     "pydantic>=2.5",
-    "pydantic-settings>=2.1",
+    "pydantic-settings>=2.14.2",
 ]
 
 [project.optional-dependencies]
+# Celery task monitor (Flower and its web server, Tornado). Not in the image or the locks: a monitor
+# nothing starts there. Install with: pip install -e ".[monitoring]"
+monitoring = [
+    "flower>=2.0",
+]
 # Runtime test dependencies — install with: pip install -e ".[test]"
 test = [
     "pytest>=8",

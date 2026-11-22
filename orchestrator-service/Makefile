@@ -103,7 +103,7 @@ beat: ## Start Celery beat for periodic self-heal
 	celery -A $(CELERY_APP) beat --loglevel=info
 
 .PHONY: flower
-flower: ## Start Flower task monitoring UI (port 5555)
+flower: ## Start Flower task monitoring UI (port 5555; needs: pip install -e ".[monitoring]")
 	celery -A $(CELERY_APP) flower --port=5555
 
 # ── Docker ────────────────────────────────────────────────────────────────────
