@@ -98,9 +98,11 @@ push_file() {
 
 # Wait until a task has finished (its own state, SUCCEEDED or FAILED) and print that state; TIMEOUT after $2 seconds.
 wait_task() {
-    local datasource=$1 task_id=$2 max=${3:-120} n=0 state=""
+    local datasource=$1 task_id=$2 max=${3:-120} n=0 state="" body=""
     while [ $n -lt "$max" ]; do
-        state=$(curl -s --max-time 10 -H "$(auth_header "$datasource")" "${ORCHESTRATOR}/v1/tasks/${task_id}" \
+        # The answer is read into a variable first, and only then given to python: nothing fetched is run.
+        body=$(curl -s --max-time 10 -H "$(auth_header "$datasource")" "${ORCHESTRATOR}/v1/tasks/${task_id}" || true)
+        state=$(printf '%s' "$body" \
             | python3 -c "
 import json, sys
 try:
