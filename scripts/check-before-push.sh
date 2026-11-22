@@ -12,7 +12,7 @@
 # The checks, each the same one CI runs:
 #   generated  buf generate, then libs/go/gen must not change      (.github/workflows/ci.yml, job libs/go)
 #   lock       npm ci in ui/ into a clean node_modules             (a package.json that names a package its lock lacks)
-#   tidy       go mod tidy, then go.mod / go.sum must not change   (jobs libs/go, gateway-service, watcher-service)
+#   tidy       go mod tidy, then go.mod / go.sum must not change   (jobs libs/go, gateway-service, watcher-service, orchestrator-service: tools/cue)
 #   tests      ruff and pytest (orchestrator), go vet and go test (libs/go), tsc and vitest (ui)
 #
 # Exit status: 0 every check passed, 1 a check failed (it says which file, and the command that fixes it), 2 a tool is missing.
@@ -95,7 +95,7 @@ check_lock() {
 check_tidy() {
     echo "== go modules: go mod tidy must not change go.mod or go.sum"
     need go "https://go.dev/dl"
-    for m in libs/go:"go.mod go.sum" gateway-service:"go.sum" watcher-service:"go.sum"; do
+    for m in libs/go:"go.mod go.sum" gateway-service:"go.sum" watcher-service:"go.sum" tools/cue:"go.mod go.sum"; do
         dir=${m%%:*}; files=${m#*:}
         (cd "$tree/$dir" && go mod tidy) || fail "go mod tidy failed in $dir"
         # shellcheck disable=SC2086
