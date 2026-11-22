@@ -1,5 +1,5 @@
-# Example config file — TOML format.
-# VarTrack supports .toml files in your Git repo.
+# A config file in TOML. Sections become key prefixes: [database] host is database.host.
+# Numbers and booleans keep their types.
 
 [app]
 name    = "my-service"
@@ -17,7 +17,7 @@ host     = "prod-db.internal"
 port     = 5432
 name     = "myapp"
 user     = "app-user"
-# Vault @secret annotation — resolved at ETL time.
+# Vault's value is written instead when the file's schema marks database.password @secret().
 password = "@secret(secret/myapp/db#password)"
 pool_min = 5
 pool_max = 20

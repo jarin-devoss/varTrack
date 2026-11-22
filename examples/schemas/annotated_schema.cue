@@ -1,9 +1,11 @@
 // Full CUE schema example with @secret() and @logger() annotations.
 //
-// This schema validates every config push for the "myapp" tenant.
-// Place this file in your schema Git repo (e.g. my-org/schemas, path: myapp.cue).
-// varTrack fetches it automatically when schema_registry is configured.
-// examples/configs/annotated.yaml is a file that passes it.
+// examples/configs/annotated.yaml is a file that passes it, and
+// examples/bundles/09_vault_secrets.cue the bundle that uses it.
+//
+// Its name is not a file's name, so nothing finds it by name: a rule's schema_map
+// names it (schema: "annotated_schema.cue", its path in the schema repository). To
+// have it found by name instead, store it as annotated.yaml.cue at the root.
 //
 // The fields are at the top level, not inside a #Definition: `cue vet` checks the data only against top-level
 // fields. A key with a dot is written as a quoted label ("database.host"), as the file is flattened first.
@@ -16,7 +18,10 @@
 // ANNOTATIONS:
 //   @secret()          — value is a Vault path; resolved before writing to any sink.
 //                        In dry-run reports the real value is replaced with ***.
-//   @secret(ref="x")   — resolves via the secret manager tagged "x" in the bundle.
+//   @secret(ref="x")   — resolves via the secret manager tagged "x" in the bundle
+//                        (09_vault_secrets.cue declares "default" and "auth-vault").
+//   Only a field the schema marks is read from Vault: a "@secret(…)" value in a field
+//   it does not mark is written as the text it is.
 //   @logger()          — emits a structured log line whenever the field value changes.
 //   @secret() @logger() — both: logs the change but never reveals the secret value.
 //

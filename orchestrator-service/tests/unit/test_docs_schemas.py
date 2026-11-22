@@ -158,3 +158,28 @@ def test_the_env_example_passes_its_schema_and_a_number_that_is_not_one_does_not
     assert error is not None and "DB_SSL" in error
     error = check(schema, "vars.env", env.replace("SERVER_PORT=8080", "SERVER_PORT=80"), tmp_path)
     assert error is not None and "SERVER_PORT" in error                 # below the range
+
+
+@needs_cue
+@pytest.mark.parametrize("change, key", [
+    ("port: 8080", "server.port"), ("log_level: info", "app.log_level"), ("dark_mode:     true", "feature_flags.dark_mode"),
+    ("jwt_algorithm: HS256", "auth.jwt_algorithm"),
+])
+def test_the_yaml_example_passes_its_schema_and_each_wrong_value_does_not(tmp_path, change, key):
+    schema, config = read("examples/schemas/app.yaml.cue"), read("examples/configs/app.yaml")
+    assert check(schema, "app.yaml", config, tmp_path) is None
+    bad = {"port: 8080": "port: 80800", "log_level: info": "log_level: loud",
+           "dark_mode:     true": "dark_mode:     maybe", "jwt_algorithm: HS256": "jwt_algorithm: none"}[change]
+    assert config.count(change) == 1
+    error = check(schema, "app.yaml", config.replace(change, bad), tmp_path)
+    assert error is not None and key in error
+
+
+@needs_cue
+def test_the_closed_json_schema_passes_its_file_and_refuses_a_key_it_does_not_name(tmp_path):
+    schema, config = read("examples/schemas/settings.json.cue"), read("examples/configs/settings.json")
+    assert check(schema, "settings.json", config, tmp_path) is None
+    error = check(schema, "settings.json", config.replace('"debug": false', '"debug": false, "debgu": true'), tmp_path)
+    assert error is not None and "debgu" in error
+    error = check(schema, "settings.json", config.replace('"port": 8080', '"port": 80'), tmp_path)
+    assert error is not None and "server.port" in error

@@ -1,9 +1,14 @@
-# Example config file — YAML format.
-# Place this file in your Git repo. VarTrack parses it and writes
-# each top-level key-value pair to the configured sink.
+# A config file in YAML. It passes examples/schemas/app.yaml.cue.
 #
-# @secret() annotations are resolved by Vault at ETL time.
-# The resolved value (not the annotation) is written to the sink.
+# varTrack reads it at the pushed commit and flattens it to dotted keys
+# (app.name, server.port, feature_flags.dark_mode, …), which is what the schema
+# checks and what a key-per-value sink (Redis, ZooKeeper) stores. A sink that keeps
+# the file as one document (MongoDB, S3) keeps it nested, with its numbers and
+# booleans.
+#
+# "@secret(mount/path#field)" is replaced with Vault's value before anything is
+# written, for a field the schema marks @secret() (database.password, auth.jwt_secret).
+# A field the schema does not mark keeps the text as it is.
 
 app:
   name: my-service
@@ -22,7 +27,6 @@ database:
   port: 5432
   name: myapp
   pool_size: 20
-  # @secret() pulls the value from Vault at ETL time.
   password: "@secret(secret/myapp/db#password)"
 
 cache:
@@ -33,7 +37,6 @@ cache:
 auth:
   jwt_algorithm: HS256
   jwt_expiry: 86400
-  # Secret resolved from Vault — never stored in Git.
   jwt_secret: "@secret(secret/myapp/auth#jwt_secret)"
 
 feature_flags:

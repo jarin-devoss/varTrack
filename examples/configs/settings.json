@@ -1,5 +1,4 @@
 {
-  "_comment": "Example config file — JSON format. VarTrack parses and writes each key to the sink.",
   "app": {
     "name": "my-service",
     "version": "1.0.0",
