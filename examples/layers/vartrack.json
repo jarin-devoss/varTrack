@@ -1,0 +1,5 @@
+{
+  "branch_map": {"release": "production"},
+  "variables_map": {"DB_HOST": "database.host"},
+  "prune": {"protection": ["checkout.manual.*"]}
+}

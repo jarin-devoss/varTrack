@@ -1,0 +1,5 @@
+{
+  "description": "Settings every payments rule shares",
+  "prune": {"protection": ["_vt_*"]},
+  "drift_ignore": ["feature_flags.rollout_*"]
+}
