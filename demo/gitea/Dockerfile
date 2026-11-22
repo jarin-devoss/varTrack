@@ -1,4 +1,4 @@
-FROM gitea/gitea:1.22@sha256:538658de667c5d098a274f2f63aa6ec891d88f670cdd5282cf27221ba747dda4
+FROM gitea/gitea:28.4@sha256:aa90e8f00b755b0d665214ab9c14447ea44d3190dbe6b6d0cb46cd9c4f55d309
 
 # Override the gitea s6 run script so that gitea web is started in the
 # background first, admin user is created once the DB is ready, and then
