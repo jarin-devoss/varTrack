@@ -2363,8 +2363,7 @@ when <code>GRPC_TLS_CA</code> is set, requires a client certificate that CA sign
 presents <code>TLS_CERT_FILE</code>/<code>TLS_KEY_FILE</code> and verifies the gateway with <code>GATEWAY_AUTHZ_CA_FILE</code> (else
 <code>TLS_CA_FILE</code>). The gateway refuses to serve <code>AUTHZ_ADDR</code> in production without a signing secret.
 Without a secret (development) it serves open and says so at startup. Only the orchestrator's API
-needs to reach it: the NetworkPolicy in <a href="https://github.com/jarin-devoss/varTrack/tree/main/deploy/networkpolicy"><code>deploy/networkpolicy/gateway.yaml</code></a>
-opens <code>5658</code> to it alone.</p>
+needs to reach it: open <code>5658</code> to it alone (<a href="#keep-the-network-closed-as-well">below</a>).</p>
 <p>What the engine learns from the Git platforms is remembered for <code>AUTHZ_CACHE_TTL</code> (default 60 s) per
 token, platform and question, keyed by a hash of the token. Signing out drops what it knows of the
 session's tokens; a revoked permission keeps working for up to the TTL.</p>
@@ -2373,18 +2372,65 @@ session's tokens; a revoked permission keeps working for up to the TTL.</p>
 a separate listener from the admin port, listens on every interface, and is <strong>not</strong> covered by
 grants: its only protection is its own basic auth (<code>PROM_BASIC_AUTH_USER</code> /
 <code>PROM_BASIC_AUTH_PASS</code>, optionally with <code>PROM_ENABLE_TLS</code>). If you turn it on, set those, or
-keep the port off the network (the <a href="#keep-the-network-closed-as-well">NetworkPolicy</a> manifests
-do not open it); the admin port's <code>/metrics</code> is the one that takes a grant.</p>
+keep the port off the network (it is not in the <a href="#keep-the-network-closed-as-well">list below</a>);
+the admin port's <code>/metrics</code> is the one that takes a grant.</p>
 <h2 id="cors">CORS<a class="headerlink" href="#cors" title="Permanent link">&para;</a></h2>
 <p><code>CORS_ORIGINS=*</code> is honoured only while the orchestrator runs open for development. With
 authentication on, or in production, a wildcard is ignored and logged as an error: list the
 web UI's origin instead.</p>
 <h2 id="keep-the-network-closed-as-well">Keep the network closed as well<a class="headerlink" href="#keep-the-network-closed-as-well" title="Permanent link">&para;</a></h2>
-<p>Authentication is the control; the network is the second one. Only the gateway, the watcher
-and the web UI's proxy need to reach the orchestrator, and only Prometheus needs the admin
-port. <a href="https://github.com/jarin-devoss/varTrack/tree/main/deploy/networkpolicy"><code>deploy/networkpolicy/</code></a>
-has Kubernetes <code>NetworkPolicy</code> manifests that say exactly that: label your pods as the
-manifests expect, apply them, and everything else is denied by default.</p>
+<p>Authentication is the control; the network is the second one. varTrack ships no firewall rules or
+Kubernetes manifests: these are the only connections its services make to each other, so a
+deny-by-default network (Kubernetes <code>NetworkPolicy</code>, security groups) can allow these and nothing else.</p>
+<table>
+<thead>
+<tr>
+<th>To</th>
+<th>Port</th>
+<th>From</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>gateway</td>
+<td><code>5657</code> (webhooks, CLI API)</td>
+<td>your Git platforms, <code>vt</code> users, the web UI's proxy</td>
+</tr>
+<tr>
+<td>gateway</td>
+<td><code>5658</code> (<code>AUTHZ_ADDR</code>, the permission engine)</td>
+<td>the orchestrator API</td>
+</tr>
+<tr>
+<td>orchestrator API</td>
+<td><code>8000</code> (HTTP)</td>
+<td>the web UI's proxy</td>
+</tr>
+<tr>
+<td>orchestrator API</td>
+<td><code>50051</code> (gRPC)</td>
+<td>the gateway, the watcher</td>
+</tr>
+<tr>
+<td>watcher</td>
+<td><code>9091</code> (<code>ADMIN_ADDR</code>)</td>
+<td>the web UI's proxy (its health check), Prometheus</td>
+</tr>
+<tr>
+<td>gateway, orchestrator</td>
+<td>their admin ports (<code>ADMIN_ADDR</code>; <code>ADMIN_HOST</code>:<code>ADMIN_PORT</code>)</td>
+<td>Prometheus</td>
+</tr>
+<tr>
+<td>web UI</td>
+<td><code>8080</code></td>
+<td>your users</td>
+</tr>
+</tbody>
+</table>
+<p>The orchestrator's workers take no inbound connection. The admin ports default to <code>9090</code>; the compose
+files set the gateway's to <code>9092</code> and the orchestrator's to <code>9093</code> (and <code>ADMIN_HOST=0.0.0.0</code>, without
+which the orchestrator's is on loopback only).</p>
 <h2 id="troubleshooting">Troubleshooting<a class="headerlink" href="#troubleshooting" title="Permanent link">&para;</a></h2>
 <table>
 <thead>

@@ -2052,14 +2052,12 @@
 </span><span id="__span-0-30"><a id="__codelineno-0-30" name="__codelineno-0-30" href="#__codelineno-0-30"></a>      main:    &quot;production&quot;
 </span><span id="__span-0-31"><a id="__codelineno-0-31" name="__codelineno-0-31" href="#__codelineno-0-31"></a>      develop: &quot;staging&quot;
 </span><span id="__span-0-32"><a id="__codelineno-0-32" name="__codelineno-0-32" href="#__codelineno-0-32"></a>    }
-</span><span id="__span-0-33"><a id="__codelineno-0-33" name="__codelineno-0-33" href="#__codelineno-0-33"></a>    prune: true
-</span><span id="__span-0-34"><a id="__codelineno-0-34" name="__codelineno-0-34" href="#__codelineno-0-34"></a>  }]
-</span><span id="__span-0-35"><a id="__codelineno-0-35" name="__codelineno-0-35" href="#__codelineno-0-35"></a>
-</span><span id="__span-0-36"><a id="__codelineno-0-36" name="__codelineno-0-36" href="#__codelineno-0-36"></a>  global_tags: {
-</span><span id="__span-0-37"><a id="__codelineno-0-37" name="__codelineno-0-37" href="#__codelineno-0-37"></a>    celery_broker_datasource:  &quot;redis-broker&quot;
-</span><span id="__span-0-38"><a id="__codelineno-0-38" name="__codelineno-0-38" href="#__codelineno-0-38"></a>    celery_backend_datasource: &quot;redis-results&quot;
-</span><span id="__span-0-39"><a id="__codelineno-0-39" name="__codelineno-0-39" href="#__codelineno-0-39"></a>  }
-</span><span id="__span-0-40"><a id="__codelineno-0-40" name="__codelineno-0-40" href="#__codelineno-0-40"></a>}
+</span><span id="__span-0-33"><a id="__codelineno-0-33" name="__codelineno-0-33" href="#__codelineno-0-33"></a>  }]
+</span><span id="__span-0-34"><a id="__codelineno-0-34" name="__codelineno-0-34" href="#__codelineno-0-34"></a>
+</span><span id="__span-0-35"><a id="__codelineno-0-35" name="__codelineno-0-35" href="#__codelineno-0-35"></a>  celery_broker_datasource:  &quot;redis-broker&quot;
+</span><span id="__span-0-36"><a id="__codelineno-0-36" name="__codelineno-0-36" href="#__codelineno-0-36"></a>  celery_backend_datasource: &quot;redis-results&quot;
+</span><span id="__span-0-37"><a id="__codelineno-0-37" name="__codelineno-0-37" href="#__codelineno-0-37"></a>  gateway_nonce_datasource:  &quot;redis-broker&quot;
+</span><span id="__span-0-38"><a id="__codelineno-0-38" name="__codelineno-0-38" href="#__codelineno-0-38"></a>}
 </span></code></pre></div>
 <hr />
 <h2 id="webhook-setup-in-gitea">Webhook setup in Gitea<a class="headerlink" href="#webhook-setup-in-gitea" title="Permanent link">&para;</a></h2>
@@ -2071,7 +2069,7 @@
 <li>Under <strong>Trigger On</strong>, select <strong>Push Events</strong> and <strong>Pull Request Events</strong></li>
 <li>Click <strong>Add Webhook</strong></li>
 </ol>
-<p>Gitea will send a test ping — the gateway will reject it gracefully (no <code>X-Gitea-Event: push</code> header) and return <code>400</code>. That's expected.</p>
+<p>A test delivery from Gitea is not a push: the gateway answers it <code>200</code> with <code>event ignored</code>. That's expected.</p>
 <hr />
 <h2 id="using-vault-secrets-for-the-token">Using Vault secrets for the token<a class="headerlink" href="#using-vault-secrets-for-the-token" title="Permanent link">&para;</a></h2>
 <p>Keep the Gitea token out of the bundle file by referencing it from Vault:</p>
