@@ -1,27 +1,24 @@
-// Example: Gitea as the Git platform.
+// Example 14: Gitea as the Git platform.
 //
-// Gitea is a self-hosted Git service with a GitHub-compatible API.
-// varTrack supports Gitea webhooks natively using the X-Gitea-* header set.
+// Gitea sends GitHub-shaped payloads with its own headers:
+//   X-Gitea-Event      push / pull_request
+//   X-Gitea-Signature  HMAC-SHA256 of the body, hex, no "sha256=" prefix
+//   X-Gitea-Delivery   a delivery id (replay protection)
 //
-// WEBHOOK SETUP IN GITEA:
+// WEBHOOK SETUP IN GITEA
 //   Settings → Webhooks → Add Webhook → Gitea
-//   Payload URL:  http://gateway:5657/webhooks/mongo
+//   Target URL:   https://<gateway>/webhooks/mongo
 //   Content type: application/json
-//   Secret:       (same as bundle secret below)
-//   Trigger:      Push Events + Pull Request Events
-//
-// GITEA WEBHOOK HEADERS (fixed by Gitea, no configuration needed):
-//   X-Gitea-Event      → event type ("push" / "pull_request")
-//   X-Gitea-Signature  → HMAC-SHA256 of the payload (hex, no prefix)
-//   X-Gitea-Delivery   → unique delivery UUID (replay protection)
+//   Secret:       the platform's `secret` below
+//   Trigger on:   Push Events (and Pull Request Events with pr_as_env)
+// Gitea's test delivery is answered 200 "event ignored": it is not a push.
 bundle: {
 	platforms: [
 		{
 			gitea: {
 				endpoint:    "https://gitea.mycompany.com"
-				protocol:    "https"
-				token:       "gta_xxxxxxxxxxxxxxxxxxxxxxxxxxxx" // Gitea personal access token
-				secret:      "my-webhook-secret"               // HMAC secret for signature verification
+				token:       "gta_xxxxxxxxxxxxxxxxxxxxxxxxxxxx" // personal access token: read the repositories
+				secret:      "my-webhook-secret"                // HMAC secret of the webhook
 				org_name:    "my-org"
 				timeout:     "30s"
 				max_retries: 3
@@ -33,9 +30,10 @@ bundle: {
 	datasources: [
 		{
 			mongo: {
-				endpoint:   "mongodb://mongo:27017"
-				database:   "vartrack"
-				collection: "app_vars"
+				endpoint:        "mongodb://mongo:27017"
+				database:        "vartrack"
+				collection:      "variables"
+				update_strategy: "STRATEGY_DOCUMENT"
 			}
 		},
 		{
@@ -58,8 +56,8 @@ bundle: {
 		{
 			platform:             "gitea"
 			datasource:           "mongo"
-			file_name:            "configs/app.yaml"
 			repositories:         ["my-org/*"]
+			file_name:            "configs/app.yaml"
 			destination_template: "{env}-config"
 			sync_mode:            "AUTO"
 			self_heal:            true
@@ -67,12 +65,11 @@ bundle: {
 				main:    "production"
 				develop: "staging"
 			}
-			prune: true
 		},
 	]
 
-	global_tags: {
-		celery_broker_datasource:  "redis-broker"
-		celery_backend_datasource: "redis-results"
-	}
+	// The wiring is at the top of the bundle, not in global_tags.
+	celery_broker_datasource:  "redis-broker"
+	celery_backend_datasource: "redis-results"
+	gateway_nonce_datasource:  "redis-broker"
 }

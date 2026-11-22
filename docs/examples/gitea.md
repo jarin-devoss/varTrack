@@ -45,13 +45,11 @@ bundle: {
       main:    "production"
       develop: "staging"
     }
-    prune: true
   }]
 
-  global_tags: {
-    celery_broker_datasource:  "redis-broker"
-    celery_backend_datasource: "redis-results"
-  }
+  celery_broker_datasource:  "redis-broker"
+  celery_backend_datasource: "redis-results"
+  gateway_nonce_datasource:  "redis-broker"
 }
 ```
 
@@ -66,7 +64,7 @@ bundle: {
 5. Under **Trigger On**, select **Push Events** and **Pull Request Events**
 6. Click **Add Webhook**
 
-Gitea will send a test ping — the gateway will reject it gracefully (no `X-Gitea-Event: push` header) and return `400`. That's expected.
+A test delivery from Gitea is not a push: the gateway answers it `200` with `event ignored`. That's expected.
 
 ---
 

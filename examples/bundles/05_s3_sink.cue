@@ -1,15 +1,23 @@
-// Example: S3 sink — uploads rendered config files to an S3 bucket.
-// Works with AWS S3 and any S3-compatible store (MinIO, Ceph, etc.).
+// Example 05: S3 (or MinIO, or any S3-compatible store) as the sink.
+//
+// With STRATEGY_FILE each config file is stored as a file, in its own format and
+// under its own name, below the rule's destination_template:
+//   s3://my-config-bucket/acme/production/app.yaml
+// (byte for byte as in Git, unless a sync changed it: an environment taken out,
+// a root_key, a secret, a renamed key). The other strategies:
+//   STRATEGY_DOCUMENT    <prefix>/config.json, nested
+//   STRATEGY_KEY_VALUE   one object per key: <prefix>/database.host
+//   unset                <prefix>/config.json with the flat keys
+// Without a destination_template the prefix is the datasource's `prefix` + "/<env>".
+//
+// Webhook: https://<gateway>/webhooks/s3
 bundle: {
 	platforms: [
 		{
 			github: {
-				endpoint:    "https://github.com"
-				protocol:    "https"
-				token:       "ghp_xxxxxxxxxxxxxxxxxxxx"
-				org_name:    "my-org"
-				timeout:     "30s"
-				max_retries: 3
+				endpoint: "https://github.com"
+				secret:   "my-webhook-secret"
+				token:    "ghp_xxxxxxxxxxxxxxxxxxxx"
 			}
 		},
 	]
@@ -17,58 +25,44 @@ bundle: {
 	datasources: [
 		{
 			s3: {
-				tag:    ""
 				bucket: "my-config-bucket"
 				region: "us-east-1"
 
-				// Credentials — leave empty to use EC2 instance role or ECS task role.
-				access_key_id:     "AKIAIOSFODNN7EXAMPLE"
-				secret_access_key: "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
+				// Leave both keys out to use the AWS default credential chain
+				// (an instance role, IRSA). Any credential form works here.
+				access_key_id:     {file: "/run/secrets/aws-access-key-id"}
+				secret_access_key: {file: "/run/secrets/aws-secret-access-key"}
 
-				// Optional: custom endpoint for MinIO / on-prem S3.
-				// endpoint: "http://minio:9002"
+				// MinIO or another S3-compatible store:
+				// endpoint:         "http://minio:9000"
 				// force_path_style: true
 
-				// Key prefix: files are uploaded as s3://bucket/prefix/{env}/{filename}.
-				prefix: "vartrack/"
+				update_strategy: "STRATEGY_FILE"
 			}
 		},
 		{
 			redis: {
-				tag: "redis"
-				hosts: ["redis-host:6379"]
+				tag:   "broker"
+				hosts: ["redis:6379"]
 				database: 0
 			}
 		},
-		{
-			redis: {
-				tag: "redis-results"
-				hosts: ["redis-host:6379"]
-				database: 1
-			}
-		},
 	]
 
-	// Webhook: POST /v1/webhooks/s3
 	rules: [
 		{
-			platform:   "github"
-			datasource: "s3"
-			file_name:  "app.yaml"
+			platform:     "github"
+			datasource:   "s3"
 			repositories: ["acme-corp/configs"]
-			// Where the environments come from: a rule that names none is refused.
-			branch_map: {main: "production"}
-			self_heal: true
+			file_name:    "configs/app.yaml"
+			branch_map: {main: "production", develop: "staging"}
+			destination_template: "{tenant}/{env}/"
+			self_heal:            true
+			// file_format: "json"   // convert: the object becomes app.json
 		},
 	]
 
-	global_tags: {
-		team:        "platform"
-		environment: "production"
-
-		celery_broker:       "redis"
-		celery_backend:      "redis-results"
-		gateway_nonce_redis: "redis"
-		watcher_state_redis: "redis"
-	}
+	celery_broker_datasource:  "redis-broker"
+	celery_backend_datasource: "redis-broker"
+	gateway_nonce_datasource:  "redis-broker"
 }

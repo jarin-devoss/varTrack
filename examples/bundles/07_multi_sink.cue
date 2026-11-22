@@ -1,21 +1,18 @@
-// Example: Multiple sinks — same push writes to MongoDB, ZooKeeper, and Redis.
-// Each datasource has its own rule and webhook path:
-//   POST /v1/webhooks/mongo      → writes to MongoDB
-//   POST /v1/webhooks/zookeeper  → writes to ZooKeeper
-//   POST /v1/webhooks/redis-cfg  → writes to Redis
+// Example 07: one file into three sinks: MongoDB, ZooKeeper and Redis.
 //
-// A single GitHub webhook can call all three in sequence, or you can route
-// different repos/branches to different sinks via separate rules.
+// A rule is named by its platform and datasource, so each sink has its own rule
+// and its own webhook URL. Register one webhook per datasource in the repository:
+//   https://<gateway>/webhooks/mongo
+//   https://<gateway>/webhooks/zookeeper
+//   https://<gateway>/webhooks/redis-config
+// Each delivery is synced on its own; one failing does not stop the others.
 bundle: {
 	platforms: [
 		{
 			github: {
-				endpoint:    "https://github.com"
-				protocol:    "https"
-				token:       "ghp_xxxxxxxxxxxxxxxxxxxx"
-				org_name:    "my-org"
-				timeout:     "30s"
-				max_retries: 3
+				endpoint: "https://github.com"
+				secret:   "my-webhook-secret"
+				token:    "ghp_xxxxxxxxxxxxxxxxxxxx"
 			}
 		},
 	]
@@ -23,80 +20,66 @@ bundle: {
 	datasources: [
 		{
 			mongo: {
-				tag:             ""
-				endpoint:        "mongodb://mongo-host:27017"
+				endpoint:        "mongodb://mongo:27017"
 				database:        "vartrack"
-				collection:      "app_vars"
-				update_strategy: "STRATEGY_KEY_VALUE"
+				collection:      "variables"
+				update_strategy: "STRATEGY_DOCUMENT"
 			}
 		},
 		{
 			zookeeper: {
-				tag: ""
 				hosts: ["zk1:2181", "zk2:2181", "zk3:2181"]
-				session_timeout: "15s"
 			}
 		},
 		{
+			// tag "config" → "redis-config". (A tag is added to the type: tag
+			// "redis-config" would be named "redis-redis-config".)
 			redis: {
-				tag: "redis-cfg"
-				hosts: ["redis-host:6379"]
+				tag:      "config"
+				hosts:    ["redis:6379"]
 				database: 2
 			}
 		},
 		{
 			redis: {
-				tag: "redis"
-				hosts: ["redis-host:6379"]
+				tag:      "broker"
+				hosts:    ["redis:6379"]
 				database: 0
-			}
-		},
-		{
-			redis: {
-				tag: "redis-results"
-				hosts: ["redis-host:6379"]
-				database: 1
 			}
 		},
 	]
 
 	rules: [
 		{
-			platform:   "github"
-			datasource: "mongo"
-			file_name:  "app.yaml"
-			repositories: ["acme-corp/configs"]
-			// Where the environments come from: a rule that names none is refused.
-			branch_map: {main: "production"}
-			self_heal: true
+			platform:             "github"
+			datasource:           "mongo"
+			repositories:         ["acme-corp/configs"]
+			file_name:            "configs/app.yaml"
+			branch_map:           {main: "production", develop: "staging"}
+			destination_template: "{env}-config"
+			self_heal:            true
 		},
 		{
-			platform:   "github"
-			datasource: "zookeeper"
-			file_name:  "app.yaml"
-			repositories: ["acme-corp/configs"]
-			// Where the environments come from: a rule that names none is refused.
-			branch_map: {main: "production"}
-			self_heal: true
+			platform:             "github"
+			datasource:           "zookeeper"
+			repositories:         ["acme-corp/configs"]
+			file_name:            "configs/app.yaml"
+			branch_map:           {main: "production", develop: "staging"}
+			destination_template: "/myapp/{env}"
+			self_heal:            true
 		},
 		{
-			platform:   "github"
-			datasource: "redis-cfg"
-			file_name:  "app.yaml"
-			repositories: ["acme-corp/configs"]
-			// Where the environments come from: a rule that names none is refused.
-			branch_map: {main: "production"}
-			self_heal: true
+			platform:             "github"
+			datasource:           "redis-config"
+			repositories:         ["acme-corp/configs"]
+			file_name:            "configs/app.yaml"
+			branch_map:           {main: "production", develop: "staging"}
+			destination_template: "{env}:cfg"
+			self_heal:            true
 		},
 	]
 
-	global_tags: {
-		team:        "platform"
-		environment: "production"
-
-		celery_broker:       "redis"
-		celery_backend:      "redis-results"
-		gateway_nonce_redis: "redis"
-		watcher_state_redis: "redis"
-	}
+	celery_broker_datasource:  "redis-broker"
+	celery_backend_datasource: "redis-broker"
+	gateway_nonce_datasource:  "redis-broker"
 }

@@ -1,99 +1,75 @@
-// Example: Two datasources of the same type (primary + DR).
+// Example 08: two datasources of the same type, a primary and a DR copy.
 //
-// HOW IT WORKS:
-//   The `tag` field makes each datasource unique. The datasource name used in
-//   webhook URLs is constructed as:
+// The `tag` tells them apart and names them:
+//   tag ""         → "mongo"
+//   tag "primary"  → "mongo-primary"
+//   tag "dr"       → "mongo-dr"
+// The name is the webhook URL and what a rule's `datasource` says. Register both:
+//   https://<gateway>/webhooks/mongo-primary
+//   https://<gateway>/webhooks/mongo-dr
+// Each is synced, and checked for drift, on its own.
 //
-//     tag == ""      → name is the type:  "mongo"
-//     tag != ""      → name is "type-tag": "mongo-primary", "mongo-dr"
-//
-//   So each datasource gets its own webhook endpoint:
-//     POST /v1/webhooks/mongo-primary
-//     POST /v1/webhooks/mongo-dr
-//
-//   You can call both from a single GitHub webhook by registering two
-//   webhook URLs, or trigger them independently.
+// The same holds for two destinations in one database: a rule is named by its
+// platform and datasource, so a second rule needs a second (tagged) datasource.
 bundle: {
 	platforms: [
 		{
 			github: {
-				endpoint:    "https://github.com"
-				protocol:    "https"
-				token:       "ghp_xxxxxxxxxxxxxxxxxxxx"
-				org_name:    "my-org"
-				timeout:     "30s"
-				max_retries: 3
+				endpoint: "https://github.com"
+				secret:   "my-webhook-secret"
+				token:    "ghp_xxxxxxxxxxxxxxxxxxxx"
 			}
 		},
 	]
 
 	datasources: [
 		{
-			// Primary MongoDB — production writes go here first.
 			mongo: {
 				tag:             "primary"
 				endpoint:        "mongodb://mongo-primary.internal:27017"
 				database:        "vartrack"
-				collection:      "app_vars"
-				update_strategy: "STRATEGY_KEY_VALUE"
+				collection:      "variables"
+				update_strategy: "STRATEGY_DOCUMENT"
 			}
 		},
 		{
-			// DR MongoDB — disaster-recovery replica in a separate availability zone.
-			// Same schema, different host + collection to allow independent drift detection.
 			mongo: {
 				tag:             "dr"
 				endpoint:        "mongodb://mongo-dr.internal:27017"
 				database:        "vartrack"
-				collection:      "app_vars_dr"
-				update_strategy: "STRATEGY_KEY_VALUE"
+				collection:      "variables"
+				update_strategy: "STRATEGY_DOCUMENT"
 			}
 		},
 		{
 			redis: {
-				tag: "redis"
-				hosts: ["redis-host:6379"]
+				tag:   "broker"
+				hosts: ["redis:6379"]
 				database: 0
 			}
 		},
-		{
-			redis: {
-				tag: "redis-results"
-				hosts: ["redis-host:6379"]
-				database: 1
-			}
-		},
 	]
 
-	// Two rules — one per datasource.
 	rules: [
 		{
-			platform:   "github"
-			datasource: "mongo-primary"
-			file_name:  "app.yaml"
+			platform:     "github"
+			datasource:   "mongo-primary"
 			repositories: ["acme-corp/configs"]
-			// Where the environments come from: a rule that names none is refused.
+			file_name:    "configs/app.yaml"
 			branch_map: {main: "production"}
 			self_heal: true
 		},
 		{
-			platform:   "github"
-			datasource: "mongo-dr"
-			file_name:  "app.yaml"
+			platform:     "github"
+			datasource:   "mongo-dr"
 			repositories: ["acme-corp/configs"]
-			// Where the environments come from: a rule that names none is refused.
+			file_name:    "configs/app.yaml"
 			branch_map: {main: "production"}
 			self_heal: true
 		},
 	]
 
-	global_tags: {
-		team:        "platform"
-		environment: "production"
-
-		celery_broker:       "redis"
-		celery_backend:      "redis-results"
-		gateway_nonce_redis: "redis"
-		watcher_state_redis: "redis"
-	}
+	celery_broker_datasource:  "redis-broker"
+	celery_backend_datasource: "redis-broker"
+	gateway_nonce_datasource:  "redis-broker"
 }

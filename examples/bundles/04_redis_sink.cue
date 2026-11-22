@@ -1,66 +1,62 @@
-// Example: Redis as both the config sink AND the Celery broker.
-// Redis sink stores variables as HASH fields under key "vartrack:{env}".
+// Example 04: Redis as the sink, in its own database next to the Celery broker.
+//
+// A push to main writes configs/app.yaml as the fields of one hash:
+//   HSET production:cfg database.host "prod-db.internal"
+// The hash is the rule's destination_template; without one it is the datasource's
+// key_prefix, else "<tenant>:<datasource>:<env>" (default:redis-config:production).
+//
+// Webhook: https://<gateway>/webhooks/redis-config
 bundle: {
 	platforms: [
 		{
 			github: {
-				endpoint:    "https://github.com"
-				protocol:    "https"
-				token:       "ghp_xxxxxxxxxxxxxxxxxxxx"
-				org_name:    "my-org"
-				timeout:     "30s"
-				max_retries: 3
+				endpoint: "https://github.com"
+				secret:   "my-webhook-secret"
+				token:    "ghp_xxxxxxxxxxxxxxxxxxxx"
 			}
 		},
 	]
 
 	datasources: [
 		{
-			// Redis config sink — tagged "config" so the datasource name is "redis-config".
+			// The config store: tag "config" → the datasource is named "redis-config".
 			redis: {
-				tag: "config"
-				hosts: ["redis-host:6379"]
+				tag:      "config"
+				hosts:    ["redis:6379"]
 				database: 2
+				data_structure: "HASH" // the default; "STRING" is one key per setting
+				// Without these a Redis that hangs leaves the worker waiting.
+				connection_timeout: "5s"
+				read_timeout:       "5s"
 			}
 		},
 		{
-			// Celery broker — separate DB to avoid collisions.
+			// The Celery broker and the replay store, in database 0.
 			redis: {
-				tag: "redis"
-				hosts: ["redis-host:6379"]
+				tag:      "broker"
+				hosts:    ["redis:6379"]
 				database: 0
 			}
 		},
+	]
+
+	rules: [
 		{
-			// Celery result backend.
-			redis: {
-				tag: "redis-results"
-				hosts: ["redis-host:6379"]
-				database: 1
+			platform:     "github"
+			datasource:   "redis-config"
+			repositories: ["acme-corp/configs"]
+			file_name:    "configs/app.yaml"
+			branch_map: {main: "production", develop: "staging"}
+			destination_template: "{env}:cfg"
+			self_heal:            true
+			prune: {
+				enabled:    true
+				protection: ["runtime.*"] // keys another tool owns: never deleted
 			}
 		},
 	]
 
-	// Webhook: POST /v1/webhooks/redis-config
-	rules: [
-		{
-			platform:   "github"
-			datasource: "redis-config"
-			file_name:  "app.yaml"
-			repositories: ["acme-corp/configs"]
-			// Where the environments come from: a rule that names none is refused.
-			branch_map: {main: "production"}
-			self_heal: true
-		},
-	]
-
-	global_tags: {
-		team:        "platform"
-		environment: "production"
-
-		celery_broker:       "redis"
-		celery_backend:      "redis-results"
-		gateway_nonce_redis: "redis"
-		watcher_state_redis: "redis"
-	}
+	celery_broker_datasource:  "redis-broker"
+	celery_backend_datasource: "redis-broker"
+	gateway_nonce_datasource:  "redis-broker"
 }

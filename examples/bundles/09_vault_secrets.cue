@@ -1,35 +1,38 @@
-// Example: Vault @secret annotations.
+// Example 09: secrets from Vault, kept out of Git.
 //
-// HOW IT WORKS:
-//   Any config file in the Git repo can reference a Vault secret using the
-//   CUE @secret("path#field") annotation. Before writing to the sink, the
-//   orchestrator resolves the annotation by calling Vault's KV API and
-//   substitutes the real value.
+// Two different things read Vault:
 //
-//   This keeps secrets OUT of Git while still allowing Git-driven config management.
+// 1. A credential in this bundle, written {ref: {path, key}}: the Gitea token and
+//    the Mongo password below.
 //
-// CONFIG FILE IN GIT (app.yaml):
-//   database:
-//     host: prod-db.internal
-//     password: "@secret(secret/myapp/db#password)"
-//   api:
-//     key: "@secret(secret/myapp/api#key)"
+// 2. A value in a config file, for a field its CUE SCHEMA marks @secret(). Only a
+//    field the schema marks is read from Vault: without a schema, the text
+//    "@secret(...)" would be written to the sink as it is. So this bundle names a
+//    schema registry, and the rule maps its file to a schema:
 //
-// VAULT SETUP:
-//   vault kv put secret/myapp/db     password=supersecret123
-//   vault kv put secret/myapp/api    key=api-key-xyz789
+//    configs/annotated.yaml in Git (examples/configs/annotated.yaml):
+//      database:
+//        password: "@secret(secret/myapp/db#password)"
+//    annotated_schema.cue in the schema repository (examples/schemas/annotated_schema.cue):
+//      "database.password": string & !="" @secret() @logger()
+//      "auth.jwt_secret":   string & !="" @secret(ref="auth-vault")
 //
-// The written config (in MongoDB / ZooKeeper / etc.) will contain the real values.
+//    The sink gets Vault's value; a dry run shows it as ***; the sync ledger keeps
+//    only a digest. A secret that cannot be read fails the file: the placeholder
+//    is never written instead.
+//
+// Vault, for the file above:
+//   vault kv put secret/myapp/db   password=supersecret123
+//   vault kv put secret/myapp/api  stripe_key=sk_live_xxx sendgrid_key=SG.xxx
+//   VAULT_ADDR=https://vault-auth.internal:8200 \
+//   vault kv put secret/myapp/auth jwt_secret=jwt123 refresh_secret=refresh456
 bundle: {
 	platforms: [
 		{
-			github: {
-				endpoint:    "https://github.com"
-				protocol:    "https"
-				token:       "ghp_xxxxxxxxxxxxxxxxxxxx"
-				org_name:    "my-org"
-				timeout:     "30s"
-				max_retries: 3
+			gitea: {
+				endpoint: "https://gitea.internal"
+				secret:   {ref: {path: "vartrack/gitea", key: "webhook_secret"}}
+				token:    {ref: {path: "vartrack/gitea", key: "token"}}
 			}
 		},
 	]
@@ -37,68 +40,78 @@ bundle: {
 	datasources: [
 		{
 			mongo: {
-				tag:             ""
-				endpoint:        "mongodb://mongo-host:27017"
+				host:            "mongo.internal"
+				username:        "vartrack"
+				password:        {ref: {path: "vartrack/mongo", key: "password"}}
 				database:        "vartrack"
-				collection:      "app_vars"
-				update_strategy: "STRATEGY_KEY_VALUE"
+				collection:      "variables"
+				update_strategy: "STRATEGY_DOCUMENT"
 			}
 		},
 		{
 			redis: {
-				tag: "redis"
-				hosts: ["redis-host:6379"]
+				tag:   "broker"
+				hosts: ["redis:6379"]
 				database: 0
 			}
 		},
+	]
+
+	secret_managers: [
 		{
-			redis: {
-				tag: "redis-results"
-				hosts: ["redis-host:6379"]
-				database: 1
+			// Tagged "default": the one @secret() and {ref: …} use unless told otherwise.
+			vault: {
+				tag:         "default"
+				endpoint:    "https://vault.internal:8200"
+				mount_point: "secret"
+				kv_version:  2
+				// Vault's own login is a string or a {file: …}, never a {ref: …}.
+				token_auth: {token: {file: "/run/secrets/vault-token"}}
+				// Where an @secret() field the file leaves as a plain value is read,
+				// under the field's own name. "@secret(path#field)" needs none.
+				// path_prefix: "myapp/prod"
+			}
+		},
+		{
+			// @secret(ref="auth-vault") in the schema reads from this one.
+			vault: {
+				tag:         "auth-vault"
+				endpoint:    "https://vault-auth.internal:8200"
+				mount_point: "secret"
+				kv_version:  2
+				app_role_auth: {
+					role_id:   "vartrack"
+					secret_id: {file: "/run/secrets/vault-auth-secret-id"}
+				}
 			}
 		},
 	]
+
+	// The repository the CUE schemas are read from.
+	schema_registry: {
+		platform: "gitea"
+		repo:     "platform/schemas"
+		branch:   "main"
+	}
 
 	rules: [
 		{
-			platform:   "github"
-			datasource: "mongo"
-			file_name:  "app.yaml"
-			repositories: ["acme-corp/configs"]
-			// Where the environments come from: a rule that names none is refused.
+			platform:     "gitea"
+			datasource:   "mongo"
+			repositories: ["acme/configs"]
+			file_name:    "configs/annotated.yaml"
 			branch_map: {main: "production"}
-			self_heal: true
+			// This file is checked by this schema. A schema found by the file's name
+			// would be annotated.yaml.cue at the schema repository's root.
+			schema_map: [{match: "configs/annotated.yaml", schema: "annotated_schema.cue"}]
+			// A file the schema refuses is not written.
+			strict_validation: true
+			// The rule's {ref: …} credentials and @secret() fields come from here.
+			secret_manager: "vault-default"
 		},
 	]
 
-	// Vault: @secret() fields of the CUE schema are read from it (tag
-	// "default"; @secret(ref="…") names another tag), and so are credentials
-	// written as {ref: {path, key}} in this bundle.
-	secret_managers: [
-		{
-			vault: {
-				tag:         "default"
-				endpoint:    "http://vault.internal:8200"
-				mount_point: "secret"
-				kv_version:  2
-				// Where an @secret() field the file leaves as a plain value is read,
-				// under the field's own name. Optional; "@secret(path#field)" needs none.
-				// path_prefix: "myapp/prod"
-				token_auth: {token: "s.xxxxxxxxxxxxxxxxxxxxxxxx"}
-				// Or use AppRole auth instead of token_auth:
-				// app_role_auth: {role_id: "my-role-id", secret_id: "my-secret-id"}
-			}
-		},
-	]
-
-	global_tags: {
-		team:        "platform"
-		environment: "production"
-
-		celery_broker:       "redis"
-		celery_backend:      "redis-results"
-		gateway_nonce_redis: "redis"
-		watcher_state_redis: "redis"
-	}
+	celery_broker_datasource:  "redis-broker"
+	celery_backend_datasource: "redis-broker"
+	gateway_nonce_datasource:  "redis-broker"
 }
